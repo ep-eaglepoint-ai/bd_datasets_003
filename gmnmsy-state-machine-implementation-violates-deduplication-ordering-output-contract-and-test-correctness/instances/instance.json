@@ -1,0 +1,13 @@
+{
+            "instance_id": "GMNMSY",
+            "problem_statement": "The submitted implementation aims to solve an adversarial, event-driven state machine problem where correctness depends on precise handling of out-of-order events, duplicates, terminal states, and retries. While the solution appears comprehensive, it does not correctly implement the fundamental problem semantics under valid input conditions explicitly required by the prompt.
+
+The primary failures occur in how deterministic ordering is coupled with deduplication, how terminal states are enforced, and how idempotent behavior is guaranteed. These issues cause incorrect state transitions and inconsistent results when events arrive out of order or are retried—exactly the scenarios the task is designed to test.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/gmnmsy-state-machine-implementation-violates-deduplication-ordering-output-contract-and-test-correctness",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
