@@ -1,9 +1,15 @@
-# Password Reset System
+# Password reset system
 
-## After Test Docker Command
+## Commands
 
-`docker compose run --rm --build test`
+### Test repository_after
 
-## Evaluation Docker Command
+```bash
+docker compose run --rm --build test
+```
 
-`docker compose run --rm --build evaluation`
+### Generate evaluation report
+
+```bash
+docker compose run --rm --build evaluation
+```
