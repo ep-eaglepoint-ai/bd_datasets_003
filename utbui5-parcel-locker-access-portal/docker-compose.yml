@@ -1,43 +1,18 @@
-# Docker Compose configuration for Parcel Locker Access Portal
-# Supports the three-command rule for zero manual intervention
-
 services:
-  app:
+  test-after:
     build:
-      context: ./repository_after
-      dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
-    environment:
-      - NODE_ENV=production
-      - DATABASE_URL=file:./dev.db
-    volumes:
-      - ./repository_after/prisma:/app/prisma
-      - ./repository_after/dev.db:/app/dev.db
-    command: pnpm start
-
-  # Service for running the Ground Truth solution
-  ground-truth:
-    build:
-      context: ./repository_after
-      dockerfile: Dockerfile
-    environment:
-      - NODE_ENV=production
-      - DATABASE_URL=file:./dev.db
-    volumes:
-      - ./repository_after:/app
-    command: pnpm start
-
-  # Service for running tests and evaluation
-  test:
-    build:
-      context: ./repository_after
+      context: .
       dockerfile: Dockerfile
     environment:
       - NODE_ENV=test
-      - DATABASE_URL=file:./test.db
+    command: npm test
+
+  evaluation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=test
+    command: npm run evaluation
     volumes:
-      - ./repository_after:/app
-      - ./tests:/app/tests
-      - ./evaluation:/app/evaluation
-    command: pnpm test
+      - ./evaluation/reports:/app/evaluation/reports
