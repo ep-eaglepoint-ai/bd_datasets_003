@@ -1,0 +1,12 @@
+{
+            "instance_id": "4CS3S2",
+            "problem_statement": "Inherited an LRU cache implementation from a departed team member that is now being integrated into the user session management system. The cache will store active session data in the auth/session_manager.py module to reduce database lookups for frequently accessed user profiles. Before deployment, the implementation needs comprehensive test coverage to verify correctness and identify any edge cases that could cause session data corruption or memory issues in production.
+The system needs to guarantee that the least recently used sessions are evicted when capacity is reached, expired sessions are not returned to callers, and the cache behaves correctly under concurrent access patterns. Code review identified that there are currently zero tests for this class, the TTL expiration logic has never been validated against actual time behavior, and the original author noted in comments that edge cases around capacity equals one need attention.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/4cs3s2-lru-cache-tests",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
