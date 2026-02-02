@@ -1,11 +1,19 @@
 # ETS0DP - Discrete Physics Simulation of Roller Coaster Dynamics with Friction and G-Force Constraints
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Before Test Docker Command
 
-    ## After Test Docker Command
-    <docker after command here>
+```bash
+No repository_before
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## After Test Docker Command
+
+```bash
+docker compose run --rm app
+```
+
+## Evaluation Docker Command
+
+```bash
+docker compose run --rm app python evaluation/evaluation.py
+```
