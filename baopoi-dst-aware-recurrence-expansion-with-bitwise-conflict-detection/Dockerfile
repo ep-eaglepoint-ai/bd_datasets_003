@@ -1,8 +1,13 @@
+FROM python:3.11-slim
 
-        # Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
-
-        FROM python:3.11-slim
 WORKDIR /app
-COPY . /app
+
+COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+COPY . /app
+
+ENV PYTHONPATH=/app
+
+# Default command - can be overridden
+CMD ["python", "evaluation/run_evaluation.py"]

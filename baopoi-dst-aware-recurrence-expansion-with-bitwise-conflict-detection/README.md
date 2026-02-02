@@ -1,11 +1,11 @@
 # BAOPOI - DST-Aware Recurrence Expansion with Bitwise Conflict Detection
 
-    ## Before Test Docker Command
-    <docker before command here>
+## After Test Docker Command
+```bash
+docker compose run --rm app pytest -v tests/
+```
 
-    ## After Test Docker Command
-    <docker after command here>
-
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## Evaluation Docker Command
+```bash
+docker compose run --rm app python evaluation/evaluation.py
+```
