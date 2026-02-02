@@ -1,15 +1,16 @@
-__pycache__/
-*.py[cod]
-*$py.class
-venv/
+.gitignore
+
+# Python
+pycache/
+*.pyc
 .venv/
 .env
-.pytest_cache/
-*.log
-dist/
-build/
-*.egg-info/
-.DS_Store
 
-# Keep evaluation reports directory structure
-reports/
+# Node
+node_modules/
+
+# OS
+.DS_Store
+evaluation/*.json
+
+evaluation/reports
