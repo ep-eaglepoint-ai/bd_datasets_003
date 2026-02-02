@@ -1,4 +1,13 @@
-# SGEF9A - Webhook Delivery System 
+# SGEF9A - Webhook Delivery System
 
-## After Test Docker Command
+## Commands
+
+test repository_after
+```bash
 docker compose run app pytest -q tests
+```
+
+run evaluation
+```bash
+docker compose run app python evaluation/evaluation.py
+```
