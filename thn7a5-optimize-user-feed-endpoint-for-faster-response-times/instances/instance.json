@@ -1,0 +1,11 @@
+{
+            "instance_id": "THN7A5",
+            "problem_statement": "Feed requests aggregate multiple data sources sequentially, leading to slow response times especially in high-latency regions. The endpoint should fetch data more efficiently while preserving response correctness and API compatibility.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/thn7a5-optimize-user-feed-endpoint-for-faster-response-times",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
