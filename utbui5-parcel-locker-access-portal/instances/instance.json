@@ -1,0 +1,11 @@
+{
+            "instance_id": "UTBUI5",
+            "problem_statement": "Fullstack development of a physical asset management system. Key requirements involve secure credential generation, managing a time-sensitive state machine for lockers (AVAILABLE -> OCCUPIED -> COLLECTED/EXPIRED), and implementing basic security hygiene for private PIN data in a React/Next.js environment.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/utbui5-parcel-locker-access-portal",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
