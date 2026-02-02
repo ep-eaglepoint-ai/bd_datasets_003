@@ -1,0 +1,11 @@
+{
+            "instance_id": "89FK50",
+            "problem_statement": "The booking service allows overlapping bookings in edge cases due to poorly structured validation logic. Refactor is required to improve readability, enforce all overlap rules, and separate validation from HTTP logic, without changing the API contract.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/89fk50-refactor-booking-service-to-prevent-overlaps",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
