@@ -20,10 +20,10 @@ def run_evaluation():
     # Actually, let's use discover properly
     before_suite = loader.discover(start_dir=tests_dir, pattern='before_test.py')
     after_suite = loader.discover(start_dir=tests_dir, pattern='after_test.py')
-    meta_suite = loader.discover(start_dir=tests_dir, pattern='meta_test.py')
+    unit_suite = loader.discover(start_dir=tests_dir, pattern='test_data_processor.py')
     
     # Combine suites
-    full_suite = unittest.TestSuite([before_suite, after_suite, meta_suite])
+    full_suite = unittest.TestSuite([before_suite, after_suite, unit_suite])
     
     print("="*70)
     print("EVALUATION: Data Filtering & Aggregation Performance Optimization")
@@ -41,7 +41,7 @@ def run_evaluation():
     # Categorize results
     before_tests = defaultdict(list)
     after_tests = defaultdict(list)
-    meta_tests = defaultdict(list)
+    unit_tests = defaultdict(list)
     
     for test, traceback in result.failures:
         test_name = str(test)
@@ -49,8 +49,8 @@ def run_evaluation():
             before_tests['failures'].append(test_name)
         elif 'after_test' in test_name:
             after_tests['failures'].append(test_name)
-        elif 'meta_test' in test_name:
-            meta_tests['failures'].append(test_name)
+        elif 'test_data_processor' in test_name:
+            unit_tests['failures'].append(test_name)
     
     for test, traceback in result.errors:
         test_name = str(test)
@@ -58,8 +58,8 @@ def run_evaluation():
             before_tests['errors'].append(test_name)
         elif 'after_test' in test_name:
             after_tests['errors'].append(test_name)
-        elif 'meta_test' in test_name:
-            meta_tests['errors'].append(test_name)
+        elif 'test_data_processor' in test_name:
+            unit_tests['errors'].append(test_name)
     
     # Count all tests by category from the suite
     def count_tests_in_suite(suite):
@@ -74,11 +74,11 @@ def run_evaluation():
     
     total_before = count_tests_in_suite(before_suite)
     total_after = count_tests_in_suite(after_suite)
-    total_meta = count_tests_in_suite(meta_suite)
+    total_unit = count_tests_in_suite(unit_suite)
     
     before_success = total_before - len(before_tests['failures']) - len(before_tests['errors'])
     after_success = total_after - len(after_tests['failures']) - len(after_tests['errors'])
-    meta_success = total_meta - len(meta_tests['failures']) - len(meta_tests['errors'])
+    unit_success = total_unit - len(unit_tests['failures']) - len(unit_tests['errors'])
     
     print()
     print("="*70)
@@ -112,18 +112,18 @@ def run_evaluation():
             print(f"    - {e}")
     print()
     
-    print("META TESTS (meta_test.py):")
-    print(f"  Total: {total_meta}")
-    print(f"  Passed: {meta_success}")
-    print(f"  Failed: {len(meta_tests['failures'])}")
-    print(f"  Errors: {len(meta_tests['errors'])}")
-    if meta_tests['failures']:
+    print("UNIT & INTEGRATION TESTS (test_data_processor.py):")
+    print(f"  Total: {total_unit}")
+    print(f"  Passed: {unit_success}")
+    print(f"  Failed: {len(unit_tests['failures'])}")
+    print(f"  Errors: {len(unit_tests['errors'])}")
+    if unit_tests['failures']:
         print("  Failures:")
-        for f in meta_tests['failures'][:5]:
+        for f in unit_tests['failures'][:5]:
             print(f"    - {f}")
-    if meta_tests['errors']:
+    if unit_tests['errors']:
         print("  Errors:")
-        for e in meta_tests['errors'][:5]:
+        for e in unit_tests['errors'][:5]:
             print(f"    - {e}")
     print()
     
@@ -140,7 +140,7 @@ def run_evaluation():
     # Note: before_test.py failures are expected when testing original code
     # They should pass when testing optimized code
     critical_failures = len(after_tests['failures']) + len(after_tests['errors']) + \
-                        len(meta_tests['failures']) + len(meta_tests['errors'])
+                        len(unit_tests['failures']) + len(unit_tests['errors'])
     
     if critical_failures == 0:
         print("\n✅ OVERALL STATUS: PASS")
