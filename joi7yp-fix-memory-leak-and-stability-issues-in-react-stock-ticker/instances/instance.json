@@ -1,0 +1,11 @@
+{
+            "instance_id": "JOI7YP",
+            "problem_statement": "The stock ticker component gradually degrades performance due to unmanaged intervals and stale updates. The task is to ensure lifecycle safety, prevent memory leaks, and maintain UI responsiveness during long sessions.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/joi7yp-fix-memory-leak-and-stability-issues-in-react-stock-ticker",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
