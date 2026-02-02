@@ -1,0 +1,11 @@
+{
+            "instance_id": "HVXMG3",
+            "problem_statement": "The goal is to enhance an existing React Tags Input component by adding advanced usability and interaction features while maintaining backward compatibility. The current component supports basic tag addition and deletion, but lacks features commonly expected in modern input components. The enhanced component must support autocomplete suggestions, tag limits, drag-and-drop reordering, input validation, and localStorage persistence. These features must work together seamlessly without breaking existing behavior or the component’s external API. The solution must remain lightweight, stable, and compatible with React 18 strict mode.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/hvxmg3-feature-enhancement-for-react-tags-input",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
