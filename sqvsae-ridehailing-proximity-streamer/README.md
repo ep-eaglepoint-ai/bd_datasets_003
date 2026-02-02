@@ -1,11 +1,11 @@
-# SQVSAE - rideHailing-Proximity-Streamer
+# SQVSAE - Ridehailing Proximity Streamer
 
-    ## Before Test Docker Command
-    <docker before command here>
+## After Test Docker Command
+```bash
+docker-compose run --rm app-after
+```
 
-    ## After Test Docker Command
-    <docker after command here>
-
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## Evaluation Docker Command
+```bash
+docker-compose run --rm evaluation
+```

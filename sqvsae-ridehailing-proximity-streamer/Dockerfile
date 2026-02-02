@@ -1,8 +1,19 @@
+FROM golang:1.21-alpine
 
-        # Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
-
-        FROM python:3.11-slim
 WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+# Copy go.mod
+COPY go.mod ./
+COPY go.sum* ./
+
+# Download dependencies
+RUN go mod download || true
+
+# Copy source code
+COPY . .
+
+# Set environment
+ENV CGO_ENABLED=0
+
+# Default command
+CMD ["go", "test", "-v", "./tests"]

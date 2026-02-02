@@ -1,9 +1,18 @@
+services:
+  app-after:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: go test -v ./tests
+    volumes:
+      - .:/app
 
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
-  app:
-    build: .
-    command: pytest -q tests
+  evaluation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: sh -c "go test -json ./tests 2>&1 | go run evaluation/evaluation.go"
+    environment:
+      - PROJECT_ROOT=/app
     volumes:
       - .:/app
