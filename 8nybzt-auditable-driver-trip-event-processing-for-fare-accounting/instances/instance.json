@@ -1,0 +1,11 @@
+{
+            "instance_id": "8NYBZT",
+            "problem_statement": "Build a production-grade event processor for driver trips and fare accounting where correctness and traceability are critical because outputs are reviewed by finance, SRE, and data integrity teams. The system receives batches of trip events from mobile clients that may be duplicated, out of order, incorrect, or retried after failures. Your job is to process these events safely as a per-driver state machine, ensuring invalid data never affects driver state or financial totals, while generating an auditable processing report that explains what happened to every event without silent corruption.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/8nybzt-auditable-driver-trip-event-processing-for-fare-accounting",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
