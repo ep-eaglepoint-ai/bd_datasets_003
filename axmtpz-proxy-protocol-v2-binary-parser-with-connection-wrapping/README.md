@@ -1,11 +1,17 @@
 # AXMTPZ - PROXY Protocol v2 Binary Parser with Connection Wrapping
 
-    ## Before Test Docker Command
-    <docker before command here>
+Tests and evaluation run only against `repository_after`.
 
-    ## After Test Docker Command
-    <docker after command here>
+Default working dir is `/app`; `REPO_PATH` is set in the container. No `-w` or quotes needed.
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+### Run tests
+
+```bash
+docker compose run --rm app go test -v ./tests
+```
+
+### Run evaluation (generate report.json)
+
+```bash
+docker compose run --rm app go run ./evaluation/evaluation.go
+```
