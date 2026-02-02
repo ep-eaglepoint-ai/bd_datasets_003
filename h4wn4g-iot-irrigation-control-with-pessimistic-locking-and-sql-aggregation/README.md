@@ -1,11 +1,11 @@
 # H4WN4G - IoT Irrigation Control with Pessimistic Locking and SQL Aggregation
 
     ## Before Test Docker Command
-    <docker before command here>
+    docker-compose build
 
     ## After Test Docker Command
-    <docker after command here>
+    docker-compose run --rm repository-after
 
     ## Evaluation Docker Command
-    <evaluation command here>
+    docker-compose run --rm evaluation
     

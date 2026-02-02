@@ -1,8 +1,25 @@
+FROM python:3.11-slim
 
-        # Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
-        FROM python:3.11-slim
 WORKDIR /app
-COPY . /app
+
+# Install system dependencies for PostgreSQL
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libpq-dev \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+# Copy application code
+COPY . .
+
+# Create reports directory
+RUN mkdir -p /app/evaluation/reports
+
+CMD ["bash"]
