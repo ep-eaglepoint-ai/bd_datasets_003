@@ -15,7 +15,6 @@ RUN npx prisma generate
 
 COPY repository_after/tsconfig.json repository_after/tsconfig.jest.json repository_after/next-env.d.ts repository_after/next.config.js repository_after/jest.config.cjs ./
 COPY repository_after/src ./src
-COPY repository_after/.env ./.env
 
 WORKDIR /app
 COPY tests ./tests
