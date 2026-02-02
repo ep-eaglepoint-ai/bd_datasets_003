@@ -199,9 +199,9 @@ try {
     report_path: report.report_path
   };
   
-  const summaryPath = path.join(path.dirname(savedPath), 'summary.json');
-  fs.writeFileSync(summaryPath, JSON.stringify(summary, null, 2));
-  console.log(`Summary saved to: ${summaryPath}`);
+  // const summaryPath = path.join(path.dirname(savedPath), 'summary.json');
+  // fs.writeFileSync(summaryPath, JSON.stringify(summary, null, 2));
+  // console.log(`Summary saved to: ${summaryPath}`);
   
   process.exit(report.success ? 0 : 1);
 } catch (error) {

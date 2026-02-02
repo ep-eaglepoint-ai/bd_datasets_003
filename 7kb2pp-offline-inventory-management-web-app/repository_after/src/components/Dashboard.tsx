@@ -4,6 +4,9 @@ import { useInventoryStore, selectEnrichedItems, selectTotalValue, selectInvento
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
 import { generateValuationHistoryData, identifySlowMovingItems, identifyOverstockItems } from '@/lib/calculations';
 import { AlertTriangle, TrendingUp, Package, DollarSign, Activity, AlertCircle } from 'lucide-react';
+import { ReorderRiskChart } from './ReorderRiskChart';
+import { StockHistoryChart } from './StockHistoryChart';
+import { WarehouseUtilizationChart } from './WarehouseUtilizationChart';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
 
@@ -258,6 +261,10 @@ export function Dashboard() {
             <p className="text-gray-500 text-sm">No overstock items</p>
           )}
         </div>
+
+        <ReorderRiskChart />
+        <StockHistoryChart />
+        <WarehouseUtilizationChart />
       </div>
     </div>
   );
