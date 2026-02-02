@@ -1,9 +1,62 @@
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: testdb
+    tmpfs:
+      - /var/lib/postgresql/data
 
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
-  app:
+  test:
     build: .
-    command: pytest -q tests
+    depends_on:
+      - db
+    environment:
+      PGHOST: db
+      PGUSER: postgres
+      PGPASSWORD: password
+      PGDATABASE: testdb
     volumes:
       - .:/app
+    command: >
+      sh -c " PASSED=0 && TOTAL=5 && psql -c 'DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;' && psql -f /app/repository_after/optimized_function.sql && echo '▶ Running test_baseline_equivalence.sql...' && psql -f /app/tests/test_baseline_equivalence.sql && PASSED=$$((PASSED+1)) && echo '▶ Running test_set_based_equivalence.sql...' && psql -f /app/tests/test_set_based_equivalence.sql && PASSED=$$((PASSED+1)) && echo '▶ Running test_index_usage.sql...' && psql -f /app/tests/test_index_usage.sql && PASSED=$$((PASSED+1)) && echo '▶ Running test_single_scan.sql...' && psql -f /app/tests/test_single_scan.sql && PASSED=$$((PASSED+1)) && echo '▶ Running test_edge_cases.sql...' && psql -f /app/tests/test_edge_cases.sql && PASSED=$$((PASSED+1)) && echo '' && echo '✅ All tests passed: '$$PASSED'/'$$TOTAL "
+
+  evaluate:
+    build: .
+    depends_on:
+      - db
+    environment:
+      PGHOST: db
+      PGUSER: postgres
+      PGPASSWORD: password
+      PGDATABASE: testdb
+    volumes:
+      - .:/app
+    command: >
+      sh -c "
+        OUTPUT_DIR='/app/evaluation/'$$(date +%Y-%m-%d)'/'$$(date +%H-%M-%S) && 
+        mkdir -p $$OUTPUT_DIR && 
+        echo 'Setting up database...' &&
+        psql -c 'DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;' > /dev/null 2>&1 &&
+        psql -f /app/repository_after/optimized_function.sql > /dev/null 2>&1 &&
+        
+        echo 'Running tests and generating evaluation report...' &&
+        
+        # Run the evaluation SQL script and capture the JSON output
+        psql -t -A -f /app/evaluation/evaluation.sql 2>/dev/null | 
+        tail -1 | 
+        jq '.' > $$OUTPUT_DIR/report.json &&
+        
+        echo 'Report saved to: '$$OUTPUT_DIR'/report.json' &&
+        echo '=========================================' &&
+        echo 'Evaluation Results Summary' &&
+        echo '=========================================' &&
+        if [ -s $$OUTPUT_DIR/report.json ]; then
+          cat $$OUTPUT_DIR/report.json &&
+          echo ''
+        else
+          echo 'Error: Report file is empty or invalid'
+          echo 'Debug: Showing raw SQL output:'
+          psql -t -A -f /app/evaluation/evaluation.sql 2>/dev/null
+        fi
+      "
