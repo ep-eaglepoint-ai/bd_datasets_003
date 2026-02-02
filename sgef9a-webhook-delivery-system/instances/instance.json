@@ -1,0 +1,13 @@
+{
+            "instance_id": "SGEF9A",
+            "problem_statement": "The notification service webhook delivery is failing silently in production. Downstream services report receiving duplicate payloads when network timeouts trigger uncontrolled retries, and there's no way to verify payload authenticity since signatures are missing. When a popular endpoint goes down, all pending retries fire simultaneously causing cascading failures across the infrastructure. 
+
+The async database queries use synchronous patterns that block the event loop, and scheduled retry tasks crash because they reference database sessions that closed after the parent request completed. Health metrics show 100% success rate despite obvious failures because the scoring algorithm corrupts its own counters. Core implementation is in delivery.py, signatures.py, and retry.py with API routes in webhooks.py.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/sgef9a-webhook-delivery-system",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
