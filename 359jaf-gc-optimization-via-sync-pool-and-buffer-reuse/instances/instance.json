@@ -1,0 +1,11 @@
+{
+            "instance_id": "359JAF",
+            "problem_statement": "In high-frequency Go applications (like HTTP servers or RTB systems), the primary latency killer is often not CPU speed, but the Garbage Collector. Every time json.Marshal is called, it allocates a new byte slice. Every time bytes.NewBuffer is called, it allocates a new header. When processing 100k requests/second, this generates gigabytes of garbage per minute. Mid-tier models typically understand "make it faster" but fail to implement sync.Pool correctly. They often forget to Reset() the buffer before putting it back (causing data corruption where Request B sees Request A's data) or they return pointers that escape to the heap, negating the benefits of the pool.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/359jaf-gc-optimization-via-sync-pool-and-buffer-reuse",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
