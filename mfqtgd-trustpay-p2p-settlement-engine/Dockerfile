@@ -28,6 +28,7 @@ WORKDIR /app/repository_after/backend
 RUN npx prisma generate --schema=./prisma/schema.prisma
 
 # Frontend deps + source (frontend tests run via `npm --prefix repository_after/frontend test`)
+WORKDIR /app
 COPY repository_after/frontend/package.json ./repository_after/frontend/package.json
 COPY repository_after/frontend/package-lock.json ./repository_after/frontend/package-lock.json
 WORKDIR /app/repository_after/frontend
