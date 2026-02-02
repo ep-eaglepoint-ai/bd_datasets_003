@@ -1,3 +1,6 @@
+diff --git a/repository_before/.gitkeep b/repository_before/.gitkeep
+deleted file mode 100644
+index e69de29..0000000
 diff --git a/repository_after/go.mod b/repository_after/go.mod
 new file mode 100644
 index 0000000..1fd704d
