@@ -1,11 +1,16 @@
 # S8A2KP - health-care-platform
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Commands
 
-    ## After Test Docker Command
-    <docker after command here>
+### Run test on repository_after
 
-    ## Evaluation Docker Command
-    <evaluation command here>
+```bash
+docker compose run --rm test-after
+```
+
+### Run evaluation
+
+```bash
+docker compose run --rm evaluation
+```
     
