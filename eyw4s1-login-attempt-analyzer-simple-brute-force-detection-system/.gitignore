@@ -40,6 +40,7 @@ pnpm-lock.yaml
 .Trashes
 ehthumbs.db
 Thumbs.db
+.vite/*
 
 # Evaluation reports
 evaluation/*.json
@@ -70,3 +71,4 @@ coverage.xml
 *.temp
 *.bak
 *.backup
+
