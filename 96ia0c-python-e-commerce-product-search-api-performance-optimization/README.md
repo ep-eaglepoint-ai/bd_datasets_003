@@ -1,11 +1,14 @@
-# 96IA0C - Python E-commerce Product Search API Performance Optimization
+- 
+Before command
+```bash
+docker compose run --rm app env TARGET_REPO=before pytest -q -vv tests
+```
 
-    ## Before Test Docker Command
-    <docker before command here>
-
-    ## After Test Docker Command
-    <docker after command here>
-
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+After command
+```bash
+docker compose run --rm app env TARGET_REPO=after pytest -q -vv tests
+```
+Evaluation Script
+```bash
+docker compose run --rm app python evaluation/evaluation.py
+```
