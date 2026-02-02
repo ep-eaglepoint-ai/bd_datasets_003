@@ -1,0 +1,13 @@
+{
+            "instance_id": "GBVMMK",
+            "problem_statement": "The API gateway team reports that their service crashes after 4-6 hours of sustained traffic due to file descriptor exhaustion. Monitoring shows the connection pool leaks approximately 50 connections per hour, and goroutine counts grow unbounded from health check workers that never terminate. 
+
+The pool fails to remove unhealthy backend connections after server restarts, causing requests to route to dead endpoints for minutes. Idle connections accumulate indefinitely because the cleanup routine never runs, and DNS changes for backend services take effect only after a full gateway restart. Context cancellation does not propagate to in-flight requests, causing client timeouts to be ignored. Core logic is in pool.go and health.go.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/gbvmmk-go-http-connection-pool-goroutine-leak-fix",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
