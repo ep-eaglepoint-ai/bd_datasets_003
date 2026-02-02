@@ -1,8 +1,11 @@
+FROM eclipse-temurin:17-jdk-alpine
 
-        # Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
-
-        FROM python:3.11-slim
 WORKDIR /app
+
+# Install Python for evaluation script
+RUN apk add --no-cache python3 py3-pip
+
 COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+# No specific CMD needed as docker-compose overrides it or we run specific commands
+
