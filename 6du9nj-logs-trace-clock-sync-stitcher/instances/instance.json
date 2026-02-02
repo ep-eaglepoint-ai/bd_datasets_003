@@ -1,0 +1,26 @@
+{
+  "instance_id": "6DU9NJ",
+  "problem_statement": "Implementation of a distributed trace correlation and clock-skew correction utility. The task requires building a hierarchical graph from flat log events and applying a correction algorithm to handle millisecond-level timing anomalies across distributed servers.",
+  "base_commit": "repository_before/",
+  "test_patch": "tests/",
+  "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/6du9nj-logs-trace-clock-sync-stitcher",
+  "environment_setup": "Dockerfile",
+  "FAIL_TO_PASS": [
+    "test_simple_hierarchy",
+    "test_multiple_roots",
+    "test_deep_hierarchy",
+    "test_unsorted_events",
+    "test_child_before_parent",
+    "test_cascading_drift",
+    "test_no_skew_no_change",
+    "test_duration_preserved_after_skew_correction",
+    "test_missing_parent",
+    "test_partial_broken_chain",
+    "test_simple_cycle",
+    "test_three_node_cycle",
+    "test_self_cycle",
+    "test_millisecond_precision",
+    "test_multiple_children_with_skew"
+  ],
+  "PASS_TO_PASS": []
+}
