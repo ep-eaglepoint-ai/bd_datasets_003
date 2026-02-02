@@ -1,0 +1,11 @@
+{
+            "instance_id": "G6JI3T",
+            "problem_statement": "We are initiating the development of a modular, multi-stage content moderation engine. The service must evaluate user-generated text through a series of hierarchical filters ranging from high-speed regex patterns to a mocked machine learning evaluation to determine content safety while providing detailed audit metadata for every verdict.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/g6ji3t-hierarchical-content-moderation-pipeline",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
