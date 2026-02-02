@@ -1,0 +1,15 @@
+{
+            "instance_id": "LRSIHQ",
+            "problem_statement": "You are a Database Engineer at a financial services company running a distributed database across 50 nodes. The current advisory locking system uses a centralized coordinator, creating a bottleneck that limits transaction throughput to 500 TPS. During peak trading hours (9:30-10:00 AM), lock contention causes 2-second delays, resulting in failed trades worth $100K+ per incident.
+
+The system needs a distributed lock manager that scales to 5,000 TPS (10x improvement) while maintaining strict mutual exclusion guarantees. The lock manager must use quorum-based acquisition (majority of nodes must grant lock), detect deadlocks within 2 seconds, and prevent starvation with FIFO ordering. It must survive node failures (up to N/2 - 1 nodes can fail) and support both SHARED and EXCLUSIVE lock modes.
+
+Your task is to implement `distributed_lock.py",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/lrsihq-distributed-lock-manager-with-quorum-based-acquisition-and-deadlock-detection",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
