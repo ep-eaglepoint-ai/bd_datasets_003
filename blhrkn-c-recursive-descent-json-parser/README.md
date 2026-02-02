@@ -1,11 +1,21 @@
 # BLHRKN - C++ Recursive Descent JSON Parser
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Commands
 
-    ## After Test Docker Command
-    <docker after command here>
+## Run test on repository_before
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+```bash
+docker compose run --rm test-before
+```
+
+### Run test on repository_after
+
+```bash
+docker compose run --rm test-after
+```
+
+### Run evaluation
+
+```bash
+docker compose run --rm evaluation
+```
