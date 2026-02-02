@@ -1,0 +1,11 @@
+{
+            "instance_id": "S89BS2",
+            "problem_statement": "We have an async TypeScript function `getUsersWithPosts` that fetches user details and their posts for an array of user IDs. The function should handle multiple concurrent fetches, merge results correctly, and gracefully handle partial failures (e.g., if fetching posts for some users fails, it should still return data for successful users). It should also deduplicate duplicate IDs, handle empty and invalid inputs, and maintain the correct order of results. The current implementation contains intentional bugs, including crashing on individual fetch failures, not deduplicating IDs, and mishandling invalid inputs. Your task is to write a Vitest test suite that exposes these issues, ensuring full coverage of success, failure, and edge cases.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/s89bs2-comprehensive-vitest-test-suite-for-getuserswithposts-exposing-partial-failures-and-edge-cases",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
