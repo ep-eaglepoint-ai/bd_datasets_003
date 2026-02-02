@@ -1,8 +1,18 @@
+# Dockerfile for Collaborative Todo App with Offline Sync
+# Node.js + TypeScript environment
 
-        # Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
+FROM node:20-alpine
 
-        FROM python:3.11-slim
 WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm ci
+
+# Copy source files
+COPY . .
+
+# Default command runs tests
+CMD ["npm", "test"]

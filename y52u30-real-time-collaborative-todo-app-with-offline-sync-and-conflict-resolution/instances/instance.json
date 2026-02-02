@@ -1,13 +1,63 @@
 {
-            "instance_id": "Y52U30",
-            "problem_statement": "The collaborative todo application loses user edits unpredictably during concurrent editing sessions. When two users modify the same item simultaneously, one update silently disappears without notification. The offline queue replays changes in wrong order after reconnection because it relies on timestamps instead of sequence numbers, causing duplicate items or lost edits. Presence indicators show users who disconnected minutes ago because cleanup happens immediately on socket close without delay for brief network interruptions. 
-
-The WebSocket handler in the Next.js App Router API route crashes on startup because request.socket.server doesn't exist in the App Router runtime. Optimistic UI updates persist even when the server rejects changes due to stale vector clocks, leaving the client in an inconsistent state. Core implementation spans store/todoStore.ts, lib/websocket.ts, lib/vector-clock.ts, and the API routes.",
-            "base_commit": "repository_before/",
-            "test_patch": "tests/",
-            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/y52u30-real-time-collaborative-todo-app-with-offline-sync-and-conflict-resolution",
-            "environment_setup": "Dockerfile",
-            "FAIL_TO_PASS": [],
-            "PASS_TO_PASS": []
-        }
-        
+  "instance_id": "y52u30-real-time-collaborative-todo-app-with-offline-sync-and-conflict-resolution",
+  "task_type": "new_feature_development",
+  "description": "Real-time collaborative todo app with offline sync and conflict resolution using Next.js 14, TypeScript, Zustand, and WebSocket",
+  "requirements": [
+    "Requirement 1: Vector clock comparison returns exactly 4 results (before, after, equal, concurrent)",
+    "Requirement 2: Last-write-wins with deterministic tiebreaker (updated_at then lexicographic user ID)",
+    "Requirement 3: WebSocket server uses custom Node.js server (not App Router API routes)",
+    "Requirement 4: Offline queue uses monotonically increasing sequence numbers for ordering",
+    "Requirement 5: Presence cleanup delays 5 seconds after disconnect",
+    "Requirement 6: Optimistic updates store complete previous state for atomic rollback",
+    "Requirement 7: Soft delete uses deleted_at timestamp instead of physical deletion",
+    "Requirement 8: Exponential backoff from 1s to 30s with 20% random jitter",
+    "Requirement 9: Presence updates throttled to max 1 per 100ms",
+    "Requirement 10: Reorder updates vector clocks for ALL affected todos",
+    "Requirement 11: Sync only sends changes since lastSyncTimestamp",
+    "Requirement 12: Client IDs generated with crypto.randomUUID()"
+  ],
+  "test_files": [
+    "tests/vector-clock.test.ts",
+    "tests/offline-queue.test.ts",
+    "tests/presence.test.ts",
+    "tests/reconnection.test.ts",
+    "tests/sync.test.ts",
+    "tests/todoStore.test.ts",
+    "tests/websocket-server.test.ts"
+  ],
+  "FAIL_TO_PASS": [],
+  "PASS_TO_PASS": [
+    "Vector Clock - Requirement 1: Four Distinct Comparison Results",
+    "Vector Clock - Requirement 2: Deterministic Tiebreaker",
+    "Vector Clock - Basic Operations",
+    "Offline Queue - Requirement 4: Sequence Numbers",
+    "Offline Queue - Requirement 12: crypto.randomUUID()",
+    "Offline Queue - Additional Operations",
+    "isValidOperation",
+    "Presence Management - Requirement 5: 5-Second Cleanup Delay",
+    "Presence Management - Requirement 9: Throttled Updates",
+    "Presence Management - Edge Cases",
+    "Reconnection - Requirement 8: Exponential Backoff",
+    "Reconnection - Edge Cases",
+    "Sync - Requirement 11: Incremental Sync",
+    "Sync - Merge Operations",
+    "Sync - SyncManager",
+    "applyServerState",
+    "Todo Store - Requirement 6: Optimistic Updates",
+    "Todo Store - Requirement 7: Soft Delete",
+    "Todo Store - Requirement 10: Reorder Vector Clocks",
+    "Todo Store - General Operations",
+    "WebSocket Server - Requirement 3: Custom Node.js Server",
+    "WebSocket Server - Architecture Validation",
+    "WebSocket Server - Configuration",
+    "WebSocket Server - Presence Integration"
+  ],
+  "technology_stack": {
+    "framework": "Next.js 14 (App Router)",
+    "language": "TypeScript (strict mode)",
+    "state_management": "Zustand",
+    "websocket": "ws library",
+    "testing": "Jest with ts-jest"
+  },
+  "total_tests": 176
+}

@@ -1,9 +1,32 @@
+# Docker Compose for Collaborative Todo App
+# New feature development - only app-after and evaluation
 
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
-  app:
-    build: .
-    command: pytest -q tests
+services:
+  app-after:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: npm test
     volumes:
-      - .:/app
+      - ./repository_after:/app/repository_after
+      - ./tests:/app/tests
+      - ./package.json:/app/package.json
+      - ./tsconfig.json:/app/tsconfig.json
+      - ./jest.config.js:/app/jest.config.js
+    working_dir: /app
+
+  evaluation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: node evaluation/evaluation.js
+    volumes:
+      - ./evaluation:/app/evaluation
+      - ./repository_after:/app/repository_after
+      - ./tests:/app/tests
+      - ./package.json:/app/package.json
+      - ./tsconfig.json:/app/tsconfig.json
+      - ./jest.config.js:/app/jest.config.js
+    working_dir: /app
+    depends_on:
+      - app-after
