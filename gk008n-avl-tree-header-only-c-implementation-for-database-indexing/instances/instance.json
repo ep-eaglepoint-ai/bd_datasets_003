@@ -1,0 +1,11 @@
+{
+            "instance_id": "GK008N",
+            "problem_statement": "the database team needs a self-balancing binary search tree for in-memory indexing. Initial prototypes show inconsistent behavior: iterators crash during traversal, deletion corrupts tree structure, and the code fails to compile with standard key-value pair semantics. The implementation must handle generic key/value types, maintain O(log n) operations, and provide STL-compatible iterators. Core logic is in avl_tree.h with test coverage in test_avl.cpp.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/gk008n-avl-tree-header-only-c-implementation-for-database-indexing",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
