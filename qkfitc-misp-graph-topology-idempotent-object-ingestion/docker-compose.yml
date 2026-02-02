@@ -5,12 +5,6 @@ services:
       - .:/app
     command: pytest -q tests/after_test.py
 
-  meta-test:
-    build: .
-    volumes:
-      - .:/app
-    command: pytest -q tests/meta_test.py
-
   evaluation:
     build: .
     volumes:

@@ -67,35 +67,41 @@ class TestAfterPhishingIngestor(unittest.TestCase):
         instance.get_event.return_value = mock_event
         
         # Setup return values for added items
+        call_count = {'file': 0, 'url': 0}
         def mock_add_obj(eid, obj, pythonify=True):
-            obj.uuid = "file-uuid"
+            if obj.name == 'file':
+                obj.uuid = "file-uuid"
+                call_count['file'] += 1
+            elif obj.name == 'url':
+                obj.uuid = "url-uuid"
+                call_count['url'] += 1
             return obj
         instance.add_object.side_effect = mock_add_obj
-        
-        def mock_add_attr(eid, attr, pythonify=True):
-            attr.uuid = "url-uuid"
-            return attr
-        instance.add_attribute.side_effect = mock_add_attr
 
         data = self.load_scenario('scenario_1_valid_single')
         ingestor = PhishingFeedIngestor(self.misp_url, self.misp_key)
         results = ingestor.ingest_data(data)
         
         # Req 4 & 5: add_object with 'file' template and mapping
-        instance.add_object.assert_called_once()
-        obj_sent = instance.add_object.call_args[0][1]
-        self.assertEqual(obj_sent.name, 'file')
-        rels = {a.object_relation: a.value for a in obj_sent.attributes}
+        self.assertEqual(call_count['file'], 1, "Should create one file object")
+        file_calls = [call for call in instance.add_object.call_args_list if call[0][1].name == 'file']
+        self.assertEqual(len(file_calls), 1)
+        file_obj_sent = file_calls[0][0][1]
+        self.assertEqual(file_obj_sent.name, 'file')
+        rels = {a.object_relation: a.value for a in file_obj_sent.attributes}
         self.assertEqual(rels['filename'], data[0]['filename'])
         self.assertEqual(rels['sha256'], data[0]['sha256'])
         
-        # Req 6: standalone Attribute of type url
-        instance.add_attribute.assert_called_once()
-        attr_sent = instance.add_attribute.call_args[0][1]
-        self.assertEqual(attr_sent.type, 'url')
-        self.assertEqual(attr_sent.value, data[0]['payload_delivery_url'])
+        # Req 6: URL is now an object, not an attribute
+        self.assertEqual(call_count['url'], 1, "Should create one url object")
+        url_calls = [call for call in instance.add_object.call_args_list if call[0][1].name == 'url']
+        self.assertEqual(len(url_calls), 1)
+        url_obj_sent = url_calls[0][0][1]
+        self.assertEqual(url_obj_sent.name, 'url')
+        url_attrs = {a.object_relation: a.value for a in url_obj_sent.attributes}
+        self.assertEqual(url_attrs['url'], data[0]['payload_delivery_url'])
         
-        # Req 7: Graph Topology (downloaded-from)
+        # Req 7: Graph Topology (downloaded-from) - object→object reference
         instance.add_object_reference.assert_called_once_with("file-uuid", "url-uuid", "downloaded-from")
 
     @patch('phishing_feed_ingestor.PyMISP')
@@ -110,26 +116,29 @@ class TestAfterPhishingIngestor(unittest.TestCase):
         mock_event = MagicMock()
         mock_event.id = "123"
         
-        existing_obj = MagicMock()
-        existing_obj.name = 'file'
-        existing_obj.uuid = "existing-file-uuid"
+        existing_file_obj = MagicMock()
+        existing_file_obj.name = 'file'
+        existing_file_obj.uuid = "existing-file-uuid"
         attr_sha256 = MagicMock()
         attr_sha256.object_relation = 'sha256'
         attr_sha256.value = data[0]['sha256']
-        existing_obj.attributes = [attr_sha256]
+        existing_file_obj.attributes = [attr_sha256]
         
-        existing_attr = MagicMock()
-        existing_attr.type = 'url'
-        existing_attr.value = data[0]['payload_delivery_url']
-        existing_attr.uuid = "existing-url-uuid"
+        existing_url_obj = MagicMock()
+        existing_url_obj.name = 'url'
+        existing_url_obj.uuid = "existing-url-uuid"
+        url_attr = MagicMock()
+        url_attr.object_relation = 'url'
+        url_attr.value = data[0]['payload_delivery_url']
+        existing_url_obj.attributes = [url_attr]
         
         ref = MagicMock()
         ref.referenced_uuid = "existing-url-uuid"
         ref.relationship_type = 'downloaded-from'
-        existing_obj.ObjectReference = [ref]
+        existing_file_obj.ObjectReference = [ref]
         
-        mock_event.objects = [existing_obj]
-        mock_event.attributes = [existing_attr]
+        mock_event.objects = [existing_file_obj, existing_url_obj]
+        mock_event.attributes = []
         
         instance.search.return_value = [mock_event]
         instance.get_event.return_value = mock_event
@@ -217,14 +226,20 @@ class TestAfterPhishingIngestor(unittest.TestCase):
         instance.search.return_value = [mock_event]
         instance.get_event.return_value = mock_event
         
-        instance.add_object.side_effect = lambda eid, obj, pythonify=True: obj
-        instance.add_attribute.side_effect = lambda eid, attr, pythonify=True: attr
+        def mock_add_obj(eid, obj, pythonify=True):
+            if obj.name == 'file':
+                obj.uuid = f"file-uuid-{obj.attributes[1].value}"
+            elif obj.name == 'url':
+                obj.uuid = f"url-uuid-{obj.attributes[0].value}"
+            return obj
+        instance.add_object.side_effect = mock_add_obj
 
         data = self.load_scenario('scenario_12_mixed_valid_invalid')
         ingestor = PhishingFeedIngestor(self.misp_url, self.misp_key)
         results = ingestor.ingest_data(data)
         
-        self.assertEqual(results["added_objects"], 1)
+        # Should create 1 file object + 1 url object = 2 objects total
+        self.assertEqual(results["added_objects"], 2)
         self.assertEqual(results["skipped_entries"], 2)
 
     @patch('phishing_feed_ingestor.PyMISP')
@@ -239,29 +254,397 @@ class TestAfterPhishingIngestor(unittest.TestCase):
         instance.search.return_value = [mock_event]
         instance.get_event.return_value = mock_event
         
-        instance.add_object.side_effect = lambda eid, obj, pythonify=True: obj
-        instance.add_attribute.side_effect = lambda eid, attr, pythonify=True: attr
+        def mock_add_obj(eid, obj, pythonify=True):
+            if obj.name == 'file':
+                obj.uuid = f"file-uuid-{obj.attributes[1].value}"
+            elif obj.name == 'url':
+                obj.uuid = f"url-uuid-{obj.attributes[0].value}"
+            return obj
+        instance.add_object.side_effect = mock_add_obj
 
         data = self.load_scenario('scenario_13_case_sensitivity')
         ingestor = PhishingFeedIngestor(self.misp_url, self.misp_key)
         
         # Ingest uppercase hash
         results = ingestor.ingest_data(data)
-        self.assertEqual(results["added_objects"], 1)
+        # Should create 1 file object + 1 url object = 2 objects total
+        self.assertEqual(results["added_objects"], 2)
         
-        # Mock event already having the lowercase version
-        mock_event.objects[0].attributes[1].value = data[0]['sha256'].lower() # set to lower
-        mock_event.objects[0].attributes[1].object_relation = 'sha256'
-        mock_event.objects[0].name = 'file'
+        # Mock event already having the lowercase version (both file and url objects)
+        existing_file_obj = MagicMock()
+        existing_file_obj.name = 'file'
+        existing_file_obj.uuid = f"file-uuid-{data[0]['sha256'].lower()}"
+        file_attr_sha256 = MagicMock()
+        file_attr_sha256.object_relation = 'sha256'
+        file_attr_sha256.value = data[0]['sha256'].lower()  # lowercase version
+        file_attr_filename = MagicMock()
+        file_attr_filename.object_relation = 'filename'
+        file_attr_filename.value = data[0]['filename']
+        existing_file_obj.attributes = [file_attr_filename, file_attr_sha256]
+        existing_file_obj.ObjectReference = []
+        
+        existing_url_obj = MagicMock()
+        existing_url_obj.name = 'url'
+        existing_url_obj.uuid = f"url-uuid-{data[0]['payload_delivery_url']}"
+        url_attr = MagicMock()
+        url_attr.object_relation = 'url'
+        url_attr.value = data[0]['payload_delivery_url']
+        existing_url_obj.attributes = [url_attr]
+        
+        mock_event.objects = [existing_file_obj, existing_url_obj]
+        mock_event.attributes = []
+        instance.get_event.return_value = mock_event
         
         # Ingest again - should skip if logic handles case (or if we normalize it)
-        # Note: Current implementation in working_code.py DOES NOT normalize casing in _get_existing_file_object.
-        # It does: if attr.value == sha256. 
-        # I should probably update working_code.py to normalize hashes to lowercase.
+        # Note: Current implementation normalizes hashes to lowercase in _get_existing_file_object.
         
         results2 = ingestor.ingest_data(data)
         # Should skip because SHA256 matches case-insensitively
         self.assertEqual(results2["added_objects"], 0)
+
+    @patch('phishing_feed_ingestor.PyMISP')
+    def test_requirement_9_idempotency_actual_double_run(self, mock_pymisp):
+        """Req 9: Test that actually runs ingest_data twice and asserts second run adds 0 items."""
+        instance = mock_pymisp.return_value
+        instance.get_version.return_value = {"version": "2.4.162"}
+        
+        data = self.load_scenario('scenario_1_valid_single')
+        
+        # First run: empty event
+        mock_event = MagicMock()
+        mock_event.id = "123"
+        mock_event.objects = []
+        mock_event.attributes = []
+        instance.search.return_value = [mock_event]
+        instance.get_event.return_value = mock_event
+        
+        # Setup return values for first run
+        def mock_add_obj_first(eid, obj, pythonify=True):
+            if obj.name == 'file':
+                obj.uuid = f"file-uuid-{obj.attributes[1].value}"  # Use sha256 for uuid
+            elif obj.name == 'url':
+                obj.uuid = f"url-uuid-{obj.attributes[0].value}"
+            return obj
+        instance.add_object.side_effect = mock_add_obj_first
+        
+        ingestor = PhishingFeedIngestor(self.misp_url, self.misp_key)
+        results1 = ingestor.ingest_data(data)
+        
+        # Verify first run added items (1 file object + 1 url object = 2 objects)
+        self.assertEqual(results1["added_objects"], 2)
+        self.assertEqual(results1["added_relationships"], 1)
+        
+        # Second run: event now has the objects from first run
+        # Create mock objects that match what was added in first run
+        existing_file_obj = MagicMock()
+        existing_file_obj.name = 'file'
+        existing_file_obj.uuid = "file-uuid-" + data[0]['sha256']
+        existing_file_obj.ObjectReference = []
+        file_attr_sha256 = MagicMock()
+        file_attr_sha256.object_relation = 'sha256'
+        file_attr_sha256.value = data[0]['sha256']
+        file_attr_filename = MagicMock()
+        file_attr_filename.object_relation = 'filename'
+        file_attr_filename.value = data[0]['filename']
+        existing_file_obj.attributes = [file_attr_filename, file_attr_sha256]
+        
+        existing_url_obj = MagicMock()
+        existing_url_obj.name = 'url'
+        existing_url_obj.uuid = "url-uuid-" + data[0]['payload_delivery_url']
+        url_attr = MagicMock()
+        url_attr.object_relation = 'url'
+        url_attr.value = data[0]['payload_delivery_url']
+        existing_url_obj.attributes = [url_attr]
+        
+        # Create relationship
+        ref = MagicMock()
+        ref.referenced_uuid = existing_url_obj.uuid
+        ref.relationship_type = 'downloaded-from'
+        existing_file_obj.ObjectReference = [ref]
+        
+        mock_event.objects = [existing_file_obj, existing_url_obj]
+        mock_event.attributes = []
+        instance.get_event.return_value = mock_event
+        
+        # Reset mocks
+        instance.add_object.reset_mock()
+        instance.add_object_reference.reset_mock()
+        
+        # Second run
+        results2 = ingestor.ingest_data(data)
+        
+        # Req 9: Second run should add 0 items
+        self.assertEqual(results2["added_objects"], 0)
+        self.assertEqual(results2["added_attributes"], 0)
+        self.assertEqual(results2["added_relationships"], 0)
+        
+        # Verify no API calls were made
+        instance.add_object.assert_not_called()
+        instance.add_object_reference.assert_not_called()
+
+    @patch('phishing_feed_ingestor.PyMISP')
+    def test_scenario_3_within_batch_deduplication(self, mock_pymisp):
+        """Test scenario_3: duplicate sha256/url in same list asserts within-batch deduplication."""
+        instance = mock_pymisp.return_value
+        instance.get_version.return_value = {"version": "2.4.162"}
+        
+        data = self.load_scenario('scenario_3_duplicate_input')
+        
+        mock_event = MagicMock()
+        mock_event.id = "123"
+        mock_event.objects = []
+        mock_event.attributes = []
+        instance.search.return_value = [mock_event]
+        instance.get_event.return_value = mock_event
+        
+        # Track created objects
+        created_objects = []
+        
+        def mock_add_obj(eid, obj, pythonify=True):
+            if obj.name == 'file':
+                obj.uuid = f"file-uuid-{obj.attributes[1].value}"  # sha256
+            elif obj.name == 'url':
+                obj.uuid = f"url-uuid-{obj.attributes[0].value}"  # url value
+            created_objects.append(obj)
+            return obj
+        instance.add_object.side_effect = mock_add_obj
+        
+        ingestor = PhishingFeedIngestor(self.misp_url, self.misp_key)
+        results = ingestor.ingest_data(data)
+        
+        # Within-batch deduplication: should create only 1 file object, 1 url object, 1 relationship
+        # (both entries have same sha256 and same url)
+        self.assertEqual(results["added_objects"], 2, "Should create 1 file object + 1 url object")
+        self.assertEqual(results["added_attributes"], 0, "URLs are now objects, not attributes")
+        self.assertEqual(results["added_relationships"], 1, "Should create 1 relationship")
+        
+        # Verify only one file object was created (same sha256)
+        file_objects = [obj for obj in created_objects if obj.name == 'file']
+        self.assertEqual(len(file_objects), 1, "Should deduplicate file objects within batch")
+        
+        # Verify only one url object was created (same url)
+        url_objects = [obj for obj in created_objects if obj.name == 'url']
+        self.assertEqual(len(url_objects), 1, "Should deduplicate url objects within batch")
+
+    @patch('phishing_feed_ingestor.PyMISP')
+    def test_file_object_template_validation(self, mock_pymisp):
+        """Integration test: Validate File Object is created with correct MISP template and attributes."""
+        instance = mock_pymisp.return_value
+        instance.get_version.return_value = {"version": "2.4.162"}
+        
+        mock_event = MagicMock()
+        mock_event.id = "123"
+        mock_event.objects = []
+        mock_event.attributes = []
+        instance.search.return_value = [mock_event]
+        instance.get_event.return_value = mock_event
+        
+        captured_file_objects = []
+        
+        def mock_add_obj(eid, obj, pythonify=True):
+            if obj.name == 'file':
+                captured_file_objects.append(obj)
+                obj.uuid = "file-uuid-test"
+            elif obj.name == 'url':
+                obj.uuid = "url-uuid-test"
+            return obj
+        instance.add_object.side_effect = mock_add_obj
+        
+        data = self.load_scenario('scenario_1_valid_single')
+        ingestor = PhishingFeedIngestor(self.misp_url, self.misp_key)
+        ingestor.ingest_data(data)
+        
+        # Validate file object template
+        self.assertEqual(len(captured_file_objects), 1, "Should create exactly one file object")
+        file_obj = captured_file_objects[0]
+        self.assertEqual(file_obj.name, 'file', "File object must use 'file' template")
+        
+        # Validate file object attributes
+        attr_dict = {attr.object_relation: attr.value for attr in file_obj.attributes}
+        self.assertIn('filename', attr_dict, "File object must have filename attribute")
+        self.assertIn('sha256', attr_dict, "File object must have sha256 attribute")
+        self.assertEqual(attr_dict['filename'], data[0]['filename'], "Filename must match input")
+        self.assertEqual(attr_dict['sha256'], data[0]['sha256'], "SHA256 must match input")
+
+    @patch('phishing_feed_ingestor.PyMISP')
+    def test_url_object_creation_not_attribute(self, mock_pymisp):
+        """Integration test: Validate URL is created as an object, not a standalone attribute."""
+        instance = mock_pymisp.return_value
+        instance.get_version.return_value = {"version": "2.4.162"}
+        
+        mock_event = MagicMock()
+        mock_event.id = "123"
+        mock_event.objects = []
+        mock_event.attributes = []
+        instance.search.return_value = [mock_event]
+        instance.get_event.return_value = mock_event
+        
+        captured_url_objects = []
+        
+        def mock_add_obj(eid, obj, pythonify=True):
+            if obj.name == 'url':
+                captured_url_objects.append(obj)
+                obj.uuid = "url-uuid-test"
+            elif obj.name == 'file':
+                obj.uuid = "file-uuid-test"
+            return obj
+        instance.add_object.side_effect = mock_add_obj
+        
+        data = self.load_scenario('scenario_1_valid_single')
+        ingestor = PhishingFeedIngestor(self.misp_url, self.misp_key)
+        ingestor.ingest_data(data)
+        
+        # Validate URL is created as object, not attribute
+        self.assertEqual(len(captured_url_objects), 1, "Should create exactly one URL object")
+        url_obj = captured_url_objects[0]
+        self.assertEqual(url_obj.name, 'url', "URL must be created as 'url' object template")
+        
+        # Validate URL object has correct attribute
+        url_attrs = {attr.object_relation: attr.value for attr in url_obj.attributes}
+        self.assertIn('url', url_attrs, "URL object must have 'url' attribute")
+        self.assertEqual(url_attrs['url'], data[0]['payload_delivery_url'], "URL value must match input")
+        
+        # Verify add_attribute was NOT called for URLs
+        instance.add_attribute.assert_not_called()
+
+    @patch('phishing_feed_ingestor.PyMISP')
+    def test_relationship_direction_validation(self, mock_pymisp):
+        """Integration test: Validate downloaded-from relationship direction (File -> URL)."""
+        instance = mock_pymisp.return_value
+        instance.get_version.return_value = {"version": "2.4.162"}
+        
+        mock_event = MagicMock()
+        mock_event.id = "123"
+        mock_event.objects = []
+        mock_event.attributes = []
+        instance.search.return_value = [mock_event]
+        instance.get_event.return_value = mock_event
+        
+        file_uuid = "file-uuid-123"
+        url_uuid = "url-uuid-456"
+        
+        def mock_add_obj(eid, obj, pythonify=True):
+            if obj.name == 'file':
+                obj.uuid = file_uuid
+            elif obj.name == 'url':
+                obj.uuid = url_uuid
+            return obj
+        instance.add_object.side_effect = mock_add_obj
+        
+        data = self.load_scenario('scenario_1_valid_single')
+        ingestor = PhishingFeedIngestor(self.misp_url, self.misp_key)
+        ingestor.ingest_data(data)
+        
+        # Validate relationship direction: File (source) -> downloaded-from -> URL (target)
+        instance.add_object_reference.assert_called_once()
+        call_args = instance.add_object_reference.call_args
+        source_uuid = call_args[0][0]
+        target_uuid = call_args[0][1]
+        relationship_type = call_args[0][2]
+        
+        self.assertEqual(source_uuid, file_uuid, "Source must be file object UUID")
+        self.assertEqual(target_uuid, url_uuid, "Target must be URL object UUID")
+        self.assertEqual(relationship_type, 'downloaded-from', "Relationship type must be 'downloaded-from'")
+
+    @patch('phishing_feed_ingestor.PyMISP')
+    def test_api_error_handling_event_creation_failure(self, mock_pymisp):
+        """Integration test: Validate API error handling when event creation fails."""
+        instance = mock_pymisp.return_value
+        instance.get_version.return_value = {"version": "2.4.162"}
+        instance.search.return_value = []  # Event doesn't exist
+        
+        # Simulate event creation failure
+        mock_failed_event = MagicMock()
+        mock_failed_event.errors = ["Permission denied"]
+        instance.add_event.return_value = mock_failed_event
+        
+        ingestor = PhishingFeedIngestor(self.misp_url, self.misp_key)
+        
+        with self.assertRaises(RuntimeError) as cm:
+            ingestor.get_or_create_event("Daily Phishing Feed")
+        self.assertIn("Failed to create event", str(cm.exception))
+
+    @patch('phishing_feed_ingestor.PyMISP')
+    def test_api_error_handling_event_refresh_failure(self, mock_pymisp):
+        """Integration test: Validate API error handling when event refresh fails during ingestion."""
+        instance = mock_pymisp.return_value
+        instance.get_version.return_value = {"version": "2.4.162"}
+        
+        mock_event = MagicMock()
+        mock_event.id = "123"
+        instance.search.return_value = [mock_event]
+        
+        # Simulate get_event failure during refresh
+        instance.get_event.side_effect = Exception("API connection lost")
+        
+        data = self.load_scenario('scenario_1_valid_single')
+        ingestor = PhishingFeedIngestor(self.misp_url, self.misp_key)
+        
+        with self.assertRaises(RuntimeError) as cm:
+            ingestor.ingest_data(data)
+        self.assertIn("Could not fetch event details", str(cm.exception))
+
+    @patch('phishing_feed_ingestor.PyMISP')
+    def test_api_error_handling_object_creation_failure(self, mock_pymisp):
+        """Integration test: Validate graceful handling when object creation fails for individual entries."""
+        instance = mock_pymisp.return_value
+        instance.get_version.return_value = {"version": "2.4.162"}
+        
+        mock_event = MagicMock()
+        mock_event.id = "123"
+        mock_event.objects = []
+        mock_event.attributes = []
+        instance.search.return_value = [mock_event]
+        instance.get_event.return_value = mock_event
+        
+        # Simulate object creation failure for one entry
+        call_count = 0
+        def mock_add_obj(eid, obj, pythonify=True):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:  # First call (file object) fails
+                raise Exception("Object creation failed")
+            obj.uuid = "url-uuid-test"
+            return obj
+        instance.add_object.side_effect = mock_add_obj
+        
+        data = self.load_scenario('scenario_2_valid_multiple')
+        ingestor = PhishingFeedIngestor(self.misp_url, self.misp_key)
+        results = ingestor.ingest_data(data)
+        
+        # Should track failed entries but continue processing
+        self.assertGreater(results["failed_entries"], 0, "Should track failed entries")
+        # Should still process other entries if possible
+        self.assertGreaterEqual(results["skipped_entries"] + results["added_objects"], 0)
+
+    @patch('phishing_feed_ingestor.PyMISP')
+    def test_singleton_event_retrieval_consistency(self, mock_pymisp):
+        """Integration test: Validate singleton pattern - same event returned on multiple calls."""
+        instance = mock_pymisp.return_value
+        instance.get_version.return_value = {"version": "2.4.162"}
+        
+        mock_event = MagicMock()
+        mock_event.id = "123"
+        mock_event.uuid = "event-uuid-123"
+        instance.search.return_value = [mock_event]
+        
+        ingestor = PhishingFeedIngestor(self.misp_url, self.misp_key)
+        
+        # Call get_or_create_event multiple times
+        event1 = ingestor.get_or_create_event("Daily Phishing Feed")
+        event2 = ingestor.get_or_create_event("Daily Phishing Feed")
+        event3 = ingestor.get_or_create_event("Daily Phishing Feed")
+        
+        # All should return the same event
+        self.assertEqual(event1.id, event2.id, "Singleton: same event ID on second call")
+        self.assertEqual(event2.id, event3.id, "Singleton: same event ID on third call")
+        self.assertEqual(event1.uuid, event2.uuid, "Singleton: same event UUID")
+        
+        # add_event should never be called since event exists
+        instance.add_event.assert_not_called()
+        
+        # search should be called for each get_or_create_event call
+        self.assertEqual(instance.search.call_count, 3, "Search should be called for each get_or_create_event call")
 
 
 if __name__ == '__main__':

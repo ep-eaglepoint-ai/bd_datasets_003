@@ -28,7 +28,7 @@ def main():
 
     try:
         ingestor = PhishingFeedIngestor(misp_url, misp_key)
-        results = ingestor.ingest_data(data)
+        results = ingestor.ingest_data(data, publish=True)
         print(f"Ingestion complete: {results}")
     except ConnectionError as e:
         print(f"Connection Error: {e}")
