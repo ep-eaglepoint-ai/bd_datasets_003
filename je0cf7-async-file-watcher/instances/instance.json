@@ -1,0 +1,11 @@
+{
+            "instance_id": "JE0CF7",
+            "problem_statement": "Working on a development tools team that needs to implement live reload functionality for a custom static site generator. The current build system in tools/builder.py requires manual re-execution whenever source files change, which slows down the content authoring workflow significantly. The goal is to create a file watching utility that detects changes to markdown and template files in the source directory and triggers rebuild callbacks automatically.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/je0cf7-async-file-watcher",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
