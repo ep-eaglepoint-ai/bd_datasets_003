@@ -4,9 +4,17 @@ __pycache__/
 .venv/
 .env
 
+# Testing
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+
 # Node
 node_modules/
 
 # OS
 .DS_Store
 evaluation/*.json
+
+evaluation/reports

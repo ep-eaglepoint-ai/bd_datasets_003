@@ -1,9 +1,14 @@
-
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
-  app:
+services:
+  test:
     build: .
-    command: pytest -q tests
+    image: tracestitcher-app
+    command: pytest -v --cov=repository_after tests/
+    volumes:
+      - .:/app
+
+  evaluation:
+    build: .
+    image: tracestitcher-app
+    command: python3 evaluation/evaluation.py
     volumes:
       - .:/app

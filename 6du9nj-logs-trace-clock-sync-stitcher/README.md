@@ -1,11 +1,9 @@
-# 6DU9NJ - logs-trace-clock-sync-stitcher
+# 6DU9NJ - Logs Trace Clock Sync Stitcher
 
-    ## Before Test Docker Command
-    <docker before command here>
+```bash
+docker compose run test
+```
 
-    ## After Test Docker Command
-    <docker after command here>
-
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+```bash
+docker compose run evaluation
+```
