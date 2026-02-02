@@ -1,12 +1,15 @@
-# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+venv/
 .venv/
 .env
-
-# Node
-node_modules/
-
-# OS
+.pytest_cache/
+*.log
+dist/
+build/
+*.egg-info/
 .DS_Store
-evaluation/*.json
+
+# Keep evaluation reports directory structure
+reports/
