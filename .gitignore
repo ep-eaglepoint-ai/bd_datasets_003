@@ -1,9 +1,0 @@
-# Ignore all folders except g0kiyi-data-filtering-and-aggregation
-/*
-!g0kiyi-data-filtering-and-aggregation/
-
-# Ignore root README (if any)
-/README.md
-
-# Keep .gitignore itself
-!.gitignore
