@@ -1,0 +1,19 @@
+{
+            "instance_id": "G6CUN4",
+            "problem_statement": "Design a simulation for a latency-sensitive trading platform modeling three independent clocks (A, B, C) with fixed frequency drifts (10, 11, and 12 iterations per nanosecond). Clock A is the Grandmaster.
+
+Core Constraints:
+
+No Real-Time APIs: You must use a manual loop; time and sleep are forbidden.
+
+PTP Logic: Every 1,000ns (Clock A), B and C must receive a timestamp and calculate a frequency adjustment to converge over 500 iterations. Direct counter overwrites are prohibited.
+
+Encoding: Final reports must use bitwise XOR for ASCII conversion. String concatenation via + and str() casting are forbidden.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/g6cun4-simulated-precision-time-protocol-ptp-clock-synchronization-under-extreme-constraints",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
