@@ -1,0 +1,11 @@
+{
+            "instance_id": "N73F8L",
+            "problem_statement": "An internal React dashboard displays live user data and is used heavily throughout the day. While the dashboard functions correctly, engineers have observed sluggish interactions as the number of users grows. Profiling indicates that components are re-rendering more often than necessary. The goal is to refactor the codebase to improve rendering performance, reduce unnecessary re-renders, and align with modern React best practices, while preserving all existing behavior and functionality.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/n73f8l-react-dashboard-performance-refactoring-task",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
