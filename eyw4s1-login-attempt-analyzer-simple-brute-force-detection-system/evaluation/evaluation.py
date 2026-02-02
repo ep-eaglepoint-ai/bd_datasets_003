@@ -31,7 +31,7 @@ class TestEvaluator:
             # Run backend tests directly
             print("Running backend tests...")
             backend_process = subprocess.Popen(
-                ["python", "-m", "pytest", "tests/backend/", "-v"],
+                ["python", "-m", "pytest", "-c", "tests/pytest.ini", "tests/backend/", "-v"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
@@ -104,43 +104,49 @@ class TestEvaluator:
         
         lines = output.split('\n')
         current_section = None
-        test_name_pattern = re.compile(r'tests/\w+/(test_\w+\.py::\w+|\w+\.spec\.ts)::(\w+)')
+        test_name_pattern = re.compile(r'tests/\w+/(test_\w+\.py::\w+)')
         
-        for line in lines:
-            # Detect section changes
-            if "Running backend tests..." in line:
+        print(f"🐛 DEBUG: Parsing {len(lines)} lines of output")
+        
+        for i, line in enumerate(lines):
+            # Detect section changes - look for pytest session start
+            if "test session starts" in line:
                 current_section = "backend"
+                print(f"🐛 DEBUG: Switched to backend section at line {i}")
                 continue
-            elif "Running frontend tests..." in line:
+            elif "RUN  v1.6.1" in line:  # Vitest start
                 current_section = "frontend"
+                print(f"🐛 DEBUG: Switched to frontend section at line {i}")
                 continue
             
             # Parse backend pytest results
             if current_section == "backend":
                 # Test result lines
-                match = test_name_pattern.match(line)
-                if match:
-                    test_file, test_name = match.groups()
-                    status = "PASSED" if "PASSED" in line else "FAILED"
-                    
-                    test_info = {
-                        "name": f"{test_file}::{test_name}",
-                        "status": status.lower(),
-                        "duration": 0
-                    }
-                    backend_results["tests"].append(test_info)
-                    
-                    if status == "PASSED":
-                        backend_results["passed"] += 1
-                    else:
-                        backend_results["failed"] += 1
+                if "PASSED" in line or "FAILED" in line:
+                    # Extract test name using regex
+                    match = test_name_pattern.search(line)
+                    if match:
+                        test_file = match.group(1)
+                        status = "passed" if "PASSED" in line else "failed"
+                        
+                        test_info = {
+                            "name": test_file,
+                            "status": status,
+                            "duration": 0
+                        }
+                        backend_results["tests"].append(test_info)
+                        
+                        if status == "passed":
+                            backend_results["passed"] += 1
+                        else:
+                            backend_results["failed"] += 1
                 
                 # Summary line
                 if "= " in line and "passed" in line and "in" in line:
                     summary_match = re.search(r'(\d+)\s+passed', line)
                     if summary_match:
                         backend_results["total_tests"] = int(summary_match.group(1))
-                        backend_results["passed"] = int(summary_match.group(1))
+                        print(f"🐛 DEBUG: Backend summary found: {backend_results['total_tests']} tests")
                     
                     # Extract duration
                     duration_match = re.search(r'in\s+([\d.]+)s', line)
@@ -150,11 +156,11 @@ class TestEvaluator:
             # Parse frontend vitest results
             elif current_section == "frontend":
                 # Test result lines
-                if "✓" in line or "❯" in line:
+                if "✓" in line and ">" in line:
                     # Extract test name
-                    test_name = line.replace("✓", "").replace("❯", "").strip()
+                    test_name = line.replace("✓", "").strip()
                     if test_name and not test_name.startswith("RUN") and not test_name.startswith("Test Files"):
-                        status = "passed" if "✓" in line else "failed"
+                        status = "passed"
                         
                         test_info = {
                             "name": test_name,
@@ -162,17 +168,14 @@ class TestEvaluator:
                             "duration": 0
                         }
                         frontend_results["tests"].append(test_info)
-                        
-                        if status == "passed":
-                            frontend_results["passed"] += 1
-                        else:
-                            frontend_results["failed"] += 1
+                        frontend_results["passed"] += 1
                 
                 # Summary lines
-                if "Test Files" in line and "passed" in line:
+                if "Tests" in line and "passed" in line:
                     summary_match = re.search(r'Tests\s+(\d+)\s+passed', line)
                     if summary_match:
                         frontend_results["total_tests"] = int(summary_match.group(1))
+                        print(f"🐛 DEBUG: Frontend summary found: {frontend_results['total_tests']} tests")
                 
                 # Duration
                 if "Duration" in line and "ms" in line:
@@ -180,6 +183,7 @@ class TestEvaluator:
                     if duration_match:
                         frontend_results["duration"] = float(duration_match.group(1)) / 1000  # Convert to seconds
         
+        print(f"🐛 DEBUG: Final results - Backend: {backend_results['total_tests']} tests, Frontend: {frontend_results['total_tests']} tests")
         return backend_results, frontend_results
     
     def generate_report(self, backend_results, frontend_results, raw_output, return_code):
