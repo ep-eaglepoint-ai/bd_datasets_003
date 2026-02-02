@@ -1,28 +1,19 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 import uuid
 import html
 from .models import PollCreate, VoteRequest
 from .redis_client import redis_client
 from .websocket_manager import manager
 
-app = FastAPI(title="Real-Time Polling System")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 # In-memory storage for poll metadata (title, options). 
 # Results are in Redis.
 polls_db = {}
 
-@app.on_event("startup")
-async def startup_event():
-    # Seed data if empty
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Seed data if empty
     if not polls_db:
         demo_polls = [
             {
@@ -43,6 +34,25 @@ async def startup_event():
                 "status": "active"
             }
             await redis_client.create_poll(poll_id, poll_data["options"])
+    
+    yield
+    
+    # Shutdown: Cleanup resources
+    if redis_client.redis is not None:
+        try:
+            await redis_client.redis.aclose()
+        except Exception:
+            pass
+
+app = FastAPI(title="Real-Time Polling System", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/api/polls")
 async def list_polls():

@@ -1,12 +1,25 @@
 {
-            "instance_id": "13761Y",
-            "problem_statement": "We are initiating the development of a new live engagement platform to facilitate interactive audience participation during large-scale virtual events. This feature must allow organizers to launch instant polls and capture thousands of concurrent responses while providing immediate, synchronized visual feedback to all participants through a push-based architecture.
-",
-            "base_commit": "repository_before/",
-            "test_patch": "tests/",
-            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/13761y-real-time-collaborative-polling-system",
-            "environment_setup": "Dockerfile",
-            "FAIL_TO_PASS": [],
-            "PASS_TO_PASS": []
-        }
+    "instance_id": "13761Y",
+    "problem_statement": "We are initiating the development of a new live engagement platform to facilitate interactive audience participation during large-scale virtual events. This feature must allow organizers to launch instant polls and capture thousands of concurrent responses while providing immediate, synchronized visual feedback to all participants through a push-based architecture.",
+    "base_commit": "repository_before/",
+    "test_patch": "tests/",
+    "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/13761y-real-time-collaborative-polling-system",
+    "environment_setup": "Dockerfile",
+    "FAIL_TO_PASS": [],
+    "PASS_TO_PASS": [
+        "tests/integration_test.py::test_high_concurrency_voting",
+        "tests/integration_test.py::test_websocket_broadcasting",
+        "tests/integration_test.py::test_redis_atomic_operations",
+        "tests/integration_test.py::test_vote_limiting_ip_based",
+        "tests/integration_test.py::test_poll_creation_validation",
+        "tests/scalability_test.py::test_redis_shared_state_architecture",
+        "tests/scalability_test.py::test_stateless_backend_design",
+        "tests/scalability_test.py::test_redis_persistence_across_instances",
+        "tests/unit_test.py::test_websocket_cleanup",
+        "tests/unit_test.py::test_broadcast_error_handling",
+        "tests/unit_test.py::test_websocket_reconnection_handling",
+        "tests/unit_test.py::test_redis_client_vote_deduplication",
+        "tests/unit_test.py::test_poll_validation_minimum_options"
+    ]
+}
         

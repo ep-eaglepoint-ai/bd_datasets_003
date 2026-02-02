@@ -1,11 +1,8 @@
 # 13761Y - Real-Time-Collaborative-Polling-System
 
-    ## Before Test Docker Command
-    <docker before command here>
-
     ## After Test Docker Command
-    <docker after command here>
+    docker compose up -rm test-after
 
     ## Evaluation Docker Command
-    <evaluation command here>
+    docker compose up -rm evaluate
     

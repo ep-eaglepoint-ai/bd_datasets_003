@@ -41,14 +41,16 @@ services:
     command: pytest tests/unit_test.py tests/integration_test.py tests/scalability_test.py -v --tb=short
     depends_on:
       - redis
-
-  evaluation:
+  evaluate:
     build:
       context: .
       target: backend
     volumes:
       - .:/app
+    environment:
+      - REDIS_HOST=redis
     command: python evaluation/evaluate.py
     depends_on:
+      - redis
       - test-after
 
