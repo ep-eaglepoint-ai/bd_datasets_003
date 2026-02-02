@@ -1,0 +1,13 @@
+{
+            "instance_id": "26S5PK",
+            "problem_statement": "You are a DevOps Engineer at a software company with a large monorepo containing 80 components. The build system was recently parallelized to speed up CI/CD from 15 minutes (sequential) to 3 minutes (parallel with 8 workers). However, the parallel implementation has critical race conditions causing a 10% failure rate: builds fail randomly, artifacts are corrupted from concurrent writes, and the build cache becomes unreliable. Sequential builds work perfectly, but parallel builds are broken. Developers now waste 30+ minutes re-running failed builds multiple times per day.
+
+Your task is to fix all race conditions in `parallel_build.py` using Python's threading or multiprocessing, ensuring builds are deterministic and artifact integrity is maintained under parallel execution.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/26s5pk-thread-safe-parallel-build-system-with-dependency-management",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
