@@ -1,0 +1,15 @@
+{
+            "instance_id": "5GTGLH",
+            "problem_statement": "The optimized implementation of the ranking function introduces a new performance bottleneck in the hottest execution path, undermining the primary goal of the optimization task.
+
+While the refactor aims to remove expensive per-candidate allocations and redundant computations, it relies on a high-cost operation inside the innermost loop, which is executed for every character of every candidate title. At production scale (hundreds of thousands of candidates per request), this creates a dominant CPU cost that can negate or exceed the original overheads the refactor was intended to eliminate.
+
+As a result, the solution does not reliably meet the stated latency and performance objectives under worst-case or adversarial input distributions.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/5gtglh-strict-regex-per-character-tokenization-creates-a-new-hot-path-bottleneck-in-tokenscore",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
