@@ -1,0 +1,11 @@
+{
+            "instance_id": "PVSU4X",
+            "problem_statement": "You are tasked with creating a unit test suite for a web application registration form validator. The validator checks if the username, email, and password fields meet strict requirements. Previous manual testing missed edge cases, leading to invalid registrations. Your task is to design a Python unit test file using the unittest library that verifies the behavior of the validate_form function, ensuring it properly validates the form fields and handles various edge cases.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/pvsu4x-multi-field-form-validator-test-module",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
