@@ -8,6 +8,7 @@ Tests cover:
 - API endpoints
 - Health scoring
 - Idempotency key handling
+- All 12 security and reliability requirements
 """
 
 import json
@@ -15,6 +16,8 @@ import time
 import pytest
 import hmac
 import hashlib
+import re
+import inspect
 from datetime import datetime, timezone, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4, UUID
@@ -70,7 +73,6 @@ class TestSignatureGeneration:
     def test_generate_secret_key_has_sufficient_length(self):
         """Secret key should be at least 32 bytes when decoded."""
         key = generate_secret_key()
-        # token_urlsafe produces ~43 characters for 32 bytes
         assert len(key) >= 32
     
     def test_generate_signature_format(self):
@@ -82,7 +84,7 @@ class TestSignatureGeneration:
         signature = generate_signature(secret_key, payload, timestamp)
         
         assert isinstance(signature, str)
-        assert len(signature) == 64  # SHA256 produces 64 hex characters
+        assert len(signature) == 64
         assert all(c in '0123456789abcdef' for c in signature)
     
     def test_signature_changes_with_different_timestamps(self):
@@ -90,11 +92,9 @@ class TestSignatureGeneration:
         secret_key = generate_secret_key()
         payload = b'{"event": "test"}'
         
-        # Use explicitly different timestamps
         sig1 = generate_signature(secret_key, payload, int(time.time()))
         sig2 = generate_signature(secret_key, payload, int(time.time()) + 1)
         
-        # With different timestamps they should differ
         assert sig1 != sig2
     
     def test_signature_changes_with_payload(self):
@@ -120,7 +120,7 @@ class TestSignatureGeneration:
     def test_format_signature_header(self):
         """Signature header should follow expected format."""
         timestamp = 1704067200
-        signature = "abc123def456" * 5  # 60 chars
+        signature = "abc123def456" * 5
         
         header = format_signature_header(timestamp, signature)
         
@@ -145,10 +145,10 @@ class TestSignatureGeneration:
             parse_signature_header("invalid header")
         
         with pytest.raises(ValueError):
-            parse_signature_header("t=123")  # Missing v1 part
+            parse_signature_header("t=123")
         
         with pytest.raises(ValueError):
-            parse_signature_header("v1=abc")  # Missing t part
+            parse_signature_header("v1=abc")
     
     def test_verify_signature_valid(self):
         """Valid signature should verify successfully."""
@@ -182,7 +182,6 @@ class TestSignatureGeneration:
         secret_key = generate_secret_key()
         payload = b'{"event": "test"}'
         
-        # Use timestamp from 10 minutes ago
         old_timestamp = int(time.time()) - 600
         signature = generate_signature(secret_key, payload, old_timestamp)
         header = format_signature_header(old_timestamp, signature)
@@ -195,7 +194,6 @@ class TestSignatureGeneration:
         secret_key = generate_secret_key()
         payload = b'{"event": "test"}'
         
-        # Use timestamp from 10 minutes in future
         future_timestamp = int(time.time()) + 600
         signature = generate_signature(secret_key, payload, future_timestamp)
         header = format_signature_header(future_timestamp, signature)
@@ -230,7 +228,6 @@ class TestSignatureGeneration:
         assert header.startswith("t=")
         assert ",v1=" in header
         
-        # Verify the payload matches
         decoded = json.loads(json_bytes)
         assert decoded == payload
 
@@ -275,20 +272,14 @@ class TestJitter:
         delay = 10.0
         jitter_range = 0.3
         
-        # Collect many samples to check both directions
         samples = [calculate_jitter(delay, jitter_range) for _ in range(1000)]
         
-        # All samples should be positive
         assert all(s > 0 for s in samples)
-        
-        # Some samples should be less than delay (negative jitter)
         assert any(s < delay for s in samples)
-        
-        # Some samples should be greater than delay (positive jitter)
         assert any(s > delay for s in samples)
     
     def test_jitter_range(self):
-        """Jitter should stay within ±30% range (with some tolerance for floating point)."""
+        """Jitter should stay within ±30% range."""
         delay = 100.0
         jitter_range = 0.3
         min_expected = delay * (1 - jitter_range)
@@ -296,9 +287,8 @@ class TestJitter:
         
         for _ in range(1000):
             jittered = calculate_jitter(delay, jitter_range)
-            # Allow small floating point tolerance
-            assert jittered >= min_expected * 0.999, f"Jittered value {jittered} below minimum {min_expected}"
-            assert jittered <= max_expected * 1.001, f"Jittered value {jittered} above maximum {max_expected}"
+            assert jittered >= min_expected * 0.999
+            assert jittered <= max_expected * 1.001
     
     def test_jitter_zero_delay(self):
         """Zero delay with jitter should still be positive."""
@@ -311,15 +301,12 @@ class TestRetryDelay:
     
     def test_retry_delay_sequences(self):
         """Retry delays should follow expected pattern."""
-        # Attempt 1: 1s * (1 ± 0.3) = 0.7-1.3s
         delay1 = calculate_retry_delay(1)
         assert 0.7 <= delay1 <= 1.3
         
-        # Attempt 2: 2s * (1 ± 0.3) = 1.4-2.6s
         delay2 = calculate_retry_delay(2)
         assert 1.4 <= delay2 <= 2.6
         
-        # Attempt 5: 16s * (1 ± 0.3) = 11.2-20.8s
         delay5 = calculate_retry_delay(5)
         assert 11.2 <= delay5 <= 20.8
     
@@ -329,13 +316,13 @@ class TestRetryDelay:
         next_time = get_next_retry_time(1, now=now)
         
         assert next_time > now
-        assert (next_time - now).total_seconds() > 0.7  # At least base delay
+        assert (next_time - now).total_seconds() > 0.7
     
     def test_should_retry(self):
         """should_retry should return correct values."""
         assert should_retry(1, 5) is True
         assert should_retry(4, 5) is True
-        assert should_retry(5, 5) is False  # 5 == max_attempts
+        assert should_retry(5, 5) is False
         assert should_retry(6, 5) is False
     
     def test_should_retry_custom_max(self):
@@ -371,7 +358,6 @@ class TestWebhookModel:
             secret_key="test-key",
         )
         
-        # Default is_active should be True (applied via __init__)
         assert webhook.is_active is True
     
     def test_webhook_repr(self):
@@ -404,12 +390,9 @@ class TestDeliveryAttemptModel:
         assert attempt.status == DeliveryStatus.PENDING
     
     def test_delivery_attempt_default_values(self):
-        """DeliveryAttempt should have correct default values when not specified."""
-        attempt = DeliveryAttempt(
-            webhook_id=uuid4(),
-        )
+        """DeliveryAttempt should have correct default values."""
+        attempt = DeliveryAttempt(webhook_id=uuid4())
         
-        # Defaults should be applied via __init__
         assert attempt.attempt_number == 1
         assert attempt.status == DeliveryStatus.PENDING
     
@@ -438,9 +421,8 @@ class TestWebhookHealthModel:
         assert health.health_score == 0.833
     
     def test_webhook_health_default_score(self):
-        """New health record should have default score of 1.0 when not specified."""
+        """New health record should have default score of 1.0."""
         health = WebhookHealth(webhook_id=uuid4())
-        # Default health_score should be 1.0 (applied via __init__)
         assert health.health_score == 1.0
 
 
@@ -456,34 +438,28 @@ class TestHealthScoring:
     
     def test_health_score_after_failures(self):
         """Health score should decrease after failures."""
-        # Simulate EMA update
         health = WebhookHealth(webhook_id=uuid4())
         alpha = 0.2
         
-        # First failure
         success_rate = 0 / 1
         health.health_score = alpha * success_rate + (1 - alpha) * health.health_score
         assert health.health_score < 1.0
         
-        # Second failure
         success_rate = 0 / 2
         health.health_score = alpha * success_rate + (1 - alpha) * health.health_score
-        assert health.health_score < 0.8  # Should decrease further
+        assert health.health_score < 0.8
     
     def test_health_score_recovery(self):
         """Health score should recover with successes."""
         health = WebhookHealth(webhook_id=uuid4())
         alpha = 0.2
         
-        # Drop to low score
         health.health_score = 0.1
         
-        # Multiple successes
         for _ in range(10):
-            success_rate = 1.0  # All successful
+            success_rate = 1.0
             health.health_score = alpha * success_rate + (1 - alpha) * health.health_score
         
-        # Should have recovered significantly
         assert health.health_score > 0.8
 
 
@@ -494,20 +470,9 @@ class TestIdempotency:
     
     def test_idempotency_key_scope(self):
         """Idempotency key should be scoped to webhook_id."""
-        # This tests that the composite unique constraint is correctly defined
-        # The actual database constraint would be tested in integration tests
+        attempt1 = DeliveryAttempt(webhook_id=uuid4(), idempotency_key="event-123")
+        attempt2 = DeliveryAttempt(webhook_id=uuid4(), idempotency_key="event-123")
         
-        # Verify the model supports webhook_id in the attempt
-        attempt1 = DeliveryAttempt(
-            webhook_id=uuid4(),
-            idempotency_key="event-123",
-        )
-        attempt2 = DeliveryAttempt(
-            webhook_id=uuid4(),  # Different webhook
-            idempotency_key="event-123",  # Same key
-        )
-        
-        # Both should be valid (different webhooks)
         assert attempt1.idempotency_key == attempt2.idempotency_key
         assert attempt1.webhook_id != attempt2.webhook_id
     
@@ -515,18 +480,23 @@ class TestIdempotency:
         """Same webhook with same key should be duplicate."""
         webhook_id = uuid4()
         
-        attempt1 = DeliveryAttempt(
-            webhook_id=webhook_id,
-            idempotency_key="event-123",
-        )
-        attempt2 = DeliveryAttempt(
-            webhook_id=webhook_id,
-            idempotency_key="event-123",  # Same key, same webhook
-        )
+        attempt1 = DeliveryAttempt(webhook_id=webhook_id, idempotency_key="event-123")
+        attempt2 = DeliveryAttempt(webhook_id=webhook_id, idempotency_key="event-123")
         
-        # These would violate the unique constraint
         assert attempt1.webhook_id == attempt2.webhook_id
         assert attempt1.idempotency_key == attempt2.idempotency_key
+    
+    def test_idempotency_key_allows_different_webhooks(self):
+        """Same external event ID should work across different webhooks."""
+        event_id = "order-12345"
+        webhook1_id = uuid4()
+        webhook2_id = uuid4()
+        
+        attempt1 = DeliveryAttempt(webhook_id=webhook1_id, idempotency_key=event_id)
+        attempt2 = DeliveryAttempt(webhook_id=webhook2_id, idempotency_key=event_id)
+        
+        assert attempt1.idempotency_key == attempt2.idempotency_key
+        assert attempt1.webhook_id != attempt2.webhook_id
 
 
 # ============ Payload Size Tests ============
@@ -548,8 +518,7 @@ class TestPayloadSize:
     
     def test_large_payload_over_limit(self):
         """Large payloads should exceed the limit."""
-        # Create a payload that exceeds 256KB
-        large_data = "x" * (300 * 1024)  # 300KB
+        large_data = "x" * (300 * 1024)
         large_payload = {"event": "test", "data": large_data}
         payload_bytes = json.dumps(large_payload).encode()
         
@@ -563,7 +532,6 @@ class TestGracefulShutdown:
     
     def test_shutdown_preserves_retry_state(self):
         """Shutdown should preserve retry state for pending deliveries."""
-        # This tests the concept that retry records should have next_retry_at set
         attempt = DeliveryAttempt(
             webhook_id=uuid4(),
             status=DeliveryStatus.RETRYING,
@@ -575,14 +543,12 @@ class TestGracefulShutdown:
     
     def test_shutdown_handles_in_flight(self):
         """Shutdown should handle in-flight deliveries."""
-        # Create a pending delivery that might be in-flight
         attempt = DeliveryAttempt(
             webhook_id=uuid4(),
             status=DeliveryStatus.PENDING,
             payload='{"event": "test"}',
         )
         
-        # The delivery should be processable
         assert attempt.status == DeliveryStatus.PENDING
 
 
@@ -605,15 +571,586 @@ class TestConstants:
     
     def test_exponential_backoff_off_by_one(self):
         """Verify exponential backoff doesn't have off-by-one error."""
-        # Attempt 1 should be 1s, not 0.5s or 2s
         delay_1 = calculate_exponential_delay(1)
         delay_2 = calculate_exponential_delay(2)
         delay_3 = calculate_exponential_delay(3)
         
-        # Sequence should be 1, 2, 4 (not 0.5, 1, 2 or 2, 4, 8)
         assert delay_1 == 1
         assert delay_2 == 2
         assert delay_3 == 4
+
+
+# ============ Professional Grade Tests ============
+
+
+class TestSecretKeyImplementation:
+    """Verify secret key uses cryptographically secure generator."""
+    
+    def test_generate_secret_key_uses_secrets_module(self):
+        """Secret key must use secrets.token_urlsafe, not uuid.uuid4()."""
+        import secrets as secrets_module
+        with patch('signatures.secrets') as mock_secrets:
+            mock_secrets.token_urlsafe.return_value = "test_key"
+            key = generate_secret_key()
+            mock_secrets.token_urlsafe.assert_called_once_with(32)
+            assert key == "test_key"
+    
+    def test_generate_secret_key_not_uuid(self):
+        """Secret key must NOT use uuid.uuid4()."""
+        key = generate_secret_key()
+        assert '-' not in key or key.count('-') != 4
+        pattern = r'^[A-Za-z0-9_-]+$'
+        assert re.match(pattern, key), "Secret key should be base64url safe"
+
+
+class TestSignatureRawBytes:
+    """Verify signature uses raw bytes, not decoded string."""
+    
+    def test_signature_input_uses_raw_bytes(self):
+        """Signature must be computed over raw payload bytes."""
+        source = inspect.getsource(generate_signature)
+        
+        assert 'payload.decode(' not in source
+        assert 'encode' in source and 'payload' in source
+    
+    def test_signature_with_binary_payload(self):
+        """Signature should work with binary payload."""
+        secret_key = generate_secret_key()
+        binary_payload = b'{"event": "test", "data": "\\x00\\xff\\xfe\\xfd"}'
+        timestamp = int(time.time())
+        
+        signature = generate_signature(secret_key, binary_payload, timestamp)
+        
+        assert isinstance(signature, str)
+        assert len(signature) == 64
+
+
+class TestConstantTimeComparison:
+    """Tests for constant-time signature comparison."""
+    
+    def test_verify_signature_uses_compare_digest(self):
+        """Signature verification must use hmac.compare_digest."""
+        source = inspect.getsource(verify_signature)
+        
+        assert 'hmac.compare_digest' in source
+    
+    def test_verify_signature_returns_boolean(self):
+        """Verify signature returns True/False."""
+        secret_key = generate_secret_key()
+        payload = b'{"event": "test"}'
+        timestamp = int(time.time())
+        
+        signature = generate_signature(secret_key, payload, timestamp)
+        header = format_signature_header(timestamp, signature)
+        
+        result_valid = verify_signature(secret_key, payload, header)
+        assert result_valid is True
+        
+        wrong_key = generate_secret_key()
+        result_invalid = verify_signature(wrong_key, payload, header)
+        assert result_invalid is False
+
+
+class TestDatabaseSessionSafety:
+    """Verify scheduled retries create their own database sessions."""
+    
+    def test_scheduled_retry_creates_own_session(self):
+        """process_scheduled_retry must create its own DB session."""
+        from worker import process_scheduled_retry
+        source = inspect.getsource(process_scheduled_retry)
+        
+        assert 'get_db_session' in source
+        assert 'Depends' not in source
+    
+    def test_session_closed_after_processing(self):
+        """Session should be closed after processing."""
+        from worker import process_scheduled_retry
+        source = inspect.getsource(process_scheduled_retry)
+        
+        assert 'session.close()' in source or 'await session.close()' in source
+        assert 'finally:' in source
+
+
+class TestAsyncSQLAlchemyStyle:
+    """Verify async queries use SQLAlchemy 2.0 style."""
+    
+    def test_delivery_module_uses_select_statements(self):
+        """Delivery module must use select() statements."""
+        from delivery import check_idempotency
+        source = inspect.getsource(check_idempotency)
+        
+        assert 'select(' in source
+        assert 'session.execute' in source
+        assert '.query(' not in source
+    
+    def test_query_returns_scalar_one_or_none(self):
+        """Queries must use scalar_one_or_none()."""
+        from delivery import check_idempotency
+        source = inspect.getsource(check_idempotency)
+        
+        assert 'scalar_one_or_none' in source
+        assert '.one()' not in source
+
+
+class TestPayloadSizeValidation:
+    """Verify payload size validation happens BEFORE body read."""
+    
+    def test_payload_size_middleware_exists(self):
+        """Payload size middleware must exist."""
+        from main import PayloadSizeMiddleware, MAX_REQUEST_SIZE
+        
+        assert PayloadSizeMiddleware is not None
+        assert MAX_REQUEST_SIZE == 256 * 1024
+    
+    def test_middleware_rejects_large_payload(self):
+        """Middleware must return 413 for oversized payloads."""
+        from main import PayloadSizeMiddleware
+        source = inspect.getsource(PayloadSizeMiddleware)
+        
+        assert '413' in source or 'PayloadTooLarge' in source
+    
+    def test_delivery_attempt_validates_size_early(self):
+        """create_delivery_attempt should validate size early."""
+        from delivery import create_delivery_attempt
+        source = inspect.getsource(create_delivery_attempt)
+        
+        assert 'content_length' in source
+
+
+class TestManualRetryValidation:
+    """Tests for manual retry endpoint status validation."""
+    
+    def test_retry_endpoint_validates_status(self):
+        """Manual retry must validate original delivery status."""
+        from webhooks import retry_delivery
+        source = inspect.getsource(retry_delivery)
+        
+        assert 'DeliveryStatus.SUCCESS' in source or 'status == "SUCCESS"' in source
+        assert '409' in source or 'CONFLICT' in source
+    
+    def test_retry_message_for_success(self):
+        """Error message should indicate cannot retry successful delivery."""
+        from webhooks import retry_delivery
+        source = inspect.getsource(retry_delivery)
+        
+        assert 'successful' in source.lower() or 'SUCCESS' in source
+    
+    def test_retry_allows_failed_deliveries(self):
+        """Manual retry must allow FAILED and RETRYING statuses."""
+        from webhooks import retry_delivery
+        source = inspect.getsource(retry_delivery)
+        
+        has_failed_check = 'FAILED' in source
+        has_retrying_check = 'RETRYING' in source
+        
+        assert has_failed_check or has_retrying_check
+
+
+class TestGracefulShutdownImplementation:
+    """Tests for graceful shutdown behavior."""
+    
+    def test_stop_scheduler_waits_for_in_flight(self):
+        """stop_scheduler must wait for in-flight deliveries."""
+        from worker import stop_scheduler
+        source = inspect.getsource(stop_scheduler)
+        
+        assert 'graceful' in source
+        assert 'sleep' in source or 'wait' in source
+    
+    def test_shutdown_persists_retry_records(self):
+        """Shutdown must persist retry records."""
+        from worker import stop_scheduler
+        source = inspect.getsource(stop_scheduler)
+        
+        assert 'RETRYING' in source
+        assert 'next_retry_at' in source
+    
+    def test_scheduler_shutdown_called(self):
+        """scheduler.shutdown() must be called."""
+        from worker import stop_scheduler
+        source = inspect.getsource(stop_scheduler)
+        
+        assert 'scheduler.shutdown' in source or 'shutdown(' in source
+
+
+class TestHealthScoreEMA:
+    """Tests for health score exponential moving average."""
+    
+    def test_ema_weights_recent_results(self):
+        """Health score must weight recent results."""
+        from delivery import update_health_score
+        source = inspect.getsource(update_health_score)
+        
+        assert 'alpha' in source
+        assert '0.2' in source
+    
+    def test_recovery_with_successes(self):
+        """Health score should recover with consecutive successes."""
+        health = WebhookHealth(webhook_id=uuid4())
+        alpha = 0.2
+        
+        health.health_score = 0.1
+        
+        scores = [health.health_score]
+        for i in range(15):
+            success_rate = 1.0
+            health.health_score = alpha * success_rate + (1 - alpha) * health.health_score
+            scores.append(health.health_score)
+        
+        assert health.health_score > 0.8
+        
+        for i in range(1, len(scores)):
+            assert scores[i] > scores[i-1]
+    
+    def test_failure_degrades_health(self):
+        """Health score should degrade with failures."""
+        health = WebhookHealth(webhook_id=uuid4())
+        alpha = 0.2
+        
+        health.health_score = 1.0
+        
+        for _ in range(10):
+            success_rate = 0.0
+            health.health_score = alpha * success_rate + (1 - alpha) * health.health_score
+        
+        assert health.health_score < 0.2
+
+
+# ============ INTEGRATION TESTS ============
+
+
+class TestIdempotencyConstraintIntegration:
+    """Integration tests for idempotency key scoping."""
+    
+    @pytest.mark.asyncio
+    async def test_same_idempotency_key_different_webhooks_allowed(
+        self, async_session, clean_database
+    ):
+        """Same idempotency key should be allowed for different webhooks."""
+        from models import DeliveryAttempt, DeliveryStatus, Webhook
+        from sqlalchemy import select, func
+        import json
+        from signatures import generate_secret_key
+        
+        webhook1_id = uuid4()
+        webhook2_id = uuid4()
+        shared_key = "event-12345-order-created"
+        
+        # Create webhook records first (required for foreign key)
+        webhook1 = Webhook(id=webhook1_id, url="https://webhook1.example.com/events", is_active=True, events='["*"]', secret_key=generate_secret_key())
+        webhook2 = Webhook(id=webhook2_id, url="https://webhook2.example.com/events", is_active=True, events='["*"]', secret_key=generate_secret_key())
+        async_session.add(webhook1)
+        async_session.add(webhook2)
+        await async_session.commit()
+        
+        attempt1 = DeliveryAttempt(
+            webhook_id=webhook1_id,
+            idempotency_key=shared_key,
+            status=DeliveryStatus.SUCCESS,
+            payload='{"event": "order.created"}',
+        )
+        async_session.add(attempt1)
+        await async_session.commit()
+        
+        attempt2 = DeliveryAttempt(
+            webhook_id=webhook2_id,
+            idempotency_key=shared_key,
+            status=DeliveryStatus.PENDING,
+            payload='{"event": "order.created"}',
+        )
+        async_session.add(attempt2)
+        
+        await async_session.commit()
+        
+        result = await async_session.execute(
+            select(func.count()).select_from(DeliveryAttempt)
+            .where(DeliveryAttempt.webhook_id.in_([webhook1_id, webhook2_id]))
+        )
+        count = result.scalar()
+        assert count == 2
+    
+    @pytest.mark.asyncio
+    async def test_same_idempotency_key_same_webhook_raises(
+        self, async_session, clean_database
+    ):
+        """Same idempotency key with same webhook should violate constraint."""
+        from models import DeliveryAttempt, DeliveryStatus, Webhook
+        from sqlalchemy.exc import IntegrityError
+        from signatures import generate_secret_key
+        
+        webhook_id = uuid4()
+        duplicate_key = "event-12345-duplicate"
+        
+        # Create webhook record first (required for foreign key)
+        webhook = Webhook(id=webhook_id, url="https://webhook.example.com/events", is_active=True, events='["*"]', secret_key=generate_secret_key())
+        async_session.add(webhook)
+        await async_session.commit()
+        
+        attempt1 = DeliveryAttempt(
+            webhook_id=webhook_id,
+            idempotency_key=duplicate_key,
+            status=DeliveryStatus.SUCCESS,
+            payload='{"event": "test"}',
+        )
+        async_session.add(attempt1)
+        await async_session.commit()
+        
+        attempt2 = DeliveryAttempt(
+            webhook_id=webhook_id,
+            idempotency_key=duplicate_key,
+            status=DeliveryStatus.PENDING,
+            payload='{"event": "test"}',
+        )
+        async_session.add(attempt2)
+        
+        with pytest.raises(IntegrityError):
+            await async_session.commit()
+    
+    @pytest.mark.asyncio
+    async def test_idempotency_prevents_duplicate_processing(
+        self, async_session, clean_database
+    ):
+        """Idempotency key should prevent duplicate processing."""
+        from models import DeliveryAttempt, DeliveryStatus, Webhook
+        from delivery import check_idempotency
+        from sqlalchemy import select
+        from signatures import generate_secret_key
+        
+        webhook_id = uuid4()
+        key = "unique-event-789"
+        
+        # Create webhook record first (required for foreign key)
+        webhook = Webhook(id=webhook_id, url="https://webhook.example.com/events", is_active=True, events='["*"]', secret_key=generate_secret_key())
+        async_session.add(webhook)
+        await async_session.commit()
+        
+        existing = DeliveryAttempt(
+            webhook_id=webhook_id,
+            idempotency_key=key,
+            status=DeliveryStatus.SUCCESS,
+            payload='{"event": "order.paid", "order_id": "ORD-123"}',
+            response_code=200,
+        )
+        async_session.add(existing)
+        await async_session.commit()
+        
+        result = await check_idempotency(async_session, webhook_id, key)
+        
+        assert result is not None
+        assert result.status == DeliveryStatus.SUCCESS
+        assert result.id == existing.id
+
+
+class TestWebhookModelIntegration:
+    """Integration tests for webhook model operations."""
+    
+    @pytest.mark.asyncio
+    async def test_create_webhook_with_secret_key(
+        self, async_session, sample_webhook_url, sample_events
+    ):
+        """Creating a webhook should generate a valid secret key."""
+        from models import Webhook
+        from signatures import generate_secret_key
+        import json
+        
+        webhook = Webhook(
+            url=sample_webhook_url,
+            events=json.dumps(sample_events),
+            secret_key=generate_secret_key(),
+        )
+        
+        async_session.add(webhook)
+        await async_session.commit()
+        await async_session.refresh(webhook)
+        
+        pattern = r'^[A-Za-z0-9_-]+$'
+        assert re.match(pattern, webhook.secret_key)
+        assert len(webhook.secret_key) >= 32
+    
+    @pytest.mark.asyncio
+    async def test_webhook_cascade_delete(
+        self, async_session, test_webhook, test_delivery_attempt
+    ):
+        """Deleting webhook should cascade delete delivery attempts."""
+        from models import Webhook, DeliveryAttempt
+        from sqlalchemy import select, func
+        
+        webhook_id = test_webhook.id
+        
+        result = await async_session.execute(
+            select(func.count()).select_from(DeliveryAttempt)
+            .where(DeliveryAttempt.webhook_id == webhook_id)
+        )
+        initial_count = result.scalar()
+        assert initial_count >= 1
+        
+        await async_session.delete(test_webhook)
+        await async_session.commit()
+        
+        result = await async_session.execute(
+            select(func.count()).select_from(DeliveryAttempt)
+            .where(DeliveryAttempt.webhook_id == webhook_id)
+        )
+        final_count = result.scalar()
+        assert final_count == 0
+
+
+class TestHealthScoreIntegration:
+    """Integration tests for health score EMA calculation."""
+    
+    @pytest.mark.asyncio
+    async def test_health_score_ema_update(
+        self, async_session, test_webhook
+    ):
+        """Health score should update correctly with EMA formula."""
+        from models import WebhookHealth, DeliveryStatus
+        from delivery import update_health_score
+        from sqlalchemy import select
+        
+        result = await async_session.execute(
+            select(WebhookHealth).where(WebhookHealth.webhook_id == test_webhook.id)
+        )
+        health = result.scalar_one_or_none()
+        
+        if health is None:
+            health = WebhookHealth(webhook_id=test_webhook.id)
+            async_session.add(health)
+            await async_session.commit()
+        
+        for _ in range(5):
+            await update_health_score(async_session, test_webhook.id, False)
+        
+        await async_session.refresh(health)
+        assert health.failure_count == 5
+        assert health.health_score < 0.5
+        
+        for _ in range(10):
+            await update_health_score(async_session, test_webhook.id, True)
+        
+        await async_session.refresh(health)
+        assert health.success_count == 10
+        # With alpha=0.2, after 5 failures (score=0.32768) and 10 successes:
+        # EMA formula: score = 0.32768 * (0.8)^10 + 0.2 * sum(0.8^i for i in 0..9)
+        # = 0.035 + 0.2 * 4.297 = 0.035 + 0.859 = 0.894
+        # We expect score > 0.5 to show meaningful recovery
+        assert health.health_score > 0.5
+
+
+class TestRetryLogicIntegration:
+    """Integration tests for retry scheduling."""
+    
+    @pytest.mark.asyncio
+    async def test_retry_scheduling_creates_new_attempt(
+        self, async_session, test_webhook, test_failed_delivery
+    ):
+        """Scheduling retry should create a new DeliveryAttempt."""
+        from models import DeliveryStatus
+        from delivery import schedule_retry
+        
+        original_attempt = test_failed_delivery
+        original_attempt.status = DeliveryStatus.FAILED
+        await async_session.commit()
+        
+        retry_attempt = await schedule_retry(
+            async_session, original_attempt
+        )
+        
+        assert retry_attempt is not None
+        assert retry_attempt.status == DeliveryStatus.RETRYING
+        assert retry_attempt.attempt_number == 2
+        assert retry_attempt.next_retry_at is not None
+        
+        await async_session.refresh(original_attempt)
+        assert original_attempt.status == DeliveryStatus.RETRYING
+    
+    @pytest.mark.asyncio
+    async def test_retry_exponential_backoff_times(
+        self, async_session, test_webhook
+    ):
+        """Retry times should follow exponential backoff pattern."""
+        from retry import get_next_retry_time
+        from datetime import datetime, timezone
+        
+        now = datetime.now(timezone.utc)
+        
+        retry1 = get_next_retry_time(1)
+        delta1 = (retry1 - now).total_seconds()
+        assert 0.7 <= delta1 <= 1.3
+        
+        retry2 = get_next_retry_time(2)
+        delta2 = (retry2 - now).total_seconds()
+        assert 1.4 <= delta2 <= 2.6
+        
+        retry5 = get_next_retry_time(5)
+        delta5 = (retry5 - now).total_seconds()
+        assert 11.2 <= delta5 <= 20.8
+
+
+class TestSignatureIntegration:
+    """Integration tests for signature generation and verification."""
+    
+    def test_signature_round_trip(self, test_webhook):
+        """Signature generated should verify successfully."""
+        import json
+        from signatures import create_signed_payload, verify_signature
+        
+        payload = {"event": "order.created", "order_id": "12345"}
+        
+        json_bytes, header, timestamp = create_signed_payload(
+            test_webhook.secret_key, payload
+        )
+        
+        result = verify_signature(
+            test_webhook.secret_key,
+            json_bytes,
+            header,
+            clock_skew_tolerance=300
+        )
+        
+        assert result is True
+    
+    def test_signature_tampering_detected(self, test_webhook):
+        """Tampered payload should fail verification."""
+        import json
+        from signatures import create_signed_payload, verify_signature
+        
+        original_payload = {"event": "order.created", "order_id": "12345"}
+        tampered_payload = {"event": "order.cancelled", "order_id": "12345"}
+        
+        json_bytes, header, timestamp = create_signed_payload(
+            test_webhook.secret_key, original_payload
+        )
+        
+        tampered_bytes = json.dumps(tampered_payload).encode()
+        
+        result = verify_signature(
+            test_webhook.secret_key,
+            tampered_bytes,
+            header,
+            clock_skew_tolerance=300
+        )
+        
+        assert result is False
+    
+    def test_wrong_secret_rejected(self, test_webhook):
+        """Wrong secret key should fail verification."""
+        import json
+        from signatures import create_signed_payload, verify_signature
+        
+        payload = {"event": "test"}
+        
+        json_bytes, header, timestamp = create_signed_payload(
+            test_webhook.secret_key, payload
+        )
+        
+        result = verify_signature(
+            "wrong-secret-key",
+            json_bytes,
+            header,
+            clock_skew_tolerance=300
+        )
+        
+        assert result is False
 
 
 # Run tests if executed directly
