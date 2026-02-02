@@ -1,0 +1,11 @@
+{
+            "instance_id": "L1DQWB",
+            "problem_statement": "The goal is to simplify the BST while keeping it fully correct. Basic operations like insert, search, and in-order traversal must work reliably. Duplicates should be handled in a consistent, predictable way. All existing functionality, including complex features, must continue to work exactly as before. Unnecessary complexity like extra locks or redundant subtree stats should be removed to make the code clean and easy to maintain.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/l1dqwb-refactoring-ultrabst-algorithm",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
