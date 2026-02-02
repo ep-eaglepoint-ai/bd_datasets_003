@@ -1,0 +1,11 @@
+{
+            "instance_id": "63SUBP",
+            "problem_statement": "The core challenge lies in managing Mutable Time and State Contention. The "Soft Close" requirement creates a dynamic end-time, causing naive server timers to trigger prematurely during extensions. Simultaneously, "Double-Bid Races" occur when concurrent users submit identical bids; without explicit database transactions or mutexes, the auction state becomes corrupted. Furthermore, the system must mitigate Clock Skew by propagating absolute timestamps, ensuring network latency does not desynchronize the client-side countdowns.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/63subp-real-time-auction-engine-with-soft-close-and-atomic-locking",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
