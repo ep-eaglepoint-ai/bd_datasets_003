@@ -1,0 +1,714 @@
+{
+  "timestamp": "2026-02-02T09:54:43.214Z",
+  "repository_after": {
+    "passed": 176,
+    "failed": 0,
+    "total": 176,
+    "tests": [
+      {
+        "name": "Sync - Requirement 11: Incremental Sync filterTodosSinceTimestamp should return all todos when lastSyncTimestamp is null",
+        "passed": true
+      },
+      {
+        "name": "Sync - Requirement 11: Incremental Sync filterTodosSinceTimestamp should filter todos updated after lastSyncTimestamp",
+        "passed": true
+      },
+      {
+        "name": "Sync - Requirement 11: Incremental Sync filterTodosSinceTimestamp should return empty array when all todos are older",
+        "passed": true
+      },
+      {
+        "name": "Sync - Requirement 11: Incremental Sync filterTodosSinceTimestamp should handle empty todos array",
+        "passed": true
+      },
+      {
+        "name": "Sync - Requirement 11: Incremental Sync filterTodosSinceTimestamp should not modify original array",
+        "passed": true
+      },
+      {
+        "name": "Sync - Requirement 11: Incremental Sync filterTodosSinceTimestamp should include millisecond precision",
+        "passed": true
+      },
+      {
+        "name": "Sync - Requirement 11: Incremental Sync calculateSyncSavings should calculate bandwidth savings correctly",
+        "passed": true
+      },
+      {
+        "name": "Sync - Requirement 11: Incremental Sync calculateSyncSavings should handle zero savings",
+        "passed": true
+      },
+      {
+        "name": "Sync - Requirement 11: Incremental Sync calculateSyncSavings should handle empty state",
+        "passed": true
+      },
+      {
+        "name": "Sync - Requirement 11: Incremental Sync calculateSyncSavings should calculate high savings for many unchanged todos",
+        "passed": true
+      },
+      {
+        "name": "Sync - Merge Operations mergeTodos should add new todos from server",
+        "passed": true
+      },
+      {
+        "name": "Sync - Merge Operations mergeTodos should resolve conflicts using vector clocks",
+        "passed": true
+      },
+      {
+        "name": "Sync - Merge Operations mergeTodos should preserve local-only todos",
+        "passed": true
+      },
+      {
+        "name": "Sync - Merge Operations mergeTodos should handle empty local state",
+        "passed": true
+      },
+      {
+        "name": "Sync - Merge Operations detectConflicts should detect concurrent modifications",
+        "passed": true
+      },
+      {
+        "name": "Sync - Merge Operations detectConflicts should not flag non-conflicting updates",
+        "passed": true
+      },
+      {
+        "name": "Sync - Merge Operations detectConflicts should handle multiple conflicts",
+        "passed": true
+      },
+      {
+        "name": "Sync - Merge Operations detectConflicts should return empty array for no conflicts",
+        "passed": true
+      },
+      {
+        "name": "Sync - SyncManager should track last sync timestamp",
+        "passed": true
+      },
+      {
+        "name": "Sync - SyncManager should generate sync request with timestamp",
+        "passed": true
+      },
+      {
+        "name": "Sync - SyncManager should create initial sync request with null timestamp",
+        "passed": true
+      },
+      {
+        "name": "Sync - SyncManager should apply server state and update timestamp",
+        "passed": true
+      },
+      {
+        "name": "Sync - SyncManager should track sync statistics",
+        "passed": true
+      },
+      {
+        "name": "applyServerState should merge server state into local state",
+        "passed": true
+      },
+      {
+        "name": "applyServerState should handle soft-deleted todos",
+        "passed": true
+      },
+      {
+        "name": "WebSocket Server - Requirement 3: Custom Node.js Server validateWebSocketSupport should return supported true in Node.js environment",
+        "passed": true
+      },
+      {
+        "name": "WebSocket Server - Requirement 3: Custom Node.js Server validateWebSocketSupport should not have a reason when supported",
+        "passed": true
+      },
+      {
+        "name": "WebSocket Server - Requirement 3: Custom Node.js Server APP_ROUTER_WEBSOCKET_WARNING should contain warning about App Router limitation",
+        "passed": true
+      },
+      {
+        "name": "WebSocket Server - Requirement 3: Custom Node.js Server APP_ROUTER_WEBSOCKET_WARNING should mention request.socket.server does not exist",
+        "passed": true
+      },
+      {
+        "name": "WebSocket Server - Requirement 3: Custom Node.js Server APP_ROUTER_WEBSOCKET_WARNING should recommend custom Node.js server",
+        "passed": true
+      },
+      {
+        "name": "WebSocket Server - Requirement 3: Custom Node.js Server createWebSocketServer should create server instance",
+        "passed": true
+      },
+      {
+        "name": "WebSocket Server - Requirement 3: Custom Node.js Server createWebSocketServer should accept configuration options",
+        "passed": true
+      },
+      {
+        "name": "WebSocket Server - Requirement 3: Custom Node.js Server CollaborativeTodoWebSocketServer should not be running initially",
+        "passed": true
+      },
+      {
+        "name": "WebSocket Server - Requirement 3: Custom Node.js Server CollaborativeTodoWebSocketServer should report zero clients initially",
+        "passed": true
+      },
+      {
+        "name": "WebSocket Server - Requirement 3: Custom Node.js Server CollaborativeTodoWebSocketServer should have presence manager",
+        "passed": true
+      },
+      {
+        "name": "WebSocket Server - Requirement 3: Custom Node.js Server CollaborativeTodoWebSocketServer should throw if started twice",
+        "passed": true
+      },
+      {
+        "name": "WebSocket Server - Requirement 3: Custom Node.js Server CollaborativeTodoWebSocketServer should be running after start",
+        "passed": true
+      },
+      {
+        "name": "WebSocket Server - Requirement 3: Custom Node.js Server CollaborativeTodoWebSocketServer should stop gracefully",
+        "passed": true
+      },
+      {
+        "name": "WebSocket Server - Requirement 3: Custom Node.js Server CollaborativeTodoWebSocketServer should handle stop when not running",
+        "passed": true
+      },
+      {
+        "name": "WebSocket Server - Architecture Validation should not use API route pattern",
+        "passed": true
+      },
+      {
+        "name": "WebSocket Server - Architecture Validation should support attaching to HTTP server",
+        "passed": true
+      },
+      {
+        "name": "WebSocket Server - Architecture Validation warning message should be informative",
+        "passed": true
+      },
+      {
+        "name": "WebSocket Server - Configuration should use default configuration",
+        "passed": true
+      },
+      {
+        "name": "WebSocket Server - Configuration should accept custom presence cleanup delay",
+        "passed": true
+      },
+      {
+        "name": "WebSocket Server - Configuration should accept custom presence throttle",
+        "passed": true
+      },
+      {
+        "name": "WebSocket Server - Configuration should accept path configuration",
+        "passed": true
+      },
+      {
+        "name": "WebSocket Server - Presence Integration should integrate presence manager",
+        "passed": true
+      },
+      {
+        "name": "WebSocket Server - Presence Integration should get empty presence initially",
+        "passed": true
+      },
+      {
+        "name": "Reconnection - Requirement 8: Exponential Backoff Base Delay Calculation should start with 1 second base delay",
+        "passed": true
+      },
+      {
+        "name": "Reconnection - Requirement 8: Exponential Backoff Base Delay Calculation should double delay on each attempt",
+        "passed": true
+      },
+      {
+        "name": "Reconnection - Requirement 8: Exponential Backoff Base Delay Calculation should cap delay at 30 seconds maximum",
+        "passed": true
+      },
+      {
+        "name": "Reconnection - Requirement 8: Exponential Backoff Base Delay Calculation should never exceed 30 seconds even with extreme attempts",
+        "passed": true
+      },
+      {
+        "name": "Reconnection - Requirement 8: Exponential Backoff Base Delay Calculation should reset to 1 second after successful connection",
+        "passed": true
+      },
+      {
+        "name": "Reconnection - Requirement 8: Exponential Backoff Jitter - 20% Both Directions should add jitter within 20% range",
+        "passed": true
+      },
+      {
+        "name": "Reconnection - Requirement 8: Exponential Backoff Jitter - 20% Both Directions should produce varied results (not always the same)",
+        "passed": true
+      },
+      {
+        "name": "Reconnection - Requirement 8: Exponential Backoff Jitter - 20% Both Directions should have roughly uniform distribution within jitter range",
+        "passed": true
+      },
+      {
+        "name": "Reconnection - Requirement 8: Exponential Backoff Jitter - 20% Both Directions isJitterValid should correctly validate jitter range",
+        "passed": true
+      },
+      {
+        "name": "Reconnection - Requirement 8: Exponential Backoff Jitter - 20% Both Directions should apply jitter to capped delays correctly",
+        "passed": true
+      },
+      {
+        "name": "Reconnection - Requirement 8: Exponential Backoff ReconnectionManager should track connection attempts",
+        "passed": true
+      },
+      {
+        "name": "Reconnection - Requirement 8: Exponential Backoff ReconnectionManager should provide next delay based on attempts",
+        "passed": true
+      },
+      {
+        "name": "Reconnection - Requirement 8: Exponential Backoff ReconnectionManager should reset on successful connection",
+        "passed": true
+      },
+      {
+        "name": "Reconnection - Requirement 8: Exponential Backoff ReconnectionManager should schedule reconnection with callback",
+        "passed": true
+      },
+      {
+        "name": "Reconnection - Requirement 8: Exponential Backoff ReconnectionManager should be able to cancel scheduled reconnection",
+        "passed": true
+      },
+      {
+        "name": "Reconnection - Requirement 8: Exponential Backoff ReconnectionManager should track reconnecting state",
+        "passed": true
+      },
+      {
+        "name": "Reconnection - Requirement 8: Exponential Backoff Exponential Backoff Sequence should follow exact exponential sequence before cap",
+        "passed": true
+      },
+      {
+        "name": "Reconnection - Requirement 8: Exponential Backoff Exponential Backoff Sequence should correctly calculate intermediate delay (32s -> 30s)",
+        "passed": true
+      },
+      {
+        "name": "Reconnection - Edge Cases should handle immediate reset after creation",
+        "passed": true
+      },
+      {
+        "name": "Reconnection - Edge Cases should handle zero jitter factor",
+        "passed": true
+      },
+      {
+        "name": "Reconnection - Edge Cases should handle very small base delays",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - Requirement 6: Optimistic Updates OptimisticStateManager should store complete previous state",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - Requirement 6: Optimistic Updates OptimisticStateManager should create deep copy of state",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - Requirement 6: Optimistic Updates OptimisticStateManager should track pending operations",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - Requirement 6: Optimistic Updates OptimisticStateManager should confirm operations",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - Requirement 6: Optimistic Updates OptimisticStateManager rollback should return previous state and remove from pending",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - Requirement 6: Optimistic Updates Store Optimistic Updates should store previous state before update",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - Requirement 6: Optimistic Updates Store Optimistic Updates should rollback to previous state atomically",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - Requirement 6: Optimistic Updates Store Optimistic Updates should trigger exactly one re-render on rollback",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - Requirement 6: Optimistic Updates Store Optimistic Updates should handle rollback of non-existent operation",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - Requirement 6: Optimistic Updates Store Optimistic Updates should preserve all todo fields on rollback",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - Requirement 6: Optimistic Updates Confirm Operations should clear previous state on confirm",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - Requirement 7: Soft Delete should set deleted_at timestamp on delete",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - Requirement 7: Soft Delete should not physically remove todo on delete",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - Requirement 7: Soft Delete should exclude soft-deleted todos from active list",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - Requirement 7: Soft Delete should include soft-deleted todos in all list",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - Requirement 7: Soft Delete should update vector clock on delete",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - Requirement 7: Soft Delete should update updatedAt on delete",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - Requirement 7: Soft Delete should not allow update of soft-deleted todo",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - Requirement 7: Soft Delete should allow rollback of soft delete",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - Requirement 10: Reorder Vector Clocks should update vector clock of moved todo",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - Requirement 10: Reorder Vector Clocks should update vector clocks for ALL affected todos when moving down",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - Requirement 10: Reorder Vector Clocks should update vector clocks for ALL affected todos when moving up",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - Requirement 10: Reorder Vector Clocks should not update unaffected todos",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - Requirement 10: Reorder Vector Clocks should return all affected todos",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - Requirement 10: Reorder Vector Clocks should correctly update positions",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - Requirement 10: Reorder Vector Clocks should not reorder soft-deleted todos",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - Requirement 10: Reorder Vector Clocks should handle single todo reorder gracefully",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - General Operations should generate unique IDs for todos",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - General Operations should assign correct positions to new todos",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - General Operations should update completed status",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - General Operations should update title",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - General Operations should clear all state",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - General Operations should notify listeners on state change",
+        "passed": true
+      },
+      {
+        "name": "Todo Store - General Operations should allow unsubscribe",
+        "passed": true
+      },
+      {
+        "name": "Presence Management - Requirement 5: 5-Second Cleanup Delay Disconnect Cleanup Delay should not remove user immediately on disconnect",
+        "passed": true
+      },
+      {
+        "name": "Presence Management - Requirement 5: 5-Second Cleanup Delay Disconnect Cleanup Delay should keep user for exactly 5 seconds after disconnect",
+        "passed": true
+      },
+      {
+        "name": "Presence Management - Requirement 5: 5-Second Cleanup Delay Disconnect Cleanup Delay should cancel cleanup if user reconnects within 5 seconds",
+        "passed": true
+      },
+      {
+        "name": "Presence Management - Requirement 5: 5-Second Cleanup Delay Disconnect Cleanup Delay should handle multiple disconnect/reconnect cycles",
+        "passed": true
+      },
+      {
+        "name": "Presence Management - Requirement 5: 5-Second Cleanup Delay Disconnect Cleanup Delay should use configurable delay",
+        "passed": true
+      },
+      {
+        "name": "Presence Management - Requirement 5: 5-Second Cleanup Delay Presence State should track user presence correctly",
+        "passed": true
+      },
+      {
+        "name": "Presence Management - Requirement 5: 5-Second Cleanup Delay Presence State should update currentTodoId correctly",
+        "passed": true
+      },
+      {
+        "name": "Presence Management - Requirement 5: 5-Second Cleanup Delay Presence State should update lastSeen on presence update",
+        "passed": true
+      },
+      {
+        "name": "Presence Management - Requirement 9: Throttled Updates 100ms Throttle should emit first update immediately",
+        "passed": true
+      },
+      {
+        "name": "Presence Management - Requirement 9: Throttled Updates 100ms Throttle should throttle rapid updates to max 1 per 100ms",
+        "passed": true
+      },
+      {
+        "name": "Presence Management - Requirement 9: Throttled Updates 100ms Throttle should allow updates after throttle period",
+        "passed": true
+      },
+      {
+        "name": "Presence Management - Requirement 9: Throttled Updates 100ms Throttle should not emit more than 10 updates per second",
+        "passed": true
+      },
+      {
+        "name": "Presence Management - Requirement 9: Throttled Updates 100ms Throttle should use configurable throttle interval",
+        "passed": true
+      },
+      {
+        "name": "Presence Management - Requirement 9: Throttled Updates createThrottledEmitter should throttle function calls",
+        "passed": true
+      },
+      {
+        "name": "Presence Management - Requirement 9: Throttled Updates createThrottledEmitter should preserve latest arguments",
+        "passed": true
+      },
+      {
+        "name": "Presence Management - Edge Cases should handle multiple users independently",
+        "passed": true
+      },
+      {
+        "name": "Presence Management - Edge Cases should handle disconnect of non-existent user gracefully",
+        "passed": true
+      },
+      {
+        "name": "Presence Management - Edge Cases should handle rapid connect/disconnect cycles",
+        "passed": true
+      },
+      {
+        "name": "Presence Management - Edge Cases should clean up pending timeouts on user reconnect",
+        "passed": true
+      },
+      {
+        "name": "Offline Queue - Requirement 4: Sequence Numbers Monotonically Increasing Sequence Numbers should assign sequence numbers starting from 1",
+        "passed": true
+      },
+      {
+        "name": "Offline Queue - Requirement 4: Sequence Numbers Monotonically Increasing Sequence Numbers should increment sequence numbers monotonically",
+        "passed": true
+      },
+      {
+        "name": "Offline Queue - Requirement 4: Sequence Numbers Monotonically Increasing Sequence Numbers should never reuse sequence numbers",
+        "passed": true
+      },
+      {
+        "name": "Offline Queue - Requirement 4: Sequence Numbers Monotonically Increasing Sequence Numbers sequence numbers should be integers",
+        "passed": true
+      },
+      {
+        "name": "Offline Queue - Requirement 4: Sequence Numbers Replay Order should replay operations in sequence number order, not timestamp order",
+        "passed": true
+      },
+      {
+        "name": "Offline Queue - Requirement 4: Sequence Numbers Replay Order replay should return operations sorted by sequence number",
+        "passed": true
+      },
+      {
+        "name": "Offline Queue - Requirement 4: Sequence Numbers Replay Order should handle rapid operations within same millisecond",
+        "passed": true
+      },
+      {
+        "name": "Offline Queue - Requirement 4: Sequence Numbers Sync Tracking should track last synced sequence number",
+        "passed": true
+      },
+      {
+        "name": "Offline Queue - Requirement 4: Sequence Numbers Sync Tracking should only return pending operations after last sync",
+        "passed": true
+      },
+      {
+        "name": "Offline Queue - Requirement 4: Sequence Numbers Sync Tracking should not replay already-synced changes",
+        "passed": true
+      },
+      {
+        "name": "Offline Queue - Requirement 4: Sequence Numbers compareOperations should sort by sequence number",
+        "passed": true
+      },
+      {
+        "name": "Offline Queue - Requirement 12: crypto.randomUUID() generateUUID should generate valid UUID format",
+        "passed": true
+      },
+      {
+        "name": "Offline Queue - Requirement 12: crypto.randomUUID() generateUUID should generate unique UUIDs",
+        "passed": true
+      },
+      {
+        "name": "Offline Queue - Requirement 12: crypto.randomUUID() generateUUID should not collide when called rapidly",
+        "passed": true
+      },
+      {
+        "name": "Offline Queue - Requirement 12: crypto.randomUUID() generateUUID should be cryptographically random (not timestamp-based)",
+        "passed": true
+      },
+      {
+        "name": "Offline Queue - Requirement 12: crypto.randomUUID() generateUUID should use version 4 UUID format",
+        "passed": true
+      },
+      {
+        "name": "Offline Queue - Requirement 12: crypto.randomUUID() Collision Prevention should handle simultaneous offline clients creating todos",
+        "passed": true
+      },
+      {
+        "name": "Offline Queue - Additional Operations should report pending count correctly",
+        "passed": true
+      },
+      {
+        "name": "Offline Queue - Additional Operations should check for pending operations",
+        "passed": true
+      },
+      {
+        "name": "Offline Queue - Additional Operations should remove specific operation",
+        "passed": true
+      },
+      {
+        "name": "Offline Queue - Additional Operations should get operation by sequence number",
+        "passed": true
+      },
+      {
+        "name": "Offline Queue - Additional Operations should clear all operations",
+        "passed": true
+      },
+      {
+        "name": "isValidOperation should validate correct operation",
+        "passed": true
+      },
+      {
+        "name": "isValidOperation should reject operation with invalid sequence number",
+        "passed": true
+      },
+      {
+        "name": "isValidOperation should reject operation with negative sequence number",
+        "passed": true
+      },
+      {
+        "name": "isValidOperation should reject operation with empty todoId",
+        "passed": true
+      },
+      {
+        "name": "isValidOperation should reject operation with invalid operation type",
+        "passed": true
+      },
+      {
+        "name": "Vector Clock - Requirement 1: Four Distinct Comparison Results compareVectorClocks should return \"equal\" when clocks are identical",
+        "passed": true
+      },
+      {
+        "name": "Vector Clock - Requirement 1: Four Distinct Comparison Results compareVectorClocks should return \"equal\" for empty clocks",
+        "passed": true
+      },
+      {
+        "name": "Vector Clock - Requirement 1: Four Distinct Comparison Results compareVectorClocks should return \"before\" when clock A causally precedes B",
+        "passed": true
+      },
+      {
+        "name": "Vector Clock - Requirement 1: Four Distinct Comparison Results compareVectorClocks should return \"before\" when A is subset of B",
+        "passed": true
+      },
+      {
+        "name": "Vector Clock - Requirement 1: Four Distinct Comparison Results compareVectorClocks should return \"after\" when clock A causally follows B",
+        "passed": true
+      },
+      {
+        "name": "Vector Clock - Requirement 1: Four Distinct Comparison Results compareVectorClocks should return \"after\" when B is subset of A",
+        "passed": true
+      },
+      {
+        "name": "Vector Clock - Requirement 1: Four Distinct Comparison Results compareVectorClocks should return \"concurrent\" when neither clock dominates",
+        "passed": true
+      },
+      {
+        "name": "Vector Clock - Requirement 1: Four Distinct Comparison Results compareVectorClocks should return \"concurrent\" for disjoint clocks",
+        "passed": true
+      },
+      {
+        "name": "Vector Clock - Requirement 1: Four Distinct Comparison Results compareVectorClocks should return exactly one of four values",
+        "passed": true
+      },
+      {
+        "name": "Vector Clock - Requirement 1: Four Distinct Comparison Results compareVectorClocks should distinguish \"equal\" from \"concurrent\"",
+        "passed": true
+      },
+      {
+        "name": "Vector Clock - Requirement 1: Four Distinct Comparison Results Helper functions isBefore should return true only for \"before\" comparison",
+        "passed": true
+      },
+      {
+        "name": "Vector Clock - Requirement 1: Four Distinct Comparison Results Helper functions isAfter should return true only for \"after\" comparison",
+        "passed": true
+      },
+      {
+        "name": "Vector Clock - Requirement 1: Four Distinct Comparison Results Helper functions isConcurrent should return true only for \"concurrent\" comparison",
+        "passed": true
+      },
+      {
+        "name": "Vector Clock - Requirement 1: Four Distinct Comparison Results Helper functions isEqual should return true only for \"equal\" comparison",
+        "passed": true
+      },
+      {
+        "name": "Vector Clock - Requirement 2: Deterministic Tiebreaker lastWriteWins should pick todo with later updated_at",
+        "passed": true
+      },
+      {
+        "name": "Vector Clock - Requirement 2: Deterministic Tiebreaker lastWriteWins should use lexicographic user ID comparison when timestamps equal",
+        "passed": true
+      },
+      {
+        "name": "Vector Clock - Requirement 2: Deterministic Tiebreaker lastWriteWins should be deterministic regardless of argument order",
+        "passed": true
+      },
+      {
+        "name": "Vector Clock - Requirement 2: Deterministic Tiebreaker lastWriteWins should handle identical todos",
+        "passed": true
+      },
+      {
+        "name": "Vector Clock - Requirement 2: Deterministic Tiebreaker resolveConflict should use todo with later vector clock if one dominates",
+        "passed": true
+      },
+      {
+        "name": "Vector Clock - Requirement 2: Deterministic Tiebreaker resolveConflict should return either for equal clocks",
+        "passed": true
+      },
+      {
+        "name": "Vector Clock - Requirement 2: Deterministic Tiebreaker resolveConflict should use lastWriteWins for concurrent modifications",
+        "passed": true
+      },
+      {
+        "name": "Vector Clock - Requirement 2: Deterministic Tiebreaker resolveConflict should produce same result on all clients for concurrent edits",
+        "passed": true
+      },
+      {
+        "name": "Vector Clock - Basic Operations createVectorClock should initialize with user having value 1",
+        "passed": true
+      },
+      {
+        "name": "Vector Clock - Basic Operations incrementVectorClock should increase user value",
+        "passed": true
+      },
+      {
+        "name": "Vector Clock - Basic Operations incrementVectorClock should add new user if not present",
+        "passed": true
+      },
+      {
+        "name": "Vector Clock - Basic Operations mergeVectorClocks should take maximum of each entry",
+        "passed": true
+      },
+      {
+        "name": "Vector Clock - Basic Operations cloneVectorClock should create independent copy",
+        "passed": true
+      }
+    ]
+  }
+}
