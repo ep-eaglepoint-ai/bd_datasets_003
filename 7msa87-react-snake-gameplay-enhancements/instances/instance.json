@@ -1,0 +1,11 @@
+{
+            "instance_id": "7MSA87",
+            "problem_statement": "The current game supports basic movement, food consumption, scoring, and wall collision detection. The goal is to add multiple advanced gameplay features while preserving all existing functionality, constraints, and mechanics. The enhancements must integrate cleanly with the current architecture, avoid regressions, and handle edge cases gracefully. The final solution must be maintainable and function correctly under rapid user input and state transitions.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/7msa87-react-snake-gameplay-enhancements",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
