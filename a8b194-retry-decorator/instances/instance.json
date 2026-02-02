@@ -1,0 +1,12 @@
+{
+            "instance_id": "A8B194",
+            "problem_statement": "Implement a Python @retry decorator that supports both synchronous and asynchronous functions with configurable retry counts, backoff strategies (fixed, linear, exponential), and selective exception handling to gracefully handle transient failures. The decorator must preserve function signatures and docstrings, use appropriate sleeping mechanisms (time.sleep vs asyncio.sleep), and raise a RetryError containing the attempt count and final exception when all retries are exhausted. The solution must provide resilient retry logic for network timeouts, rate limits, and temporary service issues while maintaining clean API usage and proper async/sync detection.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/a8b194-retry-decorator",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
