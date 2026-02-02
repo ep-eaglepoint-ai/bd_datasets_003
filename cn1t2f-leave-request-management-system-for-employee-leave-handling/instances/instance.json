@@ -1,0 +1,11 @@
+{
+            "instance_id": "CN1T2F",
+            "problem_statement": "Develop a minimal, full-stack web application to manage employee leave requests, including vacation, sick, and unpaid leave. The system must ensure that leave requests are submitted, approved, and tracked without errors like double approvals, incorrect leave balances, or missing audit trails. The application should strictly enforce business rules for managing leave states, balances, and audit records.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/cn1t2f-leave-request-management-system-for-employee-leave-handling",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
