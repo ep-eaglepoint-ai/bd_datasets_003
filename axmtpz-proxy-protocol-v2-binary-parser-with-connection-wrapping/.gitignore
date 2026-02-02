@@ -19,8 +19,6 @@ node_modules/
 *.dylib
 *.test
 vendor/
-go.work
-go.work.sum
 *.out
 
 # Evaluation outputs

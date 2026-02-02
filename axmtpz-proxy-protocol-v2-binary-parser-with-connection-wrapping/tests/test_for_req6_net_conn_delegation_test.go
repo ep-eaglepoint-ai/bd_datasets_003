@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"io"
 	"net"
 	"testing"
 	"time"
@@ -30,13 +31,14 @@ func TestNetConnDelegation(t *testing.T) {
 }
 
 // TestNetConnWriteDelegation: Write() is delegated to underlying conn (requires both ends open).
+// Server must read what we write, or net.Pipe blocks (synchronous pipe).
 func TestNetConnWriteDelegation(t *testing.T) {
 	client, server := net.Pipe()
 	header := ValidIPv4Header([]byte{1, 1, 1, 1}, 1, 1)
-	done := make(chan struct{})
 	go func() {
 		server.Write(header)
-		<-done
+		buf := make([]byte, 4)
+		_, _ = io.ReadFull(server, buf) // read "ping" so Write() can complete
 		server.Close()
 	}()
 	conn, err := WrapProxyConn(client)
@@ -51,7 +53,6 @@ func TestNetConnWriteDelegation(t *testing.T) {
 		t.Fatalf("Write: n=%d err=%v", n, err)
 		return
 	}
-	close(done)
 	_ = conn.Close()
 	RecordResult("TestNetConnWriteDelegation", true, "")
 }

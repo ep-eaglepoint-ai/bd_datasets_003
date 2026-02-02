@@ -1,7 +1,7 @@
 {
             "instance_id": "AXMTPZ",
             "problem_statement": "Implementing the PROXY Protocol v2 (Binary) requires low-level manipulation of the TCP stream before the application layer receives data. The core complexity lies in the strict binary structure: a 12-byte fixed signature followed by variable-length fields determined by a Command/Family byte. Unlike text-based protocols, the parser must correctly interpret the Address Family (AF_INET vs AF_INET6) to calculate the precise number of bytes to read for the source and destination addresses. Furthermore, because parsing requires reading bytes from the raw net.Conn, the implementation must wrap the connection to transparently hide the consumed header bytes while ensuring any application payload that arrived in the same packet is preserved and accessible to the downstream consumer. This requires a custom implementation of the Read method that seamlessly transitions from the parsed state to the raw stream, handling Big-Endian integer decoding strictly along the way.",
-            "base_commit": "repository_before/",
+            "base_commit": "repository_after/",
             "test_patch": "tests/",
             "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/axmtpz-proxy-protocol-v2-binary-parser-with-connection-wrapping",
             "environment_setup": "Dockerfile",

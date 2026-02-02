@@ -163,7 +163,7 @@ func getRootDir() string {
 func runTests(repoPath string, rootDir string) (TestResults, map[string][]string) {
 	testsDir := filepath.Join(rootDir, "tests")
 
-	cmd := exec.Command("go", "test", "-json", "-v", "/app/tests/...")
+	cmd := exec.Command("go", "test", "-timeout", "10s", "-json", "-v", ".")
 	cmd.Dir = testsDir
 	cmd.Env = append(os.Environ(), fmt.Sprintf("REPO_PATH=%s", repoPath))
 
@@ -379,7 +379,7 @@ func printPytestLikeReport(results TestResults, repoLabel string, duration float
 	f("platform %s -- Go %s\n", runtime.GOOS, runtime.Version())
 	f("collected %d items\n\n", results.Summary.Total)
 
-	testFile := "/app/tests/proxy_test.go"
+	testFile := "/app/tests"
 	f("%s ", testFile)
 	for _, t := range results.Tests {
 		if t.Outcome == "passed" {
@@ -465,6 +465,15 @@ func main() {
 
 	afterResults.Stdout = printPytestLikeReport(afterResults, "repository_after", duration, afterOutputMap)
 
+	beforeReport := &TestResults{
+		Success:  false,
+		ExitCode: 1,
+		Tests:    []TestCase{},
+		Summary:  Summary{Total: 0, Passed: 0, Failed: 0, Errors: 0, Skipped: 0},
+		Stdout:   "",
+		Stderr:   "",
+	}
+
 	report := Report{
 		RunID:           runID,
 		StartedAt:       startTime.Format(time.RFC3339Nano),
@@ -474,13 +483,17 @@ func main() {
 		Error:           errMsg,
 		Environment:     getEnvironmentInfo(),
 		Results: Results{
-			Before: nil,
+			Before: beforeReport,
 			After:  &afterResults,
 			Comparison: Comparison{
-				AfterTestsPassed: afterResults.Success,
-				AfterTotal:       afterResults.Summary.Total,
-				AfterPassed:      afterResults.Summary.Passed,
-				AfterFailed:      afterResults.Summary.Failed,
+				BeforeTestsPassed: false,
+				BeforeTotal:       0,
+				BeforePassed:      0,
+				BeforeFailed:      0,
+				AfterTestsPassed:  afterResults.Success,
+				AfterTotal:        afterResults.Summary.Total,
+				AfterPassed:       afterResults.Summary.Passed,
+				AfterFailed:       afterResults.Summary.Failed,
 			},
 		},
 	}
