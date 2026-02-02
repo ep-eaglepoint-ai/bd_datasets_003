@@ -1,0 +1,15 @@
+{
+            "instance_id": "6HY6P6",
+            "problem_statement": "Standard Docker tutorials teach ARG for passing data, but ARG values are burned into the image metadata, which is a major security flaw for private keys. The engineering gap here is leveraging BuildKit syntax.
+The Security Trap: Mid-tier models will use ARG SSH_KEY and then echo $SSH_KEY > /root/.ssh/id_rsa. This works functionally but fails the security requirement because the key persists in the intermediate layer.
+The Cache Trap: To speed up builds, they might use COPY go.mod . and RUN go mod download. While standard, this doesn't cache the downloaded modules between builds if the layer cache is invalidated. The SOTA approach is RUN --mount=type=cache,target=/go/pkg/mod.
+The Arch Trap: For cross-compilation (e.g., building ARM64 on an AMD64 machine), the GOARCH variable must be set dynamically based on the build target, usually via the automatic TARGETARCH argument provided by BuildKit.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/6hy6p6-secure-buildkit-secret-injection-and-cache-mounting",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
