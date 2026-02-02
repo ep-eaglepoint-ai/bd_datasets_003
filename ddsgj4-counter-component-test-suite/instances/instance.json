@@ -1,0 +1,12 @@
+{
+            "instance_id": "DDSGJ4",
+            "problem_statement": "The application includes a simple React counter with increment, decrement, and reset functionality. Despite its simplicity, the component may fail under sequential actions, rapid user interaction, or edge conditions. The QA task is to design automated tests that validate correct counter behavior from the user’s perspective.
+Tests must ensure reliability without accessing internal state or implementation details.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ddsgj4-counter-component-test-suite",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
