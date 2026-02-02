@@ -1,0 +1,11 @@
+{
+            "instance_id": "5QF3R5",
+            "problem_statement": "Maintaining consistent code style is essential for readability, maintainability, and collaboration in Python projects, especially as codebases grow and multiple developers contribute. PEP 8 defines the standard style guidelines for Python code, but manual enforcement is error-prone and inconsistent. Writing an automated unit test to check PEP 8 compliance ensures that style violations are detected early, prevents non-conforming code from being merged, and helps teams maintain a uniform coding standard without relying on manual reviews.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/5qf3r5-unittest-pep8-validator",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
