@@ -1,0 +1,11 @@
+{
+            "instance_id": "4N2GYR",
+            "problem_statement": "You are a senior backend engineer building a production-ready Node.js module that converts unordered, possibly duplicated and malformed user event logs into deterministic session analytics. The output must be correct, stable across input order permutations, and include an audit trail (anomalies) for discarded/suspicious events. The system must explicitly handle the “double login without logout” case using a chosen policy and prove it via tests.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/4n2gyr-deterministic-event-analytics-order-independent-dedup-double-login-policy",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
