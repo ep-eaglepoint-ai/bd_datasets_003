@@ -31,7 +31,9 @@ RUN npx prisma generate --schema=./prisma/schema.prisma
 COPY repository_after/frontend/package.json ./repository_after/frontend/package.json
 COPY repository_after/frontend/package-lock.json ./repository_after/frontend/package-lock.json
 WORKDIR /app/repository_after/frontend
-RUN npm ci --no-audit --no-fund
+# Some CI/build environments can end up without a usable lockfile in the build context.
+# Prefer deterministic `npm ci`, but fall back to `npm install` if needed.
+RUN npm ci --no-audit --no-fund || npm install --no-audit --no-fund
 
 WORKDIR /app
 COPY repository_after/frontend ./repository_after/frontend
