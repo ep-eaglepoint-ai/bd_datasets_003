@@ -1,0 +1,11 @@
+{
+            "instance_id": "AJKCNI",
+            "problem_statement": "Build a reliable Notification Center UI for an internal enterprise dashboard used daily by operations and compliance teams. The component must render an in-memory list of notifications, support pagination, and allow users to mark notifications as Read or Unread with immediate visual feedback. Because the app runs in older environments, the implementation must use legacy React class components only and avoid modern React features. The key challenge is preserving notification state across pagination without mutating shared state, breaking keyboard navigation, or introducing UI inconsistencies under rapid interaction.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ajkcni-legacy-react-notification-center-with-pagination-and-read-unread-state",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
