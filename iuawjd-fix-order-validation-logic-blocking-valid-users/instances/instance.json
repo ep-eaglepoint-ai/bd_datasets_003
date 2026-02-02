@@ -1,0 +1,11 @@
+{
+            "instance_id": "IUAWJD",
+            "problem_statement": "The order validation logic in a production backend system is incorrectly rejecting some valid users from placing orders. The function determines eligibility based on user status and the number of orders placed in a day. Due to a subtle logic bug, certain users who should be allowed to place orders are being blocked, causing business impact and degraded user experience.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/iuawjd-fix-order-validation-logic-blocking-valid-users",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
