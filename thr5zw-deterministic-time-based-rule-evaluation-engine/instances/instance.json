@@ -1,0 +1,18 @@
+{
+            "instance_id": "THR5ZW",
+            "problem_statement": "We need to build a small rule-checking module that decides whether an action is allowed or blocked at a given time.
+The decision is based on a set of predefined rules that may overlap and can be either weekly recurring rules or fixed date-range rules.
+
+The system must resolve overlapping rules deterministically using a strict and documented precedence order.
+In addition to returning the final decision, the module must also explain why that decision was made in a human-readable way for audit and debugging purposes.
+
+The key challenge is not performance, but correctness, determinism, and strict adherence to the specification. Any ambiguity, hidden assumption, or behavior drift is considered incorrect.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/thr5zw-deterministic-time-based-rule-evaluation-engine",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
