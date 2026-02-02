@@ -1,0 +1,11 @@
+{
+            "instance_id": "Z1Z6ZS",
+            "problem_statement": "The leaderboard ranking logic currently uses an O(n²) insertion-based algorithm, which causes timeouts during peak traffic when processing millions of player scores. The task is to optimize the algorithm to achieve O(n log n) performance while preserving the exact output order, stable tie-handling behavior, and final leaderboard correctness.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/z1z6zs-optimize-leaderboard-ranking-algorithm-for-real-time-performance",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
