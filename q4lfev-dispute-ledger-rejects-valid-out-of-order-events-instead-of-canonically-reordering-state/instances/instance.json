@@ -1,0 +1,14 @@
+{
+            "instance_id": "Q4LFEV",
+            "problem_statement": "The task is to implement a deterministic, in-memory dispute ledger that processes events arriving from multiple external sources where out-of-order delivery and retries are expected behavior, not errors. Each dispute’s final state must be derived from a canonical ordering of events defined by (occurredAtMs, arrivalOrder), ensuring that identical inputs always produce identical outcomes regardless of arrival timing.
+
+The system must support per-dispute deduplication, correct handling of late-arriving events, and strict enforcement of state transition rules, including terminal state blocking. When a late event has an earlier canonical position than previously applied events, the ledger must reconcile state deterministically rather than reject the event or depend on arrival order.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/q4lfev-dispute-ledger-rejects-valid-out-of-order-events-instead-of-canonically-reordering-state",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
