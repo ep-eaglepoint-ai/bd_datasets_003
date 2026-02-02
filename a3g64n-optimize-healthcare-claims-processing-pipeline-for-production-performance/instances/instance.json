@@ -1,0 +1,12 @@
+{
+            "instance_id": "A3G64N",
+            "problem_statement": "Noticed a critical performance challenge when testing a medical claims processing system handling EDI 837 files from zip archives. The issue appeared while working on the batch claims parser in a Go-based healthcare application where processing times degrade from 30 seconds for 100 claims to 8 minutes for 1000 claims, with memory growing from 500MB to 4.2GB.
+Testing reveals CPU locked at 100% on a single core while 7 cores sit idle. Competitor systems process identical 1000-claim batches in 45 seconds while the current system takes 6-7 minutes. Production testing shows 5000 claims consume 12GB memory and require 35 minutes, far exceeding the 5-minute regulatory SLA. The billing team faces a backlog of 15,000+ claims missing deadlines.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/a3g64n-optimize-healthcare-claims-processing-pipeline-for-production-performance",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
