@@ -1,0 +1,11 @@
+{
+            "instance_id": "OHCBRE",
+            "problem_statement": "The goal is to design and implement automated test suites for a React-based Random Dog Picture Generator that relies on asynchronous API calls and state-driven UI updates. The application fetches random dog images from an external API and supports loading states, error handling, favorites management, breed filtering, and image history tracking. Because the system depends on correct async behavior, API reliability, and persistent state management, defects can lead to inconsistent UI and poor user experience. The QA Engineer must use Jest and React Testing Library to validate application behavior under normal and failure scenarios. The test suites must ensure correctness, stability, and proper integration of all features across user interactions and edge cases.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ohcbre-react-random-dog-picture-generator-test-suite",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
