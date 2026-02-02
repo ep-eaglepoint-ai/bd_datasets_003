@@ -1,0 +1,11 @@
+{
+            "instance_id": "EH57GU",
+            "problem_statement": "Create a comprehensive, automated test suite (Vitest + Testing Library) for the editor app that validates formatTime.ts and the UI/interaction contracts of EditPage.tsx, TextEditorModal.tsx, TrimTools.tsx, and Header.tsx by providing deterministic unit and integration tests, mocks for storage/network, organized fixtures, and CI-ready scripts that ensure high coverage and measurable, reproducible behavior",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/eh57gu-add-comprehensive-testable-suite-for-editor-components",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
