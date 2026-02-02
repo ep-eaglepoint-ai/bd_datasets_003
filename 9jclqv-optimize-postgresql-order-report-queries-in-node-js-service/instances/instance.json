@@ -1,0 +1,11 @@
+{
+            "instance_id": "9JCLQV",
+            "problem_statement": "Report generation performs poorly due to excessive database round trips when fetching order items individually. The goal is to refactor the query strategy using joins or batching while preserving the exact output structure.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/9jclqv-optimize-postgresql-order-report-queries-in-node-js-service",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
