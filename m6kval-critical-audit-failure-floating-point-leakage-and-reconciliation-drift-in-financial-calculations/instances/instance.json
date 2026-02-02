@@ -1,0 +1,12 @@
+{
+            "instance_id": "M6KVAL",
+            "problem_statement": "The current implementation fails to meet the "Zero Floating-Point" safety standard required for international payment processing. While the code attempts to use cents, it performs tax multiplication and reconciliation checks using standard JavaScript numbers (IEEE 754). This introduces microscopic rounding errors (e.g., 0.070000000000000006) that accumulate across large orders. Furthermore, the system lacks strict input validation, allowing "silent corrections" (clamping) for invalid discounts instead of rejecting them. This creates discrepancies between the line-item ledger and the final order total, leading to production incidents and audit failures.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/m6kval-critical-audit-failure-floating-point-leakage-and-reconciliation-drift-in-financial-calculations",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
