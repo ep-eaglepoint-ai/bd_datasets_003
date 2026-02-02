@@ -1,0 +1,11 @@
+{
+            "instance_id": "SQVSAE",
+            "problem_statement": "Implementation of a stateful, high-frequency ride-hailing tracking feature using WebSockets. This involves managing active ride sessions, calculating proximity thresholds on every telemetry pulse, and implementing client-side interpolation for a smooth visual experience, all while ensuring scalability through an implicit or explicit pub/sub backplane.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/sqvsae-ridehailing-proximity-streamer",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
