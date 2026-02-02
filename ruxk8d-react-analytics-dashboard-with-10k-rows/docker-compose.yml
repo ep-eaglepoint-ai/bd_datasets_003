@@ -1,9 +1,27 @@
+version: '3.8'
 
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
-  app:
+services:
+  test-before:
     build: .
-    command: pytest -q tests
     volumes:
       - .:/app
+      - /app/node_modules
+    environment:
+      - PROJECT_PATH=./repository_before
+    command: npx vitest run -c tests/vitest.config.ts tests/performance.test.tsx
+
+  test-after:
+    build: .
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      - PROJECT_PATH=./repository_after
+    command: npx vitest run -c tests/vitest.config.ts tests/performance.test.tsx
+
+  evaluation:
+    build: .
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: node evaluation/evaluation.js
