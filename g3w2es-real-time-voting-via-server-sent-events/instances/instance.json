@@ -1,0 +1,11 @@
+{
+            "instance_id": "G3W2ES",
+            "problem_statement": "Building real-time systems without heavy WebSocket libraries reveals the complexity of the HTTP protocol. The challenge here is two-fold: First, the shared state (the vote map) is a critical section. Without a sync.Mutex or sync.RWMutex wrapping the read/write operations, concurrent POST requests will corrupt the map (Go's fatal error: concurrent map writes). Second, implementing SSE manually requires precise control over the http.ResponseWriter. To push data in real-time, the server must explicitly cast the writer to http.Flusher and call Flush() after every message. If this is omitted (a common mistake), the data sits in the internal buffer, and the client sees nothing until the buffer fills up or the connection closes.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/g3w2es-real-time-voting-via-server-sent-events",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
