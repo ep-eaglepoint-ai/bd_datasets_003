@@ -1,0 +1,19 @@
+{
+            "instance_id": "9TF6ZX",
+            "problem_statement": "The submitted JavaScript test suite demonstrates a good understanding of the system’s invariants and attempts to apply adversarial, property-based testing. However, it cannot be relied upon as a gate test suite as required by the prompt.
+
+The primary issue is that the test logic itself contains correctness flaws and ambiguous assumptions about the output format. These flaws make it possible for the test suite to:
+
+Fail correct implementations under valid adversarial inputs, or
+
+Pass buggy implementations that should be rejected.
+
+Because the tests are intended to serve as a blocking gate against regressions and hidden mutants, correctness and interpretability of test results are mandatory. This bar is not met.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/9tf6zx-test-suite-is-not-reliable-as-a-gate-due-to-incorrect-invariant-reconstruction-and-generator-bugs",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
