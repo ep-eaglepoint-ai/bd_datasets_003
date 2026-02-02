@@ -6,6 +6,7 @@ import pytest
 from datetime import timedelta
 from unittest.mock import patch, MagicMock
 from django.utils import timezone
+from django.db import connection
 from sensors.models import Pump, SensorReading
 
 
@@ -58,17 +59,28 @@ class TestSensorDataIngestionView:
         )
         
         assert response.status_code == 404
+
+
+# Use transaction=True for tests that need on_commit callbacks to fire
+@pytest.mark.django_db(transaction=True)
+class TestSensorDataIngestionWithOnCommit:
+    """Tests that require transaction.on_commit() to execute."""
     
-    @patch('sensors.views.activate_pump_task.delay')
-    def test_low_moisture_triggers_pump_activation(
-        self, mock_delay, client, sensor, pump
-    ):
+    @patch('sensors.tasks.activate_pump_task.delay')
+    def test_low_moisture_triggers_pump_activation(self, mock_delay, client):
         """Test that low moisture triggers pump activation."""
+        from sensors.models import Zone, Sensor, Pump
+        
+        # Create test data within this transaction
+        zone = Zone.objects.create(name='Test Zone OnCommit')
+        pump = Pump.objects.create(zone=zone, hardware_id='PUMP-ONCOMMIT-001')
+        sensor = Sensor.objects.create(zone=zone, hardware_id='SENSOR-ONCOMMIT-001')
+        
         mock_delay.return_value = MagicMock(id='test-task-id')
         
         payload = {
             'sensor_id': sensor.hardware_id,
-            'moisture_percentage': 5.0
+            'moisture_percentage': 5.0  # Below threshold
         }
         
         response = client.post(
@@ -82,13 +94,19 @@ class TestSensorDataIngestionView:
         assert 'pump_activation' in data
         assert data['pump_activation']['status'] == 'activated'
         
+        # With transaction=True, on_commit callbacks fire
         mock_delay.assert_called_once()
     
-    @patch('sensors.views.activate_pump_task.delay')
-    def test_pump_cooldown_prevents_activation(
-        self, mock_delay, client, sensor, pump
-    ):
+    @patch('sensors.tasks.activate_pump_task.delay')
+    def test_pump_cooldown_prevents_activation(self, mock_delay, client):
         """REQUIREMENT 2: Test cooldown period is enforced."""
+        from sensors.models import Zone, Sensor, Pump
+        
+        zone = Zone.objects.create(name='Test Zone Cooldown')
+        pump = Pump.objects.create(zone=zone, hardware_id='PUMP-COOLDOWN-001')
+        sensor = Sensor.objects.create(zone=zone, hardware_id='SENSOR-COOLDOWN-001')
+        
+        # Set pump as recently activated
         pump.last_activation_time = timezone.now() - timedelta(minutes=5)
         pump.save()
         
@@ -107,15 +125,21 @@ class TestSensorDataIngestionView:
         data = response.json()
         assert data['pump_activation']['status'] == 'cooldown'
         
+        # Task should NOT be called
         mock_delay.assert_not_called()
     
-    @patch('sensors.views.activate_pump_task.delay')
-    def test_running_pump_prevents_activation(
-        self, mock_delay, client, sensor, pump
-    ):
+    @patch('sensors.tasks.activate_pump_task.delay')
+    def test_running_pump_prevents_activation(self, mock_delay, client):
         """Test that running pump prevents new activation."""
-        pump.status = Pump.Status.RUNNING
-        pump.save()
+        from sensors.models import Zone, Sensor, Pump
+        
+        zone = Zone.objects.create(name='Test Zone Running')
+        pump = Pump.objects.create(
+            zone=zone, 
+            hardware_id='PUMP-RUNNING-001',
+            status=Pump.Status.RUNNING
+        )
+        sensor = Sensor.objects.create(zone=zone, hardware_id='SENSOR-RUNNING-001')
         
         payload = {
             'sensor_id': sensor.hardware_id,

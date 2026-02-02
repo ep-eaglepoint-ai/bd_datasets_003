@@ -1,6 +1,7 @@
 """
 Tests for pessimistic locking and race condition prevention.
 """
+import json
 import pytest
 from datetime import timedelta
 from unittest.mock import patch, MagicMock
@@ -8,17 +9,20 @@ from django.utils import timezone
 from sensors.models import Pump
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 class TestPessimisticLocking:
     """Tests for database-level locking."""
     
-    @patch('sensors.views.activate_pump_task.delay')
-    def test_sequential_requests_single_activation(
-        self, mock_delay, zone, pump, sensor
-    ):
+    @patch('sensors.tasks.activate_pump_task.delay')
+    def test_sequential_requests_single_activation(self, mock_delay):
         """REQUIREMENT 6: Multiple requests result in exactly one task."""
         from django.test import Client
-        import json
+        from sensors.models import Zone, Sensor, Pump
+        
+        # Create fresh test data
+        zone = Zone.objects.create(name='Test Zone Locking')
+        pump = Pump.objects.create(zone=zone, hardware_id='PUMP-LOCKING-001')
+        sensor = Sensor.objects.create(zone=zone, hardware_id='SENSOR-LOCKING-001')
         
         mock_delay.return_value = MagicMock(id='test-task-id')
         
@@ -28,6 +32,7 @@ class TestPessimisticLocking:
             'moisture_percentage': 5.0
         }
         
+        # First request should activate
         response1 = client.post(
             '/api/sensors/ingest/',
             data=json.dumps(payload),
@@ -37,8 +42,11 @@ class TestPessimisticLocking:
         data1 = response1.json()
         assert data1.get('pump_activation', {}).get('status') == 'activated'
         
+        # Refresh pump from db
         pump.refresh_from_db()
+        assert pump.status == Pump.Status.RUNNING
         
+        # Second request should hit cooldown or already running
         response2 = client.post(
             '/api/sensors/ingest/',
             data=json.dumps(payload),
@@ -49,6 +57,7 @@ class TestPessimisticLocking:
         status = data2.get('pump_activation', {}).get('status')
         assert status in ['cooldown', 'already_running']
         
+        # Task should only be called once
         assert mock_delay.call_count == 1
     
     def test_select_for_update_used_in_code(self):

@@ -748,10 +748,10 @@ index 0000000..3486209
 \ No newline at end of file
 diff --git a/repository_after/sensors/views.py b/repository_after/sensors/views.py
 new file mode 100644
-index 0000000..2d6eb06
+index 0000000..aea611c
 --- /dev/null
 +++ b/repository_after/sensors/views.py
-@@ -0,0 +1,426 @@
+@@ -0,0 +1,455 @@
 +"""
 +Views for IoT Irrigation Control System.
 +
@@ -793,7 +793,7 @@ index 0000000..2d6eb06
 +    2. Checks last_activation_time for 15-minute cooldown
 +    5. Hardware API calls happen in Celery task
 +    6. Concurrent requests result in exactly one task during cooldown
-+    8. Pump status update and task scheduling in same transaction
++    8. Pump status update and task scheduling in same transaction (using on_commit)
 +    9. Uses django.utils.timezone.now() for UTC timestamps
 +    """
 +    
@@ -897,9 +897,14 @@ index 0000000..2d6eb06
 +        REQUIREMENT 2: Checks last_activation_time for cooldown
 +        REQUIREMENT 6: Only one task queued during cooldown window
 +        REQUIREMENT 8: Status update and task scheduling in same transaction
++                      using transaction.on_commit() to ensure task is only
++                      enqueued after successful commit
 +        """
 +        cooldown_minutes = getattr(settings, 'PUMP_COOLDOWN_MINUTES', 15)
 +        max_runtime = getattr(settings, 'PUMP_MAX_RUNTIME_SECONDS', 30)
++        
++        # Store task info to return after transaction commits
++        task_info = {'task_id': None, 'pump_id': None}
 +        
 +        try:
 +            # REQUIREMENT 1: Pessimistic locking with transaction.atomic()
@@ -954,27 +959,41 @@ index 0000000..2d6eb06
 +                    }
 +                
 +                # REQUIREMENT 8: Update pump status within the same transaction
-+                # This ensures the task is only scheduled if the status update succeeds
 +                pump.status = Pump.Status.RUNNING
 +                pump.last_activation_time = timezone.now()
 +                pump.save(update_fields=['status', 'last_activation_time', 'updated_at'])
 +                
-+                # REQUIREMENT 5 & 8: Queue Celery task within the transaction
-+                # The task will be sent when the transaction commits
-+                task = activate_pump_task.delay(
-+                    pump_id=pump.id,
-+                    triggering_reading_id=reading.id,
-+                    duration_seconds=max_runtime
-+                )
++                # Store pump info for the on_commit callback
++                pump_id = pump.id
++                reading_id = reading.id
++                task_info['pump_id'] = pump_id
++                
++                # REQUIREMENT 8: Use transaction.on_commit() to ensure task is only
++                # enqueued AFTER the transaction successfully commits.
++                # This prevents the race condition where the task is sent but
++                # the transaction rolls back.
++                def enqueue_task():
++                    task = activate_pump_task.delay(
++                        pump_id=pump_id,
++                        triggering_reading_id=reading_id,
++                        duration_seconds=max_runtime
++                    )
++                    task_info['task_id'] = str(task.id) if task.id else 'eager-mode'
++                    logger.info(
++                        f"Pump activation task queued: {task_info['task_id']} "
++                        f"for pump_id={pump_id}"
++                    )
++                
++                transaction.on_commit(enqueue_task)
 +                
 +                logger.info(
-+                    f"Pump activation task queued: {task.id} "
-+                    f"for pump {pump.hardware_id}"
++                    f"Pump {pump.hardware_id} status set to RUNNING, "
++                    f"task will be enqueued on commit"
 +                )
 +                
 +                return {
 +                    'status': 'activated',
-+                    'task_id': str(task.id) if task.id else 'eager-mode',
++                    'task_id': 'pending-commit',  # Will be updated after commit
 +                    'pump_id': pump.id,
 +                    'duration_seconds': max_runtime
 +                }
@@ -1132,6 +1151,8 @@ index 0000000..2d6eb06
 +        else:
 +            duration = max_runtime
 +        
++        task_info = {'task_id': None}
++        
 +        try:
 +            with transaction.atomic():
 +                pump = Pump.objects.select_for_update().get(id=pump_id)
@@ -1152,14 +1173,22 @@ index 0000000..2d6eb06
 +                pump.last_activation_time = timezone.now()
 +                pump.save(update_fields=['status', 'last_activation_time', 'updated_at'])
 +                
-+                task = activate_pump_task.delay(
-+                    pump_id=pump.id,
-+                    duration_seconds=duration
-+                )
++                pump_id_copy = pump.id
++                duration_copy = duration
++                
++                # REQUIREMENT 8: Use on_commit to ensure task is enqueued after commit
++                def enqueue_task():
++                    task = activate_pump_task.delay(
++                        pump_id=pump_id_copy,
++                        duration_seconds=duration_copy
++                    )
++                    task_info['task_id'] = str(task.id) if task.id else 'eager-mode'
++                
++                transaction.on_commit(enqueue_task)
 +                
 +                return JsonResponse({
 +                    'status': 'activated',
-+                    'task_id': str(task.id) if task.id else 'eager-mode',
++                    'task_id': 'pending-commit',
 +                    'duration_seconds': duration
 +                })
 +        
