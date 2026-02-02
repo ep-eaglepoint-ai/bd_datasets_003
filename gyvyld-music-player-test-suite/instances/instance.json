@@ -1,0 +1,12 @@
+{
+            "instance_id": "GYVYLD",
+            "problem_statement": " Write a comprehensive Jest/RTL test suite for a React music player that catches bugs related to track navigation, progress bar synchronization, volume controls, and state management between trackIndex and trackIndexFromList.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/gyvyld-music-player-test-suite",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
