@@ -1,0 +1,11 @@
+{
+            "instance_id": "EZCRJN",
+            "problem_statement": "Develop a Python module to define, calculate, and manage features that monitor customer behavior and engagement patterns on a large-scale e-commerce platform. The goal is to provide actionable and measurable features that help detect early signs of customers losing interest. This will enable targeted marketing, retention strategies, and personalized campaigns. The module should focus strictly on defining and calculating customer activity features, without implementing any predictive models or machine learning algorithms.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ezcrjn-customer-activity-feature-module-for-e-commerce-platform",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
