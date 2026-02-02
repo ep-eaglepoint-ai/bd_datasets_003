@@ -1,0 +1,11 @@
+{
+            "instance_id": "733HPH",
+            "problem_statement": "Create a PyTorch module for Root Mean Square Layer Normalization (RMSNorm) that is robust, flexible, and suitable for large-scale deep learning models, covering common and edge cases for stability and performance.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/733hph-advanced-rmsnorm-implementation-for-deep-transformers",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        

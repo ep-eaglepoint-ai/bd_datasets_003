@@ -1,0 +1,5 @@
+
+        # Evaluation Script
+
+This script is used to run the before and after tests and generate a json report. You should write your evaluation logic here in this folder and remove this README afterward.
+*YOUR SCRIPT IN SIMILAR LANGUAGE AS THE PROJECT*
