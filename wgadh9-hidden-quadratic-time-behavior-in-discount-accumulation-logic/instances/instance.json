@@ -1,0 +1,13 @@
+{
+            "instance_id": "WGADH9",
+            "problem_statement": "The refactored implementation of compute_final_prices preserves output correctness but violates the stated O(n + m) time complexity requirement under adversarial inputs.
+
+Specifically, the discount accumulation logic uses list concatenation to build per-route discount sequences. This introduces repeated list copying, causing quadratic time behavior for routes with many associated discounts and unnecessary memory churn in a latency-sensitive production path.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/wgadh9-hidden-quadratic-time-behavior-in-discount-accumulation-logic",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
