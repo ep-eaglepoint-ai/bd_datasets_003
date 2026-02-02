@@ -1,0 +1,11 @@
+{
+            "instance_id": "8QJI0F",
+            "problem_statement": "Cryptographic multi-sig implementations in Python are error-prone: models often introduce timing leaks via non-constant comparisons, use weak random sources, mishandle nonce management, produce malleable signatures, skip strict input checks, or expose secrets in exceptions/logs. The correct solution demands secure randomness, careful constant-time patterns (where feasible), proper aggregation math, replay defenses, and robust validation — all while maintaining clean, exception-safe code.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/8qji0f-secure-2-of-3-multi-signature-transaction-implementation-in-python-for-cryptocurrency-wallet",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
