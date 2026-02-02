@@ -1,9 +1,46 @@
 
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
+services:
   app:
     build: .
-    command: pytest -q tests
+    working_dir: /app/repository_after/backend
+    command: python manage.py runserver 0.0.0.0:8000
     volumes:
       - .:/app
+    ports:
+      - "8000:8000"
+    
+  test:
+    build: .
+    working_dir: /app
+    command: >
+      sh -c "
+        echo 'Running backend tests...' &&
+        python -m pytest tests/backend/ -v &&
+        echo '' &&
+        echo 'Running frontend tests...' &&
+        cd /app/repository_after/frontend &&
+        ./node_modules/.bin/vitest run --reporter=verbose
+      "
+    volumes:
+      - .:/app
+    environment:
+      - PYTHONPATH=/app/repository_after/backend
+      - DJANGO_SETTINGS_MODULE=login_analyzer.settings
+
+  evaluate:
+    build: .
+    working_dir: /app
+    command: >
+      sh -c "
+        echo '🔍 Starting Login Attempt Analyzer evaluation from host...' &&
+        echo '⚠️  NOTE: Docker commands cannot run inside Docker containers' &&
+        echo '📝 Please run from host: python3 evaluation/evaluation.py' &&
+        echo '🔗 This will generate reports in evaluation/ directory' &&
+        echo '✅ Reports will be available at evaluation/YYYY-MM-DD/HH-MM-SS/'
+      "
+    volumes:
+      - .:/app
+      - ./evaluation:/app/evaluation
+    environment:
+      - PYTHONPATH=/app/repository_after/backend
+      - DJANGO_SETTINGS_MODULE=login_analyzer.settings
