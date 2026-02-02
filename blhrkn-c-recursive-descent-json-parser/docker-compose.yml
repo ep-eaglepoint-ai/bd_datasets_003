@@ -10,8 +10,8 @@ services:
       else
         cd repository_before && mkdir -p build && cd build && cmake .. && make;
       fi &&
-      cd /app && TARGET_REPO=repository_before pytest -q tests
-      "
+      cd /app && TARGET_REPO=repository_before pytest -q tests || true
+      " 
 
   test-after:
     build: .
