@@ -1,0 +1,12 @@
+{
+            "instance_id": "KLF6PY",
+            "problem_statement": "The e-commerce checkout flow breaks frequently after deployments due to lack of automated testing. QA manually tests the cart-to-confirmation journey before each release, but regressions slip through because edge cases aren't covered. The flow spans four pages: cart review with promo codes, shipping address with validation, payment via Stripe Elements, and order confirmation. Recent incidents include broken quantity updates, payment form not submitting, and shipping validation bypassed. The checkout components are in src/pages/ and src/components/, with API calls in src/api/. Payment uses Stripe Elements which renders in an iframe. The team needs comprehensive E2E tests that run in CI without flakiness and complete in under 2 minutes.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/klf6py-e-commerce-checkout-flow-e2e-testing-with-playwright",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
