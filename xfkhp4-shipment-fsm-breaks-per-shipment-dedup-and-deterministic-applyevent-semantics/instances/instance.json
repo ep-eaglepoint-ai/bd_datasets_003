@@ -1,0 +1,15 @@
+{
+            "instance_id": "XFKHP4",
+            "problem_statement": "The submitted JavaScript implementation attempts to solve a deterministic, adversarial shipment state–tracking problem involving out-of-order events, duplicates, and terminal states. While the solution shows strong effort and introduces non-trivial data structures (heaps, ordered buffers), it does not correctly solve the core problem under valid scenarios explicitly required by the prompt.
+
+The most significant failures are in deduplication scope and event application semantics, which cause incorrect behavior across shipments and ambiguous outcomes for callers. These flaws lead to shipments incorrectly ignoring valid events, returning misleading results from applyEvent, and violating the isolation guarantees between independent shipment streams.
+
+Secondary issues exist around API contract fidelity and observability, but even if those were corrected, the core correctness problems would remain.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/xfkhp4-shipment-fsm-breaks-per-shipment-dedup-and-deterministic-applyevent-semantics",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
