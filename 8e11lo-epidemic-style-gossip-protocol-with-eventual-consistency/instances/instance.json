@@ -1,0 +1,13 @@
+{
+            "instance_id": "8E11LO",
+            "problem_statement": "You are a Platform Engineer building a service discovery system for a microservices architecture with 100+ nodes. The current centralized service registry (using a single database) has become a bottleneck and single point of failure, causing 15+ minutes of downtime per month when the registry crashes. During a recent incident, 50 services couldn't discover each other, resulting in a complete platform outage costing $200K in lost revenue.
+
+Your task is to implement a decentralized gossip protocol in `gossip.py` that disseminates cluster membership information across nodes using epidemic-style communication. The protocol must achieve eventual consistency, converge to a consistent state within O(log N) rounds, support arbitrary metadata per node (not just membership), and handle network partitions gracefully.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/8e11lo-epidemic-style-gossip-protocol-with-eventual-consistency",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
