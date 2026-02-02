@@ -1,0 +1,11 @@
+{
+            "instance_id": "FBYM99",
+            "problem_statement": "Create a robust, deterministic, and maintainable test suite for a highly stateful and configurable spectral normalization implementation in PyTorch. The task requires validating correctness across multiple normalization modes, state transitions, caching and scheduling behaviors, gradient flow, and integration with complex model hierarchies, while avoiding flaky or non-reproducible tests.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/fbym99-design-and-implement-a-deterministic-test-suite-for-a-complex-spectral-normalization-system",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
