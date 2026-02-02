@@ -1,0 +1,11 @@
+{
+            "instance_id": "E6BOS4",
+            "problem_statement": "We require a new administrative capability to manage long-running data exports and high-intensity reporting tasks without impacting the performance of the primary web application. This feature must provide users with a centralized dashboard to submit tasks with varying business priorities and track their execution progress in real-time across a distributed worker pool using celery, fast api and react",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/e6bos4-clelery-task-priority-dashboard",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
