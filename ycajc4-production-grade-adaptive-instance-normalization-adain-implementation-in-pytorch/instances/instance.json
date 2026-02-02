@@ -1,0 +1,11 @@
+{
+            "instance_id": "YCAJC4",
+            "problem_statement": "Implement a single-file PyTorch module for Adaptive Instance Normalization (AdaIN) that performs feature-level style transfer. The module must handle edge cases, enforce input validation, support masked regions, batch broadcasting, mixed precision, and style strength interpolation. Provide both a functional API and an nn.Module wrapper, with a minimal self-test demonstrating correctness.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ycajc4-production-grade-adaptive-instance-normalization-adain-implementation-in-pytorch",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
