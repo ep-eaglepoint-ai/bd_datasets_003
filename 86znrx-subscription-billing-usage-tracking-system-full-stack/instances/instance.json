@@ -1,0 +1,11 @@
+{
+            "instance_id": "86ZNRX",
+            "problem_statement": "A SaaS startup offering API-based services needs a reliable subscription billing and usage tracking system to replace a manual, spreadsheet-based process that caused incorrect invoices and inconsistent usage calculations. The system must accurately track subscriptions, record usage events, and generate monthly invoices while supporting concurrent access by internal teams during peak billing periods. Data accuracy and consistency are critical, as billing errors directly impact revenue and customer trust.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/86znrx-subscription-billing-usage-tracking-system-full-stack",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
