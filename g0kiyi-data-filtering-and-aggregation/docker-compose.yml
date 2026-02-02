@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  base:
+    build: .
+    volumes:
+      - .:/app
+    working_dir: /app
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  before-after:
+    extends: base
+    command: python3 tests/run_before_after.py
+
+  test-after:
+    extends: base
+    command: python3 -m unittest tests.after_test -v
+
+  evaluation:
+    extends: base
+    command: python3 evaluation/evaluation.py
