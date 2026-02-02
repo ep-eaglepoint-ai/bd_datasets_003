@@ -1,0 +1,11 @@
+{
+            "instance_id": "Z14UL0",
+            "problem_statement": "You are a Software Engineer at a consulting firm with 100 employees processing 1,000 expense submissions/month. Current email-based reimbursement takes 3-4 weeks from submission to payment, has 30% categorization error rate, and 15% receipt loss. Finance spends 40 hours/week manually entering data from email attachments, validating expenses, and tracking approvals across spreadsheets. Build automated expense tracking with structured approval workflow (Employee → Manager → Finance → Payment), secure receipt storage with image upload, real-time status tracking, and automated reporting. Implement full-stack application with Go Gin, PostgreSQL, React with Ant Design, MinIO, Docker processing 100+ concurrent submissions without data loss, enforcing approval sequence, generating monthly reports with < 2s query time.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/z14ul0-expense-tracking-and-reimbursement-system-with-approval-workflow-and-receipt-management",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
