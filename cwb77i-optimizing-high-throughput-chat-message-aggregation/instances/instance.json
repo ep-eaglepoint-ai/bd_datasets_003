@@ -1,0 +1,12 @@
+{
+            "instance_id": "CWB77I",
+            "problem_statement": "The current aggregator uses a global mutex for every message add, causing severe lock contention under high concurrency (thousands of WebSocket goroutines). Buffers grow unbounded if Flush lags, leading to OOM risk. Mid-tier models often keep the global lock, use channels incorrectly, or forget to bound memory. Correct optimizations must use sharded locks or lock-free patterns, bounded per-room buffers, and efficient flushing.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/cwb77i-optimizing-high-throughput-chat-message-aggregation",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
