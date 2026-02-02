@@ -1,10 +1,5 @@
 services:
   app:
     build: .
-
-  node:
-    build: .
-    working_dir: /app
-    entrypoint: ["node"]
     volumes:
       - ./evaluation:/app/evaluation
