@@ -1,0 +1,11 @@
+{
+            "instance_id": "BWDD86",
+            "problem_statement": "In offline-first apps, sending the "Final State" (e.g., "Item A = 5") is dangerous because it overwrites concurrent changes made by other users. The correct approach is sending "Intents" (e.g., "Item A -= 1"). However, this introduces the Double-Apply Trap: if the network drops the ACK, the client retries the upload. A naive server will apply "Item A -= 1" twice, corrupting the data. The solution requires tracking processed Event IDs to ignore duplicates. Additionally, the Atomicity Trap occurs when one valid event and one invalid event (causing negative stock) are in the same batch. The system must rollback/reject the whole batch to maintain consistency.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/bwdd86-offline-first-sync-event-sourcing-idempotency",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
