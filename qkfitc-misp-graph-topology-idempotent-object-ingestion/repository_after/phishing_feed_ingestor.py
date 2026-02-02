@@ -87,9 +87,9 @@ class PhishingFeedIngestor:
             "failed_entries": 0
         }
         
-        # Track objects seen in this batch for within-batch deduplication
+        # Track objects/attributes seen in this batch for within-batch deduplication
         seen_files_in_batch = {}  # sha256 -> file_obj
-        seen_urls_in_batch = {}   # url -> url_obj
+        seen_urls_in_batch = {}   # url -> url_attr
 
         if not data:
             logger.info("No data provided for ingestion.")
@@ -141,33 +141,34 @@ class PhishingFeedIngestor:
                     # Cache for within-batch deduplication
                     seen_files_in_batch[sha256.lower()] = file_obj
                 
-                # 3. Handle URL Object (Idempotency: check by value, including within-batch)
+                # 3. Handle URL Attribute (Idempotency: check by value, including within-batch)
                 # First check if we've already created this URL in this batch
-                url_obj = seen_urls_in_batch.get(url)
-                if not url_obj:
+                url_attr = seen_urls_in_batch.get(url)
+                if not url_attr:
                     # Then check if it exists in the event
-                    url_obj = self._get_existing_url_object(event, url)
-                    if not url_obj:
-                        url_obj = MISPObject('url')
-                        url_obj.add_attribute('url', value=url)
-                        url_obj = self.misp.add_object(event.id, url_obj, pythonify=True)
-                        stats["added_objects"] += 1
+                    url_attr = self._get_existing_url_attribute(event, url)
+                    if not url_attr:
+                        url_attr = MISPAttribute()
+                        url_attr.type = 'url'
+                        url_attr.value = url
+                        url_attr = self.misp.add_attribute(event.id, url_attr, pythonify=True)
+                        stats["added_attributes"] += 1
                         # Update local state
-                        event.objects.append(url_obj)
+                        event.attributes.append(url_attr)
                     # Cache for within-batch deduplication
-                    seen_urls_in_batch[url] = url_obj
+                    seen_urls_in_batch[url] = url_attr
 
-                # 4. Graph Topology: File Object -> downloaded-from -> URL Object
-                # Source: File Object UUID, Target: URL Object UUID (object→object reference)
-                if not self._relationship_exists(file_obj, url_obj.uuid, 'downloaded-from'):
-                    self.misp.add_object_reference(file_obj.uuid, url_obj.uuid, 'downloaded-from')
+                # 4. Graph Topology: File Object -> downloaded-from -> URL Attribute
+                # Source: File Object UUID, Target: URL Attribute UUID
+                if not self._relationship_exists(file_obj, url_attr.uuid, 'downloaded-from'):
+                    self.misp.add_object_reference(file_obj.uuid, url_attr.uuid, 'downloaded-from')
                     stats["added_relationships"] += 1
                     # Update local relationship state to avoid redundant calls in same batch
                     if not hasattr(file_obj, 'ObjectReference'):
                         file_obj.ObjectReference = []
                     # We don't need the full reference object for the check, just the metadata
                     ref_mock = MISPObjectReference()
-                    ref_mock.referenced_uuid = url_obj.uuid
+                    ref_mock.referenced_uuid = url_attr.uuid
                     ref_mock.relationship_type = 'downloaded-from'
                     file_obj.ObjectReference.append(ref_mock)
 
@@ -195,13 +196,11 @@ class PhishingFeedIngestor:
                         return obj
         return None
 
-    def _get_existing_url_object(self, event: MISPEvent, url: str) -> Optional[MISPObject]:
-        """Checks if a URL object with the given value already exists in the event."""
-        for obj in event.objects:
-            if obj.name == 'url':
-                for attr in obj.attributes:
-                    if attr.object_relation == 'url' and attr.value == url:
-                        return obj
+    def _get_existing_url_attribute(self, event: MISPEvent, url: str) -> Optional[MISPAttribute]:
+        """Checks if a URL attribute with the given value already exists in the event."""
+        for attr in event.attributes:
+            if attr.type == 'url' and attr.value == url:
+                return attr
         return None
 
     def _relationship_exists(self, file_obj: MISPObject, target_uuid: str, relationship_type: str) -> bool:
