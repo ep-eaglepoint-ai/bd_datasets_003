@@ -1,0 +1,15 @@
+[
+    {
+        "filename": "valid.exe",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "payload_delivery_url": "http://valid.com/file.exe"
+    },
+    {
+        "filename": "invalid_sha.exe",
+        "sha256": "too-short",
+        "payload_delivery_url": "http://valid.com/invalid_sha.exe"
+    },
+    {
+        "filename": "missing_fields.exe"
+    }
+]

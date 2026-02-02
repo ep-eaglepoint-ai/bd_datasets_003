@@ -1,0 +1,9 @@
+[
+    {
+        "filename": "bad.exe",
+        "sha256": "invalid"
+    },
+    {
+        "payload_delivery_url": "ftp://unsupported"
+    }
+]
