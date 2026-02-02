@@ -1,0 +1,11 @@
+{
+            "instance_id": "P9AZPG",
+            "problem_statement": "Build a personal movie watchlist application with SvelteKit and TypeScript, using TMDB API for movie search/details, Tailwind CSS for styling, and Drizzle ORM with SQLite for data persistence. Implement cookie‑based authentication with bcrypt hashing, allow users to track and rate movies across custom lists, and provide viewing‑history‑based recommendations. The app must deliver rich movie information, intuitive list management, and seamless search‑to‑add functionality for film enthusiasts.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/p9azpg-movie-watchlist",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
