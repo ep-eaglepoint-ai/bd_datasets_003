@@ -1,11 +1,19 @@
 {
-            "instance_id": "MFQTGD",
-            "problem_statement": "Implement a peer-to-peer credit settlement engine using React and Express. The system must handle multi-user 'Group Payments' where a single user pays for a group's expenses, requiring an atomic multi-row balance update to prevent double-spending or credit-ghosting.",
-            "base_commit": "repository_before/",
-            "test_patch": "tests/",
-            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/mfqtgd-trustpay-p2p-settlement-engine",
-            "environment_setup": "Dockerfile",
-            "FAIL_TO_PASS": [],
-            "PASS_TO_PASS": []
-        }
-        
+  "instance_id": "MFQTGD",
+  "problem_statement": "Implement a peer-to-peer credit settlement engine using React and Express. The system must handle multi-user 'Group Payments' where a single user pays for a group's expenses, requiring an atomic multi-row balance update to prevent double-spending or credit-ghosting.",
+  "base_commit": "repository_before/",
+  "test_patch": "tests/",
+  "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/mfqtgd-trustpay-p2p-settlement-engine",
+  "environment_setup": "Dockerfile",
+  "FAIL_TO_PASS": [
+    "TrustPay Group Settlement Engine > Edge: rejects non-integer or non-positive totalCents",
+    "TrustPay Group Settlement Engine > Edge: rejects empty participants and payer included in participants",
+    "TrustPay Group Settlement Engine > Edge: participant validation (non-existent or inactive) aborts the whole transaction",
+    "TrustPay Group Settlement Engine > Edge: duplicate participantIds do not double-credit (deduped) and split uses unique participants",
+    "TrustPay Group Settlement Engine > Edge: remainder split is deterministic and sums exactly to totalCents",
+    "TrustPay Group Settlement Engine > Requirement 6 (Partial Failure): simulated DB error halfway rolls back payer + participant balances",
+    "TrustPay Group Settlement Engine > Requirement 7 (Race Condition): two concurrent settlements, only one succeeds, payer never goes negative",
+    "TrustPay frontend (root tests/) > renders the wizard header after users load"
+  ],
+  "PASS_TO_PASS": []
+}

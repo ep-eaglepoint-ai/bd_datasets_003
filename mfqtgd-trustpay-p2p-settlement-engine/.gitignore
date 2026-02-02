@@ -10,3 +10,12 @@ node_modules/
 # OS
 .DS_Store
 evaluation/*.json
+evaluation/reports/report.json
+
+# Build artifacts
+repository_after/frontend/dist/
+**/dist/
+
+# Local databases
+**/*.db
+**/*.db-journal

@@ -1,9 +1,43 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=file:./prisma/dev.db
+    working_dir: /app/repository_after/backend
+    command: npm run dev
+    ports:
+      - "3001:3001"
 
-        # Docker Compose file for running tests. You should customize this as needed.
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=development
+    working_dir: /app/repository_after/frontend
+    command: npm run dev -- --host 0.0.0.0 --port 5173
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
 
-        services:
-  app:
-    build: .
-    command: pytest -q tests
+  test-after:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=test
+    command: npm test
+
+  evaluation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=test
+    command: npm run evaluation
     volumes:
-      - .:/app
+      - ./evaluation/reports:/app/evaluation/reports
