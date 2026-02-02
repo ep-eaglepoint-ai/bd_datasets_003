@@ -1,0 +1,12 @@
+{
+            "instance_id": "GVRQTK",
+            "problem_statement": "Encountered memory management issues while working on a legacy C++ codebase that predates C++11 smart pointers. The system currently uses raw pointers with manual new and delete calls throughout the networking module in src/net/connection.cpp and src/net/session.cpp, where connection objects need to be shared across multiple handler callbacks. The goal is to introduce a reference-counted smart pointer to manage these shared resources automatically.
+The system needs to handle multiple handlers holding references to the same connection without double-free errors, clean up connection resources when all handlers are done, and remain thread-safe since handlers run on different worker threads. QA reported that stress testing with 1000 concurrent connections causes segmentation faults after approximately 15 minutes, valgrind shows 47 instances of invalid memory access in the connection cleanup path, and the server occasionally leaks memory when connections are abruptly terminated.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/gvrqtk-shared-pointer-cpp",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
