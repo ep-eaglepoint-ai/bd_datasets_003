@@ -1,0 +1,11 @@
+{
+            "instance_id": "S8A2KP",
+            "problem_statement": "Build a HIPAA‑compliant healthcare platform using React 18 with TypeScript and a NestJS/GraphQL backend that supports patient appointment booking, Twilio‑based video consultations, prescription management, and secure medical record access. Implement AES‑256 encryption for PHI at rest, multi‑factor authentication, PostgreSQL/TypeORM for data, Redis for sessions, and deploy on AWS with HIPAA‑eligible services. The platform must provide comprehensive scheduling tools, patient dashboards, secure messaging, and EHR integration for multi‑practice, multi‑modality healthcare delivery.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/s8a2kp-health-care-platform",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
