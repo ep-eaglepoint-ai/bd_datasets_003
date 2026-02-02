@@ -1,8 +1,26 @@
+FROM python:3.11-slim
 
-        # Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
+# Install CMake and C++ compiler
+RUN apt-get update && apt-get install -y \
+    cmake \
+    g++ \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
-        FROM python:3.11-slim
 WORKDIR /app
 COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
+
+# Install python dependencies (pytest)
+RUN pip install --no-cache-dir pytest
+
+# Create build directories
+RUN mkdir -p repository_before/build && \
+    mkdir -p repository_after/build
+
+# We will build in the command script or entrypoint, 
+# but for now let's make the CMD generic or specific to what docker-compose expects.
+# The user wants "docker compose run --rm test-after".
+# So the command should probably default to running tests with a target repo.
+
+# Default command (can be overridden)
 CMD ["pytest", "-q", "tests"]

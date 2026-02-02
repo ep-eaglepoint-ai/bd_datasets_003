@@ -1,9 +1,30 @@
-
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
-  app:
+services:
+  test-before:
     build: .
-    command: pytest -q tests
     volumes:
       - .:/app
+    command: >
+      bash -c "
+      if [ ! -f repository_before/CMakeLists.txt ]; then
+        echo 'No CMakeLists.txt in repository_before. Skipping build.';
+      else
+        cd repository_before && mkdir -p build && cd build && cmake .. && make;
+      fi &&
+      cd /app && TARGET_REPO=repository_before pytest -q tests
+      "
+
+  test-after:
+    build: .
+    volumes:
+      - .:/app
+    command: >
+      bash -c "
+      cd repository_after && mkdir -p build && cd build && cmake .. && make &&
+      cd /app && TARGET_REPO=repository_after pytest -q tests
+      "
+
+  evaluation:
+    build: .
+    volumes:
+      - .:/app
+    command: python3 evaluation/evaluation.py
