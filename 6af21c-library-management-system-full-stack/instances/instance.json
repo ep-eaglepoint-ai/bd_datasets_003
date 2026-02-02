@@ -1,0 +1,18 @@
+{
+            "instance_id": "6AF21C",
+            "problem_statement": "You are building a web-based Library Management System for a mid-sized community library.
+The previous paper-based and spreadsheet-based system caused:
+Inconsistent book availability data
+Books appearing as “available” when already borrowed
+Conflicts when multiple librarians processed loans at the same time
+Missing or incorrect borrowing history
+The library now needs a reliable, concurrent-safe web application to manage books and borrowing activity.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/6af21c-library-management-system-full-stack",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
