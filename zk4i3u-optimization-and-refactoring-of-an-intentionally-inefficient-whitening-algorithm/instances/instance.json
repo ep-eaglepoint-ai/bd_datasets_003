@@ -1,0 +1,11 @@
+{
+            "instance_id": "ZK4I3U",
+            "problem_statement": "The current whitening implementation is  unoptimized, relying on excessive Python-level loops, redundant memory operations, and manual linear algebra, resulting in poor performance and maintainability. The task is to refactor and optimize the code into a clean, efficient, and idiomatic numerical implementation while preserving its exact functionality, API, and numerical behavior.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/zk4i3u-optimization-and-refactoring-of-an-intentionally-inefficient-whitening-algorithm",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
