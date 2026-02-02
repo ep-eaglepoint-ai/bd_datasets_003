@@ -1,0 +1,11 @@
+{
+            "instance_id": "BLHRKN",
+            "problem_statement": "The data pipeline team reports that the JSON parser crashes when processing deeply nested configuration files from partner integrations. Stack traces show segmentation faults at 500+ nesting levels, and memory profiling reveals the parser allocates 3-4x the input size due to excessive string copying. Processing a 50KB API response takes 47ms instead of the expected <5ms, and large array parsing exhibits O(n²) behavior causing exponential slowdown. The parser also corrupts Unicode characters in international product names, outputting garbled text for \uXXXX escape sequences. Core logic is in json_parser.cpp and lexer.cpp.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/blhrkn-c-recursive-descent-json-parser",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
