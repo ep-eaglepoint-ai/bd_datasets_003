@@ -34,9 +34,9 @@ I ran the test suite against repository_after. All requirement-mapped tests pass
 We implemented a minimal PROXY protocol v2 reader in pure Go: validate the signature, read the length, read exactly that many bytes, parse IPv4 or IPv6 addresses and ports with BigEndian, and wrap the connection so the app sees a normal net.Conn with the correct RemoteAddr and the rest of the stream unchanged. No external libs, no lazy parsing—handshake at wrap time, then transparent forwarding. This matches how production L4 sidecars and gateways handle PROXY v2 and keeps the code easy to reason about and test.
 
 ### 12. Infrastructure and Tooling
-- **go.work** at project root so `go test ./tests` and `go run ./evaluation/evaluation.go` work from `/app` without `-w` path issues on Windows/Git Bash or AWS builds.
+- **go.work** at project root so `go test -timeout 10s -v ./tests` and `go run ./evaluation/evaluation.go` work from `/app` without `-w` path issues on Windows/Git Bash or AWS builds.
 - **Docker** single `app` service with `working_dir: /app`, `REPO_PATH` set in environment. No quoted commands.
-- **Evaluation** runs only against `repository_after` (no `repository_before`). Report schema simplified to After and Comparison only.
+- **Evaluation** runs only against `repository_after` (no `repository_before`). Before is a baseline placeholder with success: false, exit_code: 1, tests: [].
 - **Evaluation deadlock fix**: read stderr in a goroutine while consuming stdout in the main goroutine; previously blocking on `ReadAll(stderr)` before reading stdout caused a deadlock when the go test stdout buffer filled.
 - **.gitignore** updated for Go build artifacts, IDE files, evaluation outputs, debug logs, and OS cruft. `go.work` is committed for the workspace setup.
 - **TestHandshakeBlocksUntilComplete** sends the header in 2 chunks instead of byte-by-byte to keep run time low while still verifying that payload is blocked until the full header is parsed. Added 2s timeouts on WrapProxyConn and Read so the test fails fast instead of hanging if either blocks.
