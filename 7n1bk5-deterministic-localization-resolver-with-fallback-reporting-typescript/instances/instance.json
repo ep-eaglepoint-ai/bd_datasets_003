@@ -1,0 +1,11 @@
+{
+            "instance_id": "7N1BK5",
+            "problem_statement": "Build a TypeScript module that selects the best localized string for a given translation key. The module receives a translation map (which may be incomplete), a list of user-preferred locales in priority order, and a default locale. It must choose the first available translation using a clear fallback strategy: try preferred locales first, then the default locale. If no translation can be found, it must fail safely without throwing and return a structured result explaining which locales were attempted and why resolution failed. The module must be deterministic, strongly typed, and safe to use in both frontend and backend systems.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/7n1bk5-deterministic-localization-resolver-with-fallback-reporting-typescript",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
