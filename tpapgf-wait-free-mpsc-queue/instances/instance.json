@@ -1,0 +1,11 @@
+{
+            "instance_id": "TPAPGF",
+            "problem_statement": "You are a Systems Engineer building a high-performance logging library for a latency-sensitive trading system processing 50,000 trades/second. The current queue implementation uses mutexes, causing priority inversion: high-priority trading threads are blocked waiting for low-priority logging threads to release locks. This causes latency spikes exceeding 100 microseconds, resulting in missed trading opportunities worth $10K+ per incident and regulatory violations.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/tpapgf-wait-free-mpsc-queue",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
