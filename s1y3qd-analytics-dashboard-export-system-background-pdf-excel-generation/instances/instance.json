@@ -1,0 +1,11 @@
+{
+            "instance_id": "S1Y3QD",
+            "problem_statement": "The analytics dashboard needs export functionality for transaction data, but current architecture cannot handle large datasets. Users report timeouts when exporting filtered views exceeding a few thousand rows. The system lacks background processing capability, and there's no way to track export progress or notify users when large exports complete. Finance team requires PDF reports with visual charts for presentations, while data analysts need Excel files with category breakdowns for further analysis. Exports must support up to 100,000 rows with filters for date range and category. Core transaction data lives in services/transaction_service.py with existing query methods, and user authentication is handled in routes/ endpoints.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/s1y3qd-analytics-dashboard-export-system-background-pdf-excel-generation",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
