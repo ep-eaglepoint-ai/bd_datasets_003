@@ -7,6 +7,7 @@ const crypto = require("crypto");
 const ROOT = path.resolve(__dirname, "..");
 const REPORTS_DIR = path.join(__dirname, "reports");
 const REPORT_PATH = path.join(REPORTS_DIR, "report.json");
+const REPORT_PATH_FLAT = path.join(__dirname, "report.json");
 
 function nowIso() {
   return new Date().toISOString();
@@ -63,6 +64,9 @@ function main() {
 
   fs.writeFileSync(REPORT_PATH, JSON.stringify(report, null, 2));
   process.stdout.write(`Wrote ${REPORT_PATH}\n`);
+  // Some CI wrappers search for JSON under evaluation/ directly.
+  fs.writeFileSync(REPORT_PATH_FLAT, JSON.stringify(report, null, 2));
+  process.stdout.write(`Wrote ${REPORT_PATH_FLAT}\n`);
   return afterPassed ? 0 : 1;
 }
 

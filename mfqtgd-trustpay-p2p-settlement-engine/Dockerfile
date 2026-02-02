@@ -18,10 +18,14 @@ COPY tests ./tests
 COPY repository_after/backend/package.json ./repository_after/backend/package.json
 COPY repository_after/backend/package-lock.json ./repository_after/backend/package-lock.json
 WORKDIR /app/repository_after/backend
-RUN npm ci --no-audit --no-fund
+# Backend has postinstall: prisma generate, but schema.prisma isn't copied yet.
+# Install deps without running lifecycle scripts, then generate after copying schema.
+RUN npm ci --no-audit --no-fund --ignore-scripts
 
 WORKDIR /app
 COPY repository_after/backend ./repository_after/backend
+WORKDIR /app/repository_after/backend
+RUN npx prisma generate --schema=./prisma/schema.prisma
 
 # Frontend deps + source (frontend tests run via `npm --prefix repository_after/frontend test`)
 COPY repository_after/frontend/package.json ./repository_after/frontend/package.json
