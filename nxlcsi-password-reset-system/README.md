@@ -2,8 +2,8 @@
 
 ## After Test Docker Command
 
-docker compose run --rm --build test
+`docker compose run --rm --build test`
 
 ## Evaluation Docker Command
 
-docker compose run --rm --build evaluation
+`docker compose run --rm --build evaluation`
