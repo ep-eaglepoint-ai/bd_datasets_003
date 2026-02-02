@@ -1,0 +1,11 @@
+{
+            "instance_id": "B8SG4E",
+            "problem_statement": "Create a full-stack web application using Next.js (React) for the frontend, Node.js with Express for the backend, and MongoDB for data storage. The application must implement a robust request replay protection service using nonce and expiry, secure user authentication, role-based access, and protection for sensitive operations. The system should prevent replay attacks, handle expired or invalid requests, and ensure secure communication between client and server.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/b8sg4e-full-stack-secure-web-application-with-replay-protection",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
