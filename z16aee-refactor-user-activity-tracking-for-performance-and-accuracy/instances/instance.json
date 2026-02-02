@@ -1,0 +1,11 @@
+{
+            "instance_id": "Z16AEE",
+            "problem_statement": "The current user activity tracking system suffers from slow API responses, high database load, and occasional incorrect activity counts. The system must be refactored to improve performance while",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/z16aee-refactor-user-activity-tracking-for-performance-and-accuracy",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
