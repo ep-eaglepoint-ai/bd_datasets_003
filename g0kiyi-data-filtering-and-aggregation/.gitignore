@@ -1,7 +1,7 @@
 .gitignore
 
 # Python
-pycache/
+__pycache__/
 *.pyc
 .venv/
 .env
@@ -14,3 +14,5 @@ node_modules/
 evaluation/*.json
 
 evaluation/reports
+
+README.md
