@@ -1,0 +1,11 @@
+{
+            "instance_id": "LCHOUW",
+            "problem_statement": "Webhook delivery tasks are scheduled asynchronously but intermittently disappear before completion under load due to improper lifecycle management. The system must be fixed to ensure tasks run to completion, remain tracked correctly, and are cleaned up after finishing without causing memory leaks.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/lchouw-fix-background-task-lifecycle-management-in-webhook-dispatcher",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
