@@ -1,0 +1,13 @@
+{
+            "instance_id": "H1ELMO",
+            "problem_statement": "You are building a production system that processes user activity events for monitoring and analysis. The system is reviewed by reliability and data teams, so correctness and traceability are mandatory. Events sent by client applications cannot be trusted: they may be duplicated, arrive out of order, be malformed, or be retried later with corrected data.
+
+Your task is to process these events safely, maintain accurate per-user activity summaries, and generate a detailed processing report that explains exactly what happened to every event. Duplicate handling, retry behavior, and activity tracking must remain correct at all times. Any silent data corruption, broken retry handling, or misleading activity data is considered a critical failure.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/h1elmo-reliable-user-activity-event-processing-with-audit-reporting",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
