@@ -1,9 +1,42 @@
-
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
-  app:
+services:
+  backend:
     build: .
-    command: pytest -q tests
+    working_dir: /app/repository_after/backend
+    command: go run main.go
+    ports:
+      - "8080:8080"
     volumes:
       - .:/app
+
+  frontend:
+    build: .
+    working_dir: /app/repository_after/frontend
+    command: sh -c "npm install && npm run dev -- --host"
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+    depends_on:
+      - backend
+
+  tests:
+    build: .
+    command: node --test tests/test-consensus.js
+    environment:
+      - BACKEND_URL=http://backend:8080
+      - FRONTEND_DIR=/app/repository_after/frontend
+    volumes:
+      - .:/app
+    depends_on:
+      - backend
+
+  evaluation:
+    build: .
+    command: node evaluation/evaluation.js
+    environment:
+      - BACKEND_URL=http://backend:8080
+      - DOCKER_CONTAINER=true
+    volumes:
+      - .:/app
+    depends_on:
+      - backend

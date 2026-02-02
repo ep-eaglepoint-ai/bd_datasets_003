@@ -1,11 +1,14 @@
-# WLCFJ9 - Consensus Algorithm Visualizer (Simplified)
+# Consensus Algorithm Visualizer (Simplified)
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Run tests
 
-    ## After Test Docker Command
-    <docker after command here>
+```bash
+docker compose run --rm tests
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+
+## Run evaluations
+
+```bash
+docker compose run --rm evaluation
+```
