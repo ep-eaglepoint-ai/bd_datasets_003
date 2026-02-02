@@ -1,0 +1,11 @@
+{
+            "instance_id": "ZTK83A",
+            "problem_statement": "You are tasked with creating a Python module to manage personal tasks. This module should allow users to define tasks and provide various functions to add, update, and summarize tasks efficiently. The system should track essential task attributes such as title, description, due date, priority, and status. It should be designed to handle edge cases like missing or empty data and provide clear, actionable summaries.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ztk83a-personal-task-tracker-module",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
