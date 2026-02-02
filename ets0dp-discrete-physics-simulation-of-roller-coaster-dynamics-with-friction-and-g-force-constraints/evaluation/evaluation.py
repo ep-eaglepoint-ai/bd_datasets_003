@@ -74,6 +74,43 @@ def parse_pytest_verbose_output(output: str) -> list:
     return tests
 
 
+def parse_unittest_verbose_output(output: str) -> list:
+    """Parse `python -m unittest -v` output into a pytest-like test list."""
+    tests = []
+    for raw in output.splitlines():
+        line = raw.strip()
+
+        # Typical patterns:
+        # test_name (module.ClassName) ... ok
+        # test_name (module.ClassName) ... FAIL
+        # test_name (module.ClassName) ... ERROR
+        if " ... " not in line or "(" not in line or ")" not in line:
+            continue
+
+        left, right = line.split(" ... ", 1)
+        status = right.strip().lower()
+
+        outcome = None
+        if status.startswith("ok"):
+            outcome = "passed"
+        elif status.startswith("fail"):
+            outcome = "failed"
+        elif status.startswith("error"):
+            outcome = "error"
+        elif status.startswith("skipped"):
+            outcome = "skipped"
+
+        if not outcome:
+            continue
+
+        # left = "test_name (module.Class)"
+        test_name = left.split(" ", 1)[0]
+        nodeid = left
+        tests.append({"nodeid": nodeid, "name": test_name, "outcome": outcome})
+
+    return tests
+
+
 def run_evaluation_tests(project_root: Path, tests_dir: Path, timeout_s: int = 120) -> dict:
     """Run pytest for this project and return parsed results.
 
@@ -92,7 +129,17 @@ def run_evaluation_tests(project_root: Path, tests_dir: Path, timeout_s: int = 1
         stdout = result.stdout
         stderr = result.stderr
 
-        tests = parse_pytest_verbose_output(stdout)
+        # If pytest isn't installed, fall back to unittest discovery.
+        if "No module named pytest" in stderr or "No module named 'pytest'" in stderr:
+            cmd_unittest = [sys.executable, "-m", "unittest", "discover", "-s", str(tests_dir), "-v"]
+            result_ut = subprocess.run(cmd_unittest, capture_output=True, text=True, timeout=timeout_s, env=env)
+            stdout = result_ut.stdout
+            stderr = result_ut.stderr
+            tests = parse_unittest_verbose_output(stdout)
+            exit_code = result_ut.returncode
+        else:
+            tests = parse_pytest_verbose_output(stdout)
+            exit_code = result.returncode
 
         summary = {
             "total": len(tests),
@@ -103,8 +150,8 @@ def run_evaluation_tests(project_root: Path, tests_dir: Path, timeout_s: int = 1
         }
 
         return {
-            "success": result.returncode == 0,
-            "exit_code": result.returncode,
+            "success": exit_code == 0,
+            "exit_code": exit_code,
             "tests": tests,
             "summary": summary,
             "stdout": stdout,
@@ -134,28 +181,105 @@ def run_evaluation_tests(project_root: Path, tests_dir: Path, timeout_s: int = 1
 def map_criteria(tests: list) -> dict:
     """Map test outcomes to the project's 8 core requirements."""
 
-    def check(name_fragment: str) -> str:
+    def check_any(name_fragments) -> str:
+        """Return Pass/Fail/Not Run by matching any provided test name fragments."""
+        if isinstance(name_fragments, str):
+            name_fragments = [name_fragments]
+
         for t in tests:
-            if name_fragment in t["name"]:
-                return "Pass" if t["outcome"] == "passed" else "Fail"
+            for frag in name_fragments:
+                if frag in t["name"]:
+                    return "Pass" if t["outcome"] == "passed" else "Fail"
         return "Not Run"
 
+    def check_no_external_engines() -> str:
+        """Req 6: Fail if we detect external physics engines/libraries."""
+
+        denylist = {
+            "pybullet",
+            "bullet",
+            "pymunk",
+            "box2d",
+            "panda3d",
+            "ursina",
+            "pygame",
+            "godot",
+            "unity",
+        }
+
+        # Check requirements.txt if present
+        req_file = Path(__file__).resolve().parent.parent / "requirements.txt"
+        if req_file.exists():
+            try:
+                contents = req_file.read_text(encoding="utf-8", errors="ignore").lower()
+                for name in denylist:
+                    if name in contents:
+                        return "Fail"
+            except Exception:
+                # If we can't read, don't fail the whole evaluation.
+                pass
+
+        # Check imports in repository_after
+        repo_after = Path(__file__).resolve().parent.parent / "repository_after"
+        for py in repo_after.rglob("*.py"):
+            try:
+                txt = py.read_text(encoding="utf-8", errors="ignore").lower()
+            except Exception:
+                continue
+            for name in denylist:
+                if f"import {name}" in txt or f"from {name} " in txt:
+                    return "Fail"
+
+        return "Pass"
+
     return {
-        # 1) Numerical integration + stall detection
-        "numerical_integration_and_stall": check("test_stall_on_slope"),
+        # 1) Numerical integration + dt loop
+        "numerical_integration": check_any(
+            [
+                "test_numerical_integration_step_logic",
+                "test_req1_numerical_integration_uses_dt_loop",
+                "test_req1_numerical_integration_uses_dt",
+            ]
+        ),
+        "stall_detection": check_any("test_stall_on_slope"),
         # 2) Drag proportional to v^2
-        "aero_drag_quadratic": check("test_drag_force_quadratic"),
+        "aero_drag_quadratic": check_any("test_drag_force_quadratic"),
         # 3) Rolling friction based on dynamic normal force
-        "friction_uses_dynamic_normal_force": check("test_friction_dynamic_normal_force"),
+        "friction_uses_dynamic_normal_force": check_any("test_friction_dynamic_normal_force"),
         # 4) Circular segments apply centripetal accel v^2/r via curvature
-        "centripetal_logic_on_arcs": check("test_derailment_at_loop_top"),
+        "centripetal_logic_on_arcs": check_any("test_derailment_at_loop_top"),
         # 5) Gravity decomposition (parallel & normal components)
-        "gravity_components_on_slope": check("test_initial_g_force"),
-        # 6) No external physics engine (informational; enforced by dependency policy)
+        "gravity_components_on_slope": check_any("test_initial_g_force"),
+        # 6) No external physics engine
+        "no_external_physics_engine": check_no_external_engines(),
         # 7) Track maximum positive G and enforce limits
-        "positive_g_limit_enforced": check("test_g_limits_exceeded_min"),
-        # 8) Track minimum/negative G and enforce derailment policy when N<0
-        "negative_g_and_derailment": check("test_negative_g_derailment_on_hill"),
+        "positive_g_limit_enforced": check_any(
+            [
+                "test_g_limits_exceeded_max_positive",
+                "test_g_limits_exceeded_max",
+            ]
+        ),
+        # 8) Track minimum/negative G and enforce limits
+        "negative_g_limit_enforced": check_any(
+            [
+                "test_fail_min_g_limit_without_derailment",
+                "test_req8_fail_when_completed_but_min_g_below_configured_limit",
+            ]
+        ),
+        "derailment_risk_detection": check_any("test_negative_g_derailment_on_hill"),
+        # Segment transitions
+        "segment_transition_straight_to_arc": check_any(
+            [
+                "test_physics_continuity_straight_to_arc",
+                "test_segment_transition_straight_to_arc_boundary_physics",
+            ]
+        ),
+        "segment_transition_arc_to_straight": check_any(
+            [
+                "test_segment_transition_arc_to_straight_requires_tangent_continuity",
+                "test_physics_continuity_arc_to_straight_min_g_reasonable",
+            ]
+        ),
     }
 
 
