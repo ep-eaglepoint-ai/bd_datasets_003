@@ -1,8 +1,18 @@
+# Frontend Stage
+FROM node:20-slim AS frontend
+WORKDIR /app/frontend
+COPY repository_after/frontend/package*.json ./
+RUN npm install
+COPY repository_after/frontend ./
+EXPOSE 5173
+CMD ["npm", "run", "dev", "--", "--host"]
 
-        # Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
-
-        FROM python:3.11-slim
+# Backend Stage
+FROM python:3.11-slim AS backend
 WORKDIR /app
-COPY . /app
+COPY repository_after/backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+COPY . .
+ENV PYTHONPATH=/app
+EXPOSE 8000
+CMD ["uvicorn", "repository_after.backend.main:app", "--host", "0.0.0.0", "--port", "8000"]

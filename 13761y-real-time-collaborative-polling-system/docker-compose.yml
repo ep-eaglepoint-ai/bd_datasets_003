@@ -1,9 +1,67 @@
 
-        # Docker Compose file for running tests. You should customize this as needed.
+services:
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
 
-        services:
-  app:
-    build: .
-    command: pytest -q tests
+  backend:
+    build:
+      context: .
+      target: backend
+    ports:
+      - "8000:8000"
     volumes:
       - .:/app
+    environment:
+      - REDIS_HOST=redis
+    depends_on:
+      - redis
+
+  frontend:
+    build:
+      context: .
+      target: frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./repository_after/frontend:/app/frontend
+      - /app/frontend/node_modules
+    depends_on:
+      - backend
+
+  test_before:
+    build:
+      context: .
+      target: backend
+    volumes:
+      - .:/app
+    environment:
+      - REDIS_HOST=redis
+    command: pytest repository_before/tests
+    depends_on:
+      - redis
+
+  test_after:
+    build:
+      context: .
+      target: backend
+    volumes:
+      - .:/app
+    environment:
+      - REDIS_HOST=redis
+    command: pytest repository_after/tests
+    depends_on:
+      - redis
+
+  evaluation:
+    build:
+      context: .
+      target: backend
+    volumes:
+      - .:/app
+    command: python evaluation/evaluate.py
+    depends_on:
+      - test_after
+      - test_before
+
