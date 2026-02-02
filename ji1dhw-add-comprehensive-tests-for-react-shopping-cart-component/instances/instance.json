@@ -1,0 +1,11 @@
+{
+            "instance_id": "JI1DHW",
+            "problem_statement": "The shopping cart component works but lacks automated tests, making regressions likely during future updates. The task is to implement a robust test suite using Jest and React Testing Library to verify cart behavior, including adding items, incrementing quantities, and calculating totals correctly. Tests must ensure checkout data integrity and catch future buggy modifications.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ji1dhw-add-comprehensive-tests-for-react-shopping-cart-component",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
