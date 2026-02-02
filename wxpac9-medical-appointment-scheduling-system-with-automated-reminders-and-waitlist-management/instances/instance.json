@@ -1,0 +1,12 @@
+{
+            "instance_id": "WXPAC9",
+            "problem_statement": "You are a Software Engineer at a medical clinic with 10 doctors across 4 specialties serving 500+ patients/week. Current phone-based scheduling causes 15% double-bookings from manual errors, 10+ minute hold times during peak hours (9-11 AM), and 25% no-show rate costing $50K/year. Build an online booking system preventing double-bookings, sending automated reminders, and managing waitlists. Support 10 doctors with 8 AM-6 PM hours (Monday-Friday), appointment types (15/30/60-minute), 24-hour cancellation policy with $50 late fees. Implement full-stack application with Python Flask, PostgreSQL, React, Redis, Docker handling 100+ concurrent bookings without conflicts, sending reminders at exact times (24h and 2h before), completing booking flow in < 3 seconds.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/wxpac9-medical-appointment-scheduling-system-with-automated-reminders-and-waitlist-management",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
