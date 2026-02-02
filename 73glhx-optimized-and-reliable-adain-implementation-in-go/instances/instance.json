@@ -1,0 +1,11 @@
+{
+            "instance_id": "73GLHX",
+            "problem_statement": "The current Go implementation of Adaptive Instance Normalization (AdaIN) is highly unoptimized, difficult to read, and inefficient due to deeply nested loops, repeated memory accesses, and redundant computations. The goal is to create a functionally equivalent, optimized version that preserves all mathematical behavior, handles masking and alpha blending correctly, and is suitable for large tensors.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/73glhx-optimized-and-reliable-adain-implementation-in-go",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
