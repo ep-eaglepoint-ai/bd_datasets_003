@@ -1,0 +1,11 @@
+{
+            "instance_id": "4JNCJ9",
+            "problem_statement": "Fullstack development of a financial ledger system with strict state consistency. This involves building a React interface and a Prisma-backed API that enforces multi-stage validation within an atomic database transaction to prevent over-refunding during high-concurrency admin actions.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/4jncj9-prisma-banking-nextjs-application",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
