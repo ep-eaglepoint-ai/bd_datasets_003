@@ -1,0 +1,17 @@
+{
+  "name": "legacy-payment-processor",
+  "version": "1.0.0",
+  "description": "Legacy callback-based payment processing module",
+  "main": "processPayment.js",
+  "scripts": {
+    "test": "mocha tests/**/*.js"
+  },
+  "dependencies": {
+    "mysql": "^2.18.1",
+    "nodemailer": "^6.9.7"
+  },
+  "devDependencies": {
+    "mocha": "^10.2.0",
+    "chai": "^4.3.7"
+  }
+}
