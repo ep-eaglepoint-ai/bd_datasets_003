@@ -1,0 +1,11 @@
+{
+            "instance_id": "BR4QPN",
+            "problem_statement": "Develop a minimal, full-stack web application to manage the submission, review, approval, and finalization of internal documents such as policies, reports, and contracts. The system should ensure proper document state transitions, maintain an immutable audit trail, and prevent errors like lost documents or duplicate approvals.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/br4qpn-document-review-approval-system",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
