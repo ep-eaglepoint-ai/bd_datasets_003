@@ -1,0 +1,11 @@
+{
+            "instance_id": "DE1IKU",
+            "problem_statement": "Implement a production-ready, batch-size-independent convolutional pipeline in Go that integrates Weight Standardization (WS) for convolution kernels and Group Normalization (GN) for activations. The solution should handle extreme edge cases, ensure deterministic and thread-safe operations, and be suitable for training and inference of large models like Mask R-CNN on limited hardware.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/de1iku-enterprise-grade-weight-standardization-and-group-normalization-in-go",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
