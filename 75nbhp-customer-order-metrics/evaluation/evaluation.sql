@@ -24,40 +24,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Function to run individual tests (for future extensibility)
-CREATE OR REPLACE FUNCTION run_test(test_file_path TEXT, test_display_name TEXT)
-RETURNS VOID AS $$
-DECLARE
-    start_time TIMESTAMP WITH TIME ZONE;
-    end_time TIMESTAMP WITH TIME ZONE;
-    duration_ms INTEGER;
-    test_status TEXT := 'passed';
-    error_messages TEXT[] := ARRAY[]::TEXT[];
-    test_output TEXT;
-BEGIN
-    start_time := clock_timestamp();
-    
-    BEGIN
-        -- Execute the test file (placeholder for actual test execution)
-        -- In practice, this would be handled by the shell script calling psql -f
-        test_status := 'passed';
-    EXCEPTION WHEN OTHERS THEN
-        test_status := 'failed';
-        GET STACKED DIAGNOSTICS test_output = MESSAGE_TEXT;
-        error_messages := ARRAY[test_output];
-    END;
-    
-    end_time := clock_timestamp();
-    duration_ms := EXTRACT(MILLISECOND FROM (end_time - start_time))::INTEGER;
-    
-    -- Store the test result
-    INSERT INTO test_execution_log (test_name, status, duration_ms, failure_messages)
-    VALUES (test_display_name, test_status, duration_ms, error_messages);
-    
-    RAISE NOTICE 'Test % completed: % (% ms)', test_display_name, test_status, duration_ms;
-END;
-$$ LANGUAGE plpgsql;
-
 -- Function to generate the final JSON evaluation report
 CREATE OR REPLACE FUNCTION generate_evaluation_report()
 RETURNS TEXT AS $$
@@ -82,25 +48,6 @@ BEGIN
         COUNT(*) FILTER (WHERE status = 'failed')
     INTO total_tests, passed_tests, failed_tests
     FROM test_execution_log;
-    
-    -- If no tests were logged, run the default test set
-    IF total_tests = 0 THEN
-        -- Simulate running the standard test suite with realistic durations
-        PERFORM log_test_result('test_baseline_equivalence', 'passed', 44, ARRAY[]::TEXT[]);
-        PERFORM log_test_result('test_set_based_equivalence', 'passed', 7, ARRAY[]::TEXT[]);
-        PERFORM log_test_result('test_index_usage', 'passed', 3, ARRAY[]::TEXT[]);
-        PERFORM log_test_result('test_single_scan', 'passed', 3, ARRAY[]::TEXT[]);
-        PERFORM log_test_result('test_edge_cases', 'passed', 4, ARRAY[]::TEXT[]);
-        PERFORM log_test_result('test_concurrent_execution', 'passed', 54, ARRAY[]::TEXT[]);
-        
-        -- Refresh statistics
-        SELECT 
-            COUNT(*),
-            COUNT(*) FILTER (WHERE status = 'passed'),
-            COUNT(*) FILTER (WHERE status = 'failed')
-        INTO total_tests, passed_tests, failed_tests
-        FROM test_execution_log;
-    END IF;
     
     -- Determine overall success
     success := (failed_tests = 0);
@@ -163,21 +110,6 @@ BEGIN
     RETURN report_json::TEXT;
 END;
 $$ LANGUAGE plpgsql;
-
--- Main execution - generate and output the report
-DO $$
-DECLARE
-    report_content TEXT;
-BEGIN
-    -- Clear any previous test results
-    DELETE FROM test_execution_log;
-    
-    -- Generate the evaluation report
-    report_content := generate_evaluation_report();
-    
-    -- Output the report as JSON to stdout (this will be captured by the shell)
-    RAISE NOTICE '%', report_content;
-END $$;
 
 -- Query to output the report directly
 SELECT generate_evaluation_report() AS report_json;

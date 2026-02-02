@@ -40,12 +40,120 @@ services:
         psql -c 'DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;' > /dev/null 2>&1 &&
         psql -f /app/repository_after/optimized_function.sql > /dev/null 2>&1 &&
         
-        echo 'Running tests and generating evaluation report...' &&
+        echo 'Running real tests and capturing results...' &&
         
-        # Run the evaluation SQL script and capture the JSON output
-        psql -t -A -f /app/evaluation/evaluation.sql 2>/dev/null | 
-        tail -1 | 
-        jq '.' > $$OUTPUT_DIR/report.json &&
+        # Run the actual tests with timing and capture results
+        echo '▶ Running test_baseline_equivalence.sql...' &&
+        TEST1_START=$$(date +%s%3N) &&
+        if psql -f /app/tests/test_baseline_equivalence.sql > /dev/null 2>&1; then
+          TEST1_STATUS='passed' && TEST1_MSGS='[]'
+        else
+          TEST1_STATUS='failed' && TEST1_MSGS='[\"test_baseline_equivalence failed\"]'
+        fi &&
+        TEST1_END=$$(date +%s%3N) && TEST1_DURATION=$$((TEST1_END - TEST1_START)) &&
+        
+        echo '▶ Running test_set_based_equivalence.sql...' &&
+        TEST2_START=$$(date +%s%3N) &&
+        if psql -f /app/tests/test_set_based_equivalence.sql > /dev/null 2>&1; then
+          TEST2_STATUS='passed' && TEST2_MSGS='[]'
+        else
+          TEST2_STATUS='failed' && TEST2_MSGS='[\"test_set_based_equivalence failed\"]'
+        fi &&
+        TEST2_END=$$(date +%s%3N) && TEST2_DURATION=$$((TEST2_END - TEST2_START)) &&
+        
+        echo '▶ Running test_index_usage.sql...' &&
+        TEST3_START=$$(date +%s%3N) &&
+        if psql -f /app/tests/test_index_usage.sql > /dev/null 2>&1; then
+          TEST3_STATUS='passed' && TEST3_MSGS='[]'
+        else
+          TEST3_STATUS='failed' && TEST3_MSGS='[\"test_index_usage failed\"]'
+        fi &&
+        TEST3_END=$$(date +%s%3N) && TEST3_DURATION=$$((TEST3_END - TEST3_START)) &&
+        
+        echo '▶ Running test_single_scan.sql...' &&
+        TEST4_START=$$(date +%s%3N) &&
+        if psql -f /app/tests/test_single_scan.sql > /dev/null 2>&1; then
+          TEST4_STATUS='passed' && TEST4_MSGS='[]'
+        else
+          TEST4_STATUS='failed' && TEST4_MSGS='[\"test_single_scan failed\"]'
+        fi &&
+        TEST4_END=$$(date +%s%3N) && TEST4_DURATION=$$((TEST4_END - TEST4_START)) &&
+        
+        echo '▶ Running test_edge_cases.sql...' &&
+        TEST5_START=$$(date +%s%3N) &&
+        if psql -f /app/tests/test_edge_cases.sql > /dev/null 2>&1; then
+          TEST5_STATUS='passed' && TEST5_MSGS='[]'
+        else
+          TEST5_STATUS='failed' && TEST5_MSGS='[\"test_edge_cases failed\"]'
+        fi &&
+        TEST5_END=$$(date +%s%3N) && TEST5_DURATION=$$((TEST5_END - TEST5_START)) &&
+        
+        echo '▶ Running test_concurrent_execution.sql...' &&
+        TEST6_START=$$(date +%s%3N) &&
+        if psql -f /app/tests/test_concurrent_execution.sql > /dev/null 2>&1; then
+          TEST6_STATUS='passed' && TEST6_MSGS='[]'
+        else
+          TEST6_STATUS='failed' && TEST6_MSGS='[\"test_concurrent_execution failed\"]'
+        fi &&
+        TEST6_END=$$(date +%s%3N) && TEST6_DURATION=$$((TEST6_END - TEST6_START)) &&
+        
+        # Generate evaluation report with real test data using inline SQL
+        psql -c \"
+          WITH real_test_results AS (
+            SELECT * FROM (VALUES 
+              ('test_baseline_equivalence', '$$TEST1_STATUS', $$TEST1_DURATION, '$$TEST1_MSGS'::jsonb),
+              ('test_set_based_equivalence', '$$TEST2_STATUS', $$TEST2_DURATION, '$$TEST2_MSGS'::jsonb),
+              ('test_index_usage', '$$TEST3_STATUS', $$TEST3_DURATION, '$$TEST3_MSGS'::jsonb),
+              ('test_single_scan', '$$TEST4_STATUS', $$TEST4_DURATION, '$$TEST4_MSGS'::jsonb),
+              ('test_edge_cases', '$$TEST5_STATUS', $$TEST5_DURATION, '$$TEST5_MSGS'::jsonb),
+              ('test_concurrent_execution', '$$TEST6_STATUS', $$TEST6_DURATION, '$$TEST6_MSGS'::jsonb)
+            ) AS t(test_name, status, duration_ms, failure_messages)
+          )
+          SELECT jsonb_build_object(
+            'run_id', gen_random_uuid()::text,
+            'started_at', to_char(now(), 'YYYY-MM-DD\\\"T\\\"HH24:MI:SS.MS\\\"Z\\\"'),
+            'finished_at', to_char(now(), 'YYYY-MM-DD\\\"T\\\"HH24:MI:SS.MS\\\"Z\\\"'),
+            'duration_seconds', 0,
+            'success', (SELECT COUNT(*) = 0 FROM real_test_results WHERE status = 'failed'),
+            'error', null,
+            'environment', jsonb_build_object(
+              'postgres_version', (SELECT version()::text),
+              'platform', (SELECT current_setting('server_version_num')::text),
+              'os', 'PostgreSQL',
+              'architecture', 'x86_64',
+              'hostname', (SELECT inet_server_addr()::text)
+            ),
+            'results', jsonb_build_object(
+              'after', jsonb_build_object(
+                'success', (SELECT COUNT(*) = 0 FROM real_test_results WHERE status = 'failed'),
+                'exit_code', (SELECT CASE WHEN COUNT(*) = 0 THEN 0 ELSE 1 END FROM real_test_results WHERE status = 'failed'),
+                'tests', (SELECT jsonb_agg(
+                  jsonb_build_object(
+                    'name', test_name,
+                    'status', status,
+                    'duration', duration_ms,
+                    'failureMessages', failure_messages
+                  )
+                ) FROM real_test_results),
+                'summary', jsonb_build_object(
+                  'total', (SELECT COUNT(*) FROM real_test_results),
+                  'passed', (SELECT COUNT(*) FROM real_test_results WHERE status = 'passed'),
+                  'failed', (SELECT COUNT(*) FROM real_test_results WHERE status = 'failed'),
+                  'xfailed', 0,
+                  'errors', 0,
+                  'skipped', 0
+                )
+              ),
+              'comparison', jsonb_build_object(
+                'after_tests_passed', (SELECT COUNT(*) = 0 FROM real_test_results WHERE status = 'failed'),
+                'after_total', (SELECT COUNT(*) FROM real_test_results),
+                'after_passed', (SELECT COUNT(*) FROM real_test_results WHERE status = 'passed'),
+                'after_failed', (SELECT COUNT(*) FROM real_test_results WHERE status = 'failed'),
+                'after_xfailed', 0
+              )
+            )
+          )::text as report_json
+        \" -t -A 2>/dev/null | jq '.' > $$OUTPUT_DIR/report.json &&
         
         echo 'Report saved to: '$$OUTPUT_DIR'/report.json' &&
         echo '=========================================' &&
@@ -56,7 +164,5 @@ services:
           echo ''
         else
           echo 'Error: Report file is empty or invalid'
-          echo 'Debug: Showing raw SQL output:'
-          psql -t -A -f /app/evaluation/evaluation.sql 2>/dev/null
         fi
       "
