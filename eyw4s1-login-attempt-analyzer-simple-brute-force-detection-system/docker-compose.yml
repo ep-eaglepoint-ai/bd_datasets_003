@@ -19,6 +19,7 @@ services:
         echo '' &&
         echo 'Running frontend tests...' &&
         cd /app/repository_after/frontend &&
+        npm install &&
         ./node_modules/.bin/vitest run --reporter=verbose
       "
     volumes:
@@ -32,11 +33,9 @@ services:
     working_dir: /app
     command: >
       sh -c "
-        echo '🔍 Starting Login Attempt Analyzer evaluation from host...' &&
-        echo '⚠️  NOTE: Docker commands cannot run inside Docker containers' &&
-        echo '📝 Please run from host: python3 evaluation/evaluation.py' &&
-        echo '🔗 This will generate reports in evaluation/ directory' &&
-        echo '✅ Reports will be available at evaluation/YYYY-MM-DD/HH-MM-SS/'
+        echo '🔍 Starting Login Attempt Analyzer evaluation...' &&
+        cd repository_after/frontend && npm install &&
+        cd /app && python3 evaluation/evaluation.py
       "
     volumes:
       - .:/app
