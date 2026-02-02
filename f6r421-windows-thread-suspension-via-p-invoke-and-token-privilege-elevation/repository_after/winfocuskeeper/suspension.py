@@ -19,17 +19,13 @@ from ctypes import (
     Structure,
     byref,
     sizeof as ctypes_sizeof,
+    c_char,
     c_ulong,
     c_void_p,
     windll,
 )
 from ctypes.wintypes import DWORD, LONG, HANDLE
 
-# ---------------------------------------------------------------------------
-# REQ-10: Correct ctypes structures for Windows ABI
-# THREADENTRY32: dwSize, cntUsage, th32ThreadID, th32OwnerProcessID,
-#               tpBasePri, tpDeltaPri, dwFlags
-# ---------------------------------------------------------------------------
 class THREADENTRY32(Structure):
     _pack_ = 4
     _fields_ = [
@@ -43,7 +39,6 @@ class THREADENTRY32(Structure):
     ]
 
 
-# Optional: PROCESSENTRY32 for process enumeration (correct layout if needed)
 class PROCESSENTRY32(Structure):
     _pack_ = 4
     _fields_ = [
@@ -56,7 +51,7 @@ class PROCESSENTRY32(Structure):
         ("th32ParentProcessID", DWORD),
         ("pcPriClassBase", LONG),
         ("dwFlags", DWORD),
-        ("szExeFile", (c_ulong * 260)),  # MAX_PATH; type placeholder for ABI
+        ("szExeFile", c_char * 260), 
     ]
 
 
@@ -65,15 +60,12 @@ logger = logging.getLogger(__name__)
 kernel32 = windll.kernel32
 advapi32 = windll.advapi32
 
-# Constants
 TH32CS_SNAPTHREAD = 0x00000004
 THREAD_SUSPEND_RESUME = 0x0002
 TOKEN_ADJUST_PRIVILEGES = 0x0020
 TOKEN_QUERY = 0x0008
 SE_PRIVILEGE_ENABLED = 0x00000002
-INVALID_HANDLE_VALUE = c_void_p(-1).value  # -1 as handle
-
-# SuspendThread returns (DWORD)-1 on failure
+INVALID_HANDLE_VALUE = c_void_p(-1).value 
 SUSPEND_THREAD_FAILED = 0xFFFFFFFF
 
 
@@ -93,7 +85,6 @@ class TOKEN_PRIVILEGES(Structure):
 
 
 def enable_se_debug_privilege():
-    """REQ-07: Attempt to enable SeDebugPrivilege in the current process token."""
     token = HANDLE()
     if not advapi32.OpenProcessToken(
         kernel32.GetCurrentProcess(),
@@ -146,23 +137,15 @@ def _get_thread_ids_for_process(pid: int):
 
 
 def suspend_process_threads(pid: int) -> int:
-    """
-    Suspend all threads belonging to process pid.
-    REQ-04: Every OpenThread handle is closed via CloseHandle.
-    REQ-11: If SuspendThread returns -1, log and do not crash.
-    Returns count of threads successfully suspended.
-    """
     thread_ids = _get_thread_ids_for_process(pid)
     suspended = 0
     for tid in thread_ids:
-        # THREAD_SUSPEND_RESUME access
         h = kernel32.OpenThread(THREAD_SUSPEND_RESUME, False, tid)
         if h is None or h == 0:
             logger.debug("OpenThread failed for tid %s (AccessDenied or invalid)", tid)
             continue
         try:
             prev_count = kernel32.SuspendThread(h)
-            # REQ-11: SuspendThread returns (DWORD)-1 on failure
             if prev_count == SUSPEND_THREAD_FAILED or (c_ulong(prev_count).value == 0xFFFFFFFF):
                 logger.warning("SuspendThread failed for thread %s (returned -1)", tid)
                 continue
@@ -173,10 +156,6 @@ def suspend_process_threads(pid: int) -> int:
 
 
 def resume_process_threads(pid: int) -> int:
-    """
-    REQ-08: Resume all threads belonging to process pid (mirror of suspend loop).
-    Returns count of threads successfully resumed.
-    """
     thread_ids = _get_thread_ids_for_process(pid)
     resumed = 0
     for tid in thread_ids:
