@@ -10,5 +10,5 @@ docker compose run --rm app env TARGET_REPO=after pytest -q -vv tests
 ```
 Evaluation Script
 ```bash
-docker compose run --rm app python evaluation/evaluation.py
+docker compose run --rm --user root app python evaluation/evaluation.py
 ```
