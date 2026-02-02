@@ -21,7 +21,7 @@ services:
 
   tests:
     build: .
-    command: node --test tests/test-consensus.js
+    command: sh -c "npm install --prefix repository_after/frontend && node --test tests/test-consensus.js"
     environment:
       - BACKEND_URL=http://backend:8080
       - FRONTEND_DIR=/app/repository_after/frontend
@@ -32,7 +32,7 @@ services:
 
   evaluation:
     build: .
-    command: node evaluation/evaluation.js
+    command: sh -c "npm install --prefix repository_after/frontend && node evaluation/evaluation.js"
     environment:
       - BACKEND_URL=http://backend:8080
       - DOCKER_CONTAINER=true

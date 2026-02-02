@@ -9,3 +9,4 @@ WORKDIR /app
 
 COPY . .
 
+CMD [ "echo", "build success" ]
