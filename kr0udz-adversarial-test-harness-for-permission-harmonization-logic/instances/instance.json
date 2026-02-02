@@ -1,0 +1,11 @@
+{
+            "instance_id": "KR0UDZ",
+            "problem_statement": "Design and implement a Python-based test harness that validates the logical correctness of a document permission harmonization engine operating in a distributed environment. Multiple services emit permission updates for the same document–user pairs, potentially out of order, duplicated, or dependent on prior state. The harmonization engine applies complex authority, refinement, and deduplication rules and produces both a final state and an audit report. Your task is to generate adversarial but valid update sequences and verify, through invariant-based testing (not re-implementation of business logic), that the engine’s outputs are logically consistent, complete, and safe. The focus is on reasoning correctness and invariant validation rather than performance tuning or system design.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/kr0udz-adversarial-test-harness-for-permission-harmonization-logic",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
