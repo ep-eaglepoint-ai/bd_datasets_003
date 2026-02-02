@@ -1,0 +1,11 @@
+{
+            "instance_id": "XDSYR7",
+            "problem_statement": "A legacy Node.js payment processing module uses deeply nested callbacks (6+ levels) making the code unmaintainable. Error handling is inconsistent - some functions use callbacks, others throw exceptions. The code has memory leaks from event listeners not being cleaned up, transaction rollbacks fail silently on async errors, and retry logic is copy-pasted across multiple files. The module must be refactored to TypeScript with async/await while preserving the exact external API signature for backward compatibility. Core files are processPayment.js, validateCard.js, chargeCard.js, updateInventory.js, and sendReceipt.js.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/xdsyr7-legacy-payment-module-callback-to-async-await-migration",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
