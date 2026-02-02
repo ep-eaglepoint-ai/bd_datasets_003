@@ -1,0 +1,11 @@
+{
+            "instance_id": "8N0IVU",
+            "problem_statement": "Create a robust and production-ready spectral normalization framework in PyTorch that can be applied flexibly and safely across a wide range of neural network layers, including convolutional, transposed, and lazy modules, while handling numerical stability, initialization edge cases, and full model integration, and demonstrate its correctness through an included discriminator architecture.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/8n0ivu-advanced-spectral-normalization-system-for-pytorch-models",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
