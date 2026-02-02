@@ -1,0 +1,11 @@
+{
+            "instance_id": "JCKSNH",
+            "problem_statement": "The current session tracking system miscalculates user billable minutes, especially near session boundaries and overlapping sessions. The bug must be fixed to comply with business rules regarding session duration calculation and clipping to billing windows",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/jcksnh-fix-session-billing-duration-calculation",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
