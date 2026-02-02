@@ -1,0 +1,11 @@
+{
+            "instance_id": "ZUYXHX",
+            "problem_statement": "Teams and individuals need a simple and reliable way to track working hours without complex project management features. Manual tracking or spreadsheets are error-prone and time-consuming. This task aims to build a lightweight time tracking application that allows users to easily clock in and out, view their worked hours, and generate basic reports using a modern Nuxt 3 frontend and a FastAPI backend.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/zuyxhx-time-tracking-app-clock-in-clock-out-reports",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
