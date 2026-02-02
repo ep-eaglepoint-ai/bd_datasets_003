@@ -33,7 +33,7 @@ COPY repository_after/frontend/package-lock.json ./repository_after/frontend/pac
 WORKDIR /app/repository_after/frontend
 # Some CI/build environments can end up without a usable lockfile in the build context.
 # Prefer deterministic `npm ci`, but fall back to `npm install` if needed.
-RUN npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+RUN npm ci --no-audit --no-fund --include=dev || npm install --no-audit --no-fund --include=dev
 
 WORKDIR /app
 COPY repository_after/frontend ./repository_after/frontend

@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "test": "npm --prefix repository_after/backend test && npm --prefix repository_after/frontend test",
+    "test": "cd repository_after/backend && npm test && cd ../frontend && npm test",
     "evaluation": "node evaluation/evaluation.js",
     "dev:backend": "npm --prefix repository_after/backend run dev",
     "dev:frontend": "npm --prefix repository_after/frontend run dev"

@@ -5,6 +5,11 @@ module.exports = {
   rootDir: path.resolve(__dirname, "..", ".."),
   testEnvironment: "node",
   testMatch: ["<rootDir>/tests/**/*.test.js"],
+  // Prevent Jest from crawling the frontend package.json and triggering haste collisions in Docker/CI.
+  modulePathIgnorePatterns: [
+    "<rootDir>/repository_after/frontend/",
+    "<rootDir>/repository_after/backend/repository_after/frontend/",
+  ],
   moduleDirectories: [
     // Allow tests under <rootDir>/tests to resolve deps installed in backend/
     "node_modules",
