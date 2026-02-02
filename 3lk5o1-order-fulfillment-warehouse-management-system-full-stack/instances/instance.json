@@ -1,0 +1,11 @@
+{
+            "instance_id": "3LK5O1",
+            "problem_statement": "A growing e-commerce company requires an internal order fulfillment and warehouse management system to replace fragmented tools and spreadsheet-based processes that have led to delayed shipments, inaccurate inventory counts, and limited operational visibility. The system must reliably coordinate orders, inventory movement, and shipment status while supporting concurrent use by warehouse staff and support teams. Accuracy and consistency are critical, especially during high-volume sales periods, as errors directly impact revenue and customer satisfaction.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/3lk5o1-order-fulfillment-warehouse-management-system-full-stack",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
