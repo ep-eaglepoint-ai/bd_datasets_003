@@ -30,7 +30,7 @@ services:
     depends_on:
       - backend
 
-  test_before:
+  test-after:
     build:
       context: .
       target: backend
@@ -38,19 +38,7 @@ services:
       - .:/app
     environment:
       - REDIS_HOST=redis
-    command: pytest repository_before/tests
-    depends_on:
-      - redis
-
-  test_after:
-    build:
-      context: .
-      target: backend
-    volumes:
-      - .:/app
-    environment:
-      - REDIS_HOST=redis
-    command: pytest repository_after/tests
+    command: pytest tests/unit_test.py tests/integration_test.py tests/scalability_test.py -v --tb=short
     depends_on:
       - redis
 
@@ -62,6 +50,5 @@ services:
       - .:/app
     command: python evaluation/evaluate.py
     depends_on:
-      - test_after
-      - test_before
+      - test-after
 

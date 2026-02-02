@@ -6,27 +6,41 @@ REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 
 class RedisClient:
     def __init__(self):
-        self.redis = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+        self.redis = None
+    
+    async def _get_redis(self):
+        """Get or create Redis connection with proper async handling"""
+        if self.redis is None:
+            self.redis = redis.Redis(
+                host=REDIS_HOST, 
+                port=REDIS_PORT, 
+                decode_responses=True,
+                single_connection_client=False  # Allow connection pooling
+            )
+        return self.redis
 
     async def get_poll_results(self, poll_id: str):
-        return await self.redis.hgetall(f"poll:{poll_id}:results")
+        r = await self._get_redis()
+        return await r.hgetall(f"poll:{poll_id}:results")
 
     async def cast_vote(self, poll_id: str, option_id: str, client_ip: str) -> bool:
+        r = await self._get_redis()
         # Check if IP has already voted for this poll
-        voted = await self.redis.sismember(f"poll:{poll_id}:voters", client_ip)
+        voted = await r.sismember(f"poll:{poll_id}:voters", client_ip)
         if voted:
             return False
         
         # Atomic vote increment and record voter IP
-        async with self.redis.pipeline(transaction=True) as pipe:
+        async with r.pipeline(transaction=True) as pipe:
             await pipe.sadd(f"poll:{poll_id}:voters", client_ip)
             await pipe.hincrby(f"poll:{poll_id}:results", option_id, 1)
             await pipe.execute()
         return True
 
     async def create_poll(self, poll_id: str, options: list[str]):
+        r = await self._get_redis()
         # Initialize poll results with 0
         mapping = {option: 0 for option in options}
-        await self.redis.hset(f"poll:{poll_id}:results", mapping=mapping)
+        await r.hset(f"poll:{poll_id}:results", mapping=mapping)
 
 redis_client = RedisClient()
