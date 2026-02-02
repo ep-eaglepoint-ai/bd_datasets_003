@@ -1,0 +1,11 @@
+{
+            "instance_id": "Q5TUEE",
+            "problem_statement": "The analytics service becomes slow with growing user activity data due to repeated full scans per user. Performance must be improved while preserving all observable behavior and return formats",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/q5tuee-optimize-user-activity-analytics-aggregation",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
