@@ -1,0 +1,13 @@
+{
+            "instance_id": "3YFXDO",
+            "problem_statement": "You are a Backend Engineer maintaining a distributed state management service for a financial trading platform. The gRPC service handles account balances and must maintain strict consistency. Under load testing with 100+ concurrent requests, the system shows critical data corruption: duplicate transactions are processed, updates are lost, and account balances become inconsistent across replicas. Sequential tests pass, but concurrent tests fail 15% of the time, causing $50K+ in reconciliation costs per incident.
+
+Your task is to fix all race conditions in `state_service.go` using Go's sync package, ensuring the service maintains data consistency under high concurrency while preventing deadlocks.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/3yfxdo-thread-safe-grpc-service-for-distributed-state-management",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
