@@ -1,11 +1,15 @@
-# VYQ9E9 - In-Memory Graph Transaction Engine with Deterministic Locking 
+# In-Memory Graph Transaction Engine with Deterministic Locking
 
-    ## Before Test Docker Command
-    <docker before command here>
 
-    ## After Test Docker Command
-    <docker after command here>
+## Run tests (against repository_after only)
+Uses go.work at project root so tests run from /app (avoids -w path issues on Windows/Git Bash):
+```bash
+docker compose run --rm app go test -v ./tests
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## Run evaluation and generate report
+
+```bash
+docker compose run --rm app go run ./evaluation/evaluation.go
+```
+
