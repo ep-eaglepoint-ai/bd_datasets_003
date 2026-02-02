@@ -1,0 +1,12 @@
+{
+            "instance_id": "G5QT5L",
+            "problem_statement": "Noticed a reliability challenge when testing a claims processing  system that handles EDI 837 files from multiple zip archives.  The issue appeared while working on the parseClaimEdi function  where users report memory growing continuously during batch  processing, occasional panics when zip files are corrupted,  and processing times degrading from 2s to 45s as the number  of claims increases. The system needs to process thousands of  claims reliably, handle malformed files gracefully, maintain  stable memory usage, and still remain responsive under load — 
+all while ensuring no claims are silently dropped or corrupted.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/g5qt5l-refactor-healthcare-claims-processing-service-for-production-reliability",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
