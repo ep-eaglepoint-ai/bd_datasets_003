@@ -1,0 +1,11 @@
+{
+            "instance_id": "3N7T95",
+            "problem_statement": "The system receives batches of trip status events from drivers’ mobile apps. Due to unreliable networks, events can arrive late, out of order, duplicated, or with missing/inconsistent fields. You must process events without reordering or modifying input, maintain an isolated in-memory state per driver (current active trip + counters), and produce a per-driver utilization summary. Only valid state transitions should update the driver’s summary; invalid/inconsistent events must be ignored and reported, and must never corrupt driver state or affect other drivers.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/3n7t95-driver-trip-event-processor-with-safe-state-transitions-go",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
