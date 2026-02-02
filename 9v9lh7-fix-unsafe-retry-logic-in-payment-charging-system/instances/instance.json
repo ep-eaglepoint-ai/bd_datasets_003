@@ -1,0 +1,11 @@
+{
+            "instance_id": "9V9LH7",
+            "problem_statement": "Current payment retry logic loops indefinitely and risks duplicate charges. The retry mechanism must become controlled, safe, and observable while preserving synchronous charge behavior.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/9v9lh7-fix-unsafe-retry-logic-in-payment-charging-system",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
