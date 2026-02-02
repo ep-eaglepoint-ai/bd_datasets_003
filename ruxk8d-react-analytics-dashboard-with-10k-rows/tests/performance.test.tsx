@@ -9,8 +9,12 @@ import { Filters } from '@project/components/Filters';
 import { Charts } from '@project/components/Charts';
 import { useDashboardStore } from '@project/store/dashboardStore';
 import { useWebSocket } from '@project/hooks/useWebSocket';
-import { useTableData, useStats } from '@project/hooks/useTableData';
+import { useTableData } from '@project/hooks/useTableData';
 import { TableRow } from '@project/components/TableRow';
+
+// Conditionally import useStats if it exists (for repository_after)
+import * as tableDataModule from '@project/hooks/useTableData';
+const useStats = (tableDataModule as any).useStats;
 
 class MockWebSocket {
     url: string;
@@ -54,7 +58,7 @@ describe('Dashboard Performance Requirements', () => {
         global.WebSocket = MockWebSocket as any;
     });
 
-    it('Requirement 1: Table implements row virtualization', async () => {
+    it('Table implements row virtualization', async () => {
         const data = Array.from({ length: 1000 }, (_, i) => ({
             id: `${i}`,
             date: '2024-01-01',
@@ -82,7 +86,7 @@ describe('Dashboard Performance Requirements', () => {
         expect(rowElements.length).toBeGreaterThan(0);
     });
 
-    it('Requirement 2: Search input is debounced with min 300ms', async () => {
+    it('Search input is debounced with min 300ms', async () => {
         vi.useFakeTimers();
         render(<Filters />);
 
@@ -100,7 +104,7 @@ describe('Dashboard Performance Requirements', () => {
         vi.useRealTimers();
     });
 
-    it('Requirement 3: Table column definitions have a stable reference', () => {
+    it('Table column definitions have a stable reference', () => {
         const { rerender } = render(<DataTable />);
 
         // In a real app we'd check if child components re-render.
@@ -111,19 +115,19 @@ describe('Dashboard Performance Requirements', () => {
         const filePath = path.resolve(__dirname, '..', projectPath, 'src/components/DataTable.tsx');
         const content = fs.readFileSync(filePath, 'utf8');
 
-        // This is a bit of a meta-test but ensures the requirement is met as specified.
+        // This is a bit of a meta-test but ensures the met as specified.
         expect(content).toContain('useMemo');
         expect(content).toContain('columns =');
     });
 
-    it('Requirement 4: Row components are wrapped in React.memo', () => {
+    it('Row components are wrapped in React.memo', () => {
         // React.memo components have a $$typeof property
         const memoType = Symbol.for('react.memo');
         const isMemo = TableRow.$$typeof === memoType || (TableRow as any).type?.$$typeof === memoType;
         expect(isMemo).toBe(true);
     });
 
-    it('Requirement 5: WebSocket hook uses getState() pattern', () => {
+    it('WebSocket hook uses getState() pattern', () => {
         const wsConstructorSpy = vi.spyOn(global, 'WebSocket');
 
         const { rerender } = render(<TestWebSocketComponent />);
@@ -136,7 +140,7 @@ describe('Dashboard Performance Requirements', () => {
         expect(wsConstructorSpy.mock.calls.length).toBe(callCount);
     });
 
-    it('Requirement 6: Filtering logic exists in exactly one location', () => {
+    it('Filtering logic exists in exactly one location', () => {
         // We check if hook is using the unified filtering utility
         const fs = require('fs');
         const path = require('path');
@@ -153,7 +157,13 @@ describe('Dashboard Performance Requirements', () => {
         expect(storeContent).not.toContain('transactions.filter');
     });
 
-    it('Requirement 7: Charts component subscribes only to stats/filtered data', () => {
+    it('Charts component subscribes only to stats/filtered data', () => {
+        // Skip test if useStats doesn't exist (repository_before)
+        if (!useStats) {
+            expect(true).toBe(false); // Mark as failed but don't crash
+            return;
+        }
+
         let renderCount = 0;
         const TestComponent = () => {
             renderCount++;
@@ -172,14 +182,14 @@ describe('Dashboard Performance Requirements', () => {
         expect(renderCount).toBe(initialCount);
     });
 
-    it('Requirement 8: Cleanup removes listeners', () => {
+    it('Cleanup removes listeners', () => {
         const { unmount } = render(<TestWebSocketComponent />);
         const wsInstance = MockWebSocket.instances[0];
         unmount();
         expect(wsInstance.close).toHaveBeenCalled();
     });
 
-    it('Requirement 9: Formatters are not recreated each render', () => {
+    it('Formatters are not recreated each render', () => {
         const numberFormatSpy = vi.spyOn(Intl, 'NumberFormat');
         const dateTimeFormatSpy = vi.spyOn(Intl, 'DateTimeFormat');
 
@@ -191,7 +201,7 @@ describe('Dashboard Performance Requirements', () => {
         expect(numberFormatSpy).not.toHaveBeenCalled();
     });
 
-    it('Requirement 10: Correct Zustand middleware (immer)', () => {
+    it('Correct Zustand middleware (immer)', () => {
         act(() => {
             useDashboardStore.setState((state: any) => {
                 state.isLoading = true;

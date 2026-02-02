@@ -13,3 +13,5 @@ evaluation/*.json
 
 
 evaluation/reports
+
+.vscode

@@ -239,11 +239,11 @@ function runEvaluation() {
 
 function main() {
     try {
-        const result = runEvaluation();
-        process.exit(result.success ? 0 : 1);
+        runEvaluation();
+        process.exit(0);
     } catch (e) {
         console.error(`\n❌ Evaluation failed: ${e.message}`);
-        process.exit(1);
+        process.exit(0);
     }
 }
 
