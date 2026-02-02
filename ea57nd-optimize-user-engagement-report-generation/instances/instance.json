@@ -1,0 +1,11 @@
+{
+            "instance_id": "EA57ND",
+            "problem_statement": "The user engagement report system has become slow and occasionally produces incorrect totals due to redundant scans of activity data. The system must be refactored to improve performance and ensure accurate totals while preserving all observable behavior",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ea57nd-optimize-user-engagement-report-generation",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
