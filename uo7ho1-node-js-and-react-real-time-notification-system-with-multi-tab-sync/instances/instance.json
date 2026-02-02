@@ -1,0 +1,12 @@
+{
+            "instance_id": "UO7HO1",
+            "problem_statement": "The product team needs a real-time notification system for the project management application. When tasks are assigned or updated, all relevant users should receive instant notifications in their browser. Users often have multiple browser tabs open and expect the notification state (read/unread) to stay synchronized across all tabs without requiring a page refresh.
+The system needs to deliver notifications within 1 second of task events, display an unread count badge on a bell icon, show toast popups for new notifications, and persist notification history with pagination. Users should not see duplicate toasts when they have multiple tabs open, and notifications received while temporarily offline should appear when they reconnect",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/uo7ho1-node-js-and-react-real-time-notification-system-with-multi-tab-sync",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
