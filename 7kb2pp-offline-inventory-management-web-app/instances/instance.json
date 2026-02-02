@@ -1,0 +1,11 @@
+{
+            "instance_id": "7KB2PP",
+            "problem_statement": "Build an offline-first inventory management web application using Next.js and TailwindCSS that tracks assets, logs movements, calculates valuation, and generates analytics—all running client-side with IndexedDB persistence and Zod validation. Implement Zustand state management with memoized selectors and list virtualization to ensure performance with thousands of records, while providing detailed stock trends, turnover metrics, and audit logs. The tool must handle full inventory lifecycles, enforce data integrity, and remain fully functional without internet connectivity for reliable long-term use.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/7kb2pp-offline-inventory-management-web-app",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
