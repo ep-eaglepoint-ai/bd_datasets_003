@@ -1,0 +1,13 @@
+{
+            "instance_id": "PNIW21",
+            "problem_statement": "An e-commerce platform's order processing service handles complex workflows involving inventory reservation, payment processing via Stripe, and order state management. The existing codebase has four service files (OrderService.ts, InventoryService.ts, PaymentService.ts, ShippingService.ts) but lacks integration tests, leading to production bugs when concurrent orders exhaust inventory or when payment webhooks arrive out of order.
+
+ QA reports that refunds sometimes restore incorrect inventory quantities, and developers cannot safely refactor without breaking unknown dependencies. The test suite must use PostgreSQL for order/inventory persistence and Redis for temporary reservations, with Stripe mocked to avoid real charges during testing.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/pniw21-integration-tests-for-e-commerce-order-processing-service",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
