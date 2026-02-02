@@ -1,0 +1,11 @@
+{
+            "instance_id": "HX9C52",
+            "problem_statement": "Build a Python logic engine that processes batches of payment events arriving over an unreliable network where messages can be duplicated, delayed, or delivered out of order. Each event contains account_id, event_id (UUID), amount (decimal string), currency, timestamp (ISO8601), and a per-account monotonic seq. The engine must enforce strict per-account sequencing, buffering future events until gaps are resolved, deduplicating retries, and maintaining an accurate running balance using precise decimal arithmetic. When missing sequences cause buffers to fill, the engine must evict the oldest buffered event and log an eviction error, while returning a manifest of outcomes for every processed event.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/hx9c52-exactly-once-payment-ledger-stream-processor-out-of-order-dedup-bounded-buffer",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
