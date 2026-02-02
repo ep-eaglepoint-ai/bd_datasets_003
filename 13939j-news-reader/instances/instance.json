@@ -1,0 +1,12 @@
+{
+            "instance_id": "13939J",
+            "problem_statement": "A media company is launching a new digital publication and needs a clean, modern web interface for displaying their editorial content. The current WordPress site feels dated and loads slowly on mobile devices, causing readers to abandon articles before finishing. The editorial team wants a fresh design inspired by publications like The Verge and Medium that prioritizes readability and visual appeal.
+The system needs to display articles in an attractive grid layout with featured content sections, support filtering by content categories, and provide a distraction-free reading experience for individual articles. User research indicated that 84 percent of readers prefer a clean layout without sidebar advertisements, article pages with good typography increase average read time by 45 percent, and category-based navigation is used by 62 percent of returning visitors to find specific content types.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/13939j-news-reader",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
