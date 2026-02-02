@@ -1,0 +1,13 @@
+{
+            "instance_id": "26EICO",
+            "problem_statement": "A retail analytics team's Python data pipeline processes daily sales data from a 5GB CSV file containing 50 million transactions. The current implementation loads the entire dataset into memory, uses row-by-row apply() functions for transformations, and holds multiple DataFrame copies during aggregation. Production runs crash with out-of-memory errors on 16GB machines and take over 45 minutes on 64GB machines. 
+
+The pipeline must generate four aggregate reports (store-category daily, hourly trends, top products, customer frequency) that feed into a PostgreSQL database with a 10-connection limit. The buggy code spans ingest.py, transform.py, aggregate.py, export.py, and main.py.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/26eico-sales-data-pipeline-memory-and-performance-optimization",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
