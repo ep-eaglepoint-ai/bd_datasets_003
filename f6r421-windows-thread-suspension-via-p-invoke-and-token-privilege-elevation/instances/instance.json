@@ -1,0 +1,11 @@
+{
+            "instance_id": "F6R421",
+            "problem_statement": "Unlike POSIX environments where process suspension is achieved via a single SIGSTOP signal, the Windows Win32 API does not expose a native process-level suspension primitive. The engineering requirement mandates a thread-level approach: the system must capture a snapshot of all running threads, filter them by the target Process ID, and individually suspend each constituent thread. This operation introduces significant complexity regarding Access Control Lists (ACLs); the utility must manually acquire and enable SeDebugPrivilege within its own process access token to legally obtain THREAD_SUSPEND_RESUME rights on threads owned by other users or system services. Failure to perform this token manipulation usually results in "Access Denied" errors even if the logic is algorithmically correct.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/f6r421-windows-thread-suspension-via-p-invoke-and-token-privilege-elevation",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
