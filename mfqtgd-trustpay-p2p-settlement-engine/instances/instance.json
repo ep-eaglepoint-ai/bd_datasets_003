@@ -1,0 +1,11 @@
+{
+            "instance_id": "MFQTGD",
+            "problem_statement": "Implement a peer-to-peer credit settlement engine using React and Express. The system must handle multi-user 'Group Payments' where a single user pays for a group's expenses, requiring an atomic multi-row balance update to prevent double-spending or credit-ghosting.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/mfqtgd-trustpay-p2p-settlement-engine",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
