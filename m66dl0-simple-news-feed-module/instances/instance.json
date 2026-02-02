@@ -1,0 +1,11 @@
+{
+            "instance_id": "M66DL0",
+            "problem_statement": "You are tasked with building a Python module that provides a simple news feed. The module should fetch articles from a local list or file and provide them by date. Each article will contain attributes like title, author, date, and content. The module should allow retrieving all articles, fetching articles for a specific date, and getting the most recent article. It must also handle empty lists or missing dates gracefully.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/m66dl0-simple-news-feed-module",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
