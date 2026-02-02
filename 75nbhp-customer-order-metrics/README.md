@@ -7,6 +7,6 @@ docker compose run --rm test
 
 ## Evaluation Docker Command
 ```bash
-docker compose run --rm evaluate       
+docker compose run --rm evaluate
 ```
     
