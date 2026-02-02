@@ -1,0 +1,11 @@
+{
+            "instance_id": "V81BBO",
+            "problem_statement": "You are tasked with creating a secure password validation module for a security-critical web application. The existing password validation logic is inconsistent and insufficient for modern security needs. The new system should enforce clear password rules, handle edge cases safely, and provide meaningful feedback to users. This module should form the foundation for future refinement, optimization, and continuous improvement.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/v81bbo-secure-password-validation-module",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
