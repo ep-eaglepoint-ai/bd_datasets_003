@@ -1,0 +1,11 @@
+{
+            "instance_id": "ALP5FG",
+            "problem_statement": "The ETL pipeline crashes when processing very large CSV files because data is read faster than it can be uploaded, causing memory buildup. The task is to refactor the pipeline to properly handle backpressure and maintain constant memory usage while processing files larger than available RAM.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/alp5fg-optimize-node-js-etl-pipeline-for-large-file-processing",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
