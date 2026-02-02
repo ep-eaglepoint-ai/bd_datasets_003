@@ -1,0 +1,11 @@
+{
+            "instance_id": "QKFITC",
+            "problem_statement": "ngesting data into MISP (Malware Information Sharing Platform) often leads to "Flat Data" issues where indicators exist in isolation without context. The engineering challenge here is two-fold: First, the model must construct complex MISP Objects (using the file template) rather than simple attributes to represent the malware, requiring correct key-value mapping against the template definition. Second, and most critically, it must build a specific Graph Topology. The model must successfully link the file Object to a standalone url Attribute using the specific relationship predicate downloaded-from. Naive implementations often fail to establish this edge or incorrectly attempt to link two objects instead of an object and an attribute. Additionally, the requirement for Idempotency is a logic trap; standard pymisp.add_object calls will create duplicate entries on every run unless the script explicitly checks for existing hashes or handles UIDs deterministically.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/qkfitc-misp-graph-topology-idempotent-object-ingestion",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
