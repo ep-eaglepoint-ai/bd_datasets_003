@@ -1,0 +1,11 @@
+{
+            "instance_id": "6FK9PZ",
+            "problem_statement": "You are a Backend Engineer responsible for the core order-validation logic in a production system. A small logic error in the can_place_order function causes some valid users to be incorrectly blocked from placing orders. The function determines whether a user can place an order based on their account status and the number of orders they have already placed today. The task is to identify and correct the logic bug without affecting other behavior.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/6fk9pz-fix-order-validation-logic-for-daily-order-limit",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
