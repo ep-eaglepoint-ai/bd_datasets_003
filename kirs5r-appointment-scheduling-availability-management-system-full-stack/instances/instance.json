@@ -1,0 +1,11 @@
+{
+            "instance_id": "KIRS5R",
+            "problem_statement": "A multi-provider medical clinic needs a centralized appointment scheduling and availability management system to replace phone-based workflows and shared calendars that have caused double bookings and incorrect availability. The system must reliably manage provider schedules and patient appointments while supporting concurrent use by staff and administrators. Accurate and conflict-free scheduling is critical, as errors directly impact patient care and clinic operations.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/kirs5r-appointment-scheduling-availability-management-system-full-stack",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
