@@ -1,0 +1,12 @@
+{
+            "instance_id": "13761Y",
+            "problem_statement": "We are initiating the development of a new live engagement platform to facilitate interactive audience participation during large-scale virtual events. This feature must allow organizers to launch instant polls and capture thousands of concurrent responses while providing immediate, synchronized visual feedback to all participants through a push-based architecture.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/13761y-real-time-collaborative-polling-system",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
