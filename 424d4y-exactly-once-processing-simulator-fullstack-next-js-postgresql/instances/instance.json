@@ -1,0 +1,11 @@
+{
+            "instance_id": "424D4Y",
+            "problem_statement": "Build a fullstack web application that simulates exactly-once processing of tasks. Users can submit tasks with optional IDs, and the system ensures each task is processed only once, even with retries, duplicates, or simultaneous submissions. The app should include a dashboard to view task status, results, and history, and handle edge cases like failures or partial processing",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/424d4y-exactly-once-processing-simulator-fullstack-next-js-postgresql",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
