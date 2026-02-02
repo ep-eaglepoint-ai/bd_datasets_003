@@ -1,0 +1,12 @@
+{
+            "instance_id": "80M8FV",
+            "problem_statement": "The legacy code presents a classic example of "Schlemiel the Painter's algorithm." While the logic is functionally correct, the choice of data structures forces the CPU to do redundant work. The primary offender is queue.pop(0); in Python, lists are dynamic arrays, so removing the first item forces the interpreter to shift all remaining N−1N−1  items one slot to the left, resulting in O(N^2) complexity for the whole loop. The second bottleneck is output_buffer += line; since strings are immutable, Python allocates a new larger string and copies the old content over for every single line, another O(N^2) operation. Finally, checking if word in banned_words_list (where the list is not converted to a set) results in a linear scan for every single word in the text
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/80m8fv-text-stream-optimization-eliminating-pop-and-string-concatenation",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
