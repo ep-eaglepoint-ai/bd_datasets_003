@@ -1,0 +1,34 @@
+{
+  "tasks": [
+    {
+      "name": "compile_utils",
+      "dependencies": [],
+      "source_files": ["src/utils.c"],
+      "output": "build/utils.o"
+    },
+    {
+      "name": "compile_auth",
+      "dependencies": [],
+      "source_files": ["src/auth.c"],
+      "output": "build/auth.o"
+    },
+    {
+      "name": "compile_db",
+      "dependencies": ["compile_utils"],
+      "source_files": ["src/db.c"],
+      "output": "build/db.o"
+    },
+    {
+      "name": "compile_api",
+      "dependencies": ["compile_auth", "compile_db"],
+      "source_files": ["src/api.c"],
+      "output": "build/api.o"
+    },
+    {
+      "name": "link_app",
+      "dependencies": ["compile_utils", "compile_auth", "compile_db", "compile_api"],
+      "source_files": [],
+      "output": "build/app"
+    }
+  ]
+}
