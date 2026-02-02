@@ -1,0 +1,15 @@
+{
+            "instance_id": "WXV7SY",
+            "problem_statement": "You are a Systems Engineer at a high-traffic e-commerce platform serving 10 million requests per minute (166,667 req/sec). The current centralized cache becomes a bottleneck at peak load, causing 500ms+ latency spikes and frequent cache misses when nodes fail. The system needs a distributed cache that maintains < 50ms p99 latency even during node failures while ensuring data consistency across replicas.
+
+The cache must distribute keys evenly across a 10-node cluster using consistent hashing with 150 virtual nodes per physical node. Each key must be replicated to 3 nodes with quorum-based reads (R=2) and writes (W=2) to guarantee strong consistency. When nodes are added, only affected keys (~1/N) should migrate, not all keys. Node failures must be detected within 5 seconds via heartbeat monitoring, with automatic replica promotion within 10 seconds.
+
+Your task is to implement `distributed_cache.py` that provides GET/SET/DELETE operations ",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/wxv7sy-cache-system-with-consistent-hashing-and-quorum-replication",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
