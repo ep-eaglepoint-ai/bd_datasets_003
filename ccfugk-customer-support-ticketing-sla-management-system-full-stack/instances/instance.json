@@ -1,0 +1,16 @@
+{
+            "instance_id": "CCFUGK",
+            "problem_statement": "The previous email-driven and spreadsheet-based workflow resulted in:
+Tickets being worked on by multiple agents at the same time
+Lost or overwritten status updates
+SLA deadlines being missed without visibility
+Inconsistent ticket ownership and audit trails
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ccfugk-customer-support-ticketing-sla-management-system-full-stack",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
