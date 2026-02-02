@@ -1,0 +1,12 @@
+{
+            "instance_id": "PVPVDV",
+            "problem_statement": "Building a custom formula engine for a financial reporting application that allows users to define calculated fields using mathematical expressions. The expression evaluator in utils/expression_evaluator.py parses user-provided formula strings like revenue - expenses * 0.15 and computes results for display in dynamic report columns. Before enabling this feature for the 2000 enterprise customers, the evaluation logic needs thorough test coverage to prevent calculation errors in financial data.
+The system needs to correctly handle operator precedence so that multiplication happens before addition, support parentheses for explicit grouping, and reject malformed expressions with clear error messages. Initial QA testing revealed that the expression 100 + 50 * 2 returns 200 instead of the expected 300, parentheses in expressions like (10 + 5 cause the application to hang rather than return an error, and division by zero crashes the report generator instead of raising a catchable exception.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/pvpvdv-expression-evaluator-test-suite",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
