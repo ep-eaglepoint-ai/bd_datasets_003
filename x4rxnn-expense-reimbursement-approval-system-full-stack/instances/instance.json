@@ -1,0 +1,16 @@
+{
+            "instance_id": "X4RXNN",
+            "problem_statement": "The company’s previous email- and spreadsheet-based process caused:
+Duplicate expense submissions
+Conflicting approval decisions
+Lost audit trails
+Reimbursements being processed more than once
+Poor visibility into claim status",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/x4rxnn-expense-reimbursement-approval-system-full-stack",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
