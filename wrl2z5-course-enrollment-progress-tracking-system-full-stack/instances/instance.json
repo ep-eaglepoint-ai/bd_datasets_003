@@ -1,0 +1,11 @@
+{
+            "instance_id": "WRL2Z5",
+            "problem_statement": "An online learning platform for corporate clients requires a reliable course enrollment and progress tracking system to replace manual and fragmented tracking processes that caused duplicate enrollments and inaccurate completion reports. The system must accurately record enrollments, lesson completion, and course progress while supporting concurrent access by learners, instructors, and administrators. Accurate and auditable progress data is essential for compliance and reporting purposes.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/wrl2z5-course-enrollment-progress-tracking-system-full-stack",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
