@@ -1,0 +1,11 @@
+{
+            "instance_id": "TSX0GU",
+            "problem_statement": "Create a Python function that reverses the order of words in a sentence while keeping each word’s letters in the same order. The solution must follow strict legacy rules that ban common string helpers and any list usage. The function must process the input from right to left, build the output using only string concatenation, and be written in a low-level, explicit style suitable for a conservative review system.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/tsx0gu-reverse-words-in-a-sentence-under-legacy-python-restrictions",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
