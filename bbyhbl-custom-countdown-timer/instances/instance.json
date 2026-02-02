@@ -1,0 +1,11 @@
+{
+            "instance_id": "BBYHBL",
+            "problem_statement": "Build a multi‑countdown timer web application using React 18 with TypeScript, Framer Motion for animations, and Tailwind CSS, backed by a Hono/Node.js API with PostgreSQL/Prisma ORM. Allow users to create and customize countdowns with Unsplash background images, generate shareable links via nanoid, and optionally save countdowns across devices with Passport.js authentication. The application must display precise time‑remaining breakdowns, support public sharing without accounts, and provide a visually engaging experience for tracking personal milestones.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/bbyhbl-custom-countdown-timer",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
