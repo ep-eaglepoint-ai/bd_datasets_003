@@ -2,7 +2,7 @@
 
  ## After Test Docker Command
 ```bash
-docker compose run --rm tests  
+docker compose run --rm test
 ```                                        
 
 ## Evaluation Docker Command
