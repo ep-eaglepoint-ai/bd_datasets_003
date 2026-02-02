@@ -1,7 +1,6 @@
 {
-            "instance_id": "G0KIYI",
-            "problem_statement": "Optimize a Python data filtering and aggregation system by replacing O(n²) operations—like repeated full‑list scans and bubble sort—with O(1) hash‑based indexes, set lookups, generators, and built‑in functions (sum(), sorted()) to efficiently process 100,000+ records. Refactor methods to avoid intermediate lists, pre‑compute indexes where possible, and compute aggregates in a single pass while maintaining identical results to the original implementation. Ensure all filtering, grouping, and join operations leverage lazy evaluation and proper data structures for scalable performance.
-",
+            "instance_id": "g0kiyi-data-filtering-and-aggregation",
+            "problem_statement": "Optimize a Python data filtering and aggregation system by replacing O(n²) operations—like repeated full‑list scans and bubble sort—with O(1) hash‑based indexes, set lookups, generators, and built‑in functions (sum(), sorted()) to efficiently process 100,000+ records. Refactor methods to avoid intermediate lists, pre‑compute indexes where possible, and compute aggregates in a single pass while maintaining identical results to the original implementation. Ensure all filtering, grouping, and join operations leverage lazy evaluation and proper data structures for scalable performance.",
             "base_commit": "repository_before/",
             "test_patch": "tests/",
             "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/g0kiyi-data-filtering-and-aggregation",

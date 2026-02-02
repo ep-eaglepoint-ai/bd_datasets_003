@@ -1,11 +1,8 @@
-# G0KIYI - data filtering and aggregation
+# G0KIYI - Data Filtering & Aggregation Performance Optimization
 
-    ## Before Test Docker Command
-    <docker before command here>
-
-    ## After Test Docker Command
-    <docker after command here>
-
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+```bash
+docker-compose build
+docker-compose run --rm before-after
+docker-compose run --rm test-after
+docker-compose run --rm evaluation
+```
