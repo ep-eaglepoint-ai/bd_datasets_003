@@ -1,0 +1,11 @@
+{
+            "instance_id": "WLCFJ9",
+            "problem_statement": "Create a full-stack web application that visually simulates a simplified Raft-style consensus system. The app should allow users to observe leader election, node states, term progression, and leader failure in real time, providing both an interactive frontend and a backend simulation engine.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/wlcfj9-consensus-algorithm-visualizer-simplified",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
