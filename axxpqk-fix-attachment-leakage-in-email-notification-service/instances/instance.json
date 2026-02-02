@@ -1,0 +1,11 @@
+{
+            "instance_id": "AXXPQK",
+            "problem_statement": "The email service incorrectly shares attachments between invocations due to mutable default parameters, causing data leakage across users. The implementation must isolate attachments per call without changing method usage.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/axxpqk-fix-attachment-leakage-in-email-notification-service",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
