@@ -1,0 +1,11 @@
+{
+            "instance_id": "MFYK28",
+            "problem_statement": "You are given a working but poorly written JavaScript module used in a production environment. Although the code passes all existing tests, it is difficult to read, fragile to change, and inefficient in hot paths. The task is to refactor the module to improve maintainability, clarity, and performance characteristics without altering its external behavior in any way. This problem evaluates disciplined refactoring, invariant preservation, and the ability to reason under strict constraints commonly found in real-world systems.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/mfyk28-behavior-preserving-refactor-of-a-legacy-javascript-module-under-production-constraints",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
