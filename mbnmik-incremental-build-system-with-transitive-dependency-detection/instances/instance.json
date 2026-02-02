@@ -1,0 +1,13 @@
+{
+            "instance_id": "MBNMIK",
+            "problem_statement": "You are a Build Systems Engineer at a 200-person software company. The current monolithic build system rebuilds all 50+ components on every code change, taking 30-35 minutes even for single-line changes. This is blocking developer productivity, with engineers spending 4+ hours per day waiting for builds. The previous system uses a naive rebuild-everything approach, wasting 80% of build time on unchanged components.
+
+Your task is to implement an incremental build system in `build_system.py` that only rebuilds changed components and their dependents, while correctly handling transitive dependencies and detecting circular dependency errors.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/mbnmik-incremental-build-system-with-transitive-dependency-detection",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
