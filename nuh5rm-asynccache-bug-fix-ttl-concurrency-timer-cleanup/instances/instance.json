@@ -1,0 +1,11 @@
+{
+            "instance_id": "NUH5RM",
+            "problem_statement": "AsyncCache utility has multiple bugs causing: duplicate API calls when caching should prevent them, stale data returned after TTL expiration, memory usage growing over time from uncleared timers, and failed requests impossible to retry. The cache stores results of expensive async operations but fails to handle concurrent access, TTL expiration checks, timer cleanup, and loader error recovery",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/nuh5rm-asynccache-bug-fix-ttl-concurrency-timer-cleanup",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
