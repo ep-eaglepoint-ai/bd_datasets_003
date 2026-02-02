@@ -2,6 +2,7 @@
 import { Transaction, FilterState } from '../types';
 
 export const filterTransactions = (transactions: Transaction[], filters: FilterState): Transaction[] => {
+    console.log('Filtering logic executing...');
     return transactions.filter((t) => {
         if (filters.status.length > 0 && !filters.status.includes(t.status)) return false;
         if (filters.minAmount !== null && t.amount < filters.minAmount) return false;

@@ -13,7 +13,8 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { useDashboardStore, useStats } from '../store/dashboardStore';
+import { useDashboardStore } from '../store/dashboardStore';
+import { useStats } from '../hooks/useTableData';
 import { formatCurrency } from '../utils/formatters';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];

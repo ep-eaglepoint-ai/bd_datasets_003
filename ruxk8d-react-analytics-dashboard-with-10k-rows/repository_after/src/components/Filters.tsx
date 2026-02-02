@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useDashboardStore } from '../store/dashboardStore';
-import { filterTransactions } from '../utils/filtering';
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
@@ -50,21 +49,6 @@ export function Filters() {
     setFilters({ maxAmount: value });
   };
 
-  const handleExport = () => {
-    // Requirement 6: Single location for filtering logic
-    const filteredData = filterTransactions(transactions, filters);
-    const csv = [
-      ['ID', 'Date', 'Amount', 'Status', 'Category', 'Description', 'Merchant'].join(','),
-      ...filteredData.map(t => [t.id, t.date, t.amount, t.status, t.category, `"${t.description.replace(/"/g, '""')}"`, t.merchant].join(','))
-    ].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'transactions.csv';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
 
   return (
     <div className="filters-container">
@@ -126,11 +110,6 @@ export function Filters() {
         </div>
       </div>
 
-      <div className="filter-actions">
-        <button className="export-button" onClick={handleExport}>
-          Export to CSV
-        </button>
-      </div>
     </div>
   );
 }

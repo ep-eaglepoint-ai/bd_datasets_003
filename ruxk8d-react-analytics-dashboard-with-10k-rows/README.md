@@ -1,11 +1,18 @@
 # RUXK8D - React Analytics Dashboard with 10K+ Rows
+## Run tests
 
-    ## Before Test Docker Command
-    <docker before command here>
+```bash
+docker compose run --rm test-before
+```
 
-    ## After Test Docker Command
-    <docker after command here>
 
-    ## Evaluation Docker Command
-    <evaluation command here>
+```bash
+docker compose run --rm test-after
+```
+
+## Run evaluations
+
+```bash
+docker compose run --rm evaluation
+```
     

@@ -9,6 +9,8 @@ import { Filters } from '@project/components/Filters';
 import { Charts } from '@project/components/Charts';
 import { useDashboardStore } from '@project/store/dashboardStore';
 import { useWebSocket } from '@project/hooks/useWebSocket';
+import { useTableData, useStats } from '@project/hooks/useTableData';
+import { TableRow } from '@project/components/TableRow';
 
 class MockWebSocket {
     url: string;
@@ -43,13 +45,6 @@ describe('Dashboard Performance Requirements', () => {
                     maxAmount: null,
                     categories: [],
                     searchQuery: '',
-                },
-                stats: {
-                    totalAmount: 0,
-                    transactionCount: 0,
-                    averageAmount: 0,
-                    statusBreakdown: {},
-                    categoryBreakdown: {},
                 },
                 isLoading: false
             });
@@ -105,6 +100,29 @@ describe('Dashboard Performance Requirements', () => {
         vi.useRealTimers();
     });
 
+    it('Requirement 3: Table column definitions have a stable reference', () => {
+        const { rerender } = render(<DataTable />);
+
+        // In a real app we'd check if child components re-render.
+        // For this test, we verify useMemo is used in the source.
+        const fs = require('fs');
+        const path = require('path');
+        const projectPath = process.env.PROJECT_PATH || './repository_before';
+        const filePath = path.resolve(__dirname, '..', projectPath, 'src/components/DataTable.tsx');
+        const content = fs.readFileSync(filePath, 'utf8');
+
+        // This is a bit of a meta-test but ensures the requirement is met as specified.
+        expect(content).toContain('useMemo');
+        expect(content).toContain('columns =');
+    });
+
+    it('Requirement 4: Row components are wrapped in React.memo', () => {
+        // React.memo components have a $$typeof property
+        const memoType = Symbol.for('react.memo');
+        const isMemo = TableRow.$$typeof === memoType || (TableRow as any).type?.$$typeof === memoType;
+        expect(isMemo).toBe(true);
+    });
+
     it('Requirement 5: WebSocket hook uses getState() pattern', () => {
         const wsConstructorSpy = vi.spyOn(global, 'WebSocket');
 
@@ -118,11 +136,59 @@ describe('Dashboard Performance Requirements', () => {
         expect(wsConstructorSpy.mock.calls.length).toBe(callCount);
     });
 
+    it('Requirement 6: Filtering logic exists in exactly one location', () => {
+        // We check if hook is using the unified filtering utility
+        const fs = require('fs');
+        const path = require('path');
+        const projectPath = process.env.PROJECT_PATH || './repository_before';
+        const hookPath = path.resolve(__dirname, '..', projectPath, 'src/hooks/useTableData.ts');
+        const storePath = path.resolve(__dirname, '..', projectPath, 'src/store/dashboardStore.ts');
+
+        const hookContent = fs.readFileSync(hookPath, 'utf8');
+        const storeContent = fs.readFileSync(storePath, 'utf8');
+
+        // Hook should use the utility
+        expect(hookContent).toContain('filterTransactions');
+        // Store should NOT contain filtering logic in setFilters
+        expect(storeContent).not.toContain('transactions.filter');
+    });
+
+    it('Requirement 7: Charts component subscribes only to stats/filtered data', () => {
+        let renderCount = 0;
+        const TestComponent = () => {
+            renderCount++;
+            useStats();
+            return null;
+        };
+
+        render(<TestComponent />);
+        const initialCount = renderCount;
+
+        act(() => {
+            useDashboardStore.setState({ isLoading: true });
+        });
+
+        // Should not re-render if isLoading changes
+        expect(renderCount).toBe(initialCount);
+    });
+
     it('Requirement 8: Cleanup removes listeners', () => {
         const { unmount } = render(<TestWebSocketComponent />);
         const wsInstance = MockWebSocket.instances[0];
         unmount();
         expect(wsInstance.close).toHaveBeenCalled();
+    });
+
+    it('Requirement 9: Formatters are not recreated each render', () => {
+        const numberFormatSpy = vi.spyOn(Intl, 'NumberFormat');
+        const dateTimeFormatSpy = vi.spyOn(Intl, 'DateTimeFormat');
+
+        // Render something that uses formatters
+        render(<DataTable />);
+
+        // They should be instantiated at module level, so spy might not catch them if they are already created.
+        // But we can check if they are called WITHOUT being instantiated AGAIN.
+        expect(numberFormatSpy).not.toHaveBeenCalled();
     });
 
     it('Requirement 10: Correct Zustand middleware (immer)', () => {

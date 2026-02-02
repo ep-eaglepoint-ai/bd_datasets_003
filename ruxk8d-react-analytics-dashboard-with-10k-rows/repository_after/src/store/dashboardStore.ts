@@ -53,30 +53,3 @@ export const useDashboardStore = create<DashboardState>()(
     },
   }))
 );
-
-export const useStats = () => {
-  const transactions = useDashboardStore((state) => state.transactions);
-  const filters = useDashboardStore((state) => state.filters);
-
-  const filtered = filterTransactions(transactions, filters);
-
-  const totalAmount = filtered.reduce((sum: number, t: Transaction) => sum + t.amount, 0);
-  const statusBreakdown: Record<string, number> = {};
-  const categoryBreakdown: Record<string, number> = {};
-
-  filtered.forEach((t: Transaction) => {
-    statusBreakdown[t.status] = (statusBreakdown[t.status] || 0) + 1;
-    categoryBreakdown[t.category] = (categoryBreakdown[t.category] || 0) + t.amount;
-  });
-
-  return {
-    filteredTransactions: filtered,
-    stats: {
-      totalAmount,
-      transactionCount: filtered.length,
-      averageAmount: filtered.length > 0 ? totalAmount / filtered.length : 0,
-      statusBreakdown,
-      categoryBreakdown,
-    },
-  };
-};
