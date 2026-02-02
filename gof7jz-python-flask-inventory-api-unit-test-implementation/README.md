@@ -1,11 +1,12 @@
 # GOF7JZ - Python Flask Inventory API Unit Test Implementation
 
-    ## Before Test Docker Command
-    <docker before command here>
-
-    ## After Test Docker Command
-    <docker after command here>
-
-    ## Evaluation Docker Command
-    <evaluation command here>
+  ```bash
+  docker compose run --rm test-before
+  ```
+  ```bash
+  docker compose run --rm tests
+  ```
+  ```bash
+  docker compose run --rm app python evaluation/evaluation.py
+  ```
     

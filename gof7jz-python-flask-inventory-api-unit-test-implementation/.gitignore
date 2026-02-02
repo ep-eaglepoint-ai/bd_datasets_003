@@ -10,3 +10,17 @@ node_modules/
 # OS
 .DS_Store
 evaluation/*.json
+
+# Evaluation reports - exclude all date/time folders
+# Keep the base evaluation folder but ignore generated reports
+evaluation/*/
+!evaluation/evaluation.py
+!evaluation/__init__.py
+
+# Specifically ignore the old report.json at root of evaluation
+evaluation/report.json
+
+# Test & Coverage
+.coverage
+.pytest_cache/
+htmlcov/
