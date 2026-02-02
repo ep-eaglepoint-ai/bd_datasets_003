@@ -1,0 +1,11 @@
+{
+            "instance_id": "K0TUZ5",
+            "problem_statement": "This prompt tests the interaction between a resource-constrained server and an aggressive client. The server-side challenge is "Over-selling": without strict Mutex locking around the read-modify-write cycle of the inventory map, concurrent requests will put the inventory into negative numbers. The client-side challenge is the "Thundering Herd": when the server pushes back with HTTP 429 (Too Many Requests), a naive client will immediately retry, effectively DDoS-ing the server and preventing recovery. The solution requires a mathematical implementation of Exponential Backoff (wait time increases exponentially) combined with "Jitter" (randomness) to desynchronize the client threads.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/k0tuz5-distributed-reservation-system-with-exponential-backoff",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
