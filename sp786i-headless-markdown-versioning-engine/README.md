@@ -1,11 +1,11 @@
 # SP786I - Headless-Markdown-Versioning-Engine
 
-    ## Before Test Docker Command
-    <docker before command here>
 
-    ## After Test Docker Command
-    <docker after command here>
+```bash
+docker compose run --rm app pytest
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+
+```bash
+docker compose run --rm app python evaluation/evaluation.py
+```
