@@ -1,0 +1,16 @@
+{
+            "instance_id": "4MUQYC",
+            "problem_statement": "We maintain an in-memory rolling metrics store that aggregates events per entity over a fixed time window.
+The existing implementation is correct but inefficient: it rescans stored data, recomputes metrics repeatedly, and retains unnecessary history.
+
+The task is to optimize the implementation while preserving the exact legacy behavior.
+Any optimization that changes results, entity lifetime, eviction behavior, or determinism is considered incorrect—even if performance improves.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/4muqyc-optimizing-a-rolling-metrics-store-with-strict-behavioral-guarantees",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
