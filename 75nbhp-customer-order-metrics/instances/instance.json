@@ -1,0 +1,11 @@
+{
+            "instance_id": "75NBHP",
+            "problem_statement": "This function is used by customer dashboards and internal analytics to calculate order metrics. It runs frequently on large datasets and has become a performance bottleneck due to repeated queries, row-by-row processing, and unnecessary intermediate variables. The function must be optimized without changing its behavior or output.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/75nbhp-customer-order-metrics",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
