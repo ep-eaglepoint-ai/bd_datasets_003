@@ -1,0 +1,11 @@
+{
+            "instance_id": "M22SSA",
+            "problem_statement": "Implement a numerically stable whitening (sphering) transformation in Python that converts correlated feature data into an uncorrelated space with unit variance. The system must support both PCA whitening and ZCA whitening, follow a reusable fit/transform API suitable for machine-learning pipelines, and handle real-world issues such as ill-conditioned covariance matrices, dimensionality reduction, and inversion back to the original feature space.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/m22ssa-advanced-pca-and-zca-whitening-sphering-transformation-module",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
