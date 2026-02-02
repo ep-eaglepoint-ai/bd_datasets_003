@@ -1,0 +1,11 @@
+{
+            "instance_id": "5NA9E6",
+            "problem_statement": "The goal is to design and implement comprehensive test suites for a React-based Chrome Dino Game clone that uses real-time physics, animation loops, and event-driven input. The testing effort aims to verify the correctness of jump mechanics, obstacle spawning, collision detection, scoring, and persistent high scores. A key objective is to ensure frame-rate–independent physics behavior and accurate game state transitions across all gameplay scenarios. The tests must validate performance, stability, and reliability of the game loop and user interactions. Overall, the goal is to ensure seamless integration of all game systems under both normal and edge-case conditions.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/5na9e6-react-dino-endless-runner-game-test-suite",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
