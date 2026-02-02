@@ -1,0 +1,17 @@
+{
+            "instance_id": "9GMYOF",
+            "problem_statement": "You are building a web-based event ticketing and seat reservation system for a small events company that hosts conferences, workshops, and live talks.
+The previous system relied on manual coordination and spreadsheets, which caused:
+Seats being sold more than once
+Users seeing available seats that were already taken
+Conflicting updates during high-traffic ticket releases
+Inconsistent reservation and payment records
+The company now needs a reliable, concurrent-safe web application to manage events, seats, and reservations.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/9gmyof-event-ticketing-seat-reservation-system-full-stack",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
