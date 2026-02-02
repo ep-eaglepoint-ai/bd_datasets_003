@@ -1,2 +1,52 @@
 # Trajectory
 
+1. Analyze Security Requirements for Password Reset System
+   I analyzed the problem statement requiring a production-grade password reset system for a fintech application handling sensitive financial data. The system must be hardened against timing attacks, account enumeration, race conditions, and token-based abuse. Key security requirements include: constant-time comparisons to prevent timing attacks, indistinguishable responses for existing/non-existing accounts, rate limiting without leaking account validity, single-use tokens with expiration, concurrent request handling with locks, and minimum response durations to normalize timing.
+
+2. Design Backend Architecture with FastAPI and Async Security Primitives
+   I designed a FastAPI backend (backend.py) with security-first architecture. Core components include: PasswordResetService managing users and tokens with asyncio locks, EmailSender with async queue for simulated SMTP, constant_time_compare function for timing-safe equality checks, b64url_encode/decode for URL-safe token encoding, password_meets_policy enforcing 12+ chars with upper/lower/digit/special requirements, and sleep_to_min_duration to normalize response times. The service uses in-memory storage with Dict[bytes, ResetTokenRecord] for tokens and Dict[str, User] for users.
+
+3. Implement Timing Attack Prevention with Constant-Time Operations
+   I implemented constant_time_compare using bitwise XOR operations that run in O(n) time regardless of where differences occur. The function pads to max length and accumulates differences without early returns. All token lookups iterate through all tokens using constant_time_compare instead of direct dictionary lookups. Password hashing always occurs via asyncio.to_thread(bcrypt.hashpw) even for invalid tokens to maintain consistent timing. The backend includes perform_dummy_work that hashes random bytes to simulate work when no actual operation occurs.
+
+4. Prevent Account Enumeration with Indistinguishable Responses
+   I ensured all /api/password-reset/request responses return identical JSON regardless of account existence: {"message": "You will receive an email with reset instructions."}. The service performs dummy work (hashing operations) when accounts don't exist to match timing of real operations. Rate limiting applies to all requests but never reveals whether an account exists. Email sending only occurs internally for valid accounts, but external API responses remain identical. Logs never include email addresses or account validity signals.
+
+5. Implement Rate Limiting with Sliding Window (No Account Leakage)
+   I implemented rate limiting using a sliding window approach with deque data structure. The service allows RATE_MAX=3 requests per RATE_WINDOW=15 minutes per email address. Rate limit checks occur inside the service lock, and exceeded limits trigger dummy work instead of early returns. Critically, rate-limited responses are indistinguishable from successful responses, preventing attackers from using rate limits to enumerate accounts. The rate limiter tracks timestamps and removes expired entries before checking limits.
+
+6. Design Single-Use Token System with Atomic Consumption
+   I implemented ResetTokenRecord with a per-token asyncio.Lock to prevent race conditions. Tokens are 256-bit random bytes (secrets.token_bytes(32)) encoded as base64url. Token hashes (SHA-256) are stored, never plaintext tokens. The confirm_password_reset method acquires the token's lock before checking used/expired status and marking it used. This ensures exactly-once semantics even under concurrent requests. Tokens expire after TOKEN_TTL=15 minutes. Weak passwords do not consume tokens, allowing users to retry with stronger passwords.
+
+7. Implement Password Policy Enforcement (12+ Chars, Complexity Requirements)
+   I created password_meets_policy function enforcing: minimum 12 characters, at least 1 uppercase letter, at least 1 lowercase letter, at least 1 digit, and at least 1 special character. The backend validates passwords server-side before consuming tokens. The frontend provides real-time visual feedback with StrengthMeter component showing 5 bars colored by strength score. Password requirements are displayed as a checklist with visual indicators (dots) that turn green when satisfied. This prevents weak passwords while maintaining user experience.
+
+8. Build React Frontend with Client-Side Validation and Security UX
+   I built a React SPA (app.jsx) using React Router with 4 routes: / redirects to /forgot-password, /forgot-password for email submission, /reset-password for password reset with token, and /reset-success for confirmation. The UI uses validateEmailFormat for client-side email validation, passwordPolicyStatus for real-time password strength checking, and StrengthMeter component with 5-bar visual indicator. All forms include proper ARIA labels, error messages with role="alert", and loading states with spinners. The design uses a dark theme with glassmorphism effects and smooth animations.
+
+9. Implement Token URL Clearing for Browser History Security
+   I implemented window.history.replaceState({}, '', '/reset-password') to clear the token from the URL immediately on form submission. This prevents tokens from persisting in browser history, bookmarks, or server logs. The token is captured in a local variable before clearing, then sent in the POST body to /api/password-reset/confirm. This satisfies the security requirement that tokens must not leak through URL logging or history. The frontend also includes a 404 page for unknown routes.
+
+10. Add Minimum Client-Side Loading Durations to Reduce Timing Signals
+    I added client-side timing normalization in both ForgotPasswordPage and ResetPasswordPage. After API calls complete, the code calculates elapsed time and sleeps for the remaining duration to reach a minimum (650ms for request, 750ms for confirm). This prevents attackers from using client-side timing to infer account existence or token validity. Combined with server-side sleep_to_min_duration (200ms for request, 350ms for confirm), the system provides defense-in-depth against timing attacks.
+
+11. Write Comprehensive API Tests with Pytest and Async Support
+    I created test_password_reset.py with 8 tests covering: constant_time_compare correctness, indistinguishable responses for existing/missing accounts, rate limiting without response changes, successful token consumption with session version increment, weak password rejection without token consumption, expired token handling, concurrent single-use token enforcement using asyncio.gather, and minimum duration enforcement. Tests use conftest.py fixtures providing api_client with mocked bcrypt/email for fast execution. The backend_test_state fixture exposes internal service state for verification.
+
+12. Implement Frontend Tests with React Testing Library and Jest
+    I created app.test.jsx with 6 tests covering: root redirect to /forgot-password, invalid email validation without API call, valid email submission with generic confirmation message (verifying no account enumeration language), password mismatch validation without API call, successful password reset with token URL clearing and navigation, and 404 page rendering. Tests use @testing-library/react for DOM queries, userEvent for interactions, and jest.useFakeTimers for controlling async timing. All tests verify security properties like no account enumeration and token clearing.
+
+13. Configure Jest with Babel for JSX Transformation
+    I configured Jest to work with React JSX using Babel instead of SWC to avoid native binding issues in Docker. Created babel.config.js with @babel/preset-env and @babel/preset-react presets. Updated jest.config.js with testEnvironment: 'jsdom', transform using babel-jest, and extensionsToTreatAsEsm for .jsx files. Added jest.setup.js importing @testing-library/jest-dom for custom matchers. This configuration enables Jest to transform JSX without requiring native compilation, making it Docker-compatible.
+
+14. Create Docker Environment with Python and Node.js Support
+    I created a Dockerfile based on python:3.12-slim that installs Node.js 20 via NodeSource repository. The Dockerfile installs Python dependencies from requirements.txt (FastAPI, uvicorn, pydantic, bcrypt, httpx, pytest), copies source code, and runs npm install in repository_after/client. Created docker-compose.yml with two services: test (runs pytest for API tests and npm test for client tests) and evaluation (runs evaluation.py). Both services use profiles to run independently via docker compose run --rm --build test or evaluation.
+
+15. Build Evaluation System with Dual Test Runner (Pytest + Jest)
+    I created evaluation.py that runs both API tests (pytest) and client tests (npm test) sequentially. The script uses run_pytest function parsing pytest output with regex to extract test counts, and run_jest function parsing Jest output from combined stdout/stderr (since npm outputs to stderr in Docker). Results are combined into a single report with summary showing total/passed/failed counts. Success requires both test suites to pass. The evaluation generates timestamped JSON reports in evaluation/YYYY-MM-DD/HH-MM-SS/report.json with environment info and detailed results.
+
+16. Implement Async Email Queue with Simulated SMTP Worker
+    I created EmailSender class with an asyncio.Queue for email messages and a background worker task. The enqueue method adds EmailMessage objects to the queue, and the \_worker coroutine processes them asynchronously. Email content includes HTML-formatted reset links with tokens. The system includes DEBUG_EMAIL environment variable for development (disabled by default to prevent token leakage in logs). Emails are never persisted after sending, and logs only record delivery timestamps without recipient addresses or tokens.
+
+17. Add Session Versioning for Forced Logout After Password Reset
+    I implemented session_version field in User dataclass that increments on successful password reset. This enables applications to invalidate all existing sessions when a password changes, forcing users to re-authenticate. The confirm_password_reset method increments user.session_version after marking the token as used and updating the password hash. This satisfies the security requirement that password resets should invalidate existing sessions to prevent attackers from maintaining access after a legitimate user resets their password.
