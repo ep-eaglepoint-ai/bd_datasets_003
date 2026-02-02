@@ -1,0 +1,11 @@
+{
+            "instance_id": "WHYYDF",
+            "problem_statement": "A React Native mobile application is used to display and manage a list of contacts. Although the application functions correctly, it was built using outdated React patterns and now exhibits noticeable performance issues, particularly on older Android devices. The goal is to refactor the existing implementation to improve performance and align it with modern React best practices, while preserving all existing functionality and user-facing behavior.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/whyydf-react-native-performance-refactor-task",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
