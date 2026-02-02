@@ -1,0 +1,11 @@
+{
+            "instance_id": "LMXG02",
+            "problem_statement": "Build a TypeScript module that enforces a strict workflow for support or operations cases. Each case can be in only one state at a time, and only specific actions are allowed from each state. The module must validate requested actions, apply valid state transitions, and clearly explain why invalid actions are rejected. It must behave predictably, never mutate existing data, and safely handle malformed input without crashing. The output must be reliable for UI behavior, backend enforcement, and audit use.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/lmxg02-strict-case-state-transition-validator",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
