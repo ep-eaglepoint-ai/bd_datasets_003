@@ -1,0 +1,11 @@
+{
+            "instance_id": "BAOPOI",
+            "problem_statement": "Recurring scheduling logic is complicated by the disconnect between absolute time (UTC) and civil time (Wall Clock). A rule defined as "Every day at 9:00 AM New York" implies a variable UTC offset throughout the year due to Daylight Saving Time. Implementing this using simple fixed-interval arithmetic (e.g., adding 86400 seconds) results in scheduling errors where meetings shift by an hour post-transition. The solution requires calculating each instance's naive local time independently before converting to UTC. Additionally, to achieve high-performance conflict detection across thousands of slots, the temporal data must be mapped to a bit array or integer mask, allowing availability checks to be performed via single-cycle bitwise AND operations rather than iterative range comparisons.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/baopoi-dst-aware-recurrence-expansion-with-bitwise-conflict-detection",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
