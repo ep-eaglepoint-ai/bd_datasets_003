@@ -1,11 +1,10 @@
-# 7KB2PP - offline inventory management web app
+# 7KB2PP - Offline Inventory Management Web App
 
-    ## Before Test Docker Command
-    <docker before command here>
+## After Test Docker Command
+```bash
+docker-compose run app npm test
+```
 
-    ## After Test Docker Command
-    <docker after command here>
-
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## Evaluation Docker Command
+```bash
+docker-compose run app node ../evaluation/evaluation.js

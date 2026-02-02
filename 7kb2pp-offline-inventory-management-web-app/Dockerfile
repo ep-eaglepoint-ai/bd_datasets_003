@@ -1,8 +1,20 @@
+FROM node:20-slim
 
-        # Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
-
-        FROM python:3.11-slim
 WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+# Copy package files
+COPY repository_after/package*.json ./repository_after/
+
+# Install dependencies
+WORKDIR /app/repository_after
+RUN npm install
+
+# Copy all source files
+WORKDIR /app
+COPY . .
+
+# Set working directory for commands
+WORKDIR /app/repository_after
+
+# Default command runs tests
+CMD ["npm", "test"]
