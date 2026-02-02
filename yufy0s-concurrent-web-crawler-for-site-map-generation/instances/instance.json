@@ -1,0 +1,11 @@
+{
+            "instance_id": "YUFY0S",
+            "problem_statement": "Design and implement a production-grade concurrent web crawler in Python that starts from a single root URL on a given domain, systematically explores internal links, and constructs a directed graph representing the site's link topology. The crawler operates under strict constraints for safety and determinism, targeting use in automated security and reliability evaluation pipelines. It fetches HTML pages, extracts same-domain links, respects robots.txt rules, limits concurrency to 5 threads, caps traversal at 100 unique URLs and depth 3, and outputs the graph as a JSON adjacency list using NetworkX. All operations must be thread-safe, robust against failures, and use only standard libraries plus NetworkX—no async or external dependencies.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/yufy0s-concurrent-web-crawler-for-site-map-generation",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
