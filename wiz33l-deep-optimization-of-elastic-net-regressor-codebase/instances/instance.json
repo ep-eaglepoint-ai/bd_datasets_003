@@ -1,0 +1,11 @@
+{
+            "instance_id": "WIZ33L",
+            "problem_statement": "The current Elastic Net regressor implementation is inefficient, relying on excessive Python loops, redundant computations, and unnecessary memory allocations. This task requires transforming the code into a highly optimized, vectorized, and maintainable implementation while strictly preserving its functional behavior, numerical results, and training dynamics.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/wiz33l-deep-optimization-of-elastic-net-regressor-codebase",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
