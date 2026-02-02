@@ -1,0 +1,11 @@
+{
+            "instance_id": "E9OGSH",
+            "problem_statement": "Develop a real-time safety synchronization service in Java for an automated maritime port. The system must coordinate two independent gantry cranes performing a 'Tandem Lift' of a single oversized container, ensuring that the vertical height difference between the two lifting points never exceeds 10cm to prevent catastrophic structural failure or load slippage.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/e9ogsh-maritime-crane-sync-orchestrator",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
