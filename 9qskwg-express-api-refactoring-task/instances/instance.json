@@ -1,0 +1,11 @@
+{
+            "instance_id": "9QSKWG",
+            "problem_statement": "An Express-based API supports a production mobile application and has evolved organically over time. While the API continues to function correctly, its current structure has become difficult to understand, maintain, and safely extend. The goal is to refactor the existing codebase to improve readability, maintainability, and overall reliability, without altering any existing API behavior, routes, or response formats.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/9qskwg-express-api-refactoring-task",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
