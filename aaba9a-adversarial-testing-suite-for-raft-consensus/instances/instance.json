@@ -1,0 +1,11 @@
+{
+            "instance_id": "AABA9A",
+            "problem_statement": "Develop an external testing harness in Python that simulates network partitions and process failures to verify the safety and liveness of a black-box Raft cluster implementation.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/aaba9a-adversarial-testing-suite-for-raft-consensus",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
