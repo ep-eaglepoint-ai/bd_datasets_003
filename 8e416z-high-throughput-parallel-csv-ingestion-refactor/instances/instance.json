@@ -1,0 +1,11 @@
+{
+            "instance_id": "8E416Z",
+            "problem_statement": "Our data-lake ingestion engine is currently the primary bottleneck for our daily 20GB partner data sync. The legacy implementation utilizes a synchronous, memory-bound approach that attempts to load entire CSV datasets into a single Pandas DataFrame before processing. This results in frequent Out-of-Memory (OOM) crashes on standard 8GB worker nodes and lacks a mechanism to identify duplicate records without comparing the current row against every previously processed row in the file. Furthermore, the single-threaded nature of the script fails to utilize available multi-core CPU resources, leading to ingestion times that exceed our 4-hour SLA window.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/8e416z-high-throughput-parallel-csv-ingestion-refactor",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
