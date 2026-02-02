@@ -1,0 +1,11 @@
+{
+            "instance_id": "DX0536",
+            "problem_statement": "The company needs a system to manage shared physical assets (like laptops, monitors, tools) and track their checkouts, approvals, and returns. The previous informal process led to issues such as lost assets, double checkouts, unclear asset ownership, and missing audit history. Your task is to create a minimal, full-stack web application that allows employees to request asset checkouts, managers to approve or reject them, and tracks asset returns, all while enforcing strict business rules.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/dx0536-asset-checkout-management-system",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
