@@ -1,0 +1,28 @@
+{
+  "name": "order-processing-service",
+  "version": "1.0.0",
+  "description": "E-commerce order processing service with inventory management and Stripe payments",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest --coverage",
+    "test:watch": "jest --watch",
+    "test:integration": "jest --config jest.config.js --runInBand"
+  },
+  "dependencies": {
+    "ioredis": "^5.3.2",
+    "pg": "^8.11.3",
+    "stripe": "^14.10.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.11",
+    "@types/node": "^20.10.6",
+    "@types/pg": "^8.10.9",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.1",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
