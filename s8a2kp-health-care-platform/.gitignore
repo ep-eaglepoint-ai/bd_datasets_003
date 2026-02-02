@@ -6,7 +6,12 @@ __pycache__/
 
 # Node
 node_modules/
+dist/
 
 # OS
 .DS_Store
 evaluation/*.json
+
+#evaluation
+evaluation/*/
+!evaluation/evaluation.ts

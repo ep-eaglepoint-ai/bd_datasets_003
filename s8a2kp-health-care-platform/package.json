@@ -1,0 +1,29 @@
+{
+  "name": "healthcare-platform-root",
+  "private": true,
+  "workspaces": [
+    "repository_after/server",
+    "repository_after/client"
+  ],
+  "scripts": {
+    "test": "jest"
+  },
+  "devDependencies": {
+    "@nestjs/common": "^11.0.1",
+    "@nestjs/core": "^11.0.1",
+    "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/testing": "^11.0.1",
+    "@types/jest": "^29.5.0",
+    "@types/supertest": "^2.0.0",
+    "cross-inspect": "^1.0.0",
+    "jest": "^29.5.0",
+    "pg": "^8.11.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "supertest": "^6.3.0",
+    "ts-jest": "^29.1.0",
+    "ts-node": "^10.9.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.0.0"
+  }
+}
