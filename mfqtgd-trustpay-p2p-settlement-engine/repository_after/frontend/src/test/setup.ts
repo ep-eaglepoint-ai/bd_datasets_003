@@ -1,0 +1,8 @@
+import { afterEach, vi } from "vitest";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  document.body.innerHTML = "";
+});
+
