@@ -26,6 +26,10 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+beforeEach(() => {
+  jest.clearAllMocks();
+});
+
 test("Optimistic UI rolls back on conflict rejection", async () => {
   const mockedUpdate = updateTaskAction as unknown as MockedUpdate;
   const d = deferred<{
@@ -87,6 +91,16 @@ test("Optimistic UI rolls back when offline/network error occurs", async () => {
     d.promise as unknown as ReturnType<MockedUpdate>
   );
 
+  const originalOnLineDescriptor = Object.getOwnPropertyDescriptor(
+    window.navigator,
+    "onLine"
+  );
+  Object.defineProperty(window.navigator, "onLine", {
+    configurable: true,
+    get: () => false,
+  });
+  window.dispatchEvent(new Event("offline"));
+
   const initial: TaskDTO[] = [
     {
       id: "t2",
@@ -110,6 +124,7 @@ test("Optimistic UI rolls back when offline/network error occurs", async () => {
     expect(within(inProgressCol).getByText("Task 2")).toBeInTheDocument();
   });
 
+  // Simulate the network failing while offline.
   d.reject(new Error("Network offline"));
 
   await waitFor(() => {
@@ -118,4 +133,17 @@ test("Optimistic UI rolls back when offline/network error occurs", async () => {
 
   expect(within(inProgressCol).queryByText("Task 2")).toBeNull();
   expect(screen.getByRole("alert")).toHaveTextContent("offline/network");
+
+  expect(mockedUpdate).toHaveBeenCalledTimes(1);
+
+  // Restore navigator.onLine
+  if (originalOnLineDescriptor) {
+    Object.defineProperty(window.navigator, "onLine", originalOnLineDescriptor);
+  } else {
+    // Best-effort cleanup if no original descriptor existed.
+    Object.defineProperty(window.navigator, "onLine", {
+      configurable: true,
+      get: () => true,
+    });
+  }
 });

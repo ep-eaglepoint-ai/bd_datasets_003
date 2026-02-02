@@ -355,6 +355,26 @@ function staticChecks(projectRoot) {
   const boardClient = safeReadText(boardClientPath) ?? "";
   const hasUseOptimistic = boardClient.includes("useOptimistic");
 
+  // Req 7 nuance: ensure the UI test actually toggles "offline" (not only mocking a rejection).
+  // This is a static verification of the test implementation.
+  const boardClientTestPath = path.join(
+    projectRoot,
+    "tests",
+    "boardClient.test.tsx"
+  );
+  const boardClientTest = safeReadText(boardClientTestPath) ?? "";
+  const offlineTogglesNavigatorOnLine =
+    boardClientTest.includes("Object.defineProperty") &&
+    (boardClientTest.includes('navigator,\n    "onLine"') ||
+      boardClientTest.includes('navigator, "onLine"') ||
+      boardClientTest.includes('window.navigator,\n    "onLine"') ||
+      boardClientTest.includes('window.navigator, "onLine"'));
+  const offlineDispatchesEvent =
+    boardClientTest.includes('new Event("offline")') ||
+    boardClientTest.includes("new Event('offline')");
+  const offlineTestImplementsOfflineToggle =
+    offlineTogglesNavigatorOnLine && offlineDispatchesEvent;
+
   return {
     schema_has_taskstatus_enum: hasEnum,
     schema_has_version_field: hasVersion,
@@ -363,6 +383,7 @@ function staticChecks(projectRoot) {
     prisma_isolation_ok: prismaIsolationOk,
     prisma_isolation_hits: prismaHits,
     client_uses_useOptimistic: hasUseOptimistic,
+    test_offline_toggle_present: offlineTestImplementsOfflineToggle,
   };
 }
 
@@ -406,7 +427,11 @@ function mapCriteria({ tests, static_checks }) {
     stale_update_rejected: byName("stale update is rejected"),
 
     // 7) Testing requirement: offline/network rollback
-    optimistic_ui_reversion_on_offline: byName("offline/network error"),
+    // Evaluators may require that the test explicitly toggles offline state.
+    optimistic_ui_reversion_on_offline: passFail(
+      byName("offline/network error") === "Pass" &&
+        Boolean(static_checks.test_offline_toggle_present)
+    ),
   };
 }
 
