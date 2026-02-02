@@ -1,0 +1,12 @@
+{
+            "instance_id": "NXLCSI",
+            "problem_statement": "Implement a complete, production-grade password reset system for a fintech application handling sensitive financial data.
+The system must be hardened against timing attacks, account enumeration, race conditions, and token-based abuse while maintaining a seamless user experience.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/nxlcsi-password-reset-system",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
