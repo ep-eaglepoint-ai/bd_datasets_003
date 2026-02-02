@@ -1,0 +1,988 @@
+diff --git a/repository_before/.gitkeep b/repository_before/.gitkeep
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/repository_after/pom.xml b/repository_after/pom.xml
+new file mode 100644
+index 0000000..e730b2c
+--- /dev/null
++++ b/repository_after/pom.xml
+@@ -0,0 +1,35 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<project xmlns="http://maven.apache.org/POM/4.0.0"
++         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
++    <modelVersion>4.0.0</modelVersion>
++
++    <groupId>com.porthorizon</groupId>
++    <artifactId>crane-sync-orchestrator</artifactId>
++    <version>1.0.0</version>
++    <packaging>jar</packaging>
++
++    <name>Maritime Crane Sync Orchestrator</name>
++    <description>Real-time safety synchronization service for tandem crane operations</description>
++
++    <properties>
++        <maven.compiler.source>17</maven.compiler.source>
++        <maven.compiler.target>17</maven.compiler.target>
++        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
++    </properties>
++
++    <build>
++        <plugins>
++            <plugin>
++                <groupId>org.apache.maven.plugins</groupId>
++                <artifactId>maven-compiler-plugin</artifactId>
++                <version>3.11.0</version>
++            </plugin>
++            <plugin>
++                <groupId>org.apache.maven.plugins</groupId>
++                <artifactId>maven-jar-plugin</artifactId>
++                <version>3.3.0</version>
++            </plugin>
++        </plugins>
++    </build>
++</project>
+\ No newline at end of file
+diff --git a/repository_after/src/main/java/com/porthorizon/crane/AlignedTelemetryPair.java b/repository_after/src/main/java/com/porthorizon/crane/AlignedTelemetryPair.java
+new file mode 100644
+index 0000000..31d6e79
+--- /dev/null
++++ b/repository_after/src/main/java/com/porthorizon/crane/AlignedTelemetryPair.java
+@@ -0,0 +1,53 @@
++package com.porthorizon.crane;
++
++/**
++ * Represents a temporally aligned pair of telemetry pulses from both cranes.
++ */
++public final class AlignedTelemetryPair {
++    
++    private final TelemetryPulse pulseA;
++    private final TelemetryPulse pulseB;
++    private final long alignmentDeltaNs;
++    
++    public AlignedTelemetryPair(TelemetryPulse pulseA, TelemetryPulse pulseB) {
++        this.pulseA = pulseA;
++        this.pulseB = pulseB;
++        this.alignmentDeltaNs = Math.abs(pulseA.timestampNs() - pulseB.timestampNs());
++    }
++    
++    public TelemetryPulse pulseA() {
++        return pulseA;
++    }
++    
++    public TelemetryPulse pulseB() {
++        return pulseB;
++    }
++    
++    public long alignmentDeltaNs() {
++        return alignmentDeltaNs;
++    }
++    
++    /**
++     * Calculates the vertical tilt delta between the two cranes.
++     * @return absolute difference in millimeters
++     */
++    public double calculateTiltDeltaMm() {
++        return Math.abs(pulseA.zAxisMm() - pulseB.zAxisMm());
++    }
++    
++    /**
++     * Checks if the telemetry pair is within acceptable alignment threshold.
++     * @param maxDeltaNs maximum allowed time difference in nanoseconds
++     * @return true if well-aligned
++     */
++    public boolean isWellAligned(long maxDeltaNs) {
++        return alignmentDeltaNs <= maxDeltaNs;
++    }
++    
++    @Override
++    public String toString() {
++        return String.format("AlignedPair{A=%.2fmm, B=%.2fmm, delta=%.2fmm, alignNs=%d}",
++                           pulseA.zAxisMm(), pulseB.zAxisMm(), 
++                           calculateTiltDeltaMm(), alignmentDeltaNs);
++    }
++}
+\ No newline at end of file
+diff --git a/repository_after/src/main/java/com/porthorizon/crane/Command.java b/repository_after/src/main/java/com/porthorizon/crane/Command.java
+new file mode 100644
+index 0000000..584a513
+--- /dev/null
++++ b/repository_after/src/main/java/com/porthorizon/crane/Command.java
+@@ -0,0 +1,92 @@
++package com.porthorizon.crane;
++
++import java.util.Objects;
++
++/**
++ * Represents a command to be sent to crane motor controllers.
++ */
++public final class Command {
++    
++    public static final String MOVE = "MOVE";
++    public static final String HALT = "HALT";
++    public static final String HALT_ALL = "HALT_ALL";
++    public static final String CALIBRATE = "CALIBRATE";
++    public static final String EMERGENCY_STOP = "EMERGENCY_STOP";
++    
++    private final String type;
++    private final String targetCraneId;
++    private final double targetVelocity;
++    private final long timestampNs;
++    
++    public Command(String type, String targetCraneId, double targetVelocity) {
++        this(type, targetCraneId, targetVelocity, System.nanoTime());
++    }
++    
++    public Command(String type, String targetCraneId, double targetVelocity, long timestampNs) {
++        this.type = Objects.requireNonNull(type, "type cannot be null");
++        this.targetCraneId = targetCraneId;
++        this.targetVelocity = targetVelocity;
++        this.timestampNs = timestampNs;
++    }
++    
++    public static Command halt(String craneId) {
++        return new Command(HALT, craneId, 0.0);
++    }
++    
++    public static Command haltAll() {
++        return new Command(HALT_ALL, null, 0.0);
++    }
++    
++    public static Command emergencyStop() {
++        return new Command(EMERGENCY_STOP, null, 0.0);
++    }
++    
++    public static Command move(String craneId, double velocity) {
++        return new Command(MOVE, craneId, velocity);
++    }
++    
++    public static Command calibrate(String craneId) {
++        return new Command(CALIBRATE, craneId, 0.0);
++    }
++    
++    public String type() {
++        return type;
++    }
++    
++    public String targetCraneId() {
++        return targetCraneId;
++    }
++    
++    public double targetVelocity() {
++        return targetVelocity;
++    }
++    
++    public long timestampNs() {
++        return timestampNs;
++    }
++    
++    public boolean isHaltCommand() {
++        return HALT.equals(type) || HALT_ALL.equals(type) || EMERGENCY_STOP.equals(type);
++    }
++    
++    @Override
++    public boolean equals(Object o) {
++        if (this == o) return true;
++        if (o == null || getClass() != o.getClass()) return false;
++        Command command = (Command) o;
++        return Double.compare(command.targetVelocity, targetVelocity) == 0 &&
++               Objects.equals(type, command.type) &&
++               Objects.equals(targetCraneId, command.targetCraneId);
++    }
++    
++    @Override
++    public int hashCode() {
++        return Objects.hash(type, targetCraneId, targetVelocity);
++    }
++    
++    @Override
++    public String toString() {
++        return String.format("Command{type='%s', targetCraneId='%s', targetVelocity=%.2f}", 
++                           type, targetCraneId, targetVelocity);
++    }
++}
+\ No newline at end of file
+diff --git a/repository_after/src/main/java/com/porthorizon/crane/LiftState.java b/repository_after/src/main/java/com/porthorizon/crane/LiftState.java
+new file mode 100644
+index 0000000..df161b0
+--- /dev/null
++++ b/repository_after/src/main/java/com/porthorizon/crane/LiftState.java
+@@ -0,0 +1,36 @@
++package com.porthorizon.crane;
++
++/**
++ * Represents the operational state of the tandem lift system.
++ */
++public enum LiftState {
++    /**
++     * System is idle, no active lift operation.
++     */
++    IDLE,
++    
++    /**
++     * Active lift operation in progress.
++     */
++    LIFTING,
++    
++    /**
++     * Safety fault detected, all operations halted.
++     * Requires manual reset to exit this state.
++     */
++    FAULT;
++    
++    /**
++     * Checks if the state allows movement operations.
++     */
++    public boolean allowsMovement() {
++        return this == LIFTING;
++    }
++    
++    /**
++     * Checks if the state requires manual intervention.
++     */
++    public boolean requiresManualReset() {
++        return this == FAULT;
++    }
++}
+\ No newline at end of file
+diff --git a/repository_after/src/main/java/com/porthorizon/crane/LivenessWatchdog.java b/repository_after/src/main/java/com/porthorizon/crane/LivenessWatchdog.java
+new file mode 100644
+index 0000000..58958fd
+--- /dev/null
++++ b/repository_after/src/main/java/com/porthorizon/crane/LivenessWatchdog.java
+@@ -0,0 +1,190 @@
++package com.porthorizon.crane;
++
++import java.util.concurrent.*;
++import java.util.concurrent.atomic.*;
++import java.util.function.Consumer;
++
++/**
++ * Monitors liveness of crane telemetry streams.
++ * Triggers emergency shutdown if a crane fails to report within timeout.
++ */
++public class LivenessWatchdog {
++    
++    private static final long DEFAULT_TIMEOUT_NS = 150_000_000L; // 150ms
++    private static final long CHECK_INTERVAL_MS = 10; // Check every 10ms
++    
++    private final long timeoutNs;
++    private final AtomicLong lastUpdateCraneA = new AtomicLong(0);
++    private final AtomicLong lastUpdateCraneB = new AtomicLong(0);
++    private final AtomicBoolean running = new AtomicBoolean(false);
++    private final AtomicBoolean craneATimedOut = new AtomicBoolean(false);
++    private final AtomicBoolean craneBTimedOut = new AtomicBoolean(false);
++    
++    private final ScheduledExecutorService executor;
++    private ScheduledFuture<?> watchdogTask;
++    private Consumer<String> timeoutCallback;
++    
++    public LivenessWatchdog() {
++        this(DEFAULT_TIMEOUT_NS);
++    }
++    
++    public LivenessWatchdog(long timeoutNs) {
++        this.timeoutNs = timeoutNs;
++        this.executor = Executors.newSingleThreadScheduledExecutor(r -> {
++            Thread t = new Thread(r, "liveness-watchdog");
++            t.setDaemon(true);
++            t.setPriority(Thread.MAX_PRIORITY);
++            return t;
++        });
++    }
++    
++    /**
++     * Starts the watchdog monitoring.
++     */
++    public void start() {
++        if (running.compareAndSet(false, true)) {
++            long now = System.nanoTime();
++            lastUpdateCraneA.set(now);
++            lastUpdateCraneB.set(now);
++            craneATimedOut.set(false);
++            craneBTimedOut.set(false);
++            
++            watchdogTask = executor.scheduleAtFixedRate(
++                this::checkLiveness, 
++                CHECK_INTERVAL_MS, 
++                CHECK_INTERVAL_MS, 
++                TimeUnit.MILLISECONDS
++            );
++        }
++    }
++    
++    /**
++     * Stops the watchdog monitoring.
++     */
++    public void stop() {
++        if (running.compareAndSet(true, false)) {
++            if (watchdogTask != null) {
++                watchdogTask.cancel(false);
++                watchdogTask = null;
++            }
++        }
++    }
++    
++    /**
++     * Records a telemetry update from a crane.
++     */
++    public void recordUpdate(String craneId) {
++        recordUpdate(craneId, System.nanoTime());
++    }
++    
++    /**
++     * Records a telemetry update with specific timestamp.
++     */
++    public void recordUpdate(String craneId, long timestampNs) {
++        if (TelemetryPulse.CRANE_A.equals(craneId)) {
++            lastUpdateCraneA.set(timestampNs);
++            craneATimedOut.set(false);
++        } else if (TelemetryPulse.CRANE_B.equals(craneId)) {
++            lastUpdateCraneB.set(timestampNs);
++            craneBTimedOut.set(false);
++        }
++    }
++    
++    private void checkLiveness() {
++        if (!running.get()) return;
++        
++        long now = System.nanoTime();
++        long lastA = lastUpdateCraneA.get();
++        long lastB = lastUpdateCraneB.get();
++        
++        if (lastA > 0 && (now - lastA) > timeoutNs && !craneATimedOut.get()) {
++            craneATimedOut.set(true);
++            notifyTimeout(TelemetryPulse.CRANE_A);
++        }
++        
++        if (lastB > 0 && (now - lastB) > timeoutNs && !craneBTimedOut.get()) {
++            craneBTimedOut.set(true);
++            notifyTimeout(TelemetryPulse.CRANE_B);
++        }
++    }
++    
++    private void notifyTimeout(String craneId) {
++        if (timeoutCallback != null) {
++            timeoutCallback.accept(craneId);
++        }
++    }
++    
++    /**
++     * Sets the callback for timeout notifications.
++     */
++    public void setTimeoutCallback(Consumer<String> callback) {
++        this.timeoutCallback = callback;
++    }
++    
++    /**
++     * Checks if a specific crane has timed out.
++     */
++    public boolean hasTimedOut(String craneId) {
++        if (TelemetryPulse.CRANE_A.equals(craneId)) {
++            return craneATimedOut.get();
++        } else if (TelemetryPulse.CRANE_B.equals(craneId)) {
++            return craneBTimedOut.get();
++        }
++        return false;
++    }
++    
++    /**
++     * Checks if any crane has timed out.
++     */
++    public boolean hasAnyTimeout() {
++        return craneATimedOut.get() || craneBTimedOut.get();
++    }
++    
++    /**
++     * Gets the time since last update for a crane.
++     */
++    public long getTimeSinceLastUpdate(String craneId) {
++        long now = System.nanoTime();
++        if (TelemetryPulse.CRANE_A.equals(craneId)) {
++            return now - lastUpdateCraneA.get();
++        } else if (TelemetryPulse.CRANE_B.equals(craneId)) {
++            return now - lastUpdateCraneB.get();
++        }
++        return Long.MAX_VALUE;
++    }
++    
++    /**
++     * Resets the watchdog state.
++     */
++    public void reset() {
++        long now = System.nanoTime();
++        lastUpdateCraneA.set(now);
++        lastUpdateCraneB.set(now);
++        craneATimedOut.set(false);
++        craneBTimedOut.set(false);
++    }
++    
++    public boolean isRunning() {
++        return running.get();
++    }
++    
++    public long getTimeoutNs() {
++        return timeoutNs;
++    }
++    
++    /**
++     * Shuts down the watchdog executor.
++     */
++    public void shutdown() {
++        stop();
++        executor.shutdown();
++        try {
++            if (!executor.awaitTermination(100, TimeUnit.MILLISECONDS)) {
++                executor.shutdownNow();
++            }
++        } catch (InterruptedException e) {
++            executor.shutdownNow();
++            Thread.currentThread().interrupt();
++        }
++    }
++}
+\ No newline at end of file
+diff --git a/repository_after/src/main/java/com/porthorizon/crane/MotorController.java b/repository_after/src/main/java/com/porthorizon/crane/MotorController.java
+new file mode 100644
+index 0000000..c38835d
+--- /dev/null
++++ b/repository_after/src/main/java/com/porthorizon/crane/MotorController.java
+@@ -0,0 +1,25 @@
++package com.porthorizon.crane;
++
++/**
++ * Interface for motor controller communication.
++ */
++public interface MotorController {
++    
++    /**
++     * Sends a command to the motor controller.
++     * @param command The command to send
++     */
++    void sendCommand(Command command);
++    
++    /**
++     * Checks if the controller is connected and responsive.
++     * @return true if connected
++     */
++    boolean isConnected();
++    
++    /**
++     * Gets the crane ID this controller manages.
++     * @return crane identifier
++     */
++    String getCraneId();
++}
+\ No newline at end of file
+diff --git a/repository_after/src/main/java/com/porthorizon/crane/TandemSyncService.java b/repository_after/src/main/java/com/porthorizon/crane/TandemSyncService.java
+new file mode 100644
+index 0000000..5e7db03
+--- /dev/null
++++ b/repository_after/src/main/java/com/porthorizon/crane/TandemSyncService.java
+@@ -0,0 +1,358 @@
++package com.porthorizon.crane;
++
++import java.util.concurrent.*;
++import java.util.concurrent.atomic.*;
++import java.util.function.Consumer;
++import java.util.List;
++import java.util.ArrayList;
++
++/**
++ * Real-time safety synchronization service for tandem crane operations.
++ * Coordinates two independent gantry cranes performing a tandem lift,
++ * ensuring vertical height difference never exceeds safety threshold.
++ */
++public class TandemSyncService {
++    
++    // Safety thresholds
++    public static final double TILT_THRESHOLD_MM = 100.0; // 10cm = 100mm
++    public static final long LIVENESS_TIMEOUT_NS = 150_000_000L; // 150ms
++    public static final long MAX_ALIGNMENT_DELTA_NS = 100_000_000L; // 100ms for alignment
++    public static final long MAX_PROCESSING_WINDOW_NS = 10_000_000L; // 10ms processing window
++    
++    // Atomic state management
++    private final AtomicReference<LiftState> state = new AtomicReference<>(LiftState.IDLE);
++    private final AtomicReference<TelemetryPulse> latestCraneA = new AtomicReference<>();
++    private final AtomicReference<TelemetryPulse> latestCraneB = new AtomicReference<>();
++    private final AtomicLong lastArrivalCraneA = new AtomicLong(0);
++    private final AtomicLong lastArrivalCraneB = new AtomicLong(0);
++    private final AtomicBoolean staleDataDetected = new AtomicBoolean(false);
++    private final AtomicLong faultTimestampNs = new AtomicLong(0);
++    private final AtomicLong thresholdCrossedTimestampNs = new AtomicLong(0);
++    
++    // Motor controllers
++    private final MotorController motorControllerA;
++    private final MotorController motorControllerB;
++    
++    // Liveness watchdog
++    private final LivenessWatchdog watchdog;
++    
++    // Non-blocking processing
++    private final ExecutorService processingExecutor;
++    private final ConcurrentLinkedQueue<Runnable> commandQueue = new ConcurrentLinkedQueue<>();
++    
++    // Event listeners
++    private Consumer<Command> commandListener;
++    private Consumer<String> faultListener;
++    private Consumer<AlignedTelemetryPair> alignmentListener;
++    
++    // Command history for testing/auditing
++    private final ConcurrentLinkedQueue<Command> commandHistory = new ConcurrentLinkedQueue<>();
++    
++    public TandemSyncService(MotorController motorControllerA, MotorController motorControllerB) {
++        this.motorControllerA = motorControllerA;
++        this.motorControllerB = motorControllerB;
++        this.watchdog = new LivenessWatchdog(LIVENESS_TIMEOUT_NS);
++        
++        this.processingExecutor = Executors.newFixedThreadPool(2, r -> {
++            Thread t = new Thread(r, "telemetry-processor");
++            t.setDaemon(true);
++            t.setPriority(Thread.MAX_PRIORITY - 1);
++            return t;
++        });
++        
++        // Configure watchdog callback
++        watchdog.setTimeoutCallback(craneId -> {
++            triggerFault("Communication timeout: " + craneId);
++        });
++    }
++    
++    /**
++     * Starts the tandem lift operation.
++     * @throws IllegalStateException if system is in FAULT state
++     */
++    public void start() {
++        LiftState current = state.get();
++        if (current == LiftState.FAULT) {
++            throw new IllegalStateException("Cannot start: System is in FAULT state. Manual reset required.");
++        }
++        
++        if (state.compareAndSet(LiftState.IDLE, LiftState.LIFTING)) {
++            watchdog.start();
++        }
++    }
++    
++    /**
++     * Stops the tandem lift operation.
++     */
++    public void stop() {
++        watchdog.stop();
++        state.set(LiftState.IDLE);
++    }
++    
++    /**
++     * Resets the system from FAULT state.
++     * This is the only way to exit FAULT state.
++     */
++    public void reset() {
++        watchdog.stop();
++        watchdog.reset();
++        state.set(LiftState.IDLE);
++        staleDataDetected.set(false);
++        faultTimestampNs.set(0);
++        thresholdCrossedTimestampNs.set(0);
++        latestCraneA.set(null);
++        latestCraneB.set(null);
++        lastArrivalCraneA.set(0);
++        lastArrivalCraneB.set(0);
++        commandHistory.clear();
++    }
++    
++    /**
++     * Ingests a telemetry pulse from a crane.
++     * This method is non-blocking and returns immediately.
++     * @param pulse The telemetry pulse to process
++     */
++    public void ingestTelemetry(TelemetryPulse pulse) {
++        long arrivalTime = System.nanoTime();
++        
++        // Non-blocking submission to processing executor
++        CompletableFuture.runAsync(() -> processTelemetry(pulse, arrivalTime), processingExecutor);
++    }
++    
++    /**
++     * Ingests telemetry synchronously for testing purposes.
++     */
++    public void ingestTelemetrySync(TelemetryPulse pulse) {
++        processTelemetry(pulse, System.nanoTime());
++    }
++    
++    private void processTelemetry(TelemetryPulse pulse, long arrivalTime) {
++        // Skip processing if in FAULT state
++        if (state.get() == LiftState.FAULT) {
++            return;
++        }
++        
++        // Update crane-specific atomic storage
++        if (TelemetryPulse.CRANE_A.equals(pulse.craneId())) {
++            latestCraneA.set(pulse);
++            lastArrivalCraneA.set(arrivalTime);
++            watchdog.recordUpdate(TelemetryPulse.CRANE_A, arrivalTime);
++        } else if (TelemetryPulse.CRANE_B.equals(pulse.craneId())) {
++            latestCraneB.set(pulse);
++            lastArrivalCraneB.set(arrivalTime);
++            watchdog.recordUpdate(TelemetryPulse.CRANE_B, arrivalTime);
++        }
++        
++        // Evaluate safety constraints
++        evaluateSafety();
++    }
++    
++    private void evaluateSafety() {
++        TelemetryPulse pulseA = latestCraneA.get();
++        TelemetryPulse pulseB = latestCraneB.get();
++        
++        // Need telemetry from both cranes
++        if (pulseA == null || pulseB == null) {
++            return;
++        }
++        
++        // Create aligned pair
++        AlignedTelemetryPair pair = new AlignedTelemetryPair(pulseA, pulseB);
++        
++        // Check temporal alignment
++        if (!pair.isWellAligned(MAX_ALIGNMENT_DELTA_NS)) {
++            staleDataDetected.set(true);
++            if (alignmentListener != null) {
++                alignmentListener.accept(pair);
++            }
++            return;
++        }
++        staleDataDetected.set(false);
++        
++        // Calculate and check tilt delta
++        double tiltDelta = pair.calculateTiltDeltaMm();
++        
++        if (tiltDelta > TILT_THRESHOLD_MM) {
++            long crossedTime = System.nanoTime();
++            thresholdCrossedTimestampNs.set(crossedTime);
++            triggerFault(String.format("Tilt threshold exceeded: %.2fmm > %.2fmm", 
++                                      tiltDelta, TILT_THRESHOLD_MM));
++        }
++        
++        if (alignmentListener != null) {
++            alignmentListener.accept(pair);
++        }
++    }
++    
++    private void triggerFault(String reason) {
++        LiftState previous = state.getAndSet(LiftState.FAULT);
++        
++        if (previous != LiftState.FAULT) {
++            faultTimestampNs.set(System.nanoTime());
++            
++            // Issue immediate HALT commands to both cranes
++            Command haltA = Command.halt(TelemetryPulse.CRANE_A);
++            Command haltB = Command.halt(TelemetryPulse.CRANE_B);
++            
++            dispatchCommand(haltA);
++            dispatchCommand(haltB);
++            
++            // Stop watchdog
++            watchdog.stop();
++            
++            // Notify fault listener
++            if (faultListener != null) {
++                faultListener.accept(reason);
++            }
++        }
++    }
++    
++    private void dispatchCommand(Command command) {
++        commandHistory.add(command);
++        
++        if (TelemetryPulse.CRANE_A.equals(command.targetCraneId())) {
++            motorControllerA.sendCommand(command);
++        } else if (TelemetryPulse.CRANE_B.equals(command.targetCraneId())) {
++            motorControllerB.sendCommand(command);
++        } else {
++            // Broadcast to both
++            motorControllerA.sendCommand(command);
++            motorControllerB.sendCommand(command);
++        }
++        
++        if (commandListener != null) {
++            commandListener.accept(command);
++        }
++    }
++    
++    /**
++     * Executes a command if the system state allows it.
++     * @param command The command to execute
++     * @return true if command was executed, false if rejected
++     */
++    public boolean executeCommand(Command command) {
++        // FAULT state blocks all MOVE commands
++        if (state.get() == LiftState.FAULT && Command.MOVE.equals(command.type())) {
++            return false;
++        }
++        
++        // Stale data blocks MOVE commands
++        if (staleDataDetected.get() && Command.MOVE.equals(command.type())) {
++            return false;
++        }
++        
++        dispatchCommand(command);
++        return true;
++    }
++    
++    /**
++     * Gets the current lift state.
++     */
++    public LiftState getState() {
++        return state.get();
++    }
++    
++    /**
++     * Checks if stale data has been detected.
++     */
++    public boolean isStaleDataDetected() {
++        return staleDataDetected.get();
++    }
++    
++    /**
++     * Gets the latest telemetry pulse for a crane.
++     */
++    public TelemetryPulse getLatestPulse(String craneId) {
++        if (TelemetryPulse.CRANE_A.equals(craneId)) {
++            return latestCraneA.get();
++        } else if (TelemetryPulse.CRANE_B.equals(craneId)) {
++            return latestCraneB.get();
++        }
++        return null;
++    }
++    
++    /**
++     * Calculates the current tilt delta.
++     */
++    public double calculateTiltDelta() {
++        TelemetryPulse pulseA = latestCraneA.get();
++        TelemetryPulse pulseB = latestCraneB.get();
++        
++        if (pulseA == null || pulseB == null) {
++            return 0.0;
++        }
++        
++        return Math.abs(pulseA.zAxisMm() - pulseB.zAxisMm());
++    }
++    
++    /**
++     * Gets the aligned telemetry pair if available.
++     */
++    public AlignedTelemetryPair getAlignedPair() {
++        TelemetryPulse pulseA = latestCraneA.get();
++        TelemetryPulse pulseB = latestCraneB.get();
++        
++        if (pulseA == null || pulseB == null) {
++            return null;
++        }
++        
++        return new AlignedTelemetryPair(pulseA, pulseB);
++    }
++    
++    /**
++     * Gets the processing time from threshold crossed to fault.
++     */
++    public long getProcessingTimeNs() {
++        long crossed = thresholdCrossedTimestampNs.get();
++        long fault = faultTimestampNs.get();
++        
++        if (crossed > 0 && fault > 0) {
++            return fault - crossed;
++        }
++        return 0;
++    }
++    
++    /**
++     * Gets command history.
++     */
++    public List<Command> getCommandHistory() {
++        return new ArrayList<>(commandHistory);
++    }
++    
++    /**
++     * Gets the watchdog instance.
++     */
++    public LivenessWatchdog getWatchdog() {
++        return watchdog;
++    }
++    
++    // Event listener setters
++    public void setCommandListener(Consumer<Command> listener) {
++        this.commandListener = listener;
++    }
++    
++    public void setFaultListener(Consumer<String> listener) {
++        this.faultListener = listener;
++    }
++    
++    public void setAlignmentListener(Consumer<AlignedTelemetryPair> listener) {
++        this.alignmentListener = listener;
++    }
++    
++    /**
++     * Shuts down the service.
++     */
++    public void shutdown() {
++        stop();
++        watchdog.shutdown();
++        processingExecutor.shutdown();
++        try {
++            if (!processingExecutor.awaitTermination(100, TimeUnit.MILLISECONDS)) {
++                processingExecutor.shutdownNow();
++            }
++        } catch (InterruptedException e) {
++            processingExecutor.shutdownNow();
++            Thread.currentThread().interrupt();
++        }
++    }
++}
+\ No newline at end of file
+diff --git a/repository_after/src/main/java/com/porthorizon/crane/TelemetryPulse.java b/repository_after/src/main/java/com/porthorizon/crane/TelemetryPulse.java
+new file mode 100644
+index 0000000..4506b75
+--- /dev/null
++++ b/repository_after/src/main/java/com/porthorizon/crane/TelemetryPulse.java
+@@ -0,0 +1,73 @@
++package com.porthorizon.crane;
++
++import java.util.Objects;
++
++/**
++ * Represents a telemetry pulse from a gantry crane.
++ * Contains vertical position and timing information.
++ */
++public final class TelemetryPulse {
++    
++    public static final String CRANE_A = "CRANE-A";
++    public static final String CRANE_B = "CRANE-B";
++    
++    private final String craneId;
++    private final double zAxisMm;      // Vertical height in millimeters
++    private final long timestampNs;    // Nanoseconds (internal crane clock)
++    private final long arrivalTimeNs;  // System time when pulse was received
++    
++    public TelemetryPulse(String craneId, double zAxisMm, long timestampNs) {
++        this(craneId, zAxisMm, timestampNs, System.nanoTime());
++    }
++    
++    public TelemetryPulse(String craneId, double zAxisMm, long timestampNs, long arrivalTimeNs) {
++        this.craneId = Objects.requireNonNull(craneId, "craneId cannot be null");
++        this.zAxisMm = zAxisMm;
++        this.timestampNs = timestampNs;
++        this.arrivalTimeNs = arrivalTimeNs;
++    }
++    
++    public String craneId() {
++        return craneId;
++    }
++    
++    public double zAxisMm() {
++        return zAxisMm;
++    }
++    
++    public long timestampNs() {
++        return timestampNs;
++    }
++    
++    public long arrivalTimeNs() {
++        return arrivalTimeNs;
++    }
++    
++    /**
++     * Creates a new pulse with updated arrival time.
++     */
++    public TelemetryPulse withArrivalTime(long newArrivalTimeNs) {
++        return new TelemetryPulse(craneId, zAxisMm, timestampNs, newArrivalTimeNs);
++    }
++    
++    @Override
++    public boolean equals(Object o) {
++        if (this == o) return true;
++        if (o == null || getClass() != o.getClass()) return false;
++        TelemetryPulse that = (TelemetryPulse) o;
++        return Double.compare(that.zAxisMm, zAxisMm) == 0 &&
++               timestampNs == that.timestampNs &&
++               Objects.equals(craneId, that.craneId);
++    }
++    
++    @Override
++    public int hashCode() {
++        return Objects.hash(craneId, zAxisMm, timestampNs);
++    }
++    
++    @Override
++    public String toString() {
++        return String.format("TelemetryPulse{craneId='%s', zAxisMm=%.2f, timestampNs=%d}", 
++                           craneId, zAxisMm, timestampNs);
++    }
++}
+\ No newline at end of file
+diff --git a/repository_after/target/classes/com/porthorizon/crane/AlignedTelemetryPair.class b/repository_after/target/classes/com/porthorizon/crane/AlignedTelemetryPair.class
+new file mode 100644
+index 0000000..ee169c9
+Binary files /dev/null and b/repository_after/target/classes/com/porthorizon/crane/AlignedTelemetryPair.class differ
+diff --git a/repository_after/target/classes/com/porthorizon/crane/Command.class b/repository_after/target/classes/com/porthorizon/crane/Command.class
+new file mode 100644
+index 0000000..909be1b
+Binary files /dev/null and b/repository_after/target/classes/com/porthorizon/crane/Command.class differ
+diff --git a/repository_after/target/classes/com/porthorizon/crane/LiftState.class b/repository_after/target/classes/com/porthorizon/crane/LiftState.class
+new file mode 100644
+index 0000000..89fd382
+Binary files /dev/null and b/repository_after/target/classes/com/porthorizon/crane/LiftState.class differ
+diff --git a/repository_after/target/classes/com/porthorizon/crane/LivenessWatchdog.class b/repository_after/target/classes/com/porthorizon/crane/LivenessWatchdog.class
+new file mode 100644
+index 0000000..60e2695
+Binary files /dev/null and b/repository_after/target/classes/com/porthorizon/crane/LivenessWatchdog.class differ
+diff --git a/repository_after/target/classes/com/porthorizon/crane/MotorController.class b/repository_after/target/classes/com/porthorizon/crane/MotorController.class
+new file mode 100644
+index 0000000..26474af
+Binary files /dev/null and b/repository_after/target/classes/com/porthorizon/crane/MotorController.class differ
+diff --git a/repository_after/target/classes/com/porthorizon/crane/TandemSyncService.class b/repository_after/target/classes/com/porthorizon/crane/TandemSyncService.class
+new file mode 100644
+index 0000000..8ad7d47
+Binary files /dev/null and b/repository_after/target/classes/com/porthorizon/crane/TandemSyncService.class differ
+diff --git a/repository_after/target/classes/com/porthorizon/crane/TelemetryPulse.class b/repository_after/target/classes/com/porthorizon/crane/TelemetryPulse.class
+new file mode 100644
+index 0000000..d4763c9
+Binary files /dev/null and b/repository_after/target/classes/com/porthorizon/crane/TelemetryPulse.class differ
+diff --git a/repository_after/target/crane-sync-orchestrator-1.0.0.jar b/repository_after/target/crane-sync-orchestrator-1.0.0.jar
+new file mode 100644
+index 0000000..77ead54
+Binary files /dev/null and b/repository_after/target/crane-sync-orchestrator-1.0.0.jar differ
+diff --git a/repository_after/target/maven-archiver/pom.properties b/repository_after/target/maven-archiver/pom.properties
+new file mode 100644
+index 0000000..81bb307
+--- /dev/null
++++ b/repository_after/target/maven-archiver/pom.properties
+@@ -0,0 +1,3 @@
++artifactId=crane-sync-orchestrator
++groupId=com.porthorizon
++version=1.0.0
+diff --git a/repository_after/target/maven-status/maven-compiler-plugin/compile/default-compile/createdFiles.lst b/repository_after/target/maven-status/maven-compiler-plugin/compile/default-compile/createdFiles.lst
+new file mode 100644
+index 0000000..1af171f
+--- /dev/null
++++ b/repository_after/target/maven-status/maven-compiler-plugin/compile/default-compile/createdFiles.lst
+@@ -0,0 +1,7 @@
++com/porthorizon/crane/LiftState.class
++com/porthorizon/crane/MotorController.class
++com/porthorizon/crane/AlignedTelemetryPair.class
++com/porthorizon/crane/TelemetryPulse.class
++com/porthorizon/crane/Command.class
++com/porthorizon/crane/TandemSyncService.class
++com/porthorizon/crane/LivenessWatchdog.class
+diff --git a/repository_after/target/maven-status/maven-compiler-plugin/compile/default-compile/inputFiles.lst b/repository_after/target/maven-status/maven-compiler-plugin/compile/default-compile/inputFiles.lst
+new file mode 100644
+index 0000000..3f19738
+--- /dev/null
++++ b/repository_after/target/maven-status/maven-compiler-plugin/compile/default-compile/inputFiles.lst
+@@ -0,0 +1,7 @@
++/app/repository_after/src/main/java/com/porthorizon/crane/MotorController.java
++/app/repository_after/src/main/java/com/porthorizon/crane/TandemSyncService.java
++/app/repository_after/src/main/java/com/porthorizon/crane/LivenessWatchdog.java
++/app/repository_after/src/main/java/com/porthorizon/crane/AlignedTelemetryPair.java
++/app/repository_after/src/main/java/com/porthorizon/crane/TelemetryPulse.java
++/app/repository_after/src/main/java/com/porthorizon/crane/Command.java
++/app/repository_after/src/main/java/com/porthorizon/crane/LiftState.java

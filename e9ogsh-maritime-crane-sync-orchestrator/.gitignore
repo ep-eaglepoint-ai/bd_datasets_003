@@ -1,12 +1,23 @@
-# Python
-__pycache__/
-*.pyc
-.venv/
-.env
+# Maven
+target/
+*.jar
+*.class
 
-# Node
-node_modules/
+# IDE
+.idea/
+*.iml
+.vscode/
+.project
+.classpath
+.settings/
 
 # OS
 .DS_Store
-evaluation/*.json
+Thumbs.db
+
+# Reports (generated)
+evaluation/reports/
+!evaluation/reports/.gitkeep
+
+# Logs
+*.log

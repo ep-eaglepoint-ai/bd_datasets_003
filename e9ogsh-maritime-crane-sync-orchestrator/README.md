@@ -1,11 +1,9 @@
 # E9OGSH - maritime-Crane-Sync-Orchestrator
 
-    ## Before Test Docker Command
-    <docker before command here>
 
     ## After Test Docker Command
-    <docker after command here>
+    docker-compose run --rm repository-after
 
     ## Evaluation Docker Command
-    <evaluation command here>
+    docker-compose run --rm evaluation
     

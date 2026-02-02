@@ -1,9 +1,25 @@
+version: '3.8'
 
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
-  app:
+services:
+  repository-after:
     build: .
-    command: pytest -q tests
+    working_dir: /app
+    command: /bin/bash -c "cd /app/repository_after && mvn clean install -DskipTests && cd /app/tests && mvn clean test -B"
     volumes:
-      - .:/app
+      - ./repository_after:/app/repository_after
+      - ./tests:/app/tests
+      - maven-cache:/root/.m2
+
+  evaluation:
+    build: .
+    working_dir: /app
+    command: /bin/bash -c "cd /app/repository_after && mvn clean install -DskipTests -q && cd /app/tests && mvn clean test -B > /tmp/test-output.txt 2>&1; cd /app/evaluation && mvn clean compile exec:java -Dexec.mainClass=com.porthorizon.evaluation.EvaluationRunner -Dexec.args='/tmp/test-output.txt'"
+    volumes:
+      - ./repository_after:/app/repository_after
+      - ./repository_before:/app/repository_before
+      - ./tests:/app/tests
+      - ./evaluation:/app/evaluation
+      - maven-cache:/root/.m2
+
+volumes:
+  maven-cache:
