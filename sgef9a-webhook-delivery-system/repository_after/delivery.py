@@ -81,7 +81,8 @@ async def create_delivery_attempt(
     session: AsyncSession,
     webhook: Webhook,
     payload: Dict[str, Any],
-    idempotency_key: Optional[str] = None
+    idempotency_key: Optional[str] = None,
+    content_length: Optional[int] = None,
 ) -> DeliveryAttempt:
     """
     Create a new delivery attempt record.
@@ -91,6 +92,7 @@ async def create_delivery_attempt(
         webhook: The webhook endpoint.
         payload: The payload to deliver.
         idempotency_key: Optional idempotency key.
+        content_length: Optional Content-Length header value for size validation.
     
     Returns:
         Created DeliveryAttempt.
@@ -105,12 +107,19 @@ async def create_delivery_attempt(
             # For failed/retrying, we'll create a new attempt
             # (allow retry with same idempotency key)
     
+    # Pre-check payload size before serialization
+    # If Content-Length header is available, validate before any processing
+    if content_length is not None and content_length > DEFAULT_PAYLOAD_SIZE_LIMIT:
+        raise PayloadTooLargeError(
+            f"Payload size {content_length} bytes exceeds limit {DEFAULT_PAYLOAD_SIZE_LIMIT} bytes"
+        )
+    
     # Serialize payload
     payload_json = json.dumps(payload, separators=(',', ':'))
     payload_bytes = payload_json.encode('utf-8')
     payload_size = len(payload_bytes)
     
-    # Check payload size
+    # Check payload size (fallback if Content-Length not provided)
     if payload_size > DEFAULT_PAYLOAD_SIZE_LIMIT:
         raise PayloadTooLargeError(
             f"Payload size {payload_size} bytes exceeds limit {DEFAULT_PAYLOAD_SIZE_LIMIT} bytes"

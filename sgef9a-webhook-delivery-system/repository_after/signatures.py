@@ -33,8 +33,8 @@ def generate_signature(secret_key: str, payload: bytes, timestamp: int) -> str:
     Generate HMAC-SHA256 signature for a webhook payload.
     
     The signature is computed over the format: {timestamp}.{payload}
-    This prevents replay attacks by including a timestamp that can be
-    validated on the receiving end.
+    Using raw bytes ensures consistent signature generation regardless of
+    text encoding and prevents replay attacks by including a timestamp.
     
     Args:
         secret_key: The webhook's secret key for HMAC signing.
@@ -44,13 +44,13 @@ def generate_signature(secret_key: str, payload: bytes, timestamp: int) -> str:
     Returns:
         Hex-encoded HMAC-SHA256 signature.
     """
-    # Create signature input: timestamp.payload
-    signature_input = f"{timestamp}.{payload.decode('utf-8')}"
+    # Create signature input: timestamp.payload (using raw bytes)
+    signature_input = f"{timestamp}.".encode('utf-8') + payload
     
     # Compute HMAC-SHA256
     signature = hmac.new(
         secret_key.encode('utf-8'),
-        signature_input.encode('utf-8'),
+        signature_input,
         hashlib.sha256
     ).hexdigest()
     

@@ -14,8 +14,11 @@ import logging
 import sys
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from database import init_db, close_db
 from webhooks import router as webhooks_router
@@ -30,6 +33,31 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+# Payload size limit for incoming requests (256KB)
+MAX_REQUEST_SIZE = 256 * 1024
+
+
+class PayloadSizeMiddleware(BaseHTTPMiddleware):
+    """Middleware to validate Content-Length before reading request body."""
+    
+    async def dispatch(self, request: Request, call_next):
+        # Get Content-Length header
+        content_length = request.headers.get("content-length")
+        
+        if content_length:
+            try:
+                size = int(content_length)
+                if size > MAX_REQUEST_SIZE:
+                    return JSONResponse(
+                        status_code=413,
+                        content={"detail": "Payload too large. Maximum size is 262144 bytes."}
+                    )
+            except ValueError:
+                pass
+        
+        response = await call_next(request)
+        return response
 
 
 @asynccontextmanager
@@ -105,6 +133,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add payload size validation middleware (before body is read)
+app.add_middleware(PayloadSizeMiddleware)
 
 # Include routers
 app.include_router(webhooks_router)
