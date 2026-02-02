@@ -1,0 +1,13 @@
+{
+            "instance_id": "SI3TFK",
+            "problem_statement": "You are a Data Platform Engineer at a real-time analytics company processing IoT sensor data. The system must join two infinite event streams (temperature sensors and humidity sensors) to detect climate anomalies. The current naive implementation stores all history in memory, causing the system to crash after 6 hours due to unbounded memory growth.
+
+Your task is to implement a robust streaming inner-join algorithm in `stream_join.py` that joins two truly infinite data streams based on a timestamp field, while maintaining constant memory usage through watermark-based purging. The system must run 24/7/365 without memory exhaustion.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/si3tfk-streaming-inner-join-with-watermark-based-memory-management",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
