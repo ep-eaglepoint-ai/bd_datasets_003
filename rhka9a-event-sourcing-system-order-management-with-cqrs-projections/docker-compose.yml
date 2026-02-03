@@ -46,5 +46,13 @@ services:
     volumes:
       - ~/.m2:/root/.m2
 
+  evaluation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: java -cp evaluation evaluation.Evaluation
+    volumes:
+      - ~/.m2:/root/.m2
+
 volumes:
   postgres_data:

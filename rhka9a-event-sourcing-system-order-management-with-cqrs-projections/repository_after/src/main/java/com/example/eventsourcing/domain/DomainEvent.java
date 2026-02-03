@@ -1,13 +1,7 @@
 package com.example.eventsourcing.domain;
 
-import com.example.eventsourcing.domain.order.OrderCreatedEvent;
-import com.example.eventsourcing.domain.order.OrderItemAddedEvent;
-import com.example.eventsourcing.domain.order.OrderItemRemovedEvent;
-import com.example.eventsourcing.domain.order.OrderSubmittedEvent;
-import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.annotation.JsonSubTypes;
-import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
 import java.time.Instant;
 import java.util.Objects;
@@ -17,30 +11,23 @@ import java.util.UUID;
  * Base class for all domain events.
  * Events are immutable records of state changes in the system.
  */
-@JsonTypeInfo(
-    use = JsonTypeInfo.Id.NAME,
-    property = "eventType"
-)
-@JsonSubTypes({
-    @JsonSubTypes.Type(value = OrderCreatedEvent.class, name = "OrderCreatedEvent"),
-    @JsonSubTypes.Type(value = OrderItemAddedEvent.class, name = "OrderItemAddedEvent"),
-    @JsonSubTypes.Type(value = OrderItemRemovedEvent.class, name = "OrderItemRemovedEvent"),
-    @JsonSubTypes.Type(value = OrderSubmittedEvent.class, name = "OrderSubmittedEvent")
-})
 public abstract class DomainEvent {
     
     @JsonProperty("eventId")
-    private final String eventId;
+    private String eventId;
     @JsonProperty("aggregateId")
-    private final String aggregateId;
+    private String aggregateId;
     @JsonProperty("version")
-    private final Long version;
+    private Long version;
     @JsonProperty("timestamp")
-    private final Instant timestamp;
+    private Instant timestamp;
     @JsonProperty("eventType")
-    private final String eventType;
+    private String eventType;
     
-    @JsonCreator
+    protected DomainEvent() {
+        // Default constructor for Jackson
+    }
+    
     protected DomainEvent(
             @JsonProperty("eventId") String eventId,
             @JsonProperty("aggregateId") String aggregateId,
@@ -86,6 +73,7 @@ public abstract class DomainEvent {
         return timestamp;
     }
     
+    @JsonIgnore
     public String getEventType() {
         return eventType;
     }
