@@ -1,11 +1,11 @@
-# ZUYXHX - Time Tracking App (Clock In / Clock Out & Reports)
+# Time Tracking App (Clock In / Clock Out & Reports)
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Docker Commands
 
-    ## After Test Docker Command
-    <docker after command here>
+```bash
+docker compose run --rm app pytest -v tests/
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+```bash
+docker compose run --rm app python evaluation/evaluation.py
+```
