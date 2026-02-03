@@ -1,11 +1,9 @@
-# M22SSA - Advanced PCA and ZCA Whitening (Sphering) Transformation Module
+# Commands
 
-    ## Before Test Docker Command
-    <docker before command here>
+```bash
+# 1. Run after Tests
+docker compose run --rm app pytest -v tests
 
-    ## After Test Docker Command
-    <docker after command here>
-
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+# 2. Run Evaluation
+docker compose run --rm app python evaluation/evaluation.py
+```
