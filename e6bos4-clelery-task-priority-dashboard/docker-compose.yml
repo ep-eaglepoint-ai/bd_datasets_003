@@ -1,15 +1,15 @@
 services:
   redis:
-    image: redis:7.4.2-alpine
+    image: redis:7-alpine
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      interval: 5s
+      timeout: 3s
+      retries: 3
 
   postgres:
     image: postgres:16-alpine
@@ -23,9 +23,9 @@ services:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U postgres" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      interval: 5s
+      timeout: 3s
+      retries: 3
 
   backend:
     build:
@@ -71,7 +71,7 @@ services:
   after:
     build:
       context: ./repository_after/backend
-    command: echo "Application stack is running. Use 'docker-compose up' to start all services."
+    command: echo "Application stack running"
     depends_on:
       - backend
       - worker

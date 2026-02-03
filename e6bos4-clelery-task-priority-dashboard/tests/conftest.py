@@ -1,14 +1,16 @@
 """
-Pytest configuration for the Task Priority Dashboard tests.
+Pytest configuration for lightweight tests.
+
+No heavy imports needed - tests read source files directly.
 """
+import pytest
 import sys
 import os
 
-# Add repository_after/backend to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'repository_after', 'backend'))
+# No need to modify sys.path since tests read files directly
+# The tests use pathlib to navigate to repository_after/backend
 
-# Pytest markers
 def pytest_configure(config):
-    config.addinivalue_line(
-        "markers", "integration: mark test as integration test"
-    )
+    """Register custom markers."""
+    config.addinivalue_line("markers", "slow: marks tests as slow")
+    config.addinivalue_line("markers", "integration: integration tests")
