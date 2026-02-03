@@ -20,6 +20,32 @@ describe('LinkWatchdog', () => {
     expect(status200).toBe('NOMINAL');
   });
 
+  test('Strict Combined Sequence (199x10.0 -> 200th 10.0 -> 5x250.0)', () => {
+    const linkId = 'sat-req-8-strict';
+    
+    // 1. Send 199 pulses of 10.0
+    for (let i = 0; i < 199; i++) {
+        expect(watchdog.process(linkId, 10.0)).toBe('WARMING_UP');
+    }
+
+    // 2. 200th pulse of 10.0 -> NOMINAL
+    expect(watchdog.process(linkId, 10.0)).toBe('NOMINAL');
+
+    // 3. Send 5 pulses of 250.0
+    // Pulse 1
+    watchdog.process(linkId, 250.0);
+    // Pulse 2
+    watchdog.process(linkId, 250.0);
+    // Pulse 3
+    watchdog.process(linkId, 250.0);
+    // Pulse 4
+    watchdog.process(linkId, 250.0);
+    
+    // Pulse 5 -> Verify Anomaly
+    const status = watchdog.process(linkId, 250.0);
+    expect(status).toBe('ANOMALY');
+  });
+
   test('Detects Anomaly when current mean deviates > 2 * baseline stdDev', () => {
     const linkId = 'sat-anomaly';
     
