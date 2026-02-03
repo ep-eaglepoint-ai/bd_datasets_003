@@ -1,0 +1,11 @@
+{
+            "instance_id": "4G44CZ",
+            "problem_statement": "jfjffj fdjgd  gdjg df gdfkg dq",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/4g44cz-fjfjf",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
