@@ -5,7 +5,6 @@
 #include <string_view>
 #include <vector>
 #include <unordered_map>
-#include <map>
 #include <variant>
 #include <memory>
 #include <stdexcept>
@@ -73,35 +72,76 @@ private:
     size_t col_;
 };
 
-class JsonParser {
+// Token types for JSON
+enum class TokenType {
+    LeftBrace,
+    RightBrace,
+    LeftBracket,
+    RightBracket,
+    Colon,
+    Comma,
+    String,
+    Number,
+    True,
+    False,
+    Null,
+    EndOfFile,
+    Error
+};
+
+// Token structure
+struct Token {
+    TokenType type;
+    std::string_view value;
+    std::string value_storage; 
+    size_t line;
+    size_t column;
+};
+
+// Lexer class
+class Lexer {
 public:
-    JsonParser() : pos_(0), line_(1), col_(1), depth_(0), max_depth_(1000) {}
+    Lexer(std::string_view input) : input_(input), pos_(0), line_(1), col_(1) {}
     
-    JsonValue parse(std::string_view input);
-    void setMaxDepth(size_t depth) { max_depth_ = depth; }
+    Token nextToken();
     
 private:
     std::string_view input_;
     size_t pos_;
     size_t line_;
     size_t col_;
+    
+    void advance();
+    void skipWhitespace();
+    Token scanString();
+    Token scanNumber();
+    Token scanKeyword();
+};
+
+class JsonParser {
+public:
+    JsonParser() : depth_(0), max_depth_(1000) {} // Removed pos_, line_, col_ init as they belong to lexer now
+    
+    JsonValue parse(std::string_view input);
+    void setMaxDepth(size_t depth) { max_depth_ = depth; }
+    
+private:
+    // Removed direct input/pos tracking
+    std::unique_ptr<Lexer> lexer_;
+    Token current_token_;
     size_t depth_;
     size_t max_depth_;
     
     JsonValue parseValue();
     JsonValue parseObject();
     JsonValue parseArray();
-    JsonValue parseString();
-    JsonValue parseNumber();
-    JsonValue parseLiteral();
     
-    char current() const;
-    void advance();
-    void skipWhitespace();
-    void expect(char c);
+    void advance(); // Updates current_token_
+    void expect(TokenType type);
     
-    std::string parseStringContent();
-    void parseEscapeSequence(std::string& out);
+    // String processing happens during parsing of the value from token
+    std::string processStringToken(const Token& token);
+    void parseEscapeSequence(std::string_view input, size_t& pos, std::string& out, size_t line, size_t col);
 };
 
 }
