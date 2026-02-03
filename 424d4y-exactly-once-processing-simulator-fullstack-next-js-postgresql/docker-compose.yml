@@ -3,7 +3,7 @@ version: "3.8"
 services:
   app:
     build:
-      context: ./repository_after
+      context: .
     ports:
       - "3000:3000"
     environment:
@@ -17,7 +17,7 @@ services:
 
   test:
     build:
-      context: ./repository_after
+      context: .
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/postgres
       - TEST_ROOT=/app/tests
@@ -33,7 +33,7 @@ services:
 
   evaluation:
     build:
-      context: ./repository_after
+      context: .
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/postgres
       - TEST_ROOT=/app/tests
