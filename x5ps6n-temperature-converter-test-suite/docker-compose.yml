@@ -1,9 +1,11 @@
 
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
-  app:
+# Docker Compose file for running React tests
+services:
+  test:
     build: .
-    command: pytest -q tests
+    command: npx react-scripts test --testPathPattern=tests --watchAll=false
     volumes:
       - .:/app
+    environment:
+      - NODE_ENV=test
+    working_dir: /app/repository_before

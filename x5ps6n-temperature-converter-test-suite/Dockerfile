@@ -1,8 +1,19 @@
 
-        # Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
-
-        FROM python:3.11-slim
+FROM node:18-alpine
 WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+# Copy repository_before (React app)
+COPY repository_before/package*.json ./repository_before/
+RUN cd repository_before && npm ci
+
+# Copy tests and meta-tests
+COPY tests/ ./tests/
+COPY repository_after/ ./repository_after/
+
+# Install test dependencies globally
+RUN npm install -g jest
+
+# Set up test environment
+ENV NODE_ENV=test
+
+CMD ["npm", "test", "--", "--testPathPattern=tests"]
