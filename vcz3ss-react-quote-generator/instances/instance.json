@@ -1,0 +1,11 @@
+{
+            "instance_id": "VCZ3SS",
+            "problem_statement": "The existing React quote generator displays random quotes but lacks personalization and recovery features. Users cannot save meaningful quotes, search through saved items, or recover accidentally removed favorites. This limits usability and user engagement with the application. The goal is to enhance the app by adding favorites management, search functionality, and a robust undo mechanism while preserving simplicity.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/vcz3ss-react-quote-generator",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
