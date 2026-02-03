@@ -1,0 +1,11 @@
+{
+            "instance_id": "WVDVA8",
+            "problem_statement": "Previous authentication implementations were fragmented across frontend, backend, and database layers, resulting in inconsistent authorization logic, insecure token handling, and unauthorized access to protected resources. A unified, full-stack authentication system is required to serve as a single source of truth for user identity, session management, and role-based access control. The system must provide secure sign-up and sign-in flows, enforce authorization rules consistently, and remain reliable under concurrent usage while being fully runnable through a simple Docker-based setup.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/wvdva8-authentication-system",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
