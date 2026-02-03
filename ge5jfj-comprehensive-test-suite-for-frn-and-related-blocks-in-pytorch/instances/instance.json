@@ -1,0 +1,11 @@
+{
+            "instance_id": "GE5JFJ",
+            "problem_statement": "Create a PyTorch test suite that checks FRN, FRN_ONNX, and related convolutional blocks, ensuring correctness, numerical stability, gradient flow, fusion behavior, edge cases, and device compatibility",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ge5jfj-comprehensive-test-suite-for-frn-and-related-blocks-in-pytorch",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
