@@ -1,0 +1,15 @@
+{
+            "instance_id": "PJHLJX",
+            "problem_statement": "A production inventory reservation engine processes sequences of inventory actions and returns a final state along with an audit trail describing which actions were accepted or rejected.
+Recent issues indicate that the engine may behave incorrectly under adversarial but valid inputs such as duplicates, conflicting actions, invalid quantities, and replays.
+
+Your task is to design a black-box test harness that validates the engine’s correctness by generating stressful input scenarios and asserting critical invariants — without modifying or re-implementing the engine itself.
+3) Requirements",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/pjhljx-black-box-test-harness-for-an-inventory-reservation-engine",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
