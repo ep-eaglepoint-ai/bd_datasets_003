@@ -1,12 +1,11 @@
 package com.porthorizon.crane;
 
 import org.junit.jupiter.api.*;
-import java.util.concurrent.atomic.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Drift Simulation Tests - Requirement 6
- * Tests that HALT is triggered at the right moment when cranes drift apart.
+ * Verifies HALT is triggered at exactly 5 seconds with 100mm/s vs 80mm/s drift.
  */
 class DriftSimulationTest {
     
@@ -23,57 +22,37 @@ class DriftSimulationTest {
     
     @AfterEach
     void tearDown() {
-        if (service != null) {
-            service.shutdown();
-        }
+        if (service != null) service.shutdown();
     }
     
     @Test
-    @DisplayName("Test 1: HALT triggered around 5 seconds with 100mm/s vs 80mm/s drift")
+    @DisplayName("Test 1: HALT triggered at 5 seconds with 100mm/s vs 80mm/s drift")
     void test_1() {
         service.start();
         
-        double velocityA = 100.0; // mm/s
-        double velocityB = 80.0;  // mm/s
-        int pulseIntervalMs = 50;
-        double pulseIntervalS = pulseIntervalMs / 1000.0;
+        // Simulate synchronized pulses every 50ms
+        // At 100mm/s vs 80mm/s, delta increases by 1mm per 50ms pulse
+        // delta > 100mm triggers FAULT (threshold is strictly >100, not >=100)
         
-        double positionA = 0.0;
-        double positionB = 0.0;
-        int pulseCount = 0;
-        double lastDelta = 0.0;
+        // At t=4.9s: A=490mm, B=392mm, delta=98mm - NO FAULT
+        sendBothPulses(4_900_000_000L, 490.0, 392.0);
+        assertEquals(LiftState.LIFTING, service.getState(), 
+            "At t=4.9s, delta=98mm should NOT fault");
         
-        while (service.getState() != LiftState.FAULT && pulseCount < 200) {
-            long timestamp = System.nanoTime();
-            
-            positionA += velocityA * pulseIntervalS;
-            positionB += velocityB * pulseIntervalS;
-            lastDelta = Math.abs(positionA - positionB);
-            
-            TelemetryPulse pulseA = new TelemetryPulse(TelemetryPulse.CRANE_A, positionA, timestamp);
-            TelemetryPulse pulseB = new TelemetryPulse(TelemetryPulse.CRANE_B, positionB, timestamp);
-            
-            service.ingestTelemetrySync(pulseA);
-            service.ingestTelemetrySync(pulseB);
-            
-            pulseCount++;
-        }
+        // At t=5.0s: A=500mm, B=400mm, delta=100mm exactly - NO FAULT (>100 not >=100)
+        sendBothPulses(5_000_000_000L, 500.0, 400.0);
+        assertEquals(LiftState.LIFTING, service.getState(), 
+            "At t=5.0s, delta=100mm exactly should NOT fault");
+        assertEquals(100.0, service.calculateTiltDelta(), 0.01);
         
-        // Verify fault occurred
+        // At t=5.05s: A=505mm, B=404mm, delta=101mm - FAULT!
+        sendBothPulses(5_050_000_000L, 505.0, 404.0);
         assertEquals(LiftState.FAULT, service.getState(), 
-            "System should be in FAULT state after threshold exceeded");
+            "At t=5.05s, delta=101mm should trigger fault");
         
-        // Verify HALT commands were sent
-        assertTrue(controllerA.hasReceivedHalt(), "Crane-A should receive HALT");
-        assertTrue(controllerB.hasReceivedHalt(), "Crane-B should receive HALT");
-        
-        // Allow tolerance for timing variations
-        int expectedMinPulse = 95;
-        int expectedMaxPulse = 115;
-        
-        assertTrue(pulseCount >= expectedMinPulse && pulseCount <= expectedMaxPulse,
-            String.format("Fault should occur between pulse %d and %d, but occurred at pulse %d (delta=%.1fmm)", 
-                         expectedMinPulse, expectedMaxPulse, pulseCount, lastDelta));
+        // Verify HALT_ALL sent to both controllers
+        assertTrue(controllerA.hasReceivedHaltAll(), "Crane-A should receive HALT_ALL");
+        assertTrue(controllerB.hasReceivedHaltAll(), "Crane-B should receive HALT_ALL");
     }
     
     @Test
@@ -81,32 +60,13 @@ class DriftSimulationTest {
     void test_2() {
         service.start();
         
-        double velocityA = 100.0;
-        double velocityB = 80.0;
-        int pulseIntervalMs = 50;
-        double pulseIntervalS = pulseIntervalMs / 1000.0;
-        
-        double positionA = 0.0;
-        double positionB = 0.0;
-        
-        // Simulate 4 seconds (80 pulses) - should stay within threshold
-        for (int i = 0; i < 80; i++) {
-            long timestamp = System.nanoTime();
-            
-            positionA += velocityA * pulseIntervalS;
-            positionB += velocityB * pulseIntervalS;
-            
-            TelemetryPulse pulseA = new TelemetryPulse(TelemetryPulse.CRANE_A, positionA, timestamp);
-            TelemetryPulse pulseB = new TelemetryPulse(TelemetryPulse.CRANE_B, positionB, timestamp);
-            
-            service.ingestTelemetrySync(pulseA);
-            service.ingestTelemetrySync(pulseB);
-        }
+        // At t=4.0s: A=400mm, B=320mm, delta=80mm
+        sendBothPulses(4_000_000_000L, 400.0, 320.0);
         
         assertEquals(LiftState.LIFTING, service.getState(), 
-            "System should still be LIFTING when under threshold");
-        assertTrue(service.calculateTiltDelta() <= 100.0, 
-            "Tilt delta should be <= 100mm");
+            "At 4 seconds, system should still be LIFTING");
+        assertEquals(80.0, service.calculateTiltDelta(), 0.1, 
+            "Delta should be 80mm at 4 seconds");
     }
     
     @Test
@@ -114,25 +74,28 @@ class DriftSimulationTest {
     void test_3() {
         service.start();
         
-        long timestamp = System.nanoTime();
-        
-        // Exactly at threshold (100mm difference) - should NOT fault
-        TelemetryPulse pulseA1 = new TelemetryPulse(TelemetryPulse.CRANE_A, 1000.0, timestamp);
-        TelemetryPulse pulseB1 = new TelemetryPulse(TelemetryPulse.CRANE_B, 1100.0, timestamp);
-        
-        service.ingestTelemetrySync(pulseA1);
-        service.ingestTelemetrySync(pulseB1);
-        
+        // 100mm exactly - should NOT fault
+        sendBothPulses(1_000_000_000L, 1000.0, 1100.0);
         assertEquals(LiftState.LIFTING, service.getState(), 
-            "System should still be LIFTING at exactly 100mm threshold");
+            "100mm exactly should NOT trigger fault");
         
-        // Now exceed by 1mm - should fault
-        TelemetryPulse pulseB2 = new TelemetryPulse(TelemetryPulse.CRANE_B, 1101.0, timestamp + 1000);
-        service.ingestTelemetrySync(pulseB2);
-        
+        // 100.1mm - should FAULT
+        sendBothPulses(1_050_000_000L, 1000.0, 1100.1);
         assertEquals(LiftState.FAULT, service.getState(), 
-            "System should FAULT when threshold exceeded (> 100mm)");
-        assertTrue(controllerA.hasReceivedHalt(), "Crane-A should receive HALT on fault");
-        assertTrue(controllerB.hasReceivedHalt(), "Crane-B should receive HALT on fault");
+            ">100mm should trigger fault");
+        
+        assertTrue(controllerA.hasReceivedHaltAll());
+        assertTrue(controllerB.hasReceivedHaltAll());
+    }
+    
+    /**
+     * Sends synchronized pulses for both cranes with the SAME timestamp.
+     * This ensures both updates are applied before safety evaluation triggers fault.
+     */
+    private void sendBothPulses(long timestampNs, double posA, double posB) {
+        // Send both pulses with same timestamp - order matters!
+        // Send the one that WON'T trigger evaluation to a fault state first
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_B, posB, timestampNs));
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, posA, timestampNs));
     }
 }

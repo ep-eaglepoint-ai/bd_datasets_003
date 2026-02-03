@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Jitter Resilience Tests - Requirement 7
+ * Tests handling of 100ms delayed telemetry data.
  */
 class JitterResilienceTest {
     
@@ -21,102 +22,93 @@ class JitterResilienceTest {
     
     @AfterEach
     void tearDown() {
-        if (service != null) {
-            service.shutdown();
-        }
+        if (service != null) service.shutdown();
     }
     
     @Test
-    @DisplayName("Test 1: Detects 100ms delayed telemetry as stale")
+    @DisplayName("Test 1: Detects 100ms+ delayed telemetry as stale")
     void test_1() {
-        long baseTime = System.nanoTime();
+        long baseTime = 1000000000L;
         
+        // Crane-B is on time
         TelemetryPulse pulseB = new TelemetryPulse(TelemetryPulse.CRANE_B, 1000.0, baseTime);
+        
+        // Crane-A is delayed by just over 100ms (exceeds MAX_ALIGNMENT_DELTA_NS)
         TelemetryPulse pulseA = new TelemetryPulse(TelemetryPulse.CRANE_A, 1000.0, 
-                                                    baseTime - 150_000_000L);
+            baseTime - 100_000_001L); // 100ms + 1ns delay
         
         service.ingestTelemetrySync(pulseB);
         service.ingestTelemetrySync(pulseA);
         
-        assertTrue(service.isStaleDataDetected());
+        assertTrue(service.isStaleDataDetected(), 
+            "100ms+ timestamp gap should be detected as stale");
     }
     
     @Test
     @DisplayName("Test 2: Blocks MOVE commands when data is stale")
     void test_2() {
-        long baseTime = System.nanoTime();
-        
+        long baseTime = 1000000000L;
         service.start();
         
-        TelemetryPulse pulseB = new TelemetryPulse(TelemetryPulse.CRANE_B, 1000.0, baseTime);
-        TelemetryPulse pulseA = new TelemetryPulse(TelemetryPulse.CRANE_A, 1000.0, 
-                                                    baseTime - 150_000_000L);
-        
-        service.ingestTelemetrySync(pulseB);
-        service.ingestTelemetrySync(pulseA);
+        // Create stale condition with 100ms+ delay
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_B, 1000.0, baseTime));
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 1000.0, 
+            baseTime - 100_000_001L));
         
         assertTrue(service.isStaleDataDetected());
         
+        // Movement should be blocked
         boolean result = service.executeCommand(Command.move(TelemetryPulse.CRANE_A, 100.0));
-        assertFalse(result);
+        assertFalse(result, "MOVE should be blocked when data is stale");
     }
     
     @Test
     @DisplayName("Test 3: Allows movement when synchronized telemetry is restored")
     void test_3() {
-        long baseTime = System.nanoTime();
-        
+        long baseTime = 1000000000L;
         service.start();
         
-        TelemetryPulse staleA = new TelemetryPulse(TelemetryPulse.CRANE_A, 1000.0, 
-                                                    baseTime - 150_000_000L);
-        TelemetryPulse pulseB = new TelemetryPulse(TelemetryPulse.CRANE_B, 1000.0, baseTime);
-        
-        service.ingestTelemetrySync(staleA);
-        service.ingestTelemetrySync(pulseB);
-        
+        // First: stale data
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 1000.0, baseTime - 100_000_001L));
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_B, 1000.0, baseTime));
         assertTrue(service.isStaleDataDetected());
         
-        TelemetryPulse syncedA = new TelemetryPulse(TelemetryPulse.CRANE_A, 1010.0, baseTime + 50_000_000L);
-        TelemetryPulse syncedB = new TelemetryPulse(TelemetryPulse.CRANE_B, 1010.0, baseTime + 50_000_000L);
+        // Now: synchronized data (within 100ms)
+        long syncTime = baseTime + 200_000_000L;
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 1010.0, syncTime));
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_B, 1010.0, syncTime + 10_000_000L));
         
-        service.ingestTelemetrySync(syncedA);
-        service.ingestTelemetrySync(syncedB);
-        
-        assertFalse(service.isStaleDataDetected());
-        
-        boolean result = service.executeCommand(Command.move(TelemetryPulse.CRANE_A, 100.0));
-        assertTrue(result);
+        assertFalse(service.isStaleDataDetected(), "Stale flag should clear when synchronized");
+        assertTrue(service.executeCommand(Command.move(TelemetryPulse.CRANE_A, 100.0)));
     }
     
     @Test
-    @DisplayName("Test 4: Handles out-of-order telemetry correctly")
+    @DisplayName("Test 4: Handles out-of-order telemetry - keeps newest by timestamp")
     void test_4() {
-        long baseTime = System.nanoTime();
+        long baseTime = 1000000000L;
         
-        TelemetryPulse newerA = new TelemetryPulse(TelemetryPulse.CRANE_A, 1050.0, baseTime + 50_000_000L);
-        service.ingestTelemetrySync(newerA);
+        // Send newer pulse first
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 1050.0, baseTime + 50_000_000L));
         
-        TelemetryPulse olderA = new TelemetryPulse(TelemetryPulse.CRANE_A, 1000.0, baseTime);
-        service.ingestTelemetrySync(olderA);
+        // Send older pulse later (out of order arrival)
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 1000.0, baseTime));
         
+        // Should keep the NEWER pulse by timestamp, not the last arrived
         TelemetryPulse latest = service.getLatestPulse(TelemetryPulse.CRANE_A);
-        assertEquals(1000.0, latest.zAxisMm());
+        assertEquals(1050.0, latest.zAxisMm(), 
+            "Should keep pulse with newer timestamp, not last arrived");
     }
     
     @Test
-    @DisplayName("Test 5: Correctly identifies well-aligned data")
+    @DisplayName("Test 5: Data within 100ms is NOT marked as stale")
     void test_5() {
-        long baseTime = System.nanoTime();
+        long baseTime = 1000000000L;
         
-        TelemetryPulse pulseA = new TelemetryPulse(TelemetryPulse.CRANE_A, 1000.0, baseTime);
-        TelemetryPulse pulseB = new TelemetryPulse(TelemetryPulse.CRANE_B, 1000.0, 
-                                                    baseTime + 10_000_000L);
+        // Within 100ms alignment (99ms gap)
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 1000.0, baseTime));
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_B, 1000.0, baseTime + 99_000_000L));
         
-        service.ingestTelemetrySync(pulseA);
-        service.ingestTelemetrySync(pulseB);
-        
-        assertFalse(service.isStaleDataDetected());
+        assertFalse(service.isStaleDataDetected(), "99ms gap should NOT be marked stale");
         
         AlignedTelemetryPair pair = service.getAlignedPair();
         assertNotNull(pair);

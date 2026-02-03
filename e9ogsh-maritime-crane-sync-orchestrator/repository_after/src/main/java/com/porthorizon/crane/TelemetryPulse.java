@@ -4,7 +4,6 @@ import java.util.Objects;
 
 /**
  * Represents a telemetry pulse from a gantry crane.
- * Contains vertical position and timing information.
  */
 public final class TelemetryPulse {
     
@@ -12,9 +11,9 @@ public final class TelemetryPulse {
     public static final String CRANE_B = "CRANE-B";
     
     private final String craneId;
-    private final double zAxisMm;      // Vertical height in millimeters
-    private final long timestampNs;    // Nanoseconds (internal crane clock)
-    private final long arrivalTimeNs;  // System time when pulse was received
+    private final double zAxisMm;
+    private final long timestampNs;
+    private final long arrivalTimeNs;
     
     public TelemetryPulse(String craneId, double zAxisMm, long timestampNs) {
         this(craneId, zAxisMm, timestampNs, System.nanoTime());
@@ -27,27 +26,17 @@ public final class TelemetryPulse {
         this.arrivalTimeNs = arrivalTimeNs;
     }
     
-    public String craneId() {
-        return craneId;
-    }
-    
-    public double zAxisMm() {
-        return zAxisMm;
-    }
-    
-    public long timestampNs() {
-        return timestampNs;
-    }
-    
-    public long arrivalTimeNs() {
-        return arrivalTimeNs;
-    }
+    public String craneId() { return craneId; }
+    public double zAxisMm() { return zAxisMm; }
+    public long timestampNs() { return timestampNs; }
+    public long arrivalTimeNs() { return arrivalTimeNs; }
     
     /**
-     * Creates a new pulse with updated arrival time.
+     * Checks if this pulse is newer than another based on internal timestamp.
      */
-    public TelemetryPulse withArrivalTime(long newArrivalTimeNs) {
-        return new TelemetryPulse(craneId, zAxisMm, timestampNs, newArrivalTimeNs);
+    public boolean isNewerThan(TelemetryPulse other) {
+        if (other == null) return true;
+        return this.timestampNs > other.timestampNs;
     }
     
     @Override

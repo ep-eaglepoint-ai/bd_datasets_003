@@ -23,32 +23,26 @@ public class MockMotorController implements MotorController {
     }
     
     @Override
-    public boolean isConnected() {
-        return connected;
-    }
+    public boolean isConnected() { return connected; }
     
     @Override
-    public String getCraneId() {
-        return craneId;
-    }
+    public String getCraneId() { return craneId; }
     
-    public void setConnected(boolean connected) {
-        this.connected = connected;
-    }
+    public void setConnected(boolean connected) { this.connected = connected; }
     
     public List<Command> getReceivedCommands() {
         return new ArrayList<>(receivedCommands);
     }
     
-    public void clearCommands() {
-        receivedCommands.clear();
-    }
+    public void clearCommands() { receivedCommands.clear(); }
     
     public boolean hasReceivedHalt() {
         return receivedCommands.stream().anyMatch(Command::isHaltCommand);
     }
     
-    public int getCommandCount() {
-        return receivedCommands.size();
+    public boolean hasReceivedHaltAll() {
+        return receivedCommands.stream().anyMatch(Command::isHaltAll);
     }
+    
+    public int getCommandCount() { return receivedCommands.size(); }
 }

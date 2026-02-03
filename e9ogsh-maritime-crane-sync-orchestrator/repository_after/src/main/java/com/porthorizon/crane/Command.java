@@ -33,6 +33,9 @@ public final class Command {
         return new Command(HALT, craneId, 0.0);
     }
     
+    /**
+     * Creates a HALT_ALL command that stops both cranes simultaneously.
+     */
     public static Command haltAll() {
         return new Command(HALT_ALL, null, 0.0);
     }
@@ -49,24 +52,17 @@ public final class Command {
         return new Command(CALIBRATE, craneId, 0.0);
     }
     
-    public String type() {
-        return type;
-    }
-    
-    public String targetCraneId() {
-        return targetCraneId;
-    }
-    
-    public double targetVelocity() {
-        return targetVelocity;
-    }
-    
-    public long timestampNs() {
-        return timestampNs;
-    }
+    public String type() { return type; }
+    public String targetCraneId() { return targetCraneId; }
+    public double targetVelocity() { return targetVelocity; }
+    public long timestampNs() { return timestampNs; }
     
     public boolean isHaltCommand() {
         return HALT.equals(type) || HALT_ALL.equals(type) || EMERGENCY_STOP.equals(type);
+    }
+    
+    public boolean isHaltAll() {
+        return HALT_ALL.equals(type);
     }
     
     @Override
