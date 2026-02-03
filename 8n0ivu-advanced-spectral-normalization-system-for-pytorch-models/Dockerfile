@@ -1,8 +1,12 @@
+FROM python:3.11-slim
 
-        # Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
-
-        FROM python:3.11-slim
 WORKDIR /app
-COPY . /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+COPY . /app
+
+CMD ["pytest", "-v", "tests"]
