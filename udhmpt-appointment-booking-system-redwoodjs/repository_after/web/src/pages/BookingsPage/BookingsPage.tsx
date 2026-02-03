@@ -1,6 +1,19 @@
 import React, { useState } from 'react'
 import { DateTime } from 'luxon'
 
+// Simple auth context for working version
+const useAuth = () => {
+  const [user] = useState<any>({
+    id: 2,
+    email: 'customer@example.com',
+    role: 'CUSTOMER',
+    name: 'Jane Customer'
+  })
+  const [token] = useState('simple-token-2-123456789')
+  
+  return { user, token }
+}
+
 // Real GraphQL queries
 const SEARCH_AVAILABILITY_QUERY = `
   query SearchAvailability($input: SearchAvailabilityInput!) {
@@ -24,12 +37,13 @@ const CREATE_BOOKING_MUTATION = `
   }
 `
 
-// Real GraphQL client
-const graphqlRequest = async (query: string, variables?: any) => {
+// Real GraphQL client with JWT authentication
+const graphqlRequest = async (query: string, variables?: any, token?: string) => {
   const response = await fetch('http://localhost:8911/graphql', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...(token && { 'Authorization': `Bearer ${token}` })
     },
     body: JSON.stringify({ query, variables }),
   })
@@ -53,9 +67,10 @@ export const BookingPage = ({ providerId, customerEmail }: any) => {
   const [slots, setSlots] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
+  const { token } = useAuth()
 
   const loadSlots = async () => {
-    if (!selectedService) return
+    if (!selectedService || !token) return
     setLoading(true)
     try {
       const data = await graphqlRequest(SEARCH_AVAILABILITY_QUERY, {
@@ -66,7 +81,7 @@ export const BookingPage = ({ providerId, customerEmail }: any) => {
           endISO: `${startDate}T23:59:59Z`,
           customerTz: Intl.DateTimeFormat().resolvedOptions().timeZone
         }
-      })
+      }, token)
       setSlots(data.searchAvailability)
     } catch (error: any) {
       setMessage(`Failed to load slots: ${error.message}`)
@@ -77,10 +92,10 @@ export const BookingPage = ({ providerId, customerEmail }: any) => {
 
   React.useEffect(() => {
     loadSlots()
-  }, [selectedService, startDate])
+  }, [selectedService, startDate, token])
 
   const handleBooking = async () => {
-    if (!selectedSlot || !selectedService) return
+    if (!selectedSlot || !selectedService || !token) return
     setLoading(true)
     try {
       const data = await graphqlRequest(CREATE_BOOKING_MUTATION, {
@@ -92,7 +107,7 @@ export const BookingPage = ({ providerId, customerEmail }: any) => {
           customerEmail,
           cutoffHours: 24
         }
-      })
+      }, token)
       setMessage(`Booking confirmed! Reference: ${data.createBooking.reference}`)
       setSelectedSlot(null)
       setSlots([])

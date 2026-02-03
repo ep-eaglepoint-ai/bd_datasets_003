@@ -72,6 +72,11 @@ const buildRealisticMockPrisma = () => {
       count: async ({ where }: any) => {
         return state.bookings.filter((b: any) => {
           if (where?.serviceId && b.serviceId !== where.serviceId) return false;
+          if (where?.startUtc != null) {
+            const wT = where.startUtc instanceof Date ? where.startUtc.getTime() : where.startUtc;
+            const bT = b.startUtc instanceof Date ? b.startUtc.getTime() : b.startUtc;
+            if (bT !== wT) return false;
+          }
           if (where?.startUtcISO && b.startUtcISO !== where.startUtcISO) return false;
           if (where?.canceledAt === false && b.canceledAt) return false;
           return true;
@@ -106,9 +111,9 @@ describe('Concurrent Booking Stress Tests - Realistic', () => {
       capacity: 1
     }, prisma);
     
-    // Test concurrent booking requests
+    // Test concurrent booking requests (fixed future for Docker/Luxon)
     const bookingPromises = [];
-    const futureTime = DateTime.now().plus({ days: 30, hours: 10 });
+    const baseTime = DateTime.fromISO('2026-03-15T14:00:00Z', { zone: 'utc' });
     
     for (let i = 0; i < 3; i++) {
       const customer = { 
@@ -117,14 +122,14 @@ describe('Concurrent Booking Stress Tests - Realistic', () => {
         role: Role.CUSTOMER 
       };
       
-      const slotTime = futureTime.plus({ minutes: i * 60 }); // Different times
+      const slotTime = baseTime.plus({ minutes: i * 60 });
       
       bookingPromises.push(
         createBooking(customer, {
           providerId: profile.id,
           serviceId: service.id,
-          startUtcISO: slotTime.toUTC().toISO()!,
-          endUtcISO: slotTime.plus({ minutes: 30 }).toUTC().toISO()!,
+          startUtcISO: slotTime.toISO()!,
+          endUtcISO: slotTime.plus({ minutes: 30 }).toISO()!,
           customerEmail: customer.email,
           cutoffHours: 1
         }, prisma)

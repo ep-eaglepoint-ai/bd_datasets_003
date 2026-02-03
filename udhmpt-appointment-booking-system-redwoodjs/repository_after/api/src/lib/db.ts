@@ -1,9 +1,8 @@
-// DB placeholder for dependency injection in services.
-// In production this should export an instantiated PrismaClient from @prisma/client.
-export type PrismaLike = any;
+import { PrismaClient } from '@prisma/client'
 
-export const dbPlaceholder: PrismaLike = {
-  // Intentionally empty; services accept a prisma argument for tests.
-};
+// Real database connection
+export const prisma = new PrismaClient()
 
-export default dbPlaceholder;
+export type PrismaLike = typeof prisma;
+
+export default prisma;

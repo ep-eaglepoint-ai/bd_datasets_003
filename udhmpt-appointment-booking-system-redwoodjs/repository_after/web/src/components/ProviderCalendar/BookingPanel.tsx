@@ -302,6 +302,7 @@ export const BookingPanel: React.FC<Props> = ({
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Status</label>
                     <select
+                      data-testid="status-select"
                       className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                       value={status}
                       onChange={(e) => setStatus(e.target.value as Booking['status'])}
@@ -317,6 +318,7 @@ export const BookingPanel: React.FC<Props> = ({
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Notes</label>
                     <textarea
+                      data-testid="notes-textarea"
                       className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                       rows={3}
                       value={notes}
@@ -340,6 +342,7 @@ export const BookingPanel: React.FC<Props> = ({
                 Close
               </button>
               <button
+                data-testid="save-button"
                 onClick={handleSave}
                 disabled={saving || !!(booking.canceledAt || isPast)}
                 className="btn btn-primary"

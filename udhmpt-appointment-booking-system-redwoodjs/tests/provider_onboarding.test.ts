@@ -32,27 +32,27 @@ describe('Provider onboarding', () => {
     const profile = { id: 5, userId: providerUser.id };
     const prismaMock = {
       providerProfile: { findUnique: jest.fn().mockResolvedValue(profile), create: jest.fn() },
-      service: { create: jest.fn().mockImplementation((args: any) => args) },
+      service: { create: jest.fn().mockImplementation((args: any) => args.data) },
     };
 
     await expect(createService(providerUser, { name: 'TooSmall', durationMinutes: 0 }, prismaMock as any)).rejects.toThrow();
     await expect(createService(providerUser, { name: 'TooLarge', durationMinutes: 10000 }, prismaMock as any)).rejects.toThrow();
 
     const ok = await createService(providerUser, { name: 'Good', durationMinutes: 60 }, prismaMock as any);
-    expect(ok.data.durationMinutes).toBe(60);
+    expect(ok.durationMinutes).toBe(60);
   });
 
   test('Capacity defaults to 1 and must be non-nullable', async () => {
     const profile = { id: 6, userId: providerUser.id };
     const prismaMock = {
       providerProfile: { findUnique: jest.fn().mockResolvedValue(profile), create: jest.fn() },
-      service: { create: jest.fn().mockImplementation((args: any) => args) },
+      service: { create: jest.fn().mockImplementation((args: any) => args.data) },
     };
 
     const created = await createService(providerUser, { name: 'Group', durationMinutes: 45 }, prismaMock as any);
-    expect(created.data.capacity).toBe(1);
+    expect(created.capacity).toBe(1);
 
     const createdWithCap = await createService(providerUser, { name: 'Group', durationMinutes: 45, capacity: 5 }, prismaMock as any);
-    expect(createdWithCap.data.capacity).toBe(5);
+    expect(createdWithCap.capacity).toBe(5);
   });
 });

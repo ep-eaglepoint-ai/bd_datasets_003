@@ -53,12 +53,16 @@ describe('Recurring availability rules', () => {
     // Week of DST
     const dstWeek = expandWeeklyRules(rules, '2021-03-08');
 
-    // Convert back to local to check local time preserved
-    const beforeLocal = DateTime.fromISO(before[0].startUtc).setZone('America/New_York');
-    const dstLocal = DateTime.fromISO(dstWeek[0].startUtc).setZone('America/New_York');
+    // Convert back to local to check local time preserved (startUtc may be string or ISO)
+    const beforeUtcStr = typeof before[0].startUtc === 'string' ? before[0].startUtc : (before[0].startUtc as any)?.toISO?.() ?? String(before[0].startUtc);
+    const dstUtcStr = typeof dstWeek[0].startUtc === 'string' ? dstWeek[0].startUtc : (dstWeek[0].startUtc as any)?.toISO?.() ?? String(dstWeek[0].startUtc);
+    const beforeLocal = DateTime.fromISO(beforeUtcStr, { zone: 'utc' }).setZone('America/New_York');
+    const dstLocal = DateTime.fromISO(dstUtcStr, { zone: 'utc' }).setZone('America/New_York');
 
+    expect(beforeLocal.isValid).toBe(true);
     expect(beforeLocal.hour).toBe(1);
     expect(beforeLocal.minute).toBe(30);
+    expect(dstLocal.isValid).toBe(true);
     expect(dstLocal.hour).toBe(1);
     expect(dstLocal.minute).toBe(30);
   });

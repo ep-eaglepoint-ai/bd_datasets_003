@@ -26,6 +26,8 @@ export const LoadingSpinner: React.FC<Props> = ({
   return (
     <div className={`flex justify-center items-center ${className}`}>
       <svg 
+        role="img"
+        aria-hidden="true"
         className={`animate-spin ${sizeClasses[size]} ${colorClasses[color]}`}
         xmlns="http://www.w3.org/2000/svg" 
         fill="none" 

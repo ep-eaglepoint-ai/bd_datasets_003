@@ -12,6 +12,8 @@ services:
     working_dir: /app
     environment:
       CI: 'true'
+    volumes:
+      - .:/app
     command: "npm test --silent"
 
   evaluate:

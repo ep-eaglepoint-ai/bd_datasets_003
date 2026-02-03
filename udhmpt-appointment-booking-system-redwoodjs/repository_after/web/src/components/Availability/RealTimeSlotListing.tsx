@@ -34,6 +34,7 @@ type Props = {
   onSlotSelect?: (slot: Slot) => void;
   autoRefresh?: boolean; // Enable real-time updates
   refreshInterval?: number; // Seconds
+  initialSlots?: Slot[]; // Optional initial data from Cell query (avoids double loading)
 };
 
 export const RealTimeSlotListing: React.FC<Props> = ({
@@ -44,12 +45,14 @@ export const RealTimeSlotListing: React.FC<Props> = ({
   customerTz,
   onSlotSelect,
   autoRefresh = true,
-  refreshInterval = 30
+  refreshInterval = 30,
+  initialSlots,
 }) => {
-  const [slots, setSlots] = useState<Slot[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const initial = Array.isArray(initialSlots) ? initialSlots : [];
+  const [slots, setSlots] = useState<Slot[]>(initial);
+  const [isLoading, setIsLoading] = useState(!initial.length);
   const [error, setError] = useState<string | Error | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<DateTime | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<DateTime | null>(initial.length ? DateTime.utc() : null);
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
 
   const fetchSlots = useCallback(async () => {
@@ -84,10 +87,21 @@ export const RealTimeSlotListing: React.FC<Props> = ({
     return () => clearInterval(interval);
   }, [autoRefresh, refreshInterval, fetchSlots]);
 
-  // Initial load
+  // Sync when parent (Cell) passes initialSlots
   useEffect(() => {
+    const next = Array.isArray(initialSlots) ? initialSlots : [];
+    if (next.length) {
+      setSlots(next);
+      setIsLoading(false);
+    }
+  }, [initialSlots]);
+
+  // Initial load (skip if Cell already provided initialSlots)
+  useEffect(() => {
+    const next = Array.isArray(initialSlots) ? initialSlots : [];
+    if (next.length) return;
     fetchSlots();
-  }, [fetchSlots]);
+  }, [fetchSlots, initialSlots]);
 
   const handleSlotClick = (slot: Slot) => {
     if (!slot.available) return;

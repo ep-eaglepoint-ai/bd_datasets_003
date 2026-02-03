@@ -9,6 +9,7 @@ type User = {
 
 type AuthContextType = {
   user: User | null
+  token: string | null
   login: (email: string, password: string) => Promise<boolean>
   logout: () => void
   loading: boolean
@@ -26,9 +27,10 @@ export const useAuth = () => {
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null)
+  const [token, setToken] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // Authentication with real API call
+  // Real authentication with JWT token
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
       const response = await fetch('http://localhost:8911/auth/login', {
@@ -41,9 +43,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (response.ok) {
         const data = await response.json()
-        if (data.success && data.user) {
+        if (data.success && data.user && data.token) {
           setUser(data.user)
+          setToken(data.token)
           localStorage.setItem('user', JSON.stringify(data.user))
+          localStorage.setItem('token', data.token)
           return true
         }
       }
@@ -56,16 +60,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = () => {
     setUser(null)
+    setToken(null)
     localStorage.removeItem('user')
+    localStorage.removeItem('token')
   }
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user')
-    if (storedUser) {
+    const storedToken = localStorage.getItem('token')
+    if (storedUser && storedToken) {
       try {
         setUser(JSON.parse(storedUser))
+        setToken(storedToken)
       } catch (error) {
         localStorage.removeItem('user')
+        localStorage.removeItem('token')
       }
     }
     setLoading(false)
@@ -73,6 +82,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const value = {
     user,
+    token,
     login,
     logout,
     loading

@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { ErrorBoundary } from '../repository_after/web/src/components/UI/ErrorBoundary';
 import { ErrorMessage } from '../repository_after/web/src/components/UI/ErrorMessage';
@@ -14,14 +14,16 @@ describe('UI Components', () => {
       throw new Error('Test error');
     };
 
-    test('catches and displays error', () => {
+    test('catches and displays error', async () => {
       render(
         <ErrorBoundary>
           <ThrowError />
         </ErrorBoundary>
       );
 
-      expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+      });
       expect(screen.getByText('Refresh Page')).toBeInTheDocument();
       expect(screen.getByText('Try Again')).toBeInTheDocument();
     });
@@ -78,7 +80,7 @@ describe('UI Components', () => {
       const onRetry = jest.fn();
       const onDismiss = jest.fn();
 
-      render(
+      const { container } = render(
         <ErrorMessage 
           error="Test error" 
           onRetry={onRetry}
@@ -89,7 +91,8 @@ describe('UI Components', () => {
       fireEvent.click(screen.getByText('Try Again'));
       expect(onRetry).toHaveBeenCalled();
 
-      fireEvent.click(screen.getByText('Dismiss'));
+      const dismissButtons = within(container).getAllByText('Dismiss');
+      fireEvent.click(dismissButtons[0]);
       expect(onDismiss).toHaveBeenCalled();
     });
 
@@ -187,7 +190,7 @@ describe('UI Components', () => {
         <LoadingState 
           isLoading={false} 
           error="Test error"
-          fallback={errorFallback}
+          errorFallback={errorFallback}
         >
           <div>Content</div>
         </LoadingState>
@@ -223,8 +226,8 @@ describe('UI Components', () => {
       expect(screen.getByText('Step 2')).toBeInTheDocument();
       expect(screen.getByText('Step 3')).toBeInTheDocument();
 
-      // Check completed step has checkmark
-      const checkmark = document.querySelector('svg[path*="M5 13l4 4L19 7"]');
+      // Check completed step has checkmark (path with d attribute)
+      const checkmark = document.querySelector('path[d*="M5 13l4 4L19 7"]');
       expect(checkmark).toBeInTheDocument();
     });
 

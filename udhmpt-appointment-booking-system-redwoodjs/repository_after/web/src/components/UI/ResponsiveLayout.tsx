@@ -151,7 +151,7 @@ export const Grid: React.FC<GridProps> = ({
   };
 
   return (
-    <div className={`grid ${colsClasses[cols]} ${gapClasses[gap]} ${className}`}>
+    <div role="grid" className={`grid ${colsClasses[cols]} ${gapClasses[gap]} ${className}`}>
       {children}
     </div>
   );
