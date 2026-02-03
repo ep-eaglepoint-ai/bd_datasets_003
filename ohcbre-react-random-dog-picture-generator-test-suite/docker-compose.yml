@@ -70,12 +70,7 @@ services:
       - ./evaluation:/app/evaluation:ro
       - ./evaluation/reports:/app/reports
       - test-results:/tmp/test-results:ro
-    command: >
-      sh -c "
-        node /app/evaluation/evaluation.js &&
-        rm -f /tmp/test-results/before-results.json /tmp/test-results/after-results.json &&
-        echo 'Evaluation completed and temporary files cleaned'
-      "
+    command: node /app/evaluation/evaluation.js
 
 volumes:
   test-results:
