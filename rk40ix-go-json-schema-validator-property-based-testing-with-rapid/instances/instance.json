@@ -1,0 +1,11 @@
+{
+            "instance_id": "RK40IX",
+            "problem_statement": "custom JSON schema validator written in Go lacks comprehensive test coverage. The validator handles type checking, string constraints (minLength, maxLength, pattern, format), numeric bounds, array validation (minItems, maxItems, uniqueItems), object validation (required, additionalProperties), and schema composition (allOf, anyOf, oneOf, not). Manual tests miss edge cases around Unicode string handling, deeply nested structures, and special numeric values. The validator code is in validator/validator.go with type-specific validation in validator/strings.go, validator/numbers.go, validator/arrays.go, and validator/objects.go.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/rk40ix-go-json-schema-validator-property-based-testing-with-rapid",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
