@@ -1,11 +1,8 @@
 # 8N0IVU - Advanced Spectral Normalization System for PyTorch Models
 
-    ## Before Test Docker Command
-    <docker before command here>
-
     ## After Test Docker Command
-    <docker after command here>
+    docker compose run --rm test-after
 
     ## Evaluation Docker Command
-    <evaluation command here>
+    docker compose run --rm evaluation
     
