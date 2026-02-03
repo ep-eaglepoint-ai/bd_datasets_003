@@ -1,0 +1,11 @@
+{
+            "instance_id": "VJRGWT",
+            "problem_statement": "Reliable large file transfers over unstable networks require a mechanism to negotiate the state of data persistence. The engineering challenge lies in the Source of Truth alignment. The client cannot rely on its own internal state to determine where to resume, as the server might have crashed before committing the last received chunk to disk (or the ACK was lost). The solution demands a "Query-Then-Write" architecture: before resuming, the client must ask the server "How much do you have?" using a lightweight HEAD request, and then strictly utilize os.Seek to align its read cursor with the server's write cursor to prevent data corruption or gaps.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/vjrgwt-resumable-chunked-upload-protocol",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
