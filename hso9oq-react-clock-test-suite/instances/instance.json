@@ -1,0 +1,11 @@
+{
+            "instance_id": "HSO9OQ",
+            "problem_statement": "The development team has built a React class-based clock component that displays the current time and updates every second. The component allows users to switch between English (en-US) and Bengali (bn-BD) locales, changing the time format accordingly. It uses setInterval to update time and clearInterval to handle cleanup during unmounting. A comprehensive Jest and React Testing Library test suite is required to validate timer behavior, locale switching, rendering optimization, and proper lifecycle management.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/hso9oq-react-clock-test-suite",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
