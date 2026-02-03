@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 )
 
@@ -19,24 +20,26 @@ type BidResponse struct {
 	Timestamp int64   `json:"ts"`
 }
 
+// Create a pool for bytes.Buffer.
+var bufferPool = sync.Pool{
+	New: func() interface{} {
+		return bytes.NewBuffer(make([]byte, 0, 1024))
+	},
+}
+
 // SerializeBidResponse writes the JSON representation of the bid to w.
-//
-// OPTIMIZATION TARGET:
-// This function allocates a new buffer and new encoder every time.
-// It generates massive GC pressure under load.
 func SerializeBidResponse(w io.Writer, bid *BidResponse) error {
-	// BAD: Allocating a new buffer on the heap every single call.
-	// This causes 1 alloc for the buffer structure, 1 for the internal slice.
-	// plus json.Marshal logic would cause more.
+	// Retrieve a buffer from the pool
+	buf := bufferPool.Get().(*bytes.Buffer)
 
-	// We use Encoder here, but we are still creating the buffer wrapper
-	// and throwing it away instantly.
+	// Ensure the buffer is returned and scrubbed
+	defer func() {
+		buf.Reset()
+		bufferPool.Put(buf)
+	}()
 
-	// In a real high-perf scenario, even the Encoder might be pooled,
-	// but let's focus on the Buffer first.
-
-	buf := new(bytes.Buffer)    // Allocation #1
-	enc := json.NewEncoder(buf) // Allocation #2 (Encoder struct)
+	// Use NewEncoder directly on the pooled buffer.
+	enc := json.NewEncoder(buf)
 
 	if err := enc.Encode(bid); err != nil {
 		return err
