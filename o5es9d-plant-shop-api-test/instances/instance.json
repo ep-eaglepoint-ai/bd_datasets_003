@@ -1,0 +1,11 @@
+{
+            "instance_id": "O5ES9D",
+            "problem_statement": "A boutique plant shop is launching an e-commerce platform to sell houseplants online. The development team built an Express API that handles the product catalog, customer accounts, order processing, and a unique plant care scheduling feature. Before the website goes live, the backend needs thorough testing to ensure order processing handles stock correctly and the care scheduling logic properly calculates due dates. The system needs tests covering the plant catalog filters, order creation with stock validation, and the care task completion flow. Beta testing by employees found that ordering more plants than available in stock returns a 500 error instead of a clear out-of-stock message, cancelled orders do not restore inventory levels, and the pet-safe filter was returning plants that are actually toxic to animals.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/o5es9d-plant-shop-api-test",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
