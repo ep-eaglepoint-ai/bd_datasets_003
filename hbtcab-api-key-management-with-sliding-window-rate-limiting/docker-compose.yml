@@ -1,9 +1,64 @@
 
-        # Docker Compose file for running tests. You should customize this as needed.
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: app
+    ports:
+      - "5432:5432"
 
-        services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
   app:
     build: .
-    command: pytest -q tests
-    volumes:
-      - .:/app
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      DATABASE_URL: postgres://app:app@postgres:5432/app
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: local-secret
+      PORT: 3000
+      USE_MOCKS: "1"
+
+  before:
+    build: .
+    command: ["sh", "-c", "echo Before state: repository_before is intentionally empty.; exit 0"]
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      DATABASE_URL: postgres://app:app@postgres:5432/app
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: local-secret
+      PORT: 3000
+
+  after:
+    build: .
+    command: node repository_after/app.js
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      DATABASE_URL: postgres://app:app@postgres:5432/app
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: local-secret
+      PORT: 3000
+    ports:
+      - "3000:3000"
+
+  evaluation:
+    build: .
+    command: npm run eval
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      DATABASE_URL: postgres://app:app@postgres:5432/app
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: local-secret
