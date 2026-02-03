@@ -1,0 +1,11 @@
+{
+            "instance_id": "UC8WT4",
+            "problem_statement": "Existing file processing solutions attempt to load entire datasets into memory, making them unsuitable for extremely large files and leading to memory exhaustion, poor performance, and unstable workflows. Data engineers require a scalable and reliable mechanism to process massive CSV, JSON, and log files incrementally while supporting composable transformations. A lazy file processing engine is needed to ensure efficient, single-pass processing, safe resource management, and predictable execution behavior without compromising flexibility or correctness.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/uc8wt4-lazy-file-processing-engine",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
