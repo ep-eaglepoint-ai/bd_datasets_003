@@ -1,11 +1,10 @@
 # X5PS6N - Temperature Converter Test Suite
 
-    ## Before Test Docker Command
-    <docker before command here>
-
-    ## After Test Docker Command
-    <docker after command here>
-
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+ ## After Test Docker Command
+```bash
+ docker compose run --rm test
+```
+ ## Evaluation Docker Command
+```bash
+docker compose run --rm evaluate
+``` 
