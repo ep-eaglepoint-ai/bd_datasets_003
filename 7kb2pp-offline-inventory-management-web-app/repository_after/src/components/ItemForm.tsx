@@ -2,9 +2,22 @@
 
 import { useState, useEffect } from 'react';
 import { useInventoryStore } from '@/lib/store';
-import { LifecycleStatus, InventoryItemSchema } from '@/lib/schemas';
+import { LifecycleStatus } from '@/lib/schemas';
 import { X } from 'lucide-react';
 import { z } from 'zod';
+
+// Zod schema for form validation
+const ItemFormSchema = z.object({
+  name: z.string().min(1, 'Item name is required').max(200, 'Name too long'),
+  sku: z.string().min(1, 'SKU is required').max(100, 'SKU too long'),
+  categoryId: z.string().nullable(),
+  locationId: z.string().nullable(),
+  unitCost: z.number().nonnegative('Unit cost must be non-negative'),
+  reorderThreshold: z.number().int('Must be a whole number').nonnegative('Threshold must be non-negative'),
+  supplierNotes: z.string().max(1000, 'Notes too long').optional(),
+  lifecycleStatus: z.enum(['active', 'reserved', 'damaged', 'expired', 'archived', 'disposed']),
+  expirationDate: z.string().nullable(),
+});
 
 interface ItemFormProps {
   itemId: string | null;
@@ -39,16 +52,39 @@ export function ItemForm({ itemId, onClose }: ItemFormProps) {
     }
   };
   
-  const validateForm = () => {
+  const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
     
-    if (!formData.name.trim()) newErrors.name = 'Name is required';
-    if (!formData.sku.trim()) newErrors.sku = 'SKU is required';
-    if (isNaN(parseFloat(formData.unitCost)) || parseFloat(formData.unitCost) < 0) {
-      newErrors.unitCost = 'Unit cost must be a non-negative number';
+    // Build data object for Zod validation
+    const dataToValidate = {
+      name: formData.name.trim(),
+      sku: formData.sku.trim(),
+      categoryId: formData.categoryId || null,
+      locationId: formData.locationId || null,
+      unitCost: parseFloat(formData.unitCost) || 0,
+      reorderThreshold: parseInt(formData.reorderThreshold) || 0,
+      supplierNotes: formData.supplierNotes.trim() || undefined,
+      lifecycleStatus: formData.lifecycleStatus as LifecycleStatus,
+      expirationDate: formData.expirationDate ? new Date(formData.expirationDate).toISOString() : null,
+    };
+    
+    // Use Zod for validation
+    const result = ItemFormSchema.safeParse(dataToValidate);
+    
+    if (!result.success) {
+      result.error.errors.forEach(err => {
+        const field = err.path[0] as string;
+        newErrors[field] = err.message;
+      });
     }
-    if (isNaN(parseInt(formData.reorderThreshold)) || parseInt(formData.reorderThreshold) < 0) {
-      newErrors.reorderThreshold = 'Reorder threshold must be a non-negative integer';
+    
+    // Check for duplicate SKU (explicit check with user-facing error)
+    const skuToCheck = formData.sku.trim().toLowerCase();
+    const duplicateSku = items.find(
+      item => item.sku.toLowerCase() === skuToCheck && item.id !== itemId
+    );
+    if (duplicateSku) {
+      newErrors.sku = `SKU "${formData.sku.trim()}" already exists. Each item must have a unique SKU.`;
     }
     
     setErrors(newErrors);

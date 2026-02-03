@@ -264,6 +264,112 @@ export const db = {
       database.clear('valuationSnapshots'),
     ]);
   },
+
+  // Recovery: Save session state for crash recovery
+  async saveRecoveryState(state: {
+    items: InventoryItem[];
+    categories: Category[];
+    locations: Location[];
+    pendingOperations?: Array<{ type: string; data: unknown; timestamp: string }>;
+  }): Promise<void> {
+    try {
+      const recoveryData = {
+        timestamp: new Date().toISOString(),
+        state,
+      };
+      localStorage.setItem('inventory_recovery_state', JSON.stringify(recoveryData));
+    } catch (error) {
+      console.error('Failed to save recovery state:', error);
+    }
+  },
+
+  // Recovery: Load session state after crash/reload
+  async loadRecoveryState(): Promise<{
+    timestamp: string;
+    state: {
+      items: InventoryItem[];
+      categories: Category[];
+      locations: Location[];
+      pendingOperations?: Array<{ type: string; data: unknown; timestamp: string }>;
+    };
+  } | null> {
+    try {
+      const recoveryData = localStorage.getItem('inventory_recovery_state');
+      if (!recoveryData) return null;
+      return JSON.parse(recoveryData);
+    } catch (error) {
+      console.error('Failed to load recovery state:', error);
+      return null;
+    }
+  },
+
+  // Recovery: Clear recovery state after successful load
+  async clearRecoveryState(): Promise<void> {
+    try {
+      localStorage.removeItem('inventory_recovery_state');
+    } catch (error) {
+      console.error('Failed to clear recovery state:', error);
+    }
+  },
+
+  // Recovery: Check if recovery is needed
+  async needsRecovery(): Promise<boolean> {
+    try {
+      const recoveryData = localStorage.getItem('inventory_recovery_state');
+      if (!recoveryData) return false;
+      
+      const { timestamp } = JSON.parse(recoveryData);
+      const recoveryTime = new Date(timestamp).getTime();
+      const now = Date.now();
+      
+      // Recovery is valid for 24 hours
+      return (now - recoveryTime) < 24 * 60 * 60 * 1000;
+    } catch {
+      return false;
+    }
+  },
+
+  // Recovery: Validate database integrity
+  async validateIntegrity(): Promise<{
+    valid: boolean;
+    issues: string[];
+  }> {
+    const issues: string[] = [];
+    
+    try {
+      const database = await getDB();
+      
+      // Check items exist
+      const items = await database.getAll('items');
+      const movements = await database.getAll('movements');
+      
+      // Check movement references
+      const itemIds = new Set(items.map(i => i.id));
+      const orphanedMovements = movements.filter(m => !itemIds.has(m.itemId));
+      if (orphanedMovements.length > 0) {
+        issues.push(`Found ${orphanedMovements.length} movements referencing deleted items`);
+      }
+      
+      // Check for quantity consistency
+      for (const item of items) {
+        const itemMovements = movements.filter(m => m.itemId === item.id);
+        if (itemMovements.length > 0) {
+          const sortedMovements = [...itemMovements].sort(
+            (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          );
+          const latestQuantity = sortedMovements[0].newQuantity;
+          if (latestQuantity < 0) {
+            issues.push(`Item ${item.name} has negative quantity: ${latestQuantity}`);
+          }
+        }
+      }
+      
+      return { valid: issues.length === 0, issues };
+    } catch (error) {
+      issues.push(`Database validation error: ${(error as Error).message}`);
+      return { valid: false, issues };
+    }
+  },
 };
 
 export default db;

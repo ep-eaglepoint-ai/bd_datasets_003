@@ -88,6 +88,8 @@ interface InventoryState {
   // Export
   exportData: () => ExportData;
   exportCSV: () => string;
+  exportValuationSummary: () => any;
+  exportAnalyticsSnapshot: () => any;
 }
 
 // Helper to create audit log
@@ -489,55 +491,118 @@ recordMovement: async (
   
   await db.addMovement(movement);
   
+  // Add audit log for stock movement
+  const auditLog = createAuditLog('movement', movement.id, 'create', {
+    itemId,
+    itemName: item.name,
+    itemSku: item.sku,
+    type,
+    quantity: movement.quantity,
+    previousQuantity: currentQuantity,
+    newQuantity,
+    reason,
+    fromLocationId,
+    toLocationId,
+  });
+  await db.addAuditLog(auditLog);
+  
   set(state => ({
     movements: [...state.movements, movement],
+    auditLogs: [...state.auditLogs, auditLog],
   }));
   
   return movement;
 },
 
   
-  // Bulk operations
+  // Bulk operations with transaction support
   bulkUpdateItems: async (edit) => {
     const { items } = get();
     const itemsToUpdate = items.filter(i => edit.itemIds.includes(i.id));
     
-    for (const item of itemsToUpdate) {
-      await get().updateItem(item.id, edit.updates);
+    // Store original state for rollback
+    const originalItems = itemsToUpdate.map(item => ({ ...item }));
+    const updatedItems: InventoryItem[] = [];
+    
+    try {
+      for (const item of itemsToUpdate) {
+        await get().updateItem(item.id, edit.updates);
+        updatedItems.push(item);
+      }
+    } catch (error) {
+      // Rollback: restore original items
+      for (let i = 0; i < updatedItems.length; i++) {
+        const original = originalItems[i];
+        try {
+          await db.saveItem(original);
+        } catch (rollbackError) {
+          console.error('Rollback failed for item:', original.id, rollbackError);
+        }
+      }
+      // Reload state to ensure consistency
+      await get().initialize();
+      throw new Error(`Bulk update failed and was rolled back: ${(error as Error).message}`);
     }
   },
   
   bulkImport: async (data) => {
-    // Clear existing data first
-    await db.clearAll();
+    // Store current state for rollback
+    const currentState = get();
+    const backup = {
+      items: [...currentState.items],
+      categories: [...currentState.categories],
+      locations: [...currentState.locations],
+      movements: [...currentState.movements],
+      auditLogs: [...currentState.auditLogs],
+    };
     
-    // Import categories
-    for (const category of data.categories) {
-      await db.saveCategory(category);
+    try {
+      // Clear existing data first
+      await db.clearAll();
+      
+      // Import categories
+      for (const category of data.categories) {
+        await db.saveCategory(category);
+      }
+      
+      // Import locations
+      for (const location of data.locations) {
+        await db.saveLocation(location);
+      }
+      
+      // Import items
+      for (const item of data.items) {
+        await db.saveItem(item);
+      }
+      
+      // Import movements
+      for (const movement of data.movements) {
+        await db.addMovement(movement);
+      }
+      
+      // Import audit logs
+      for (const log of data.auditLogs) {
+        await db.addAuditLog(log);
+      }
+      
+      // Reload state
+      await get().initialize();
+    } catch (error) {
+      // Rollback: restore backup
+      console.error('Bulk import failed, attempting rollback:', error);
+      try {
+        await db.clearAll();
+        for (const category of backup.categories) await db.saveCategory(category);
+        for (const location of backup.locations) await db.saveLocation(location);
+        for (const item of backup.items) await db.saveItem(item);
+        for (const movement of backup.movements) await db.addMovement(movement);
+        for (const log of backup.auditLogs) await db.addAuditLog(log);
+        await get().initialize();
+      } catch (rollbackError) {
+        console.error('Rollback also failed:', rollbackError);
+      }
+      throw new Error(`Bulk import failed and was rolled back: ${(error as Error).message}`);
     }
-    
-    // Import locations
-    for (const location of data.locations) {
-      await db.saveLocation(location);
-    }
-    
-    // Import items
-    for (const item of data.items) {
-      await db.saveItem(item);
-    }
-    
-    // Import movements
-    for (const movement of data.movements) {
-      await db.addMovement(movement);
-    }
-    
-    // Import audit logs
-    for (const log of data.auditLogs) {
-      await db.addAuditLog(log);
-    }
-    
-    // Reload state
-    await get().initialize();
   },
   
   // Filter actions
@@ -582,6 +647,100 @@ recordMovement: async (
     ]);
     
     return [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
+  },
+  
+  // Export valuation summary
+  exportValuationSummary: () => {
+    const state = get();
+    const { items, movements, categories, locations } = state;
+    const enrichedItems = enrichItemsWithQuantities(items, movements);
+    const health = calculateInventoryHealth(items, movements);
+    const valueByCategory = calculateValueByCategory(items, movements);
+    const valueByLocation = calculateValueByLocation(items, movements);
+    
+    const totalValue = enrichedItems.reduce((sum, item) => sum + item.totalValue, 0);
+    const totalQuantity = enrichedItems.reduce((sum, item) => sum + item.quantity, 0);
+    
+    return {
+      exportedAt: new Date().toISOString(),
+      summary: {
+        totalItems: items.length,
+        totalQuantity,
+        totalValue: Math.round(totalValue * 100) / 100,
+        averageItemValue: items.length > 0 ? Math.round((totalValue / items.length) * 100) / 100 : 0,
+      },
+      healthMetrics: health,
+      categoryBreakdown: Object.entries(valueByCategory).map(([categoryId, value]) => ({
+        categoryId,
+        categoryName: categories.find(c => c.id === categoryId)?.name || 'Uncategorized',
+        value: Math.round(value * 100) / 100,
+        itemCount: enrichedItems.filter(i => i.categoryId === categoryId).length,
+      })),
+      locationBreakdown: Object.entries(valueByLocation).map(([locationId, value]) => ({
+        locationId,
+        locationName: locations.find(l => l.id === locationId)?.name || 'Unassigned',
+        value: Math.round(value * 100) / 100,
+        itemCount: enrichedItems.filter(i => i.locationId === locationId).length,
+      })),
+    };
+  },
+  
+  // Export analytics snapshot
+  exportAnalyticsSnapshot: () => {
+    const state = get();
+    const { items, movements, categories, locations } = state;
+    const enrichedItems = enrichItemsWithQuantities(items, movements);
+    const health = calculateInventoryHealth(items, movements);
+    
+    // Calculate expiration risk
+    const now = new Date();
+    const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const expiringItems = enrichedItems.filter(item => {
+      if (!item.expirationDate) return false;
+      const expDate = new Date(item.expirationDate);
+      return expDate <= thirtyDaysFromNow && expDate > now;
+    });
+    const expiredItems = enrichedItems.filter(item => {
+      if (!item.expirationDate) return false;
+      return new Date(item.expirationDate) <= now;
+    });
+    
+    // Calculate shrinkage (items with negative adjustments)
+    const shrinkageMovements = movements.filter(m => 
+      m.type === 'adjustment' && m.quantity < 0
+    );
+    const shrinkageValue = shrinkageMovements.reduce((sum, m) => {
+      const item = items.find(i => i.id === m.itemId);
+      return sum + (item ? Math.abs(m.quantity) * item.unitCost : 0);
+    }, 0);
+    
+    // Low stock analysis
+    const lowStockItems = enrichedItems.filter(item => item.isLowStock);
+    const outOfStockItems = enrichedItems.filter(item => item.quantity === 0);
+    
+    return {
+      snapshotAt: new Date().toISOString(),
+      inventoryHealth: health,
+      expirationRisk: {
+        expiredCount: expiredItems.length,
+        expiredValue: expiredItems.reduce((sum, i) => sum + i.totalValue, 0),
+        expiringIn30DaysCount: expiringItems.length,
+        expiringIn30DaysValue: expiringItems.reduce((sum, i) => sum + i.totalValue, 0),
+        expiredItems: expiredItems.map(i => ({ id: i.id, name: i.name, sku: i.sku, expirationDate: i.expirationDate })),
+        expiringItems: expiringItems.map(i => ({ id: i.id, name: i.name, sku: i.sku, expirationDate: i.expirationDate })),
+      },
+      shrinkageIndicators: {
+        totalShrinkageEvents: shrinkageMovements.length,
+        totalShrinkageValue: Math.round(shrinkageValue * 100) / 100,
+        shrinkageRate: movements.length > 0 ? Math.round((shrinkageMovements.length / movements.length) * 10000) / 100 : 0,
+      },
+      stockStatus: {
+        lowStockCount: lowStockItems.length,
+        outOfStockCount: outOfStockItems.length,
+        healthyStockCount: enrichedItems.length - lowStockItems.length - outOfStockItems.length,
+        lowStockItems: lowStockItems.map(i => ({ id: i.id, name: i.name, sku: i.sku, quantity: i.quantity, threshold: i.reorderThreshold })),
+      },
+    };
   },
 }));
 

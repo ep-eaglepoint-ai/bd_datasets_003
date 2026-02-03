@@ -107,20 +107,26 @@ function generateReport() {
   const endTime = new Date();
   const durationSeconds = (endTime.getTime() - startTime.getTime()) / 1000;
   
-  const report = {
-    run_id: runId,
-    start_time: startTime.toISOString(),
-    end_time: endTime.toISOString(),
-    duration_seconds: durationSeconds,
+  // Summary consolidated inside report.json (no separate summary.json needed)
+  const summary = {
     total_tests: tests.length,
     passed,
     failed,
     skipped,
     errors,
+    success: failed === 0 && errors === 0,
+    pass_rate: tests.length > 0 ? ((passed / tests.length) * 100).toFixed(2) + '%' : '0%',
+  };
+
+  const report = {
+    run_id: runId,
+    start_time: startTime.toISOString(),
+    end_time: endTime.toISOString(),
+    duration_seconds: durationSeconds,
+    summary, // Summary is now inside report.json
     tests,
     output,
     return_code: returnCode,
-    success: failed === 0 && errors === 0,
     report_path: `reports/${formatDate(startTime)}/${formatTime(startTime)}/report.json`
   };
   
@@ -133,16 +139,17 @@ function printReport(report) {
   console.log('='.repeat(60));
   console.log(`Run ID: ${report.run_id}`);
   console.log(`Duration: ${report.duration_seconds.toFixed(2)} seconds`);
-  console.log(`Total Tests: ${report.total_tests}`);
-  console.log(`Passed: ${report.passed}`);
-  console.log(`Failed: ${report.failed}`);
-  console.log(`Skipped: ${report.skipped}`);
-  console.log(`Errors: ${report.errors}`);
-  console.log(`Success: ${report.success ? 'YES' : 'NO'}`);
+  console.log(`Total Tests: ${report.summary.total_tests}`);
+  console.log(`Passed: ${report.summary.passed}`);
+  console.log(`Failed: ${report.summary.failed}`);
+  console.log(`Skipped: ${report.summary.skipped}`);
+  console.log(`Errors: ${report.summary.errors}`);
+  console.log(`Pass Rate: ${report.summary.pass_rate}`);
+  console.log(`Success: ${report.summary.success ? 'YES' : 'NO'}`);
   console.log(`Report saved to: ${report.report_path}`);
   console.log('='.repeat(60));
   
-  if (report.failed > 0 || report.errors > 0) {
+  if (report.summary.failed > 0 || report.summary.errors > 0) {
     console.log('\nFailed/Error Tests:');
     for (const test of report.tests) {
       if (test.status === 'failed' || test.status === 'error') {
@@ -203,7 +210,7 @@ try {
   // fs.writeFileSync(summaryPath, JSON.stringify(summary, null, 2));
   // console.log(`Summary saved to: ${summaryPath}`);
   
-  process.exit(report.success ? 0 : 1);
+  process.exit(report.summary.success ? 0 : 1);
 } catch (error) {
   console.error('Error running evaluation:', error);
   process.exit(1);

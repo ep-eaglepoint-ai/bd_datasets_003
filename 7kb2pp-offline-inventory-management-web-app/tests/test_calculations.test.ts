@@ -134,71 +134,49 @@ describe('Calculation Tests', () => {
 
   describe('calculateValueByCategory', () => {
     test('should group values by category', () => {
-      const enrichedItems = enrichItemsWithQuantities([mockItem], mockMovements);
-      const categories: Category[] = [
-        {
-          id: '550e8400-e29b-41d4-a716-446655440010',
-          name: 'Electronics',
-          createdAt: '2024-01-01T00:00:00Z',
-          updatedAt: '2024-01-01T00:00:00Z',
-        },
-      ];
-      
-      const byCategory = calculateValueByCategory(enrichedItems, categories);
-      expect(byCategory['Electronics']).toBe(1750.00);
+      // calculateValueByCategory returns categoryId -> value map
+      const byCategory = calculateValueByCategory([mockItem], mockMovements);
+      expect(byCategory[mockItem.categoryId!]).toBe(1750.00);
     });
 
     test('should handle uncategorized items', () => {
       const uncategorizedItem = { ...mockItem, categoryId: null };
-      const enrichedItems = enrichItemsWithQuantities([uncategorizedItem], mockMovements);
       
-      const byCategory = calculateValueByCategory(enrichedItems, []);
-      expect(byCategory['Uncategorized']).toBe(1750.00);
+      const byCategory = calculateValueByCategory([uncategorizedItem], mockMovements);
+      expect(byCategory['uncategorized']).toBe(1750.00);
     });
   });
 
   describe('calculateValueByLocation', () => {
     test('should group values by location', () => {
-      const enrichedItems = enrichItemsWithQuantities([mockItem], mockMovements);
-      const locations: Location[] = [
-        {
-          id: '550e8400-e29b-41d4-a716-446655440020',
-          name: 'Warehouse A',
-          createdAt: '2024-01-01T00:00:00Z',
-          updatedAt: '2024-01-01T00:00:00Z',
-        },
-      ];
-      
-      const byLocation = calculateValueByLocation(enrichedItems, locations);
-      expect(byLocation['Warehouse A']).toBe(1750.00);
+      // calculateValueByLocation returns locationId -> value map
+      const byLocation = calculateValueByLocation([mockItem], mockMovements);
+      expect(byLocation[mockItem.locationId!]).toBe(1750.00);
     });
   });
 
   describe('calculateTurnoverRate', () => {
     test('should calculate turnover rate', () => {
-      const outboundMovements = mockMovements.filter(m => m.type === 'outbound');
-      const totalOutbound = Math.abs(outboundMovements.reduce((sum, m) => sum + m.quantity, 0));
-      const avgInventory = 85; // (100 + 70) / 2
-      
-      const rate = calculateTurnoverRate(mockMovements, 1750.00);
+      // calculateTurnoverRate(itemId, movements, periodDays)
+      const rate = calculateTurnoverRate(mockItem.id, mockMovements, 30);
       expect(rate).toBeGreaterThanOrEqual(0);
     });
 
     test('should return 0 for no movements', () => {
-      const rate = calculateTurnoverRate([], 1750.00);
+      const rate = calculateTurnoverRate(mockItem.id, [], 30);
       expect(rate).toBe(0);
     });
   });
 
   describe('calculateStockAgingDays', () => {
     test('should calculate average aging days', () => {
-      const items = [mockItem];
-      const aging = calculateStockAgingDays(items);
+      // calculateStockAgingDays(itemId, movements, currentQuantity)
+      const aging = calculateStockAgingDays(mockItem.id, mockMovements, 70);
       expect(aging).toBeGreaterThanOrEqual(0);
     });
 
-    test('should return 0 for empty items', () => {
-      const aging = calculateStockAgingDays([]);
+    test('should return 0 for zero quantity', () => {
+      const aging = calculateStockAgingDays(mockItem.id, mockMovements, 0);
       expect(aging).toBe(0);
     });
   });
@@ -247,7 +225,8 @@ describe('Calculation Tests', () => {
 
   describe('calculateDemandConsistency', () => {
     test('should return value between 0 and 1', () => {
-      const consistency = calculateDemandConsistency(mockMovements);
+      // calculateDemandConsistency(itemId, movements, periodDays)
+      const consistency = calculateDemandConsistency(mockItem.id, mockMovements, 30);
       expect(consistency).toBeGreaterThanOrEqual(0);
       expect(consistency).toBeLessThanOrEqual(1);
     });

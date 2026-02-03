@@ -7,6 +7,7 @@ import { AlertTriangle, TrendingUp, Package, DollarSign, Activity, AlertCircle }
 import { ReorderRiskChart } from './ReorderRiskChart';
 import { StockHistoryChart } from './StockHistoryChart';
 import { WarehouseUtilizationChart } from './WarehouseUtilizationChart';
+import { ExpirationRiskView } from './ExpirationRiskView';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
 
@@ -266,6 +267,7 @@ export function Dashboard() {
         <StockHistoryChart />
         <WarehouseUtilizationChart />
       </div>
+        <ExpirationRiskView />
     </div>
   );
 }

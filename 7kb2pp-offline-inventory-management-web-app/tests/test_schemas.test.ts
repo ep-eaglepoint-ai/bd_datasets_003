@@ -13,15 +13,26 @@ import {
   MovementType,
 } from '../repository_after/src/lib/schemas';
 
+// Helper to generate valid UUIDs for tests
+const uuid1 = '550e8400-e29b-41d4-a716-446655440001';
+const uuid2 = '550e8400-e29b-41d4-a716-446655440002';
+const uuid3 = '550e8400-e29b-41d4-a716-446655440003';
+const uuid4 = '550e8400-e29b-41d4-a716-446655440004';
+const uuid5 = '550e8400-e29b-41d4-a716-446655440005';
+const uuidCat = '550e8400-e29b-41d4-a716-446655440010';
+const uuidLoc = '550e8400-e29b-41d4-a716-446655440020';
+const uuidMov = '550e8400-e29b-41d4-a716-446655440030';
+const uuidLog = '550e8400-e29b-41d4-a716-446655440040';
+
 describe('Schema Validation Tests', () => {
   describe('InventoryItemSchema', () => {
     test('should validate a valid inventory item', () => {
       const validItem = {
-        id: 'item-123',
+        id: uuid1,
         sku: 'SKU-001',
         name: 'Test Item',
-        categoryId: 'cat-1',
-        locationId: 'loc-1',
+        categoryId: uuidCat,
+        locationId: uuidLoc,
         unitCost: 25.50,
         reorderThreshold: 10,
         lifecycleStatus: 'active',
@@ -35,7 +46,7 @@ describe('Schema Validation Tests', () => {
     
     test('should reject item with negative unit cost', () => {
       const invalidItem = {
-        id: 'item-123',
+        id: uuid1,
         sku: 'SKU-001',
         name: 'Test Item',
         categoryId: null,
@@ -53,7 +64,7 @@ describe('Schema Validation Tests', () => {
     
     test('should reject item with empty name', () => {
       const invalidItem = {
-        id: 'item-123',
+        id: uuid1,
         sku: 'SKU-001',
         name: '',
         categoryId: null,
@@ -71,7 +82,7 @@ describe('Schema Validation Tests', () => {
     
     test('should accept item with optional fields as null', () => {
       const validItem = {
-        id: 'item-123',
+        id: uuid1,
         sku: 'SKU-001',
         name: 'Test Item',
         categoryId: null,
@@ -93,7 +104,7 @@ describe('Schema Validation Tests', () => {
   describe('CategorySchema', () => {
     test('should validate a valid category', () => {
       const validCategory = {
-        id: 'cat-123',
+        id: uuidCat,
         name: 'Electronics',
         description: 'Electronic items',
         createdAt: '2024-01-01T00:00:00Z',
@@ -106,7 +117,7 @@ describe('Schema Validation Tests', () => {
     
     test('should reject category with empty name', () => {
       const invalidCategory = {
-        id: 'cat-123',
+        id: uuidCat,
         name: '',
         createdAt: '2024-01-01T00:00:00Z',
         updatedAt: '2024-01-01T00:00:00Z',
@@ -120,7 +131,7 @@ describe('Schema Validation Tests', () => {
   describe('LocationSchema', () => {
     test('should validate a valid location', () => {
       const validLocation = {
-        id: 'loc-123',
+        id: uuidLoc,
         name: 'Warehouse A',
         zone: 'Zone 1',
         capacity: 1000,
@@ -134,7 +145,7 @@ describe('Schema Validation Tests', () => {
     
     test('should reject location with negative capacity', () => {
       const invalidLocation = {
-        id: 'loc-123',
+        id: uuidLoc,
         name: 'Warehouse A',
         capacity: -100,
         createdAt: '2024-01-01T00:00:00Z',
@@ -149,14 +160,14 @@ describe('Schema Validation Tests', () => {
   describe('StockMovementSchema', () => {
     test('should validate a valid stock movement', () => {
       const validMovement = {
-        id: 'mov-123',
-        itemId: 'item-1',
+        id: uuidMov,
+        itemId: uuid1,
         type: 'inbound',
         quantity: 50,
         previousQuantity: 100,
         newQuantity: 150,
         fromLocationId: null,
-        toLocationId: 'loc-1',
+        toLocationId: uuidLoc,
         reason: 'Purchase order #123',
         timestamp: '2024-01-01T00:00:00Z',
       };
@@ -167,13 +178,13 @@ describe('Schema Validation Tests', () => {
     
     test('should validate outbound movement with negative quantity', () => {
       const validMovement = {
-        id: 'mov-123',
-        itemId: 'item-1',
+        id: uuidMov,
+        itemId: uuid1,
         type: 'outbound',
         quantity: -25,
         previousQuantity: 100,
         newQuantity: 75,
-        fromLocationId: 'loc-1',
+        fromLocationId: uuidLoc,
         toLocationId: null,
         timestamp: '2024-01-01T00:00:00Z',
       };
@@ -184,8 +195,8 @@ describe('Schema Validation Tests', () => {
     
     test('should reject movement with invalid type', () => {
       const invalidMovement = {
-        id: 'mov-123',
-        itemId: 'item-1',
+        id: uuidMov,
+        itemId: uuid1,
         type: 'invalid_type',
         quantity: 50,
         previousQuantity: 100,
@@ -235,9 +246,9 @@ describe('Schema Validation Tests', () => {
   describe('AuditLogSchema', () => {
     test('should validate a valid audit log', () => {
       const validLog = {
-        id: 'log-123',
+        id: uuidLog,
         entityType: 'item',
-        entityId: 'item-1',
+        entityId: uuid1,
         action: 'create',
         changes: { name: 'New Item' },
         timestamp: '2024-01-01T00:00:00Z',
@@ -249,9 +260,9 @@ describe('Schema Validation Tests', () => {
     
     test('should reject audit log with invalid action', () => {
       const invalidLog = {
-        id: 'log-123',
+        id: uuidLog,
         entityType: 'item',
-        entityId: 'item-1',
+        entityId: uuid1,
         action: 'modify',
         changes: {},
         timestamp: '2024-01-01T00:00:00Z',
@@ -302,8 +313,8 @@ describe('Schema Validation Tests', () => {
     test('should validate valid filter options', () => {
       const validFilter = {
         search: 'test',
-        categoryId: 'cat-1',
-        locationId: 'loc-1',
+        categoryId: uuidCat,
+        locationId: uuidLoc,
         lifecycleStatus: 'active',
         lowStockOnly: true,
         sortBy: 'name',
@@ -334,9 +345,9 @@ describe('Schema Validation Tests', () => {
   describe('BulkEditSchema', () => {
     test('should validate valid bulk edit', () => {
       const validBulkEdit = {
-        itemIds: ['item-1', 'item-2', 'item-3'],
+        itemIds: [uuid1, uuid2, uuid3],
         updates: {
-          categoryId: 'cat-new',
+          categoryId: uuidCat,
           lifecycleStatus: 'archived',
         },
       };
@@ -348,7 +359,7 @@ describe('Schema Validation Tests', () => {
     test('should reject bulk edit with empty item array', () => {
       const invalidBulkEdit = {
         itemIds: [],
-        updates: { categoryId: 'cat-1' },
+        updates: { categoryId: uuidCat },
       };
       
       const result = BulkEditSchema.safeParse(invalidBulkEdit);
