@@ -1,0 +1,11 @@
+{
+            "instance_id": "N29X61",
+            "problem_statement": "The /api/orders endpoint is too slow and resource-heavy under peak load (around 1,000 concurrent requests), and previous caching attempts may introduce race conditions and stale data, so we must optimize performance while keeping results correct and fully compatible with the current Docker deployment and monitoring.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/n29x61-performance-optimization-and-concurrency-safe-caching-for-api-orders-endpoint",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
