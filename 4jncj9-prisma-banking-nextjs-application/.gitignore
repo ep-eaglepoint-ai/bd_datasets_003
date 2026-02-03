@@ -14,6 +14,9 @@ out/
 test-results.json
 coverage/
 
+# Evaluation reports
+evaluation/**/report.json
+
 # Environment
 .env
 .env.local
