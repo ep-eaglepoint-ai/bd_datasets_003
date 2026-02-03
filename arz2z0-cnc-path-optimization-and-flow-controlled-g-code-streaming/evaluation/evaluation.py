@@ -65,7 +65,7 @@ def run_pytest_tests(tests_dir, label):
     Run Pytest tests and parse the JSON output.
     """
     print(f"\n{'=' * 60}")
-    print(f"RUNNING TESTS ({label.upper()})")
+    print(f"RUNNING BACKEND TESTS ({label.upper()})")
     print(f"{'=' * 60}")
     print(f"Environment: {label}")
     print(f"Tests directory: {tests_dir}")
@@ -174,9 +174,136 @@ def run_pytest_tests(tests_dir, label):
         }
 
 
+def run_frontend_tests(tests_dir):
+    """
+    Run frontend JavaScript tests using Vitest and parse the output.
+    """
+    print(f"\n{'=' * 60}")
+    print("RUNNING FRONTEND TESTS")
+    print(f"{'=' * 60}")
+    print(f"Tests directory: {tests_dir}")
+
+    try:
+        # Run npm test with JSON reporter
+        result = subprocess.run(
+            ["npm", "test", "--", "--reporter=json"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=tests_dir
+        )
+        
+        # Try to parse JSON output from vitest
+        tests = []
+        passed = 0
+        failed = 0
+        total = 0
+        
+        # Vitest JSON output is on stdout
+        try:
+            # Find JSON in output (vitest outputs JSON directly)
+            json_output = result.stdout
+            if json_output.strip():
+                data = json.loads(json_output)
+                
+                # Vitest JSON format has testResults array
+                for file_result in data.get("testResults", []):
+                    for assertion in file_result.get("assertionResults", []):
+                        test_name = f"{file_result.get('name', 'unknown')}::{assertion.get('fullName', assertion.get('title', 'unknown'))}"
+                        status = assertion.get("status", "unknown")
+                        
+                        total += 1
+                        if status == "passed":
+                            passed += 1
+                            print(f" [✓ PASS] {test_name}")
+                        else:
+                            failed += 1
+                            print(f" [✗ FAIL] {test_name}")
+                        
+                        tests.append({
+                            "nodeid": test_name,
+                            "name": test_name,
+                            "outcome": "passed" if status == "passed" else "failed"
+                        })
+        except json.JSONDecodeError:
+            # If JSON parsing fails, fall back to counting from exit code
+            # Run again without JSON to get readable output
+            result2 = subprocess.run(
+                ["npm", "test"],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                cwd=tests_dir
+            )
+            
+            # Parse the text output for test counts
+            output = result2.stdout + result2.stderr
+            print(output)
+            
+            # Look for vitest summary line like "Tests  49 passed (49)"
+            import re
+            match = re.search(r'Tests\s+(\d+)\s+passed\s+\((\d+)\)', output)
+            if match:
+                passed = int(match.group(1))
+                total = int(match.group(2))
+            
+            # Check for failures
+            fail_match = re.search(r'(\d+)\s+failed', output)
+            if fail_match:
+                failed = int(fail_match.group(1))
+            
+            # Create generic test entries
+            for i in range(passed):
+                tests.append({
+                    "nodeid": f"frontend_test_{i+1}",
+                    "name": f"frontend_test_{i+1}",
+                    "outcome": "passed"
+                })
+            for i in range(failed):
+                tests.append({
+                    "nodeid": f"frontend_test_failed_{i+1}",
+                    "name": f"frontend_test_failed_{i+1}",
+                    "outcome": "failed"
+                })
+
+        print(f"Results: {passed} passed, {failed} failed (total: {total})")
+        
+        return {
+            "success": failed == 0 and result.returncode == 0,
+            "exit_code": result.returncode,
+            "tests": tests,
+            "summary": {
+                "total": total,
+                "passed": passed,
+                "failed": failed,
+                "errors": 0,
+                "skipped": 0,
+            },
+            "stdout": result.stdout[-3000:] if result.stdout else "",
+            "stderr": result.stderr[-1000:] if result.stderr else "",
+        }
+
+    except subprocess.TimeoutExpired:
+        print("❌ Frontend test execution timed out")
+        return {
+            "success": False,
+            "exit_code": -1,
+            "tests": [],
+            "summary": {"error": "Frontend test execution timed out"},
+        }
+    except Exception as e:
+        print(f"❌ Error running frontend tests: {e}")
+        return {
+            "success": False,
+            "exit_code": -1,
+            "tests": [],
+            "summary": {"error": str(e)},
+        }
+
+
 def run_evaluation():
     """
-    Run complete evaluation.
+    Run complete evaluation including backend and frontend tests.
     """
     print(f"\n{'=' * 60}")
     print("CNC Task EVALUATION")
@@ -185,38 +312,73 @@ def run_evaluation():
     project_root = Path(__file__).parent.parent
     # In Docker, project_root is /app. tests_dir is /app/tests
     tests_dir = project_root / "tests"
+    frontend_tests_dir = tests_dir / "frontend"
     
-    # Run tests with AFTER implementation only
-    after_results = run_pytest_tests(
+    # Run backend tests (Python/pytest)
+    backend_results = run_pytest_tests(
         tests_dir,
         "repository_after"
     )
+    
+    # Run frontend tests (JavaScript/Vitest)
+    frontend_results = run_frontend_tests(frontend_tests_dir)
     
     # Print summary
     print(f"\n{'=' * 60}")
     print("EVALUATION SUMMARY")
     print(f"{'=' * 60}")
     
-    passed = after_results.get("summary", {}).get("passed", 0)
-    total = after_results.get("summary", {}).get("total", 0)
-    success = after_results.get("success", False)
+    # Backend summary
+    backend_passed = backend_results.get("summary", {}).get("passed", 0)
+    backend_total = backend_results.get("summary", {}).get("total", 0)
+    backend_success = backend_results.get("success", False)
 
-    print(f"\nImplementation (repository_after):")
-    print(f"  Overall: {'PASSED' if success else 'FAILED'}")
-    print(f"  Tests: {passed}/{total} passed")
+    print(f"\nBackend Tests (Python):")
+    print(f"  Overall: {'PASSED' if backend_success else 'FAILED'}")
+    print(f"  Tests: {backend_passed}/{backend_total} passed")
+    
+    # Frontend summary
+    frontend_passed = frontend_results.get("summary", {}).get("passed", 0)
+    frontend_total = frontend_results.get("summary", {}).get("total", 0)
+    frontend_success = frontend_results.get("success", False)
+    
+    print(f"\nFrontend Tests (JavaScript):")
+    print(f"  Overall: {'PASSED' if frontend_success else 'FAILED'}")
+    print(f"  Tests: {frontend_passed}/{frontend_total} passed")
+    
+    # Combined summary
+    total_passed = backend_passed + frontend_passed
+    total_tests = backend_total + frontend_total
+    overall_success = backend_success and frontend_success
+    
+    print(f"\nCombined:")
+    print(f"  Overall: {'PASSED' if overall_success else 'FAILED'}")
+    print(f"  Tests: {total_passed}/{total_tests} passed")
     
     # Determine expected behavior
     print(f"\n{'=' * 60}")
     print("EXPECTED BEHAVIOR CHECK")
     print(f"{'=' * 60}")
     
-    if success:
+    if overall_success:
         print("[✓ OK] All tests passed (expected)")
     else:
-        print("[✗ FAIL] Some tests failed")
+        if not backend_success:
+            print("[✗ FAIL] Some backend tests failed")
+        if not frontend_success:
+            print("[✗ FAIL] Some frontend tests failed")
     
     return {
-        "after": after_results
+        "after": backend_results,
+        "frontend": frontend_results,
+        "combined": {
+            "success": overall_success,
+            "summary": {
+                "total": total_tests,
+                "passed": total_passed,
+                "failed": (backend_total - backend_passed) + (frontend_total - frontend_passed),
+            }
+        }
     }
 
 
@@ -257,8 +419,8 @@ def main():
     try:
         results = run_evaluation()
         
-        # Success if after implementation passes all tests
-        success = results["after"].get("success", False)
+        # Success if both backend and frontend pass all tests
+        success = results.get("combined", {}).get("success", False)
         error_message = None if success else "Tests failed"
 
     except Exception as e:
@@ -276,6 +438,11 @@ def main():
     environment = get_environment_info()
 
     # Build report
+    all_tests = []
+    if results:
+        all_tests.extend(results.get("after", {}).get("tests", []))
+        all_tests.extend(results.get("frontend", {}).get("tests", []))
+    
     report = {
         "run_id": run_id,
         "task_title": "CNC Path Optimization",
@@ -288,7 +455,7 @@ def main():
         "success": success,
         "error": error_message,
         "environment": environment,
-        "test_results": results["after"].get("tests", []) if results else [],
+        "test_results": all_tests,
         "results": results,
     }
 

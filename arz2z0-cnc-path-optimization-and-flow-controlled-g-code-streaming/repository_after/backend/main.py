@@ -37,8 +37,26 @@ class GCodeJob(BaseModel):
 # Global state for simplicity in this single-job architecture
 current_job: List[str] = []
 job_status: str = "Idle"
+job_progress: int = 0  # Current line index being processed
 pause_event = asyncio.Event()
-pause_event.set() # Initially playing? Or paused? Let's say playing by default once started.
+pause_event.set() # Initially playing by default once started.
+
+
+@app.get("/status")
+async def get_status():
+    """
+    HTTP endpoint for querying job status.
+    Returns current status, progress, and job info.
+    This allows the HTTP server to remain responsive during print jobs (Req 8).
+    """
+    return {
+        "status": job_status,
+        "progress": job_progress,
+        "total_lines": len(current_job),
+        "current_line": current_job[job_progress] if current_job and job_progress < len(current_job) else None,
+        "percent_complete": (job_progress / len(current_job) * 100) if current_job else 0
+    }
+
 
 @app.post("/optimize")
 async def optimize_path(segments: List[RawSegment]):
@@ -67,7 +85,7 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     logger.info("Client connected to WebSocket.")
     
-    global job_status
+    global job_status, job_progress
     
     try:
         while True:
@@ -79,12 +97,15 @@ async def websocket_endpoint(websocket: WebSocket):
                     continue
                 
                 job_status = "Printing"
+                job_progress = 0
                 await websocket.send_text("STATUS: Printing")
                 
                 machine = Machine()
                 
-                # Streaming Loop
-                for line in current_job:
+                # Streaming Loop - Drip Feed Protocol
+                for idx, line in enumerate(current_job):
+                    job_progress = idx
+                    
                     # Check pause (Pause/Resume mechanism)
                     while not pause_event.is_set():
                         job_status = "Paused"
@@ -103,11 +124,14 @@ async def websocket_endpoint(websocket: WebSocket):
                     # "The backend must include a dummy class acting as the machine that consumes line-by-line and returns acknowledgments"
                     ack = await machine.process_command(line)
                     
-                    # 3. Optional: Notify frontend of ACK?
-                    # The visualizer usually draws when "sent" or "acknowledged". 
-                    # Prompt: "visualizer must parse the raw G-Code text stream being sent to the machine"
-                    # So "GCODE: ..." is sufficient.
+                    # 3. Send ACK confirmation to frontend
+                    await websocket.send_text(f"ACK: {line}")
 
+                # Job complete
+                job_status = "Idle"
+                job_progress = len(current_job)
+                await websocket.send_text("STATUS: Idle")
+                await websocket.send_text("JOB_COMPLETE")
                     
             elif data == "PAUSE":
                 pause_event.clear()
@@ -120,11 +144,14 @@ async def websocket_endpoint(websocket: WebSocket):
                 await websocket.send_text("STATUS: Printing")
                 
             elif data == "STOP":
-                 # Reset logic?
-                 pass
+                job_status = "Idle"
+                job_progress = 0
+                pause_event.set()  # Reset pause state
+                await websocket.send_text("STATUS: Idle")
 
     except WebSocketDisconnect:
         logger.info("Client disconnected.")
+        job_status = "Idle"
     except Exception as e:
         logger.error(f"WebSocket Error: {e}")
 

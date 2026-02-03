@@ -1,11 +1,11 @@
-version: '3.8'
+version: "3.8"
 services:
   test-after:
     build: .
-    command: pytest /app/tests
+    command: pytest /app/tests -v
     volumes:
-      - ./evaluation:/app/evaluation # For report saving visibility on host
-      - ./patches:/app/patches # For traceability
+      - ./evaluation:/app/evaluation
+      - ./patches:/app/patches
     environment:
       - PYTHONPATH=/app/repository_after
 
