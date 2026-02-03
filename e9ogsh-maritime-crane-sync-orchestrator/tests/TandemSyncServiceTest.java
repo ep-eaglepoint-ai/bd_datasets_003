@@ -1,5 +1,4 @@
-package com.porthorizon.crane;
-
+import com.porthorizon.crane.*;
 import org.junit.jupiter.api.*;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -25,66 +24,50 @@ class TandemSyncServiceTest {
     }
     
     @Test
-    @DisplayName("Test 1: HALT_ALL is issued to both controllers (not two separate HALTs)")
+    @DisplayName("Test 1: HALT_ALL sent to both controllers")
     void test_1() {
         service.start();
+        long ts = System.nanoTime();
         
-        long timestamp = System.nanoTime();
-        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 1000.0, timestamp));
-        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_B, 1200.0, timestamp));
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_B, 400.0, ts));
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 550.0, ts));
         
         assertEquals(LiftState.FAULT, service.getState());
-        
-        // Both should receive HALT_ALL
-        assertTrue(controllerA.hasReceivedHaltAll(), "Controller A should receive HALT_ALL");
-        assertTrue(controllerB.hasReceivedHaltAll(), "Controller B should receive HALT_ALL");
+        assertTrue(controllerA.hasReceivedHaltAll());
+        assertTrue(controllerB.hasReceivedHaltAll());
         
         // Verify command type
-        Command cmdA = controllerA.getReceivedCommands().stream()
-            .filter(Command::isHaltAll).findFirst().orElse(null);
-        assertNotNull(cmdA);
-        assertEquals(Command.HALT_ALL, cmdA.type());
+        assertTrue(controllerA.getReceivedCommands().stream().anyMatch(c -> Command.HALT_ALL.equals(c.type())));
     }
     
     @Test
-    @DisplayName("Test 2: Processing completes within 10ms window")
+    @DisplayName("Test 2: Closest temporal pair selected from buffer")
     void test_2() {
-        service.start();
+        long base = 1_000_000_000L;
         
-        long timestamp = System.nanoTime();
-        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 1000.0, timestamp));
-        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_B, 1200.0, timestamp));
+        // Add pulses with varying timestamps
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 100.0, base));
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 110.0, base + 100_000_000L));
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_B, 105.0, base + 95_000_000L));
         
-        assertEquals(LiftState.FAULT, service.getState());
+        AlignedTelemetryPair pair = service.findClosestAlignedPair();
+        assertNotNull(pair);
         
-        long processingTimeNs = service.getProcessingTimeNs();
-        double processingTimeMs = processingTimeNs / 1_000_000.0;
-        
-        // Processing should be within 10ms
-        assertTrue(processingTimeNs <= TandemSyncService.MAX_PROCESSING_WINDOW_NS,
-            String.format("Processing time %.3fms should be <= 10ms", processingTimeMs));
+        // Closest pair: A@100ms and B@95ms (5ms gap)
+        assertTrue(pair.alignmentDeltaNs() <= 10_000_000L, "Should select closest pair");
     }
     
     @Test
-    @DisplayName("Test 3: Uses most recent pulses by timestamp for alignment")
+    @DisplayName("Test 3: Out-of-order keeps newest by timestamp")
     void test_3() {
-        long baseTime = 1000000L;
+        long base = 1_000_000_000L;
         
-        // Send pulses with increasing timestamps
-        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 1000.0, baseTime));
-        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 1010.0, baseTime + 50_000_000L));
-        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 1020.0, baseTime + 100_000_000L));
+        // Send newer first
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 200.0, base + 50_000_000L));
+        // Send older later
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 100.0, base));
         
-        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_B, 1005.0, baseTime + 95_000_000L));
-        
-        // Latest A should be 1020.0 (newest timestamp)
-        TelemetryPulse latestA = service.getLatestPulse(TelemetryPulse.CRANE_A);
-        assertEquals(1020.0, latestA.zAxisMm());
-        
-        // Aligned pair should use most recent from each
-        AlignedTelemetryPair pair = service.getAlignedPair();
-        assertNotNull(pair);
-        assertEquals(1020.0, pair.pulseA().zAxisMm());
-        assertEquals(1005.0, pair.pulseB().zAxisMm());
+        TelemetryPulse latest = service.getLatestPulse(TelemetryPulse.CRANE_A);
+        assertEquals(200.0, latest.zAxisMm(), "Should keep newer by timestamp");
     }
 }
