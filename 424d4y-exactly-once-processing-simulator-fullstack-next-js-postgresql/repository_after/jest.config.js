@@ -2,8 +2,8 @@
 module.exports = {
   preset: "ts-jest",
   testEnvironment: "node",
-  roots: ["<rootDir>/../tests"],
-  testMatch: ["**/*.test.ts"],
+  roots: [process.env.TEST_ROOT || "<rootDir>/../tests"],
+  testMatch: ["**/*.test.ts", "**/*.test.tsx"],
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/$1",
   },

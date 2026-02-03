@@ -10,7 +10,7 @@ services:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/postgres
     depends_on:
       - db
-    command: sh -c "npx prisma generate && npx prisma db push && npm run dev"
+    command: sh -c "npx prisma generate && npx prisma db push && npm run build && npm start"
     volumes:
       - ./repository_after:/app
       - /app/node_modules
@@ -20,6 +20,7 @@ services:
       context: ./repository_after
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/postgres
+      - TEST_ROOT=/app/tests
       - BASE_URL=http://app:3000
     depends_on:
       - db
@@ -28,13 +29,14 @@ services:
       - ./repository_after:/app
       - /app/node_modules
       - ./tests:/app/tests
-    command: sh -c "npx prisma generate && npx prisma db push && npm test"
+    command: sh -c "rm -f /app/test_output.txt && npx prisma generate && npx prisma db push && npx jest --coverage --no-cache > /app/test_output.txt 2>&1"
 
   evaluation:
     build:
       context: ./repository_after
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/postgres
+      - TEST_ROOT=/app/tests
     depends_on:
       - db
     volumes:

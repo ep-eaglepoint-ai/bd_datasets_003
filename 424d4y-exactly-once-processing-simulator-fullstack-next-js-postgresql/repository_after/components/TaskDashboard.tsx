@@ -88,10 +88,14 @@ export default function TaskDashboard() {
           <h2 className="text-xl font-semibold mb-4">Submit Task</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-1">
+              <label
+                htmlFor="taskId"
+                className="block text-sm font-medium mb-1"
+              >
                 Task ID (Optional, Unique)
               </label>
               <input
+                id="taskId"
                 type="text"
                 value={customTaskId}
                 onChange={(e) => setCustomTaskId(e.target.value)}
@@ -100,10 +104,14 @@ export default function TaskDashboard() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">
+              <label
+                htmlFor="payload"
+                className="block text-sm font-medium mb-1"
+              >
                 Payload (JSON)
               </label>
               <textarea
+                id="payload"
                 value={payloadStr}
                 onChange={(e) => setPayloadStr(e.target.value)}
                 className="w-full border p-2 rounded h-24"

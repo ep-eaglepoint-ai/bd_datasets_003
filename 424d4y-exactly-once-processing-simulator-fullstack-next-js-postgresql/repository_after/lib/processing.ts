@@ -8,8 +8,9 @@ export async function processTask(taskId: string) {
 
   const now = new Date();
 
+  let updated;
   try {
-    const updated = await prisma.$transaction(async (tx) => {
+    updated = await prisma.$transaction(async (tx) => {
       // Find task
       const task = await tx.task.findUnique({
         where: { id: taskId },
