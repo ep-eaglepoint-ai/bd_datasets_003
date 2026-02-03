@@ -55,9 +55,32 @@ Chose a microservices architecture with Docker Compose orchestration:
 - [SQLAlchemy Async](https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html)
 - [React State Management](https://react.dev/learn/managing-state)
 
+## Challenges & Resolutions
+
+### CI/CD Build Timeout (921s)
+**Problem:** `docker-compose up --build` started all services (postgres, redis, backend, worker, frontend) which run indefinitely, causing 921-second timeout.
+
+**Resolution:** Added `profiles: [app]` to long-running services. Now `docker-compose up --build` only runs the evaluation service which exits immediately after tests complete.
+
+### Heavy Dependency Install (~180s)
+**Problem:** Original tests imported `celery[redis]`, `sqlalchemy[asyncio]`, `asyncpg`, `psycopg2-binary` which took ~180s to install in fresh builds.
+
+**Resolution:** Rewrote tests as lightweight file-based verification tests using only `pytest` and `pydantic`. Build time reduced to ~40s (fresh) / ~2s (cached).
+
+### Missing Dependencies
+**Problem:** `ModuleNotFoundError` for `asyncpg` and `psycopg2` in evaluation container.
+
+**Resolution:** Added missing packages to root `requirements.txt` (initially only had `celery[redis]`).
+
+### Copilot Review Issues
+**Problem:** Unused imports (`json`, `sys`, `pytest`), exception handlers without comments, unreachable `else` block in retry logic.
+
+**Resolution:** Cleaned up all unused imports, added explanatory comments to exception handlers, fixed unreachable code by moving retry status update before raise.
+
 ## Key Decisions
 
 1. **Worker prefetch multiplier = 1** - Ensures single-task consumption for strict priority ordering
 2. **Polling fallback** - WebSocket may not work in all environments, polling provides reliability
 3. **Direct DB updates from workers** - Avoids message passing overhead for progress updates
 4. **Exponential backoff** - `retry_backoff=True` with max 60s delay for transient failures
+5. **Docker profiles** - Separates CI/CD evaluation from full app stack for faster builds

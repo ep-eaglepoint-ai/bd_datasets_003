@@ -724,8 +724,8 @@ diff -ruN repository_before/backend/app/schemas.py repository_after/backend/app/
 +    error: Optional[str] = None
 diff -ruN repository_before/backend/app/tasks.py repository_after/backend/app/tasks.py
 --- repository_before/backend/app/tasks.py	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/backend/app/tasks.py	2026-02-03 21:13:36.414010200 +0300
-@@ -0,0 +1,243 @@
++++ repository_after/backend/app/tasks.py	2026-02-04 00:52:23.427252200 +0300
+@@ -0,0 +1,244 @@
 +"""Celery tasks with progress tracking and error handling."""
 +import time
 +import random
@@ -846,8 +846,13 @@ diff -ruN repository_before/backend/app/tasks.py repository_after/backend/app/ta
 +        with SyncSessionLocal() as session:
 +            task = session.query(Task).filter(Task.id == task_db_id).first()
 +            if task:
++                # Update status for retry attempt
++                task.status = TaskStatus.RETRY
++                task.error = f"Retry {self.request.retries + 1}/{self.max_retries}: {str(exc)}"
++                session.commit()
++                
 +                try:
-+                    # Attempt retry
++                    # Attempt retry (this always raises)
 +                    raise self.retry(exc=exc)
 +                except MaxRetriesExceededError:
 +                    # Max retries exceeded - mark as failed
@@ -856,10 +861,6 @@ diff -ruN repository_before/backend/app/tasks.py repository_after/backend/app/ta
 +                    task.completed_at = datetime.utcnow()
 +                    session.commit()
 +                    raise
-+                else:
-+                    task.status = TaskStatus.RETRY
-+                    task.error = f"Retry {self.request.retries}/{self.max_retries}: {str(exc)}"
-+                    session.commit()
 +        raise
 +
 +
@@ -971,13 +972,12 @@ diff -ruN repository_before/backend/app/tasks.py repository_after/backend/app/ta
 +    }
 diff -ruN repository_before/backend/app/websocket.py repository_after/backend/app/websocket.py
 --- repository_before/backend/app/websocket.py	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/backend/app/websocket.py	2026-02-03 21:14:08.760504300 +0300
-@@ -0,0 +1,74 @@
++++ repository_after/backend/app/websocket.py	2026-02-04 00:51:57.773448400 +0300
+@@ -0,0 +1,76 @@
 +"""WebSocket connection manager for real-time progress updates."""
 +from typing import Dict, List, Set
 +from fastapi import WebSocket
 +import asyncio
-+import json
 +
 +
 +class ConnectionManager:
@@ -1014,6 +1014,7 @@ diff -ruN repository_before/backend/app/websocket.py repository_after/backend/ap
 +        try:
 +            await websocket.send_json(message)
 +        except Exception:
++            # Ignore send errors; connection may be closed or in bad state
 +            pass
 +    
 +    async def broadcast_to_task(self, task_id: str, message: dict):
@@ -1024,6 +1025,7 @@ diff -ruN repository_before/backend/app/websocket.py repository_after/backend/ap
 +                try:
 +                    await connection.send_json(message)
 +                except Exception:
++                    # Mark for cleanup; connection is no longer valid
 +                    disconnected.append(connection)
 +            
 +            # Clean up disconnected clients
@@ -1037,6 +1039,7 @@ diff -ruN repository_before/backend/app/websocket.py repository_after/backend/ap
 +            try:
 +                await connection.send_json(message)
 +            except Exception:
++                # Mark for cleanup; connection is no longer valid
 +                disconnected.append(connection)
 +        
 +        # Clean up disconnected clients
@@ -1049,8 +1052,8 @@ diff -ruN repository_before/backend/app/websocket.py repository_after/backend/ap
 +manager = ConnectionManager()
 diff -ruN repository_before/backend/Dockerfile repository_after/backend/Dockerfile
 --- repository_before/backend/Dockerfile	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/backend/Dockerfile	2026-02-03 21:55:44.252202800 +0300
-@@ -0,0 +1,22 @@
++++ repository_after/backend/Dockerfile	2026-02-04 00:01:50.892947800 +0300
+@@ -0,0 +1,19 @@
 +FROM python:3.11-slim
 +
 +ENV PYTHONDONTWRITEBYTECODE=1
@@ -1059,14 +1062,11 @@ diff -ruN repository_before/backend/Dockerfile repository_after/backend/Dockerfi
 +
 +WORKDIR /app
 +
-+RUN apt-get update && apt-get install -y --no-install-recommends \
-+    gcc \
-+    libpq-dev \
-+    curl \
++RUN apt-get update && apt-get install -y --no-install-recommends libpq5 \
 +    && rm -rf /var/lib/apt/lists/*
 +
 +COPY requirements.txt .
-+RUN pip install --no-cache-dir -r requirements.txt
++RUN pip install --no-cache-dir --prefer-binary -r requirements.txt
 +
 +COPY . .
 +
@@ -1088,7 +1088,7 @@ diff -ruN repository_before/backend/requirements.txt repository_after/backend/re
 +websockets>=12.0
 diff -ruN repository_before/frontend/Dockerfile repository_after/frontend/Dockerfile
 --- repository_before/frontend/Dockerfile	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/frontend/Dockerfile	2026-02-03 21:55:52.004529100 +0300
++++ repository_after/frontend/Dockerfile	2026-02-04 00:08:43.119179100 +0300
 @@ -0,0 +1,18 @@
 +FROM node:20-alpine AS builder
 +

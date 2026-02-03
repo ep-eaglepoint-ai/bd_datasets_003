@@ -6,14 +6,13 @@
     "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/e6bos4-clelery-task-priority-dashboard",
     "environment_setup": "Dockerfile",
     "FAIL_TO_PASS": [
-        "tests/test_priority_queue.py::TestPriorityQueueConfiguration::test_three_priority_queues_exist",
-        "tests/test_priority_queue.py::TestPriorityRouting::test_high_priority_routes_to_high_queue",
-        "tests/test_priority_queue.py::TestTenLowOneHighScenario::test_high_priority_processed_before_low_priority",
-        "tests/test_failure_display.py::TestErrorFieldStorage::test_task_has_error_field",
-        "tests/test_failure_display.py::TestToDictIncludesError::test_to_dict_includes_error",
-        "tests/test_failure_display.py::TestDashboardFailureDisplay::test_failure_has_visible_error_message",
-        "tests/test_api_schemas.py::TestTaskCreateSchema::test_create_with_all_fields",
-        "tests/test_celery_tasks.py::TestCeleryTaskConfiguration::test_execute_task_is_registered"
+        "tests/test_priority_queue.py::TestPriorityEnumExists::test_priority_enum_defined",
+        "tests/test_priority_queue.py::TestCeleryAppConfiguration::test_three_queues_configured",
+        "tests/test_priority_queue.py::TestTaskRoutingLogic::test_high_priority_routes_to_high_queue",
+        "tests/test_failure_display.py::TestErrorFieldInModel::test_error_field_exists",
+        "tests/test_failure_display.py::TestToDictIncludesError::test_to_dict_method_exists",
+        "tests/test_api_schemas.py::TestTaskCreateSchema::test_task_create_class_defined",
+        "tests/test_celery_tasks.py::TestTaskFileStructure::test_execute_task_defined"
     ],
     "PASS_TO_PASS": []
 }
