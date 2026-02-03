@@ -171,14 +171,7 @@ describe("processTask", () => {
     const result = await processTask(taskId);
 
     expect(result).toEqual({ processed: false, error: errorMsg });
-    // Should try to mark as FAILED
-    expect(prisma.task.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          status: TaskStatus.FAILED,
-          errorMessage: errorMsg,
-        }),
-      }),
-    );
+    // Should NOT mark as FAILED because the initial transaction failed (so we never got the lock)
+    expect(prisma.task.update).not.toHaveBeenCalled();
   });
 });

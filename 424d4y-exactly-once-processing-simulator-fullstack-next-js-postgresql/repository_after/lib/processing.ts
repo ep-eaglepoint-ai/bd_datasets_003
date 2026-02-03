@@ -102,27 +102,21 @@ export async function processTask(taskId: string) {
     return { processed: true, status: "COMPLETED" };
   } catch (error: any) {
     if (updated?.status === TaskStatus.PROCESSING) {
-      // TS Error: updated might be undefined
-      // Actually 'updated' is local scope in try block? No, it's const updated defined before error.
-      // Wait, I need to handle failure status update.
-      // Since I can't easily access 'updated' here if it failed inside transaction (unlikely) or delay..
-    }
-
-    // Mark as FAILED if we hold the lock (PROCESSING)
-    // We need to re-fetch or assume we own it.
-    await prisma.task.update({
-      where: { id: taskId },
-      data: {
-        status: TaskStatus.FAILED,
-        errorMessage: error.message,
-        logs: {
-          create: {
-            status: TaskStatus.FAILED,
-            message: `Error: ${error.message}`,
+      // Mark as FAILED if we hold the lock (PROCESSING)
+      await prisma.task.update({
+        where: { id: taskId },
+        data: {
+          status: TaskStatus.FAILED,
+          errorMessage: error.message,
+          logs: {
+            create: {
+              status: TaskStatus.FAILED,
+              message: `Error: ${error.message}`,
+            },
           },
         },
-      },
-    });
+      });
+    }
 
     return { processed: false, error: error.message };
   }
