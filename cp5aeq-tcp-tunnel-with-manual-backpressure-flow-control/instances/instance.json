@@ -1,0 +1,11 @@
+{
+            "instance_id": "CP5AEQ",
+            "problem_statement": "Node.js streams are designed to handle data flow, but the abstraction of .pipe() hides the complexity of Backpressure. When a developer is forced to move data manually (e.g., for custom bitwise manipulation like XOR), they often write naive code: source.on('data', chunk => dest.write(chunk)). This is a catastrophic failure pattern known as the "Fast Source, Slow Sink" problem. If the destination socket cannot write to the OS kernel buffer fast enough (network congestion), Node.js buffers the data in the user-space heap. This buffer grows indefinitely, causing the application to consume gigabytes of RAM and eventually crash. The solution requires strict adherence to the write() return value protocol: if the kernel buffer is full (write returns false), the reader must stop (pause) until the kernel buffer drains (drain event).",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/cp5aeq-tcp-tunnel-with-manual-backpressure-flow-control",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
