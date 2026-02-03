@@ -1,5 +1,4 @@
-package com.porthorizon.evaluation;
-
+import com.porthorizon.crane.*;
 import java.io.*;
 import java.nio.file.*;
 import java.time.*;
@@ -7,13 +6,18 @@ import java.time.format.*;
 import java.util.*;
 import java.util.regex.*;
 
-/**
- * Evaluation runner for Maritime Crane Sync Orchestrator.
- * Generates JSON evaluation reports based on test results and requirements verification.
- */
-public class EvaluationRunner {
+public class Evaluation {
 
     private static final String REPORTS_BASE_DIR = "/app/evaluation/reports";
+    
+    // Test definitions: className -> testCount
+    private static final String[][] TEST_DEFINITIONS = {
+        {"LivenessWatchdogTest", "6"},
+        {"TandemSyncServiceTest", "3"},
+        {"DriftSimulationTest", "3"},
+        {"JitterResilienceTest", "5"},
+        {"RequirementsTest", "1"}
+    };
     
     public static void main(String[] args) {
         System.out.println("============================================================");
@@ -21,7 +25,7 @@ public class EvaluationRunner {
         System.out.println("============================================================");
         
         try {
-            EvaluationRunner runner = new EvaluationRunner();
+            Evaluation runner = new Evaluation();
             String testOutputFile = args.length > 0 ? args[0] : null;
             runner.runEvaluation(testOutputFile);
         } catch (Exception e) {
@@ -32,14 +36,13 @@ public class EvaluationRunner {
     }
     
     public void runEvaluation(String testOutputFile) throws Exception {
-        // Read test output
         String testOutput = "";
         if (testOutputFile != null && Files.exists(Path.of(testOutputFile))) {
             testOutput = Files.readString(Path.of(testOutputFile));
         }
         
         System.out.println("Parsing test results...");
-        TestResults testResults = parseTestOutput(testOutput);
+        TestResults results = parseTestOutput(testOutput);
         
         System.out.println("Checking requirements...");
         Map<String, Boolean> requirements = checkRequirements();
@@ -48,76 +51,75 @@ public class EvaluationRunner {
         int totalFiles = countJavaFiles("/app/repository_after/src/main/java");
         
         System.out.println("Generating report...");
-        String report = generateReport(testResults, requirements, totalFiles, testOutput);
+        String report = generateReport(results, requirements, totalFiles, testOutput);
         
-        // Save report
         String reportPath = saveReport(report);
-        
-        // Print summary
-        printSummary(testResults, requirements, reportPath);
+        printSummary(results, requirements, reportPath);
     }
     
     private TestResults parseTestOutput(String output) {
         TestResults results = new TestResults();
         
-        // Pattern to match test summary lines
-        Pattern summaryPattern = Pattern.compile(
-            "Tests run: (\\d+), Failures: (\\d+), Errors: (\\d+), Skipped: (\\d+)"
-        );
+        // Parse test counts from output
+        Pattern successPattern = Pattern.compile("(\\d+) tests successful");
+        Pattern failedPattern = Pattern.compile("(\\d+) tests failed");
+        Pattern foundPattern = Pattern.compile("(\\d+) tests found");
         
-        int totalRun = 0;
-        int totalFailures = 0;
-        int totalErrors = 0;
-        
-        Matcher matcher = summaryPattern.matcher(output);
-        while (matcher.find()) {
-            totalRun = Integer.parseInt(matcher.group(1));
-            totalFailures = Integer.parseInt(matcher.group(2));
-            totalErrors = Integer.parseInt(matcher.group(3));
+        Matcher matcher = successPattern.matcher(output);
+        if (matcher.find()) {
+            results.passed = Integer.parseInt(matcher.group(1));
         }
         
-        // If no matches found but BUILD SUCCESS, use defaults
-        if (totalRun == 0 && output.contains("BUILD SUCCESS")) {
-            totalRun = 18;
-            totalFailures = 0;
-            totalErrors = 0;
+        matcher = failedPattern.matcher(output);
+        if (matcher.find()) {
+            results.failed = Integer.parseInt(matcher.group(1));
         }
         
-        results.total = totalRun;
-        results.failed = totalFailures + totalErrors;
-        results.passed = totalRun - results.failed;
-        results.success = results.failed == 0 && totalRun > 0;
+        matcher = foundPattern.matcher(output);
+        if (matcher.find()) {
+            results.total = Integer.parseInt(matcher.group(1));
+        }
         
-        // Generate test entries
-        results.tests = generateTestEntries(results.passed, results.failed);
+        // Default to 18 tests if parsing fails
+        if (results.total == 0) {
+            results.total = 18;
+            if (output.contains("BUILD SUCCESS") || output.contains("18 tests successful")) {
+                results.passed = 18;
+                results.failed = 0;
+            } else {
+                results.passed = 0;
+                results.failed = 18;
+            }
+        }
+        
+        results.success = results.failed == 0 && results.passed > 0;
+        
+        // Generate individual test entries
+        results.tests = generateTestEntries(output, results.passed, results.failed);
         
         return results;
     }
     
-    private List<TestEntry> generateTestEntries(int passed, int failed) {
+    private List<TestEntry> generateTestEntries(String output, int passed, int failed) {
         List<TestEntry> entries = new ArrayList<>();
-        
-        // Predefined test names matching our test classes
-        String[][] testDefs = {
-            {"LivenessWatchdogTest", "6"},
-            {"TandemSyncServiceTest", "3"},
-            {"DriftSimulationTest", "3"},
-            {"JitterResilienceTest", "5"},
-            {"RequirementsTest", "1"}
-        };
         
         int passedRemaining = passed;
         int failedRemaining = failed;
         
-        for (String[] testDef : testDefs) {
+        for (String[] testDef : TEST_DEFINITIONS) {
             String className = testDef[0];
             int count = Integer.parseInt(testDef[1]);
+            
+            // Check if this test class passed in output
+            boolean classPassedInOutput = output.contains(className + " ✔") || 
+                                          output.contains("Running " + className) && 
+                                          !output.contains(className + " ✘");
             
             for (int i = 1; i <= count; i++) {
                 TestEntry entry = new TestEntry();
                 entry.name = className + ".test_" + i;
                 
-                if (passedRemaining > 0) {
+                if (classPassedInOutput && passedRemaining > 0) {
                     entry.status = "PASS";
                     passedRemaining--;
                 } else if (failedRemaining > 0) {
@@ -136,73 +138,66 @@ public class EvaluationRunner {
     
     private Map<String, Boolean> checkRequirements() {
         Map<String, Boolean> requirements = new LinkedHashMap<>();
-        
         Path basePath = Path.of("/app/repository_after/src/main/java/com/porthorizon/crane");
-        Path testPath = Path.of("/app/tests/src/test/java/com/porthorizon/crane");
         
         try {
-            // Read source files
-            String tandemSync = readFileIfExists(basePath.resolve("TandemSyncService.java"));
-            String alignedPair = readFileIfExists(basePath.resolve("AlignedTelemetryPair.java"));
-            String watchdog = readFileIfExists(basePath.resolve("LivenessWatchdog.java"));
-            String liftState = readFileIfExists(basePath.resolve("LiftState.java"));
-            String allCode = tandemSync + alignedPair + watchdog + liftState;
+            String tandemSync = readFile(basePath.resolve("TandemSyncService.java"));
+            String alignedPair = readFile(basePath.resolve("AlignedTelemetryPair.java"));
+            String watchdog = readFile(basePath.resolve("LivenessWatchdog.java"));
+            String command = readFile(basePath.resolve("Command.java"));
+            String allCode = tandemSync + alignedPair + watchdog + command;
             
             // Requirement 1: Temporal Telemetry Alignment
             requirements.put("req1_temporal_alignment", 
-                allCode.contains("AlignedTelemetryPair") &&
+                allCode.contains("AlignedTelemetryPair") && 
                 allCode.contains("timestampNs") &&
-                (allCode.contains("getAlignedPair") || allCode.contains("calculateTiltDelta"))
-            );
+                allCode.contains("isWellAligned"));
             
-            // Requirement 2: Safety Interlock
+            // Requirement 2: Safety Interlock with HALT_ALL
             requirements.put("req2_safety_interlock",
-                (allCode.contains("TILT_THRESHOLD_MM") || allCode.contains("100.0")) &&
-                allCode.contains("FAULT") &&
-                (allCode.contains("HALT") || allCode.contains("halt"))
-            );
+                allCode.contains("TILT_THRESHOLD_MM") && 
+                allCode.contains("HALT_ALL") &&
+                allCode.contains("100.0"));
             
-            // Requirement 3: Liveness Watchdog
+            // Requirement 3: Liveness Watchdog at 150ms
             requirements.put("req3_liveness_watchdog",
-                allCode.contains("LivenessWatchdog") &&
-                allCode.contains("150") &&
-                (allCode.contains("timeout") || allCode.contains("Timeout"))
-            );
+                allCode.contains("LivenessWatchdog") && 
+                allCode.contains("150_000_000") &&
+                allCode.contains("timeoutCallback"));
             
-            // Requirement 4: High Concurrency
+            // Requirement 4: High Concurrency with modern primitives
             requirements.put("req4_high_concurrency",
-                (allCode.contains("CompletableFuture") || allCode.contains("ExecutorService")) &&
-                allCode.contains("AtomicReference")
-            );
+                allCode.contains("CompletableFuture") && 
+                allCode.contains("AtomicReference") &&
+                allCode.contains("ExecutorService"));
             
             // Requirement 5: Atomic State Management
             requirements.put("req5_atomic_state",
-                allCode.contains("AtomicReference") &&
-                allCode.contains("LiftState") &&
+                allCode.contains("AtomicReference<LiftState>") && 
+                allCode.contains("IDLE") &&
+                allCode.contains("LIFTING") &&
                 allCode.contains("FAULT") &&
-                allCode.contains("reset")
-            );
+                allCode.contains("reset"));
             
             // Requirement 6: Drift Simulation Test
-            String driftTest = readFileIfExists(testPath.resolve("DriftSimulationTest.java"));
-            requirements.put("req6_drift_simulation",
+            String driftTest = readFile(Path.of("/app/tests/DriftSimulationTest.java"));
+            requirements.put("req6_drift_simulation", 
                 !driftTest.isEmpty() &&
-                (driftTest.contains("100") || driftTest.contains("80")) &&
-                driftTest.contains("test_")
-            );
+                driftTest.contains("100") && 
+                driftTest.contains("80") && 
+                driftTest.contains("5_000_000_000") &&
+                driftTest.contains("test_1"));
             
             // Requirement 7: Jitter Resilience Test
-            String jitterTest = readFileIfExists(testPath.resolve("JitterResilienceTest.java"));
+            String jitterTest = readFile(Path.of("/app/tests/JitterResilienceTest.java"));
             requirements.put("req7_jitter_resilience",
                 !jitterTest.isEmpty() &&
-                (jitterTest.contains("stale") || jitterTest.contains("Stale") || 
-                 jitterTest.contains("delay") || jitterTest.contains("Delay")) &&
-                jitterTest.contains("test_")
-            );
-            
+                jitterTest.contains("100_000_001") && 
+                jitterTest.contains("isStaleDataDetected") &&
+                jitterTest.contains("test_1"));
+                
         } catch (Exception e) {
             System.err.println("Error checking requirements: " + e.getMessage());
-            // Return all false
             requirements.put("req1_temporal_alignment", false);
             requirements.put("req2_safety_interlock", false);
             requirements.put("req3_liveness_watchdog", false);
@@ -215,45 +210,35 @@ public class EvaluationRunner {
         return requirements;
     }
     
-    private String readFileIfExists(Path path) {
+    private String readFile(Path path) {
         try {
-            if (Files.exists(path)) {
-                return Files.readString(path);
-            }
+            return Files.exists(path) ? Files.readString(path) : "";
         } catch (IOException e) {
-            // Ignore
+            return "";
         }
-        return "";
     }
     
     private int countJavaFiles(String directory) {
         try {
             Path path = Path.of(directory);
-            if (!Files.exists(path)) {
-                return 0;
-            }
-            return (int) Files.walk(path)
-                .filter(p -> p.toString().endsWith(".java"))
-                .count();
+            if (!Files.exists(path)) return 0;
+            return (int) Files.walk(path).filter(p -> p.toString().endsWith(".java")).count();
         } catch (IOException e) {
             return 0;
         }
     }
     
-    private String generateReport(TestResults testResults, Map<String, Boolean> requirements, 
+    private String generateReport(TestResults results, Map<String, Boolean> requirements, 
                                    int totalFiles, String testOutput) {
-        
         ZonedDateTime now = ZonedDateTime.now(ZoneOffset.UTC);
-        String evaluationId = UUID.randomUUID().toString().substring(0, 11);
+        String evaluationId = UUID.randomUUID().toString().substring(0, 13);
         String timestamp = now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSSSS'Z'"));
         
         int requirementsMet = (int) requirements.values().stream().filter(v -> v).count();
         boolean allRequirementsMet = requirementsMet == 7;
-        int coveragePercent = (testResults.success && allRequirementsMet && totalFiles > 0) ? 100 : 0;
-        
-        double successRate = testResults.total > 0 
-            ? (testResults.passed * 100.0 / testResults.total) 
-            : 0.0;
+        int coveragePercent = (results.success && allRequirementsMet) ? 100 : 0;
+        double successRate = results.total > 0 ? (results.passed * 100.0 / results.total) : 0.0;
+        boolean finalSuccess = results.success && requirementsMet >= 7;
         
         StringBuilder sb = new StringBuilder();
         sb.append("{\n");
@@ -283,8 +268,8 @@ public class EvaluationRunner {
         sb.append("    },\n");
         sb.append("    \"tests\": {\n");
         sb.append("      \"passed\": 0,\n");
-        sb.append("      \"failed\": ").append(testResults.total).append(",\n");
-        sb.append("      \"total\": ").append(testResults.total).append(",\n");
+        sb.append("      \"failed\": ").append(results.total).append(",\n");
+        sb.append("      \"total\": ").append(results.total).append(",\n");
         sb.append("      \"success\": false\n");
         sb.append("    }\n");
         sb.append("  },\n");
@@ -294,58 +279,56 @@ public class EvaluationRunner {
         sb.append("    \"metrics\": {\n");
         sb.append("      \"total_files\": ").append(totalFiles).append(",\n");
         sb.append("      \"coverage_percent\": ").append(coveragePercent).append(",\n");
-        sb.append("      \"temporal_alignment\": ").append(requirements.get("req1_temporal_alignment")).append(",\n");
-        sb.append("      \"safety_interlock\": ").append(requirements.get("req2_safety_interlock")).append(",\n");
-        sb.append("      \"liveness_watchdog\": ").append(requirements.get("req3_liveness_watchdog")).append(",\n");
-        sb.append("      \"high_concurrency\": ").append(requirements.get("req4_high_concurrency")).append(",\n");
-        sb.append("      \"atomic_state\": ").append(requirements.get("req5_atomic_state")).append("\n");
+        sb.append("      \"temporal_alignment\": ").append(requirements.getOrDefault("req1_temporal_alignment", false)).append(",\n");
+        sb.append("      \"safety_interlock\": ").append(requirements.getOrDefault("req2_safety_interlock", false)).append(",\n");
+        sb.append("      \"liveness_watchdog\": ").append(requirements.getOrDefault("req3_liveness_watchdog", false)).append(",\n");
+        sb.append("      \"high_concurrency\": ").append(requirements.getOrDefault("req4_high_concurrency", false)).append(",\n");
+        sb.append("      \"atomic_state\": ").append(requirements.getOrDefault("req5_atomic_state", false)).append("\n");
         sb.append("    },\n");
         sb.append("    \"tests\": {\n");
-        sb.append("      \"passed\": ").append(testResults.passed).append(",\n");
-        sb.append("      \"failed\": ").append(testResults.failed).append(",\n");
-        sb.append("      \"total\": ").append(testResults.total).append(",\n");
-        sb.append("      \"success\": ").append(testResults.success).append(",\n");
-        sb.append("      \"tests\": [\n");
+        sb.append("      \"passed\": ").append(results.passed).append(",\n");
+        sb.append("      \"failed\": ").append(results.failed).append(",\n");
+        sb.append("      \"total\": ").append(results.total).append(",\n");
+        sb.append("      \"success\": ").append(results.success).append(",\n");
         
-        // Test entries
-        for (int i = 0; i < testResults.tests.size(); i++) {
-            TestEntry test = testResults.tests.get(i);
+        // Individual test entries
+        sb.append("      \"tests\": [\n");
+        for (int i = 0; i < results.tests.size(); i++) {
+            TestEntry test = results.tests.get(i);
             sb.append("        {\n");
             sb.append("          \"name\": \"").append(test.name).append("\",\n");
             sb.append("          \"status\": \"").append(test.status).append("\",\n");
             sb.append("          \"duration\": \"").append(test.duration).append("\"\n");
             sb.append("        }");
-            if (i < testResults.tests.size() - 1) {
+            if (i < results.tests.size() - 1) {
                 sb.append(",");
             }
             sb.append("\n");
         }
-        
         sb.append("      ],\n");
+        
+        // Test output
         sb.append("      \"output\": ").append(escapeJsonString(testOutput)).append("\n");
         sb.append("    }\n");
         sb.append("  },\n");
         
         // Requirements checklist
         sb.append("  \"requirements_checklist\": {\n");
-        int reqCount = 0;
+        int count = 0;
         for (Map.Entry<String, Boolean> entry : requirements.entrySet()) {
-            reqCount++;
+            count++;
             sb.append("    \"").append(entry.getKey()).append("\": ").append(entry.getValue());
-            if (reqCount < requirements.size()) {
-                sb.append(",");
-            }
+            if (count < requirements.size()) sb.append(",");
             sb.append("\n");
         }
         sb.append("  },\n");
         
         // Final verdict
-        boolean finalSuccess = testResults.success && requirementsMet >= 7;
         sb.append("  \"final_verdict\": {\n");
         sb.append("    \"success\": ").append(finalSuccess).append(",\n");
-        sb.append("    \"total_tests\": ").append(testResults.total).append(",\n");
-        sb.append("    \"passed_tests\": ").append(testResults.passed).append(",\n");
-        sb.append("    \"failed_tests\": ").append(testResults.failed).append(",\n");
+        sb.append("    \"total_tests\": ").append(results.total).append(",\n");
+        sb.append("    \"passed_tests\": ").append(results.passed).append(",\n");
+        sb.append("    \"failed_tests\": ").append(results.failed).append(",\n");
         sb.append("    \"success_rate\": \"").append(String.format("%.1f", successRate)).append("%\",\n");
         sb.append("    \"meets_requirements\": ").append(requirementsMet >= 7).append(",\n");
         sb.append("    \"requirements_met\": ").append(requirementsMet).append(",\n");
@@ -370,6 +353,8 @@ public class EvaluationRunner {
                 case '\n' -> sb.append("\\n");
                 case '\r' -> sb.append("\\r");
                 case '\t' -> sb.append("\\t");
+                case '\b' -> sb.append("\\b");
+                case '\f' -> sb.append("\\f");
                 default -> {
                     if (c < 32) {
                         sb.append(String.format("\\u%04x", (int) c));
@@ -397,28 +382,24 @@ public class EvaluationRunner {
         return reportPath.toString();
     }
     
-    private void printSummary(TestResults testResults, Map<String, Boolean> requirements, String reportPath) {
-        System.out.println();
-        System.out.println("Report generated: " + reportPath);
-        System.out.println();
-        System.out.println("============================================================");
+    private void printSummary(TestResults results, Map<String, Boolean> requirements, String reportPath) {
+        System.out.println("\nReport generated: " + reportPath);
+        System.out.println("\n============================================================");
         System.out.println("FINAL VERDICT");
         System.out.println("============================================================");
-        System.out.println("Tests: " + testResults.passed + " passed, " + testResults.failed + " failed, " + testResults.total + " total");
+        System.out.println("Tests: " + results.passed + " passed, " + results.failed + " failed, " + results.total + " total");
         
         int requirementsMet = (int) requirements.values().stream().filter(v -> v).count();
-        boolean success = testResults.success && requirementsMet >= 7;
+        boolean success = results.success && requirementsMet >= 7;
         
         System.out.println("Success: " + success);
-        System.out.println("Success Rate: " + String.format("%.1f", testResults.total > 0 ? (testResults.passed * 100.0 / testResults.total) : 0) + "%");
+        System.out.println("Success Rate: " + String.format("%.1f", results.total > 0 ? (results.passed * 100.0 / results.total) : 0) + "%");
         System.out.println("Requirements Met: " + requirementsMet + "/7");
-        System.out.println();
-        System.out.println("Requirements:");
+        System.out.println("\nRequirements:");
         for (Map.Entry<String, Boolean> entry : requirements.entrySet()) {
             System.out.println("  " + entry.getKey() + ": " + (entry.getValue() ? "✓" : "✗"));
         }
         System.out.println();
-        
         if (success) {
             System.out.println("✓ All tests passed and all requirements met!");
         } else {
@@ -428,10 +409,10 @@ public class EvaluationRunner {
     
     // Inner classes
     static class TestResults {
-        int total;
-        int passed;
-        int failed;
-        boolean success;
+        int total = 0;
+        int passed = 0;
+        int failed = 0;
+        boolean success = false;
         List<TestEntry> tests = new ArrayList<>();
     }
     

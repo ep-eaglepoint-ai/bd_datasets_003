@@ -836,7 +836,7 @@ index 0000000..a50b1d9
 Binary files /dev/null and b/repository_after/target/classes/com/porthorizon/crane/TelemetryPulse.class differ
 diff --git a/repository_after/target/crane-sync-orchestrator-1.0.0.jar b/repository_after/target/crane-sync-orchestrator-1.0.0.jar
 new file mode 100644
-index 0000000..05840e6
+index 0000000..06f05bc
 Binary files /dev/null and b/repository_after/target/crane-sync-orchestrator-1.0.0.jar differ
 diff --git a/repository_after/target/maven-archiver/pom.properties b/repository_after/target/maven-archiver/pom.properties
 new file mode 100644

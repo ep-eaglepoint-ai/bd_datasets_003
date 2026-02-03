@@ -10,6 +10,8 @@ target/
 .project
 .classpath
 .settings/
+evaluation/classes
+tests/classes
 
 # OS
 .DS_Store

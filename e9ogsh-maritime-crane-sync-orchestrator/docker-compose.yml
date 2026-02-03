@@ -4,7 +4,21 @@ services:
   repository-after:
     build: .
     working_dir: /app
-    command: /bin/bash -c "cd /app/repository_after && mvn clean install -DskipTests && cd /app/tests && mvn clean test -B"
+    command: >
+      /bin/bash -c "
+        echo '=== Building main project ===' &&
+        cd /app/repository_after && mvn clean install -DskipTests -q &&
+        echo '=== Compiling tests ===' &&
+        mkdir -p /app/tests/classes &&
+        javac -cp /app/repository_after/target/crane-sync-orchestrator-1.0.0.jar:/app/libs/junit-platform-console-standalone-1.10.0.jar \
+              -d /app/tests/classes \
+              /app/tests/*.java &&
+        echo '=== Running tests ===' &&
+        java -jar /app/libs/junit-platform-console-standalone-1.10.0.jar \
+             execute \
+             --class-path /app/tests/classes:/app/repository_after/target/crane-sync-orchestrator-1.0.0.jar \
+             --scan-class-path
+      "
     volumes:
       - ./repository_after:/app/repository_after
       - ./tests:/app/tests
@@ -13,10 +27,32 @@ services:
   evaluation:
     build: .
     working_dir: /app
-    command: /bin/bash -c "cd /app/repository_after && mvn clean install -DskipTests -q && cd /app/tests && mvn clean test -B > /tmp/test-output.txt 2>&1; cd /app/evaluation && mvn clean compile exec:java -Dexec.mainClass=com.porthorizon.evaluation.EvaluationRunner -Dexec.args='/tmp/test-output.txt'"
+    command: >
+      /bin/bash -c "
+        echo '=== Building main project ===' &&
+        cd /app/repository_after && mvn clean install -DskipTests -q &&
+        echo '=== Compiling tests ===' &&
+        mkdir -p /app/tests/classes &&
+        javac -cp /app/repository_after/target/crane-sync-orchestrator-1.0.0.jar:/app/libs/junit-platform-console-standalone-1.10.0.jar \
+              -d /app/tests/classes \
+              /app/tests/*.java 2>&1 &&
+        echo '=== Running tests ===' &&
+        java -jar /app/libs/junit-platform-console-standalone-1.10.0.jar \
+             execute \
+             --class-path /app/tests/classes:/app/repository_after/target/crane-sync-orchestrator-1.0.0.jar \
+             --scan-class-path > /tmp/test-output.txt 2>&1 || true &&
+        cat /tmp/test-output.txt &&
+        echo '=== Compiling evaluation ===' &&
+        mkdir -p /app/evaluation/classes &&
+        javac -cp /app/repository_after/target/crane-sync-orchestrator-1.0.0.jar \
+              -d /app/evaluation/classes \
+              /app/evaluation/Evaluation.java &&
+        echo '=== Running evaluation ===' &&
+        java -cp /app/evaluation/classes:/app/repository_after/target/crane-sync-orchestrator-1.0.0.jar \
+             Evaluation /tmp/test-output.txt
+      "
     volumes:
       - ./repository_after:/app/repository_after
-      - ./repository_before:/app/repository_before
       - ./tests:/app/tests
       - ./evaluation:/app/evaluation
       - maven-cache:/root/.m2
