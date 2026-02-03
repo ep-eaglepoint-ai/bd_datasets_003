@@ -1,8 +1,39 @@
-# Docker Compose file for running tests. You should customize this as needed.
+version: "3.8"
+
+volumes:
+  maven-repo:
 
 services:
-  app:
+  audit-engine:
     build: .
-    command: pytest -q tests
     volumes:
-      - .:/app
+      - ./logs:/logs
+      - maven-repo:/root/.m2
+    environment:
+      - AUDIT_STORAGE_TYPE=file
+      - AUDIT_STORAGE_FILE_PATH=/logs/audit.json
+  tests:
+    build:
+      context: .
+      target: build
+    command: mvn test -Dsurefire.failIfNoSpecifiedTests=false
+    volumes:
+      - maven-repo:/root/.m2
+      - ./repository_after/src:/app/src
+      - ./tests:/app/src/test/java
+      - ./logs:/logs
+    environment:
+      - AUDIT_STORAGE_TYPE=database
+  evaluation:
+    build:
+      context: .
+      target: build
+    command: sh -c "javac evaluation/Evaluation.java && java -cp evaluation Evaluation"
+    volumes:
+      - maven-repo:/root/.m2
+      - ./repository_after/src:/app/src
+      - ./tests:/app/src/test/java
+      - ./evaluation:/app/evaluation
+      - ./logs:/logs
+    environment:
+      - AUDIT_STORAGE_TYPE=database
