@@ -35,7 +35,7 @@ const getRepoPath = () => {
 };
 
 const runTests = async (): Promise<TestResult> => {
-  const cmd = `npm test`;
+  const cmd = `npm install && npx prisma generate && npx prisma db push && npm test`;
   const cwd = getRepoPath();
 
   return new Promise((resolve) => {

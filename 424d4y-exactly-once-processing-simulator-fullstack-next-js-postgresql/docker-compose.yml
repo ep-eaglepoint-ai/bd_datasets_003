@@ -44,7 +44,7 @@ services:
       - /app/node_modules
       - ./evaluation:/app/evaluation
       - ./tests:/app/tests
-    command: npx ts-node /app/evaluation/evaluation.ts
+    command: npx tsx /app/evaluation/evaluation.ts
 
   db:
     image: postgres:15-alpine
