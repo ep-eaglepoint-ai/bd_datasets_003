@@ -1,9 +1,26 @@
+version: '3.8'
+services:
+  test-after:
+    build: .
+    command: pytest /app/tests
+    volumes:
+      - ./evaluation:/app/evaluation # For report saving visibility on host
+      - ./patches:/app/patches # For traceability
+    environment:
+      - PYTHONPATH=/app/repository_after
 
-        # Docker Compose file for running tests. You should customize this as needed.
+  evaluation:
+    build: .
+    command: python /app/evaluation/evaluation.py
+    volumes:
+      - ./evaluation:/app/evaluation # Save report to host
+    environment:
+      - PYTHONPATH=/app/repository_after
 
-        services:
   app:
     build: .
-    command: pytest -q tests
-    volumes:
-      - .:/app
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONPATH=/app/repository_after
