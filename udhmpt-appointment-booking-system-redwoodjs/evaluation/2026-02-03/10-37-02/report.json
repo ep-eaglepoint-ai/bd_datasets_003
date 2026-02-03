@@ -1,0 +1,227 @@
+{
+  "run_id": "7dd8d90d-37e1-43dd-a607-44f55dcedf65",
+  "started_at": "2026-02-03T10:36:56.766Z",
+  "finished_at": "2026-02-03T10:36:56.776Z",
+  "duration_seconds": 0.01,
+  "success": true,
+  "error": null,
+  "environment": {
+    "node_version": "v18.20.8",
+    "platform": "linux",
+    "os": "Linux",
+    "architecture": "arm64",
+    "hostname": "ed9688c4ac8c"
+  },
+  "results": {
+    "after": {
+      "success": true,
+      "exit_code": 0,
+      "raw_stdout": "",
+      "raw_stderr": "",
+      "tests": [
+        {
+          "name": "Cancel and Reschedule rules Cancel inside window succeeds",
+          "status": "passed",
+          "duration": 30,
+          "failureMessages": []
+        },
+        {
+          "name": "Cancel and Reschedule rules Cancel outside window fails",
+          "status": "passed",
+          "duration": 15,
+          "failureMessages": []
+        },
+        {
+          "name": "Cancel and Reschedule rules Reschedule respects same rules",
+          "status": "passed",
+          "duration": 3,
+          "failureMessages": []
+        },
+        {
+          "name": "Booking creation: transactions, capacity, cutoff, reference Two parallel bookings → one fails when capacity=1",
+          "status": "passed",
+          "duration": 7,
+          "failureMessages": []
+        },
+        {
+          "name": "Booking creation: transactions, capacity, cutoff, reference Capacity >1 allows multiple bookings",
+          "status": "passed",
+          "duration": 1,
+          "failureMessages": []
+        },
+        {
+          "name": "Booking creation: transactions, capacity, cutoff, reference Booking cutoff enforced",
+          "status": "passed",
+          "duration": 15,
+          "failureMessages": []
+        },
+        {
+          "name": "Booking creation: transactions, capacity, cutoff, reference Reference is unique across bookings",
+          "status": "passed",
+          "duration": 2,
+          "failureMessages": []
+        },
+        {
+          "name": "searchAvailability returns slots for recurring availability and service duration",
+          "status": "passed",
+          "duration": 7,
+          "failureMessages": []
+        },
+        {
+          "name": "searchAvailability applies exceptions to remove slots",
+          "status": "passed",
+          "duration": 3,
+          "failureMessages": []
+        },
+        {
+          "name": "searchAvailability applies custom day overrides and respects provider filter",
+          "status": "passed",
+          "duration": 4,
+          "failureMessages": []
+        },
+        {
+          "name": "One-off overrides and manual blocks Override adds availability (custom day present)",
+          "status": "passed",
+          "duration": 6,
+          "failureMessages": []
+        },
+        {
+          "name": "One-off overrides and manual blocks Override removes availability (exception)",
+          "status": "passed",
+          "duration": 1,
+          "failureMessages": []
+        },
+        {
+          "name": "One-off overrides and manual blocks Manual block always hides availability",
+          "status": "passed",
+          "duration": 1,
+          "failureMessages": []
+        },
+        {
+          "name": "One-off overrides and manual blocks Overlapping overrides resolve deterministically (merge)",
+          "status": "passed",
+          "duration": 1,
+          "failureMessages": []
+        },
+        {
+          "name": "Provider onboarding Provider cannot create services without profile",
+          "status": "passed",
+          "duration": 7,
+          "failureMessages": []
+        },
+        {
+          "name": "Provider onboarding Customer/Admin cannot create provider services",
+          "status": "passed",
+          "duration": 3,
+          "failureMessages": []
+        },
+        {
+          "name": "Provider onboarding Duration validation (positive, realistic bounds)",
+          "status": "passed",
+          "duration": 1,
+          "failureMessages": []
+        },
+        {
+          "name": "Provider onboarding Capacity defaults to 1 and must be non-nullable",
+          "status": "passed",
+          "duration": 1,
+          "failureMessages": []
+        },
+        {
+          "name": "Recurring availability rules Multiple windows/day persist correctly (simulated)",
+          "status": "passed",
+          "duration": 2,
+          "failureMessages": []
+        },
+        {
+          "name": "Recurring availability rules Weekly rule expansion is deterministic",
+          "status": "passed",
+          "duration": 2,
+          "failureMessages": []
+        },
+        {
+          "name": "Recurring availability rules Custom day overrides weekly",
+          "status": "passed",
+          "duration": 1,
+          "failureMessages": []
+        },
+        {
+          "name": "Recurring availability rules DST week does not shift times (local times preserved)",
+          "status": "passed",
+          "duration": 2,
+          "failureMessages": []
+        },
+        {
+          "name": "Slot generation Buffer removes adjacent slots",
+          "status": "passed",
+          "duration": 2,
+          "failureMessages": []
+        },
+        {
+          "name": "Slot generation DST day generates correct slot count",
+          "status": "passed",
+          "duration": 2,
+          "failureMessages": []
+        },
+        {
+          "name": "Slot generation Cross-TZ provider/customer conversion",
+          "status": "passed",
+          "duration": 1,
+          "failureMessages": []
+        },
+        {
+          "name": "Slot generation No overlapping slots",
+          "status": "passed",
+          "duration": 2,
+          "failureMessages": []
+        },
+        {
+          "name": "Foundation: Prisma, Auth, Time utils, and separation Prisma schema contains Role enum and User.role uses Role",
+          "status": "passed",
+          "duration": 1,
+          "failureMessages": []
+        },
+        {
+          "name": "Foundation: Prisma, Auth, Time utils, and separation Auth roles exist as enums and requireRole enforces access",
+          "status": "passed",
+          "duration": 7,
+          "failureMessages": []
+        },
+        {
+          "name": "Foundation: Prisma, Auth, Time utils, and separation Time utilities convert local -> UTC and back, and handle DST safely",
+          "status": "passed",
+          "duration": 2,
+          "failureMessages": []
+        },
+        {
+          "name": "Foundation: Prisma, Auth, Time utils, and separation API/Web separation: repository_after contains api and web folders",
+          "status": "passed",
+          "duration": 1,
+          "failureMessages": []
+        },
+        {
+          "name": "calendar UI shim - noop",
+          "status": "passed",
+          "duration": null,
+          "failureMessages": []
+        }
+      ],
+      "summary": {
+        "total": 31,
+        "passed": 31,
+        "failed": 0,
+        "xfailed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "fallback_to_local": true
+    },
+    "comparison": {
+      "after_tests_passed": true,
+      "after_total": 31,
+      "after_passed": 31,
+      "after_failed": 0,
+      "after_xfailed": 0
+    }
+  }
+}

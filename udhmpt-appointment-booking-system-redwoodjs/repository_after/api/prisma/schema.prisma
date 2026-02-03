@@ -1,0 +1,108 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  PROVIDER
+  CUSTOMER
+  ADMIN
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  role      Role     @default(CUSTOMER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ProviderProfile {
+  id        Int      @id @default(autoincrement())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    Int      @unique
+  name      String
+  bio       String?
+  timezone  String   @default("UTC")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  services  Service[]
+}
+
+model Service {
+  id                  Int      @id @default(autoincrement())
+  provider            ProviderProfile @relation(fields: [providerId], references: [id])
+  providerId          Int
+  name                String
+  durationMinutes     Int
+  capacity            Int      @default(1)
+  bufferBeforeMinutes Int      @default(0)
+  bufferAfterMinutes  Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model RecurringAvailability {
+  id           Int      @id @default(autoincrement())
+  provider     ProviderProfile @relation(fields: [providerId], references: [id])
+  providerId   Int
+  weekday      Int      // 1 = Monday ... 7 = Sunday (ISO weekday)
+  startLocal   String   // HH:mm (local time in provider timezone)
+  endLocal     String   // HH:mm
+  tz           String   // provider timezone for clarity
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model CustomDayAvailability {
+  id           Int      @id @default(autoincrement())
+  provider     ProviderProfile @relation(fields: [providerId], references: [id])
+  providerId   Int
+  date         DateTime // date (YYYY-MM-DD) in provider local timezone
+  startUtc     DateTime // start time stored in UTC as required
+  endUtc       DateTime // end time stored in UTC
+  tz           String   // provider timezone
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model AvailabilityException {
+  id         Int      @id @default(autoincrement())
+  provider   ProviderProfile @relation(fields: [providerId], references: [id])
+  providerId Int
+  // removal window stored in UTC
+  startUtc   DateTime
+  endUtc     DateTime
+  reason     String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model ManualBlock {
+  id         Int      @id @default(autoincrement())
+  provider   ProviderProfile @relation(fields: [providerId], references: [id])
+  providerId Int
+  startUtc   DateTime
+  endUtc     DateTime
+  reason     String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Booking {
+  id         Int      @id @default(autoincrement())
+  provider   ProviderProfile @relation(fields: [providerId], references: [id])
+  providerId Int
+  serviceId  Int
+  startUtc   DateTime
+  endUtc     DateTime
+  customerEmail String
+  reference  String   @unique
+  canceledAt DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}

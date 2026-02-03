@@ -1,0 +1,36 @@
+{
+  "run_id": "7eee9eae-438e-465a-8968-0adb1ddc219c",
+  "started_at": "2026-02-03T10:35:04.017Z",
+  "finished_at": "2026-02-03T10:35:04.022Z",
+  "duration_seconds": 0.005,
+  "success": false,
+  "error": "exit code 1",
+  "environment": {
+    "node_version": "v18.20.8",
+    "platform": "linux",
+    "os": "Linux",
+    "architecture": "arm64",
+    "hostname": "c98392be5e09"
+  },
+  "results": {
+    "after": {
+      "success": false,
+      "exit_code": 1,
+      "raw_stdout": "",
+      "raw_stderr": "",
+      "tests": [],
+      "summary": {
+        "total": 0,
+        "passed": 0,
+        "failed": 0,
+        "xfailed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "fallback_to_local": true
+    },
+    "comparison": {
+      "after_tests_passed": false
+    }
+  }
+}
