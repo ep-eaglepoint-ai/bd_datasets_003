@@ -1,0 +1,398 @@
+{
+  "timestamp": "2026-02-03T06:38:58.457Z",
+  "repository_after": {
+    "passed": 97,
+    "failed": 0,
+    "total": 97,
+    "tests": [
+      {
+        "name": "Concurrency - Requirement 4: Conflict Handling Optimistic Locking should reject request when version mismatch detected",
+        "passed": true
+      },
+      {
+        "name": "Concurrency - Requirement 4: Conflict Handling Optimistic Locking should succeed when version matches",
+        "passed": true
+      },
+      {
+        "name": "Concurrency - Requirement 4: Conflict Handling Optimistic Locking should proceed without version check when expectedVersion not provided",
+        "passed": true
+      },
+      {
+        "name": "Concurrency - Requirement 4: Conflict Handling Stale Balance Problem should detect when balance changed between read and write",
+        "passed": true
+      },
+      {
+        "name": "Idempotency - Requirement 7 Duplicate Request Prevention should return existing refund for duplicate idempotency key",
+        "passed": true
+      },
+      {
+        "name": "Idempotency - Requirement 7 Duplicate Request Prevention should allow different idempotency keys for same transaction",
+        "passed": true
+      },
+      {
+        "name": "Idempotency - Requirement 7 Duplicate Request Prevention should use unique idempotency key check before balance validation",
+        "passed": true
+      },
+      {
+        "name": "Requirement 8: Concurrent Refund Requests Simulated Concurrent Access should handle race condition - only one request should succeed",
+        "passed": true
+      },
+      {
+        "name": "Requirement 8: Concurrent Refund Requests Simulated Concurrent Access should prevent total refunds exceeding transaction amount",
+        "passed": true
+      },
+      {
+        "name": "Requirement 8: Concurrent Refund Requests Simulated Concurrent Access should handle multiple sequential refunds correctly",
+        "passed": true
+      },
+      {
+        "name": "Requirement 8: Concurrent Refund Requests Simulated Concurrent Access should reject 5th refund after 4 x $25 refunds",
+        "passed": true
+      },
+      {
+        "name": "Atomic Transactions - Requirement 2 processRefundAtomic should process refund successfully within transaction",
+        "passed": true
+      },
+      {
+        "name": "Atomic Transactions - Requirement 2 processRefundAtomic should verify balance before creating refund",
+        "passed": true
+      },
+      {
+        "name": "Atomic Transactions - Requirement 2 processRefundAtomic should atomically create refund AND update transaction",
+        "passed": true
+      },
+      {
+        "name": "Atomic Transactions - Requirement 2 processRefundAtomic should set status to REFUNDED when fully refunded",
+        "passed": true
+      },
+      {
+        "name": "Atomic Transactions - Requirement 2 processRefundAtomic should reject if transaction not found",
+        "passed": true
+      },
+      {
+        "name": "Atomic Transactions - Requirement 2 processRefundAtomic should reject if transaction already fully refunded",
+        "passed": true
+      },
+      {
+        "name": "Atomic Transactions - Requirement 2 processRefundAtomic should increment version on each update",
+        "passed": true
+      },
+      {
+        "name": "Atomic Transaction Boundaries should not partially update on validation failure",
+        "passed": true
+      },
+      {
+        "name": "Atomic Transaction Boundaries should calculate correct remaining balance with multiple prior refunds",
+        "passed": true
+      },
+      {
+        "name": "UI State Synchronization - Requirement 6 revalidatePath Usage should have revalidatePath imported in server actions",
+        "passed": true
+      },
+      {
+        "name": "UI State Synchronization - Requirement 6 revalidatePath Usage should call revalidatePath after successful refund",
+        "passed": true
+      },
+      {
+        "name": "UI State Synchronization - Requirement 6 revalidatePath Usage should revalidate both transaction list and detail pages",
+        "passed": true
+      },
+      {
+        "name": "UI State Synchronization - Requirement 6 Server Actions Pattern server actions file should export async functions",
+        "passed": true
+      },
+      {
+        "name": "UI State Synchronization - Requirement 6 Server Actions Pattern page should use server-side data fetching",
+        "passed": true
+      },
+      {
+        "name": "UI State Synchronization - Requirement 6 Server Actions Pattern page should pass server actions to client components",
+        "passed": true
+      },
+      {
+        "name": "UI State Synchronization - Requirement 6 Dynamic Data Updates page should be dynamically rendered",
+        "passed": true
+      },
+      {
+        "name": "UI State Synchronization - Requirement 6 Dynamic Data Updates dashboard should have refresh capability",
+        "passed": true
+      },
+      {
+        "name": "UI State Synchronization - Requirement 6 useTransition for Loading States RefundForm should use useTransition hook",
+        "passed": true
+      },
+      {
+        "name": "UI State Synchronization - Requirement 6 useTransition for Loading States RefundForm should show loading state during submission",
+        "passed": true
+      },
+      {
+        "name": "Balance Display Updates TransactionCard should display remaining balance",
+        "passed": true
+      },
+      {
+        "name": "Balance Display Updates TransactionWithBalance type should have computed balance fields",
+        "passed": true
+      },
+      {
+        "name": "Balance Display Updates refund-service should compute balance correctly",
+        "passed": true
+      },
+      {
+        "name": "Server-Side Enforcement - Requirement 1 Prisma Module Markers should have PRISMA_SERVER_ONLY marker set to true",
+        "passed": true
+      },
+      {
+        "name": "Server-Side Enforcement - Requirement 1 Prisma Module Markers should NOT expose DATABASE_URL",
+        "passed": true
+      },
+      {
+        "name": "Server-Side Enforcement - Requirement 1 Prisma Module Markers should have isServerSide utility function",
+        "passed": true
+      },
+      {
+        "name": "Server-Side Enforcement - Requirement 1 Client Component Isolation should not import Prisma in TransactionCard component",
+        "passed": true
+      },
+      {
+        "name": "Server-Side Enforcement - Requirement 1 Client Component Isolation should not import Prisma in RefundForm component",
+        "passed": true
+      },
+      {
+        "name": "Server-Side Enforcement - Requirement 1 Client Component Isolation should not import Prisma in TransactionDashboard component",
+        "passed": true
+      },
+      {
+        "name": "Server-Side Enforcement - Requirement 1 Client Component Isolation client components should have \"use client\" directive",
+        "passed": true
+      },
+      {
+        "name": "Server-Side Enforcement - Requirement 1 Server Actions Isolation server actions should have \"use server\" directive",
+        "passed": true
+      },
+      {
+        "name": "Server-Side Enforcement - Requirement 1 Server Actions Isolation server actions should import Prisma (server-side only)",
+        "passed": true
+      },
+      {
+        "name": "Client Bundle Verification - Requirement 10 Database Credentials Protection should not have DATABASE_URL in environment accessible to tests",
+        "passed": true
+      },
+      {
+        "name": "Client Bundle Verification - Requirement 10 Database Credentials Protection should have server-only check in prisma module",
+        "passed": true
+      },
+      {
+        "name": "Client Bundle Verification - Requirement 10 Database Credentials Protection should configure Next.js to exclude Prisma from client bundle",
+        "passed": true
+      },
+      {
+        "name": "Client Bundle Verification - Requirement 10 Prisma Client Singleton Pattern should use singleton pattern for development",
+        "passed": true
+      },
+      {
+        "name": "Client Bundle Verification - Requirement 10 Prisma Client Singleton Pattern should have PrismaClient import only in server module",
+        "passed": true
+      },
+      {
+        "name": "API Routes Server-Side Only API routes should import prisma from lib module",
+        "passed": true
+      },
+      {
+        "name": "API Routes Server-Side Only API routes should NOT have \"use client\" directive",
+        "passed": true
+      },
+      {
+        "name": "Error Handling - Requirement 9 Error Message Generation should have user-friendly error code for INVALID_AMOUNT",
+        "passed": true
+      },
+      {
+        "name": "Error Handling - Requirement 9 Error Message Generation should have user-friendly error code for INSUFFICIENT_BALANCE",
+        "passed": true
+      },
+      {
+        "name": "Error Handling - Requirement 9 Error Message Generation should have user-friendly error code for TRANSACTION_NOT_FOUND",
+        "passed": true
+      },
+      {
+        "name": "Error Handling - Requirement 9 Error Message Generation should have user-friendly error code for TRANSACTION_ALREADY_REFUNDED",
+        "passed": true
+      },
+      {
+        "name": "Error Handling - Requirement 9 Error Message Generation should have user-friendly error code for CONCURRENT_MODIFICATION",
+        "passed": true
+      },
+      {
+        "name": "Error Handling - Requirement 9 Error Message Generation should have user-friendly error code for DUPLICATE_REQUEST",
+        "passed": true
+      },
+      {
+        "name": "Error Handling - Requirement 9 Error Message Generation should have user-friendly error code for VALIDATION_ERROR",
+        "passed": true
+      },
+      {
+        "name": "Error Handling - Requirement 9 Error Message Generation should have user-friendly error code for INTERNAL_ERROR",
+        "passed": true
+      },
+      {
+        "name": "Error Handling - Requirement 9 Error Response Structure should have consistent error structure",
+        "passed": true
+      },
+      {
+        "name": "Error Handling - Requirement 9 Error Response Structure should work without optional details",
+        "passed": true
+      },
+      {
+        "name": "Error Handling - Requirement 9 Refund Amount Validation Errors should return clear error for amount exceeding balance",
+        "passed": true
+      },
+      {
+        "name": "Error Handling - Requirement 9 Refund Amount Validation Errors should return clear error for negative amount",
+        "passed": true
+      },
+      {
+        "name": "Error Handling - Requirement 9 Refund Amount Validation Errors should return clear error for non-numeric amount",
+        "passed": true
+      },
+      {
+        "name": "Error Handling - Requirement 9 Concurrent Modification Errors should provide version mismatch details",
+        "passed": true
+      },
+      {
+        "name": "Error Handling - Requirement 9 Error Handling in Components (Simulated) should handle null/undefined errors gracefully",
+        "passed": true
+      },
+      {
+        "name": "Error Handling - Requirement 9 Error Handling in Components (Simulated) should render all error types without throwing",
+        "passed": true
+      },
+      {
+        "name": "Error Handling - Requirement 9 Error Handling in Components (Simulated) should handle unexpected error codes gracefully",
+        "passed": true
+      },
+      {
+        "name": "Error Display Verification RefundForm component should have error display element",
+        "passed": true
+      },
+      {
+        "name": "Error Display Verification RefundForm should catch and handle submission errors",
+        "passed": true
+      },
+      {
+        "name": "Refund Service - Requirement 3: Fiscal Consistency Rules validateRefundAmount should accept valid positive amounts",
+        "passed": true
+      },
+      {
+        "name": "Refund Service - Requirement 3: Fiscal Consistency Rules validateRefundAmount should reject zero amount",
+        "passed": true
+      },
+      {
+        "name": "Refund Service - Requirement 3: Fiscal Consistency Rules validateRefundAmount should reject negative amounts",
+        "passed": true
+      },
+      {
+        "name": "Refund Service - Requirement 3: Fiscal Consistency Rules validateRefundAmount should reject invalid number formats",
+        "passed": true
+      },
+      {
+        "name": "Refund Service - Requirement 3: Fiscal Consistency Rules calculateTotalRefunded should calculate sum of refunds correctly",
+        "passed": true
+      },
+      {
+        "name": "Refund Service - Requirement 3: Fiscal Consistency Rules calculateTotalRefunded should return zero for empty refunds array",
+        "passed": true
+      },
+      {
+        "name": "Refund Service - Requirement 3: Fiscal Consistency Rules calculateTotalRefunded should handle Decimal type amounts",
+        "passed": true
+      },
+      {
+        "name": "Refund Service - Requirement 3: Fiscal Consistency Rules calculateRemainingBalance should calculate remaining balance correctly",
+        "passed": true
+      },
+      {
+        "name": "Refund Service - Requirement 3: Fiscal Consistency Rules calculateRemainingBalance should return zero when fully refunded",
+        "passed": true
+      },
+      {
+        "name": "Refund Service - Requirement 3: Fiscal Consistency Rules calculateRemainingBalance should return full amount when no refunds",
+        "passed": true
+      },
+      {
+        "name": "Refund Service - Requirement 3: Fiscal Consistency Rules determineTransactionStatus should return SETTLED when no refunds",
+        "passed": true
+      },
+      {
+        "name": "Refund Service - Requirement 3: Fiscal Consistency Rules determineTransactionStatus should return PARTIALLY_REFUNDED for partial refunds",
+        "passed": true
+      },
+      {
+        "name": "Refund Service - Requirement 3: Fiscal Consistency Rules determineTransactionStatus should return REFUNDED when fully refunded",
+        "passed": true
+      },
+      {
+        "name": "Refund Service - Requirement 3: Fiscal Consistency Rules validateRefundAgainstBalance - Sum(All Refunds) ≤ Original Amount should accept refund within balance",
+        "passed": true
+      },
+      {
+        "name": "Refund Service - Requirement 3: Fiscal Consistency Rules validateRefundAgainstBalance - Sum(All Refunds) ≤ Original Amount should accept refund equal to balance",
+        "passed": true
+      },
+      {
+        "name": "Refund Service - Requirement 3: Fiscal Consistency Rules validateRefundAgainstBalance - Sum(All Refunds) ≤ Original Amount should reject refund exceeding balance",
+        "passed": true
+      },
+      {
+        "name": "Refund Service - Requirement 5: Data Type Precision Decimal arithmetic precision should handle floating point precision correctly",
+        "passed": true
+      },
+      {
+        "name": "Refund Service - Requirement 5: Data Type Precision Decimal arithmetic precision should handle many small refunds without precision loss",
+        "passed": true
+      },
+      {
+        "name": "Refund Service - Requirement 5: Data Type Precision Decimal arithmetic precision should handle large amounts with cents precision",
+        "passed": true
+      },
+      {
+        "name": "Refund Service - Requirement 5: Data Type Precision Decimal arithmetic precision should maintain precision through multiple calculations",
+        "passed": true
+      },
+      {
+        "name": "Refund Service - Request Validation validateRefundRequest should accept valid request",
+        "passed": true
+      },
+      {
+        "name": "Refund Service - Request Validation validateRefundRequest should reject missing transaction ID",
+        "passed": true
+      },
+      {
+        "name": "Refund Service - Request Validation validateRefundRequest should reject missing idempotency key",
+        "passed": true
+      },
+      {
+        "name": "Refund Service - Request Validation validateRefundRequest should reject invalid amount",
+        "passed": true
+      },
+      {
+        "name": "Refund Service - HTTP Status Codes getHttpStatusForError should return 400 for validation errors",
+        "passed": true
+      },
+      {
+        "name": "Refund Service - HTTP Status Codes getHttpStatusForError should return 404 for not found",
+        "passed": true
+      },
+      {
+        "name": "Refund Service - HTTP Status Codes getHttpStatusForError should return 409 for concurrent modification",
+        "passed": true
+      },
+      {
+        "name": "Refund Service - HTTP Status Codes getHttpStatusForError should return 422 for business rule violations",
+        "passed": true
+      },
+      {
+        "name": "Refund Service - HTTP Status Codes getHttpStatusForError should return 500 for internal errors",
+        "passed": true
+      }
+    ]
+  }
+}

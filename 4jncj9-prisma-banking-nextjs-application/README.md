@@ -1,11 +1,11 @@
-# 4JNCJ9 - prisma-banking-nextjs-application
+# 4JNCJ9 - Prisma Banking Next.js Application
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Run Tests
+```
+docker compose run --rm app-after
+```
 
-    ## After Test Docker Command
-    <docker after command here>
-
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## Run Evaluation
+```
+docker compose run --rm evaluation
+```

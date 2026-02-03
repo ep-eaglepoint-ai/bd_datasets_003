@@ -1,12 +1,38 @@
-# Python
-__pycache__/
-*.pyc
-.venv/
-.env
-
 # Node
 node_modules/
+.npm
+
+# Next.js
+.next/
+out/
+
+# Prisma
+*.db
+*.db-journal
+
+# Testing
+test-results.json
+coverage/
+
+# Environment
+.env
+.env.local
+.env.*.local
 
 # OS
 .DS_Store
-evaluation/*.json
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Build
+dist/
+build/
+
+# Logs
+*.log
+npm-debug.log*

@@ -1,9 +1,19 @@
-
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
-  app:
+services:
+  app-after:
     build: .
-    command: pytest -q tests
+    command: npm test
+    environment:
+      - NODE_ENV=test
+      - DATABASE_URL=file:./test.db
     volumes:
-      - .:/app
+      - ./tests:/app/tests:ro
+      - ./repository_after:/app/repository_after:ro
+
+  evaluation:
+    build: .
+    command: node evaluation/evaluation.js
+    environment:
+      - NODE_ENV=test
+      - DATABASE_URL=file:./test.db
+    volumes:
+      - ./evaluation:/app/evaluation
