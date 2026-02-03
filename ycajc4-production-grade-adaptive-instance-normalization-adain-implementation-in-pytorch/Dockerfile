@@ -1,8 +1,22 @@
 
-        # Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
+FROM python:3.9-slim
 
-        FROM python:3.11-slim
 WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+# Install system dependencies for PyTorch during build
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements first for better caching
+COPY requirements.txt .
+
+# Install Python dependencies with timeout and retry logic
+RUN pip install --no-cache-dir --timeout 300 --retries 3 -r requirements.txt || \
+    pip install --no-cache-dir --timeout 600 --retries 5 -r requirements.txt
+
+# Copy the rest of the application
+COPY . .
+
+# Default command (can be overridden by docker-compose)
+CMD ["python", "-m", "pytest", "tests/", "-v"]
