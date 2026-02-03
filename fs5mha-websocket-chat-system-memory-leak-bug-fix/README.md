@@ -1,11 +1,13 @@
 # FS5MHA - WebSocket Chat System Memory Leak Bug Fix
 
-    ## Before Test Docker Command
-    <docker before command here>
+```bash
+docker compose run --rm tests-before
+```
 
-    ## After Test Docker Command
-    <docker after command here>
+```bash
+docker compose run --rm tests-after
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+```bash
+docker compose up evaluation
+```

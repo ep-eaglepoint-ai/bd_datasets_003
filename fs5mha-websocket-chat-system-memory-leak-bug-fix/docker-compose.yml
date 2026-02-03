@@ -1,9 +1,39 @@
+services:
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
 
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
-  app:
+  tests-before:
     build: .
-    command: pytest -q tests
+    depends_on:
+      - redis
+    environment:
+      - REDIS_ADDR=redis:6379
+    command: >
+      sh -c "go mod tidy &&
+             cd repository_before && 
+             go test -v -race ."
+    volumes:
+      - .:/app
+
+  tests-after:
+    build: .
+    depends_on:
+      - redis
+    environment:
+      - REDIS_ADDR=redis:6379
+    command: >
+      sh -c "go mod tidy &&
+             cd repository_after && 
+             go test -v -race ."
+    volumes:
+      - .:/app
+
+  evaluation:
+    build: .
+    depends_on:
+      - tests-after
+    command: go run evaluation/evaluation.go
     volumes:
       - .:/app
