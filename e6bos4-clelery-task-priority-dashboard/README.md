@@ -1,11 +1,11 @@
-# E6BOS4 - Clelery-Task-Priority-Dashboard
+# E6BOS4 - Celery Task Priority Dashboard
 
-    ## Before Test Docker Command
-    <docker before command here>
+## After Test Docker Command
+```bash
+docker-compose up --build
+```
 
-    ## After Test Docker Command
-    <docker after command here>
-
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## Evaluation Docker Command
+```bash
+docker-compose run --rm evaluation
+```

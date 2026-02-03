@@ -1,0 +1,3188 @@
+diff -ruN repository_before/.env.example repository_after/.env.example
+--- repository_before/.env.example	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/.env.example	2026-02-03 22:04:51.854201400 +0300
+@@ -0,0 +1,13 @@
++# Database
++DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/taskdb
++DATABASE_URL_SYNC=postgresql://postgres:postgres@postgres:5432/taskdb
++
++# Redis
++REDIS_URL=redis://redis:6379/0
++
++# Celery
++CELERY_BROKER_URL=redis://redis:6379/0
++CELERY_RESULT_BACKEND=db+postgresql://postgres:postgres@postgres:5432/taskdb
++
++# Debug mode
++DEBUG=false
+diff -ruN repository_before/backend/.gitignore repository_after/backend/.gitignore
+--- repository_before/backend/.gitignore	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/backend/.gitignore	2026-02-03 21:14:33.131049300 +0300
+@@ -0,0 +1,30 @@
++# Byte-compiled files
++__pycache__/
++*.py[cod]
++*$py.class
++
++# Virtual environments
++.venv/
++venv/
++ENV/
++
++# IDE
++.vscode/
++.idea/
++
++# Environment
++.env
++.env.local
++
++# Logs
++*.log
++
++# Testing
++.pytest_cache/
++.coverage
++htmlcov/
++
++# Distribution
++dist/
++build/
++*.egg-info/
+diff -ruN repository_before/backend/app/__init__.py repository_after/backend/app/__init__.py
+--- repository_before/backend/app/__init__.py	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/backend/app/__init__.py	2026-02-03 21:12:18.948032700 +0300
+@@ -0,0 +1 @@
++# Distributed Task Priority Dashboard - Backend Package
+diff -ruN repository_before/backend/app/celery_app.py repository_after/backend/app/celery_app.py
+--- repository_before/backend/app/celery_app.py	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/backend/app/celery_app.py	2026-02-03 21:13:27.378668200 +0300
+@@ -0,0 +1,76 @@
++"""Celery application configuration with priority-based queuing."""
++from celery import Celery
++from kombu import Queue
++import os
++
++# Redis broker URL
++CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
++CELERY_RESULT_BACKEND = os.getenv(
++    "CELERY_RESULT_BACKEND", 
++    "db+postgresql://postgres:postgres@postgres:5432/taskdb"
++)
++
++# Create Celery application
++celery_app = Celery(
++    "task_dashboard",
++    broker=CELERY_BROKER_URL,
++    backend=CELERY_RESULT_BACKEND,
++    include=["app.tasks"]
++)
++
++# Configure Celery with priority queues
++celery_app.conf.update(
++    # Task serialization
++    task_serializer="json",
++    accept_content=["json"],
++    result_serializer="json",
++    
++    # Timezone
++    timezone="UTC",
++    enable_utc=True,
++    
++    # Result backend settings
++    result_expires=86400,  # 24 hours
++    result_extended=True,
++    
++    # Task tracking
++    task_track_started=True,
++    task_send_sent_event=True,
++    
++    # Worker settings
++    worker_prefetch_multiplier=1,  # Important for priority ordering
++    worker_concurrency=4,
++    
++    # Priority queue configuration
++    task_queues=(
++        Queue("high", routing_key="high"),
++        Queue("medium", routing_key="medium"),
++        Queue("low", routing_key="low"),
++    ),
++    
++    # Default queue
++    task_default_queue="medium",
++    task_default_routing_key="medium",
++    
++    # Route tasks based on priority
++    task_routes={
++        "app.tasks.execute_task": {
++            "queue": "medium",
++            "routing_key": "medium"
++        }
++    },
++    
++    # Retry settings
++    task_acks_late=True,
++    task_reject_on_worker_lost=True,
++)
++
++
++def get_queue_for_priority(priority: str) -> str:
++    """Map priority level to queue name."""
++    priority_map = {
++        "high": "high",
++        "medium": "medium", 
++        "low": "low"
++    }
++    return priority_map.get(priority.lower(), "medium")
+diff -ruN repository_before/backend/app/config.py repository_after/backend/app/config.py
+--- repository_before/backend/app/config.py	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/backend/app/config.py	2026-02-03 21:12:23.221747900 +0300
+@@ -0,0 +1,44 @@
++"""Configuration settings for the Distributed Task Priority Dashboard."""
++import os
++from functools import lru_cache
++from pydantic_settings import BaseSettings
++
++
++class Settings(BaseSettings):
++    """Application settings loaded from environment variables."""
++    
++    # Application
++    APP_NAME: str = "Distributed Task Priority Dashboard"
++    DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
++    
++    # Database
++    DATABASE_URL: str = os.getenv(
++        "DATABASE_URL",
++        "postgresql+asyncpg://postgres:postgres@postgres:5432/taskdb"
++    )
++    DATABASE_URL_SYNC: str = os.getenv(
++        "DATABASE_URL_SYNC",
++        "postgresql://postgres:postgres@postgres:5432/taskdb"
++    )
++    
++    # Redis
++    REDIS_URL: str = os.getenv("REDIS_URL", "redis://redis:6379/0")
++    
++    # Celery
++    CELERY_BROKER_URL: str = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
++    CELERY_RESULT_BACKEND: str = os.getenv(
++        "CELERY_RESULT_BACKEND",
++        "db+postgresql://postgres:postgres@postgres:5432/taskdb"
++    )
++    
++    # CORS
++    CORS_ORIGINS: list = ["http://localhost:3000", "http://localhost:5173", "*"]
++    
++    class Config:
++        env_file = ".env"
++
++
++@lru_cache()
++def get_settings() -> Settings:
++    """Return cached settings instance."""
++    return Settings()
+diff -ruN repository_before/backend/app/database.py repository_after/backend/app/database.py
+--- repository_before/backend/app/database.py	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/backend/app/database.py	2026-02-03 21:12:32.766940100 +0300
+@@ -0,0 +1,42 @@
++"""PostgreSQL database configuration and session management."""
++from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
++from sqlalchemy.orm import declarative_base
++from app.config import get_settings
++
++settings = get_settings()
++
++# Async engine for FastAPI
++engine = create_async_engine(
++    settings.DATABASE_URL,
++    echo=settings.DEBUG,
++    pool_pre_ping=True,
++    pool_size=10,
++    max_overflow=20
++)
++
++# Async session factory
++AsyncSessionLocal = async_sessionmaker(
++    engine,
++    class_=AsyncSession,
++    expire_on_commit=False,
++    autocommit=False,
++    autoflush=False
++)
++
++# Base class for models
++Base = declarative_base()
++
++
++async def get_db() -> AsyncSession:
++    """Dependency to get database session."""
++    async with AsyncSessionLocal() as session:
++        try:
++            yield session
++        finally:
++            await session.close()
++
++
++async def init_db():
++    """Initialize database tables."""
++    async with engine.begin() as conn:
++        await conn.run_sync(Base.metadata.create_all)
+diff -ruN repository_before/backend/app/main.py repository_after/backend/app/main.py
+--- repository_before/backend/app/main.py	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/backend/app/main.py	2026-02-03 21:14:10.789291700 +0300
+@@ -0,0 +1,331 @@
++"""FastAPI main application with REST endpoints and WebSocket support."""
++import uuid
++import asyncio
++from datetime import datetime
++from typing import Optional, List
++from contextlib import asynccontextmanager
++
++from fastapi import FastAPI, HTTPException, Depends, Query, WebSocket, WebSocketDisconnect
++from fastapi.middleware.cors import CORSMiddleware
++from sqlalchemy.ext.asyncio import AsyncSession
++from sqlalchemy import select, desc, func
++from sqlalchemy.orm import selectinload
++
++from app.config import get_settings
++from app.database import get_db, init_db, engine, Base
++from app.models import Task, TaskStatus, TaskPriority
++from app.schemas import TaskCreate, TaskResponse, TaskListResponse, TaskSubmitResponse, ProgressUpdate
++from app.celery_app import celery_app, get_queue_for_priority
++from app.tasks import execute_task
++from app.websocket import manager
++
++
++settings = get_settings()
++
++
++@asynccontextmanager
++async def lifespan(app: FastAPI):
++    """Application lifespan handler for startup/shutdown."""
++    # Startup: Initialize database tables
++    async with engine.begin() as conn:
++        await conn.run_sync(Base.metadata.create_all)
++    yield
++    # Shutdown: Close connections
++    await engine.dispose()
++
++
++# Create FastAPI application
++app = FastAPI(
++    title=settings.APP_NAME,
++    description="Distributed Task Priority Dashboard with Celery Workers",
++    version="1.0.0",
++    lifespan=lifespan
++)
++
++# Configure CORS
++app.add_middleware(
++    CORSMiddleware,
++    allow_origins=settings.CORS_ORIGINS,
++    allow_credentials=True,
++    allow_methods=["*"],
++    allow_headers=["*"],
++)
++
++
++# ============================================================================
++# Health Check Endpoints
++# ============================================================================
++
++@app.get("/health", tags=["Health"])
++async def health_check():
++    """Basic health check endpoint."""
++    return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
++
++
++@app.get("/api/health", tags=["Health"])
++async def api_health_check(db: AsyncSession = Depends(get_db)):
++    """Health check with database connectivity."""
++    try:
++        await db.execute(select(func.count()).select_from(Task))
++        db_status = "connected"
++    except Exception as e:
++        db_status = f"error: {str(e)}"
++    
++    # Check Celery/Redis connectivity
++    try:
++        celery_app.control.ping(timeout=1)
++        celery_status = "connected"
++    except Exception:
++        celery_status = "disconnected"
++    
++    return {
++        "status": "healthy",
++        "database": db_status,
++        "celery": celery_status,
++        "timestamp": datetime.utcnow().isoformat()
++    }
++
++
++# ============================================================================
++# Task Management Endpoints
++# ============================================================================
++
++@app.post("/api/tasks", response_model=TaskSubmitResponse, status_code=201, tags=["Tasks"])
++async def submit_task(
++    task_data: TaskCreate,
++    db: AsyncSession = Depends(get_db)
++):
++    """
++    Submit a new background task for async processing.
++    
++    Returns a UUID for tracking and the Celery task ID.
++    """
++    # Create database record
++    task = Task(
++        task_id=uuid.uuid4(),
++        name=task_data.name,
++        task_type=task_data.task_type,
++        priority=task_data.priority,
++        status=TaskStatus.PENDING,
++        total_steps=task_data.total_steps,
++        progress=0
++    )
++    
++    db.add(task)
++    await db.commit()
++    await db.refresh(task)
++    
++    # Determine queue based on priority
++    queue_name = get_queue_for_priority(task_data.priority.value)
++    
++    # Submit to Celery with priority routing
++    celery_result = execute_task.apply_async(
++        args=[task.id, task_data.task_type, task_data.total_steps, False],
++        queue=queue_name,
++        routing_key=queue_name
++    )
++    
++    # Update with Celery task ID
++    task.celery_task_id = celery_result.id
++    await db.commit()
++    
++    # Broadcast new task event
++    await manager.broadcast_all({
++        "type": "task_created",
++        "task": task.to_dict()
++    })
++    
++    return TaskSubmitResponse(
++        task_id=task.task_id,
++        celery_task_id=celery_result.id,
++        message="Task submitted successfully",
++        status=TaskStatus.PENDING
++    )
++
++
++@app.get("/api/tasks", response_model=TaskListResponse, tags=["Tasks"])
++async def list_tasks(
++    page: int = Query(1, ge=1, description="Page number"),
++    per_page: int = Query(20, ge=1, le=100, description="Items per page"),
++    status: Optional[TaskStatus] = Query(None, description="Filter by status"),
++    priority: Optional[TaskPriority] = Query(None, description="Filter by priority"),
++    db: AsyncSession = Depends(get_db)
++):
++    """List all tasks with optional filtering and pagination."""
++    # Build query
++    query = select(Task)
++    count_query = select(func.count()).select_from(Task)
++    
++    if status:
++        query = query.where(Task.status == status)
++        count_query = count_query.where(Task.status == status)
++    
++    if priority:
++        query = query.where(Task.priority == priority)
++        count_query = count_query.where(Task.priority == priority)
++    
++    # Get total count
++    total_result = await db.execute(count_query)
++    total = total_result.scalar() or 0
++    
++    # Apply ordering and pagination
++    query = query.order_by(desc(Task.created_at))
++    query = query.offset((page - 1) * per_page).limit(per_page)
++    
++    result = await db.execute(query)
++    tasks = result.scalars().all()
++    
++    return TaskListResponse(
++        tasks=[TaskResponse.model_validate(t) for t in tasks],
++        total=total,
++        page=page,
++        per_page=per_page
++    )
++
++
++@app.get("/api/tasks/{task_id}", response_model=TaskResponse, tags=["Tasks"])
++async def get_task(
++    task_id: str,
++    db: AsyncSession = Depends(get_db)
++):
++    """Get task details by UUID or Celery task ID."""
++    # Try UUID first
++    try:
++        task_uuid = uuid.UUID(task_id)
++        result = await db.execute(select(Task).where(Task.task_id == task_uuid))
++        task = result.scalar_one_or_none()
++    except ValueError:
++        # Try Celery task ID
++        result = await db.execute(select(Task).where(Task.celery_task_id == task_id))
++        task = result.scalar_one_or_none()
++    
++    if not task:
++        raise HTTPException(status_code=404, detail="Task not found")
++    
++    return TaskResponse.model_validate(task)
++
++
++@app.delete("/api/tasks/{task_id}", tags=["Tasks"])
++async def delete_task(
++    task_id: str,
++    db: AsyncSession = Depends(get_db)
++):
++    """Delete a task by UUID."""
++    try:
++        task_uuid = uuid.UUID(task_id)
++        result = await db.execute(select(Task).where(Task.task_id == task_uuid))
++        task = result.scalar_one_or_none()
++    except ValueError:
++        raise HTTPException(status_code=400, detail="Invalid task ID")
++    
++    if not task:
++        raise HTTPException(status_code=404, detail="Task not found")
++    
++    # Revoke Celery task if pending
++    if task.celery_task_id and task.status in [TaskStatus.PENDING, TaskStatus.STARTED]:
++        celery_app.control.revoke(task.celery_task_id, terminate=True)
++    
++    await db.delete(task)
++    await db.commit()
++    
++    return {"message": "Task deleted successfully", "task_id": str(task_uuid)}
++
++
++@app.post("/api/tasks/submit-failing", response_model=TaskSubmitResponse, status_code=201, tags=["Tasks"])
++async def submit_failing_task(
++    task_data: TaskCreate,
++    db: AsyncSession = Depends(get_db)
++):
++    """Submit a task that is designed to fail (for testing error handling)."""
++    task = Task(
++        task_id=uuid.uuid4(),
++        name=f"[FAIL TEST] {task_data.name}",
++        task_type="failing_task",
++        priority=task_data.priority,
++        status=TaskStatus.PENDING,
++        total_steps=task_data.total_steps,
++        progress=0
++    )
++    
++    db.add(task)
++    await db.commit()
++    await db.refresh(task)
++    
++    queue_name = get_queue_for_priority(task_data.priority.value)
++    
++    celery_result = execute_task.apply_async(
++        args=[task.id, "failing_task", task_data.total_steps, True],
++        queue=queue_name,
++        routing_key=queue_name
++    )
++    
++    task.celery_task_id = celery_result.id
++    await db.commit()
++    
++    return TaskSubmitResponse(
++        task_id=task.task_id,
++        celery_task_id=celery_result.id,
++        message="Failing task submitted for testing",
++        status=TaskStatus.PENDING
++    )
++
++
++# ============================================================================
++# WebSocket Endpoints
++# ============================================================================
++
++@app.websocket("/ws")
++async def websocket_all_tasks(websocket: WebSocket):
++    """WebSocket endpoint for receiving all task updates."""
++    await manager.connect(websocket)
++    try:
++        while True:
++            # Keep connection alive and handle any client messages
++            data = await websocket.receive_text()
++            # Echo back or handle commands
++            await websocket.send_json({"type": "ack", "message": data})
++    except WebSocketDisconnect:
++        manager.disconnect(websocket)
++
++
++@app.websocket("/ws/{task_id}")
++async def websocket_task_progress(websocket: WebSocket, task_id: str):
++    """WebSocket endpoint for receiving updates for a specific task."""
++    await manager.connect(websocket, task_id)
++    try:
++        while True:
++            data = await websocket.receive_text()
++            await manager.send_personal_message({"type": "ack", "message": data}, websocket)
++    except WebSocketDisconnect:
++        manager.disconnect(websocket, task_id)
++
++
++# ============================================================================
++# Polling endpoint for task updates (alternative to WebSocket)
++# ============================================================================
++
++@app.get("/api/tasks/poll/updates", tags=["Tasks"])
++async def poll_task_updates(
++    since: Optional[datetime] = Query(None, description="Get updates since this timestamp"),
++    db: AsyncSession = Depends(get_db)
++):
++    """Poll for task updates since a given timestamp."""
++    query = select(Task)
++    
++    if since:
++        query = query.where(Task.updated_at > since)
++    
++    query = query.order_by(desc(Task.updated_at)).limit(50)
++    
++    result = await db.execute(query)
++    tasks = result.scalars().all()
++    
++    return {
++        "timestamp": datetime.utcnow().isoformat(),
++        "tasks": [t.to_dict() for t in tasks]
++    }
++
++
++if __name__ == "__main__":
++    import uvicorn
++    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+diff -ruN repository_before/backend/app/models.py repository_after/backend/app/models.py
+--- repository_before/backend/app/models.py	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/backend/app/models.py	2026-02-03 21:12:40.626145400 +0300
+@@ -0,0 +1,68 @@
++"""SQLAlchemy models for task persistence."""
++import uuid
++from datetime import datetime
++from sqlalchemy import Column, String, Integer, DateTime, Text, Enum as SQLEnum
++from sqlalchemy.dialects.postgresql import UUID
++import enum
++from app.database import Base
++
++
++class TaskStatus(str, enum.Enum):
++    """Task lifecycle status enumeration."""
++    PENDING = "PENDING"
++    STARTED = "STARTED"
++    PROGRESS = "PROGRESS"
++    SUCCESS = "SUCCESS"
++    FAILURE = "FAILURE"
++    RETRY = "RETRY"
++
++
++class TaskPriority(str, enum.Enum):
++    """Task priority levels."""
++    HIGH = "high"
++    MEDIUM = "medium"
++    LOW = "low"
++
++
++class Task(Base):
++    """Task model for persisting background task metadata."""
++    
++    __tablename__ = "tasks"
++    
++    id = Column(Integer, primary_key=True, autoincrement=True)
++    task_id = Column(UUID(as_uuid=True), default=uuid.uuid4, unique=True, nullable=False, index=True)
++    celery_task_id = Column(String(255), unique=True, nullable=True, index=True)
++    name = Column(String(255), nullable=False)
++    task_type = Column(String(100), nullable=False, default="generic")
++    priority = Column(SQLEnum(TaskPriority), default=TaskPriority.MEDIUM, nullable=False)
++    status = Column(SQLEnum(TaskStatus), default=TaskStatus.PENDING, nullable=False)
++    progress = Column(Integer, default=0)
++    progress_message = Column(String(500), nullable=True)
++    total_steps = Column(Integer, default=100)
++    result = Column(Text, nullable=True)
++    error = Column(Text, nullable=True)
++    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
++    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
++    started_at = Column(DateTime, nullable=True)
++    completed_at = Column(DateTime, nullable=True)
++    
++    def to_dict(self):
++        """Convert model to dictionary for JSON serialization."""
++        return {
++            "id": self.id,
++            "task_id": str(self.task_id),
++            "celery_task_id": self.celery_task_id,
++            "name": self.name,
++            "task_type": self.task_type,
++            "priority": self.priority.value if self.priority else None,
++            "status": self.status.value if self.status else None,
++            "progress": self.progress,
++            "progress_message": self.progress_message,
++            "total_steps": self.total_steps,
++            "result": self.result,
++            "error": self.error,
++            "created_at": self.created_at.isoformat() if self.created_at else None,
++            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
++            "started_at": self.started_at.isoformat() if self.started_at else None,
++            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
++        }
+diff -ruN repository_before/backend/app/schemas.py repository_after/backend/app/schemas.py
+--- repository_before/backend/app/schemas.py	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/backend/app/schemas.py	2026-02-03 21:12:42.604236900 +0300
+@@ -0,0 +1,83 @@
++"""Pydantic schemas for API request/response validation."""
++from datetime import datetime
++from typing import Optional, List
++from uuid import UUID
++from pydantic import BaseModel, Field
++from app.models import TaskStatus, TaskPriority
++
++
++class TaskCreate(BaseModel):
++    """Schema for creating a new task."""
++    name: str = Field(..., min_length=1, max_length=255, description="Task name")
++    task_type: str = Field(default="data_export", description="Type of task to execute")
++    priority: TaskPriority = Field(default=TaskPriority.MEDIUM, description="Task priority")
++    total_steps: int = Field(default=100, ge=1, le=10000, description="Total steps for progress tracking")
++    
++    class Config:
++        json_schema_extra = {
++            "example": {
++                "name": "Export Sales Report Q4",
++                "task_type": "data_export",
++                "priority": "high",
++                "total_steps": 1000
++            }
++        }
++
++
++class TaskResponse(BaseModel):
++    """Schema for task response."""
++    id: int
++    task_id: UUID
++    celery_task_id: Optional[str] = None
++    name: str
++    task_type: str
++    priority: TaskPriority
++    status: TaskStatus
++    progress: int
++    progress_message: Optional[str] = None
++    total_steps: int
++    result: Optional[str] = None
++    error: Optional[str] = None
++    created_at: datetime
++    updated_at: datetime
++    started_at: Optional[datetime] = None
++    completed_at: Optional[datetime] = None
++    
++    class Config:
++        from_attributes = True
++
++
++class TaskListResponse(BaseModel):
++    """Schema for paginated task list response."""
++    tasks: List[TaskResponse]
++    total: int
++    page: int
++    per_page: int
++
++
++class TaskSubmitResponse(BaseModel):
++    """Schema for task submission response."""
++    task_id: UUID
++    celery_task_id: str
++    message: str
++    status: TaskStatus
++    
++    class Config:
++        json_schema_extra = {
++            "example": {
++                "task_id": "550e8400-e29b-41d4-a716-446655440000",
++                "celery_task_id": "abc123-def456",
++                "message": "Task submitted successfully",
++                "status": "PENDING"
++            }
++        }
++
++
++class ProgressUpdate(BaseModel):
++    """Schema for WebSocket progress updates."""
++    task_id: str
++    status: str
++    progress: int
++    total: int
++    message: Optional[str] = None
++    error: Optional[str] = None
+diff -ruN repository_before/backend/app/tasks.py repository_after/backend/app/tasks.py
+--- repository_before/backend/app/tasks.py	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/backend/app/tasks.py	2026-02-03 21:13:36.414010200 +0300
+@@ -0,0 +1,243 @@
++"""Celery tasks with progress tracking and error handling."""
++import time
++import random
++from datetime import datetime
++from celery import Task as CeleryTask
++from celery.exceptions import MaxRetriesExceededError
++from sqlalchemy import create_engine
++from sqlalchemy.orm import sessionmaker
++from app.celery_app import celery_app
++from app.models import Task, TaskStatus, Base
++import os
++
++# Sync database connection for Celery workers
++DATABASE_URL_SYNC = os.getenv(
++    "DATABASE_URL_SYNC",
++    "postgresql://postgres:postgres@postgres:5432/taskdb"
++)
++sync_engine = create_engine(DATABASE_URL_SYNC, pool_pre_ping=True)
++SyncSessionLocal = sessionmaker(bind=sync_engine)
++
++
++class ProgressTask(CeleryTask):
++    """Base task class with progress tracking capabilities."""
++    
++    def update_progress(self, task_db_id: int, current: int, total: int, message: str = None):
++        """Update task progress in database and Celery state."""
++        # Update Celery state
++        self.update_state(
++            state="PROGRESS",
++            meta={
++                "current": current,
++                "total": total,
++                "message": message or f"Processing step {current} of {total}",
++                "percent": int((current / total) * 100) if total > 0 else 0
++            }
++        )
++        
++        # Update database
++        with SyncSessionLocal() as session:
++            task = session.query(Task).filter(Task.id == task_db_id).first()
++            if task:
++                task.progress = int((current / total) * 100) if total > 0 else 0
++                task.progress_message = message or f"Processing step {current} of {total}"
++                task.status = TaskStatus.PROGRESS
++                task.updated_at = datetime.utcnow()
++                session.commit()
++
++
++@celery_app.task(
++    bind=True,
++    base=ProgressTask,
++    autoretry_for=(Exception,),
++    retry_backoff=True,
++    retry_backoff_max=60,
++    retry_jitter=True,
++    max_retries=3,
++    acks_late=True,
++    track_started=True,
++    name="app.tasks.execute_task"
++)
++def execute_task(
++    self,
++    task_db_id: int,
++    task_type: str,
++    total_steps: int = 100,
++    should_fail: bool = False
++):
++    """
++    Execute a long-running background task with progress updates.
++    
++    Args:
++        task_db_id: Database ID of the task record
++        task_type: Type of task (data_export, pdf_generation, report_generation)
++        total_steps: Number of steps for progress tracking
++        should_fail: If True, task will fail (for testing error handling)
++    
++    Returns:
++        dict: Task result with completion details
++    """
++    # Mark task as started
++    with SyncSessionLocal() as session:
++        task = session.query(Task).filter(Task.id == task_db_id).first()
++        if task:
++            task.status = TaskStatus.STARTED
++            task.started_at = datetime.utcnow()
++            task.celery_task_id = self.request.id
++            session.commit()
++    
++    try:
++        result = None
++        
++        if task_type == "data_export":
++            result = _simulate_data_export(self, task_db_id, total_steps, should_fail)
++        elif task_type == "pdf_generation":
++            result = _simulate_pdf_generation(self, task_db_id, total_steps, should_fail)
++        elif task_type == "report_generation":
++            result = _simulate_report_generation(self, task_db_id, total_steps, should_fail)
++        elif task_type == "failing_task":
++            raise ValueError("This task is designed to fail for testing purposes")
++        else:
++            result = _simulate_generic_task(self, task_db_id, total_steps, should_fail)
++        
++        # Mark task as successful
++        with SyncSessionLocal() as session:
++            task = session.query(Task).filter(Task.id == task_db_id).first()
++            if task:
++                task.status = TaskStatus.SUCCESS
++                task.progress = 100
++                task.progress_message = "Task completed successfully"
++                task.result = str(result)
++                task.completed_at = datetime.utcnow()
++                session.commit()
++        
++        return result
++        
++    except Exception as exc:
++        # Handle failure
++        with SyncSessionLocal() as session:
++            task = session.query(Task).filter(Task.id == task_db_id).first()
++            if task:
++                try:
++                    # Attempt retry
++                    raise self.retry(exc=exc)
++                except MaxRetriesExceededError:
++                    # Max retries exceeded - mark as failed
++                    task.status = TaskStatus.FAILURE
++                    task.error = str(exc)
++                    task.completed_at = datetime.utcnow()
++                    session.commit()
++                    raise
++                else:
++                    task.status = TaskStatus.RETRY
++                    task.error = f"Retry {self.request.retries}/{self.max_retries}: {str(exc)}"
++                    session.commit()
++        raise
++
++
++def _simulate_data_export(task_self: ProgressTask, task_db_id: int, total_steps: int, should_fail: bool) -> dict:
++    """Simulate a data export operation with progress updates."""
++    rows_exported = 0
++    
++    for i in range(1, total_steps + 1):
++        # Simulate processing time
++        time.sleep(0.05)
++        
++        # Simulate potential failure
++        if should_fail and i == total_steps // 2:
++            raise ConnectionError("Database connection lost during export")
++        
++        rows_exported += random.randint(10, 50)
++        task_self.update_progress(
++            task_db_id,
++            current=i,
++            total=total_steps,
++            message=f"Exporting data: row {rows_exported} processed"
++        )
++    
++    return {
++        "type": "data_export",
++        "rows_exported": rows_exported,
++        "file_path": "/exports/data_export_2024.csv",
++        "completed": True
++    }
++
++
++def _simulate_pdf_generation(task_self: ProgressTask, task_db_id: int, total_steps: int, should_fail: bool) -> dict:
++    """Simulate PDF generation with progress updates."""
++    pages_generated = 0
++    
++    for i in range(1, total_steps + 1):
++        time.sleep(0.08)
++        
++        if should_fail and i == total_steps // 3:
++            raise MemoryError("Insufficient memory for PDF rendering")
++        
++        pages_generated += 1
++        task_self.update_progress(
++            task_db_id,
++            current=i,
++            total=total_steps,
++            message=f"Generating PDF: page {pages_generated} of {total_steps}"
++        )
++    
++    return {
++        "type": "pdf_generation",
++        "pages": pages_generated,
++        "file_path": "/exports/report.pdf",
++        "file_size_mb": round(pages_generated * 0.15, 2),
++        "completed": True
++    }
++
++
++def _simulate_report_generation(task_self: ProgressTask, task_db_id: int, total_steps: int, should_fail: bool) -> dict:
++    """Simulate report generation with multiple phases."""
++    phases = ["Collecting data", "Analyzing metrics", "Building charts", "Formatting output"]
++    
++    steps_per_phase = total_steps // len(phases)
++    current_step = 0
++    
++    for phase_idx, phase in enumerate(phases):
++        for i in range(steps_per_phase):
++            time.sleep(0.04)
++            
++            if should_fail and phase_idx == 2 and i == steps_per_phase // 2:
++                raise RuntimeError("Chart rendering failed")
++            
++            current_step += 1
++            task_self.update_progress(
++                task_db_id,
++                current=current_step,
++                total=total_steps,
++                message=f"{phase}: {((i + 1) / steps_per_phase * 100):.0f}% complete"
++            )
++    
++    return {
++        "type": "report_generation",
++        "sections": len(phases),
++        "charts_generated": 12,
++        "file_path": "/exports/quarterly_report.xlsx",
++        "completed": True
++    }
++
++
++def _simulate_generic_task(task_self: ProgressTask, task_db_id: int, total_steps: int, should_fail: bool) -> dict:
++    """Simulate a generic long-running task."""
++    for i in range(1, total_steps + 1):
++        time.sleep(0.03)
++        
++        if should_fail and i == total_steps * 0.7:
++            raise Exception("Generic task failure")
++        
++        task_self.update_progress(
++            task_db_id,
++            current=i,
++            total=total_steps,
++            message=f"Processing step {i} of {total_steps}"
++        )
++    
++    return {
++        "type": "generic",
++        "steps_completed": total_steps,
++        "completed": True
++    }
+diff -ruN repository_before/backend/app/websocket.py repository_after/backend/app/websocket.py
+--- repository_before/backend/app/websocket.py	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/backend/app/websocket.py	2026-02-03 21:14:08.760504300 +0300
+@@ -0,0 +1,74 @@
++"""WebSocket connection manager for real-time progress updates."""
++from typing import Dict, List, Set
++from fastapi import WebSocket
++import asyncio
++import json
++
++
++class ConnectionManager:
++    """Manages WebSocket connections and broadcasts progress updates."""
++    
++    def __init__(self):
++        # Map task_id to set of connected WebSocket clients
++        self.active_connections: Dict[str, Set[WebSocket]] = {}
++        # All connected clients for broadcast
++        self.all_connections: List[WebSocket] = []
++    
++    async def connect(self, websocket: WebSocket, task_id: str = None):
++        """Accept WebSocket connection and register it."""
++        await websocket.accept()
++        self.all_connections.append(websocket)
++        
++        if task_id:
++            if task_id not in self.active_connections:
++                self.active_connections[task_id] = set()
++            self.active_connections[task_id].add(websocket)
++    
++    def disconnect(self, websocket: WebSocket, task_id: str = None):
++        """Remove WebSocket connection from registry."""
++        if websocket in self.all_connections:
++            self.all_connections.remove(websocket)
++        
++        if task_id and task_id in self.active_connections:
++            self.active_connections[task_id].discard(websocket)
++            if not self.active_connections[task_id]:
++                del self.active_connections[task_id]
++    
++    async def send_personal_message(self, message: dict, websocket: WebSocket):
++        """Send message to a specific WebSocket client."""
++        try:
++            await websocket.send_json(message)
++        except Exception:
++            pass
++    
++    async def broadcast_to_task(self, task_id: str, message: dict):
++        """Broadcast message to all clients subscribed to a specific task."""
++        if task_id in self.active_connections:
++            disconnected = []
++            for connection in self.active_connections[task_id]:
++                try:
++                    await connection.send_json(message)
++                except Exception:
++                    disconnected.append(connection)
++            
++            # Clean up disconnected clients
++            for conn in disconnected:
++                self.disconnect(conn, task_id)
++    
++    async def broadcast_all(self, message: dict):
++        """Broadcast message to all connected clients."""
++        disconnected = []
++        for connection in self.all_connections:
++            try:
++                await connection.send_json(message)
++            except Exception:
++                disconnected.append(connection)
++        
++        # Clean up disconnected clients
++        for conn in disconnected:
++            if conn in self.all_connections:
++                self.all_connections.remove(conn)
++
++
++# Global connection manager instance
++manager = ConnectionManager()
+diff -ruN repository_before/backend/Dockerfile repository_after/backend/Dockerfile
+--- repository_before/backend/Dockerfile	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/backend/Dockerfile	2026-02-03 21:55:44.252202800 +0300
+@@ -0,0 +1,22 @@
++FROM python:3.11-slim
++
++ENV PYTHONDONTWRITEBYTECODE=1
++ENV PYTHONUNBUFFERED=1
++ENV PYTHONPATH=/app
++
++WORKDIR /app
++
++RUN apt-get update && apt-get install -y --no-install-recommends \
++    gcc \
++    libpq-dev \
++    curl \
++    && rm -rf /var/lib/apt/lists/*
++
++COPY requirements.txt .
++RUN pip install --no-cache-dir -r requirements.txt
++
++COPY . .
++
++EXPOSE 8000
++
++CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+diff -ruN repository_before/backend/requirements.txt repository_after/backend/requirements.txt
+--- repository_before/backend/requirements.txt	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/backend/requirements.txt	2026-02-03 22:03:38.898687800 +0300
+@@ -0,0 +1,9 @@
++fastapi>=0.109.0
++uvicorn>=0.27.0
++celery[redis]>=5.3.0
++sqlalchemy[asyncio]>=2.0.0
++asyncpg>=0.29.0
++psycopg2-binary>=2.9.0
++pydantic>=2.0.0
++pydantic-settings>=2.0.0
++websockets>=12.0
+diff -ruN repository_before/frontend/Dockerfile repository_after/frontend/Dockerfile
+--- repository_before/frontend/Dockerfile	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/Dockerfile	2026-02-03 21:55:52.004529100 +0300
+@@ -0,0 +1,18 @@
++FROM node:20-alpine AS builder
++
++WORKDIR /app
++
++COPY package*.json ./
++RUN npm install
++
++COPY . .
++RUN npm run build
++
++FROM nginx:alpine
++
++COPY nginx.conf /etc/nginx/conf.d/default.conf
++COPY --from=builder /app/dist /usr/share/nginx/html
++
++EXPOSE 80
++
++CMD ["nginx", "-g", "daemon off;"]
+diff -ruN repository_before/frontend/index.html repository_after/frontend/index.html
+--- repository_before/frontend/index.html	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/index.html	2026-02-03 21:14:58.302404500 +0300
+@@ -0,0 +1,17 @@
++<!DOCTYPE html>
++<html lang="en">
++  <head>
++    <meta charset="UTF-8" />
++    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
++    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
++    <meta name="description" content="Distributed Task Priority Dashboard - Real-time task management with Celery workers" />
++    <title>Task Priority Dashboard</title>
++    <link rel="preconnect" href="https://fonts.googleapis.com">
++    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
++    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
++  </head>
++  <body>
++    <div id="root"></div>
++    <script type="module" src="/src/main.jsx"></script>
++  </body>
++</html>
+diff -ruN repository_before/frontend/nginx.conf repository_after/frontend/nginx.conf
+--- repository_before/frontend/nginx.conf	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/nginx.conf	2026-02-03 21:18:36.595387600 +0300
+@@ -0,0 +1,42 @@
++server {
++    listen 80;
++    server_name localhost;
++    root /usr/share/nginx/html;
++    index index.html;
++
++    # Gzip compression
++    gzip on;
++    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
++
++    # Handle React Router
++    location / {
++        try_files $uri $uri/ /index.html;
++    }
++
++    # API proxy to backend
++    location /api {
++        proxy_pass http://backend:8000;
++        proxy_http_version 1.1;
++        proxy_set_header Host $host;
++        proxy_set_header X-Real-IP $remote_addr;
++        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
++        proxy_set_header X-Forwarded-Proto $scheme;
++    }
++
++    # WebSocket proxy
++    location /ws {
++        proxy_pass http://backend:8000;
++        proxy_http_version 1.1;
++        proxy_set_header Upgrade $http_upgrade;
++        proxy_set_header Connection "upgrade";
++        proxy_set_header Host $host;
++        proxy_set_header X-Real-IP $remote_addr;
++        proxy_read_timeout 86400;
++    }
++
++    # Health check
++    location /health {
++        return 200 'OK';
++        add_header Content-Type text/plain;
++    }
++}
+diff -ruN repository_before/frontend/package.json repository_after/frontend/package.json
+--- repository_before/frontend/package.json	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/package.json	2026-02-03 22:03:40.987395400 +0300
+@@ -0,0 +1,19 @@
++{
++  "name": "task-dashboard",
++  "private": true,
++  "version": "1.0.0",
++  "type": "module",
++  "scripts": {
++    "dev": "vite",
++    "build": "vite build",
++    "preview": "vite preview"
++  },
++  "dependencies": {
++    "react": "^18.2.0",
++    "react-dom": "^18.2.0"
++  },
++  "devDependencies": {
++    "@vitejs/plugin-react": "^4.2.0",
++    "vite": "^5.0.0"
++  }
++}
+\ No newline at end of file
+diff -ruN repository_before/frontend/src/App.jsx repository_after/frontend/src/App.jsx
+--- repository_before/frontend/src/App.jsx	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/src/App.jsx	2026-02-03 21:16:16.608936700 +0300
+@@ -0,0 +1,153 @@
++import { useState, useEffect, useCallback } from 'react'
++import Dashboard from './components/Dashboard'
++import './styles/index.css'
++
++// API base URL - use relative paths for Docker setup
++const API_BASE = '/api'
++
++function App() {
++    const [tasks, setTasks] = useState([])
++    const [loading, setLoading] = useState(true)
++    const [error, setError] = useState(null)
++    const [wsConnected, setWsConnected] = useState(false)
++
++    // Fetch all tasks
++    const fetchTasks = useCallback(async () => {
++        try {
++            const response = await fetch(`${API_BASE}/tasks?per_page=50`)
++            if (!response.ok) throw new Error('Failed to fetch tasks')
++            const data = await response.json()
++            setTasks(data.tasks)
++            setError(null)
++        } catch (err) {
++            console.error('Error fetching tasks:', err)
++            setError(err.message)
++        } finally {
++            setLoading(false)
++        }
++    }, [])
++
++    // Submit new task
++    const submitTask = async (taskData) => {
++        try {
++            const response = await fetch(`${API_BASE}/tasks`, {
++                method: 'POST',
++                headers: { 'Content-Type': 'application/json' },
++                body: JSON.stringify(taskData),
++            })
++            if (!response.ok) throw new Error('Failed to submit task')
++            const result = await response.json()
++            await fetchTasks() // Refresh list
++            return result
++        } catch (err) {
++            console.error('Error submitting task:', err)
++            throw err
++        }
++    }
++
++    // Submit failing task for testing
++    const submitFailingTask = async (taskData) => {
++        try {
++            const response = await fetch(`${API_BASE}/tasks/submit-failing`, {
++                method: 'POST',
++                headers: { 'Content-Type': 'application/json' },
++                body: JSON.stringify(taskData),
++            })
++            if (!response.ok) throw new Error('Failed to submit failing task')
++            const result = await response.json()
++            await fetchTasks()
++            return result
++        } catch (err) {
++            console.error('Error submitting failing task:', err)
++            throw err
++        }
++    }
++
++    // Delete task
++    const deleteTask = async (taskId) => {
++        try {
++            const response = await fetch(`${API_BASE}/tasks/${taskId}`, {
++                method: 'DELETE',
++            })
++            if (!response.ok) throw new Error('Failed to delete task')
++            await fetchTasks()
++        } catch (err) {
++            console.error('Error deleting task:', err)
++            throw err
++        }
++    }
++
++    // WebSocket connection for real-time updates
++    useEffect(() => {
++        let ws = null
++        let reconnectTimeout = null
++
++        const connectWebSocket = () => {
++            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
++            const wsUrl = `${wsProtocol}//${window.location.host}/ws`
++
++            ws = new WebSocket(wsUrl)
++
++            ws.onopen = () => {
++                console.log('WebSocket connected')
++                setWsConnected(true)
++            }
++
++            ws.onmessage = (event) => {
++                try {
++                    const data = JSON.parse(event.data)
++                    if (data.type === 'task_created' || data.type === 'task_updated') {
++                        fetchTasks()
++                    }
++                } catch (err) {
++                    console.error('WebSocket message error:', err)
++                }
++            }
++
++            ws.onclose = () => {
++                console.log('WebSocket disconnected')
++                setWsConnected(false)
++                // Attempt reconnect after 3 seconds
++                reconnectTimeout = setTimeout(connectWebSocket, 3000)
++            }
++
++            ws.onerror = (error) => {
++                console.error('WebSocket error:', error)
++            }
++        }
++
++        // Initial connection attempt
++        connectWebSocket()
++
++        // Cleanup
++        return () => {
++            if (ws) ws.close()
++            if (reconnectTimeout) clearTimeout(reconnectTimeout)
++        }
++    }, [fetchTasks])
++
++    // Polling fallback for updates
++    useEffect(() => {
++        fetchTasks()
++
++        // Poll every 2 seconds for updates
++        const pollInterval = setInterval(fetchTasks, 2000)
++
++        return () => clearInterval(pollInterval)
++    }, [fetchTasks])
++
++    return (
++        <Dashboard
++            tasks={tasks}
++            loading={loading}
++            error={error}
++            wsConnected={wsConnected}
++            onSubmitTask={submitTask}
++            onSubmitFailingTask={submitFailingTask}
++            onDeleteTask={deleteTask}
++            onRefresh={fetchTasks}
++        />
++    )
++}
++
++export default App
+diff -ruN repository_before/frontend/src/components/Dashboard.css repository_after/frontend/src/components/Dashboard.css
+--- repository_before/frontend/src/components/Dashboard.css	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/src/components/Dashboard.css	2026-02-03 21:17:00.239074100 +0300
+@@ -0,0 +1,308 @@
++/* Dashboard Component Styles */
++
++.dashboard {
++    min-height: 100vh;
++    padding: var(--spacing-xl);
++    max-width: 1400px;
++    margin: 0 auto;
++}
++
++/* Header */
++.dashboard-header {
++    margin-bottom: var(--spacing-xl);
++}
++
++.header-content {
++    display: flex;
++    justify-content: space-between;
++    align-items: flex-start;
++    gap: var(--spacing-lg);
++    flex-wrap: wrap;
++}
++
++.header-title h1 {
++    font-size: 2rem;
++    font-weight: 700;
++    background: linear-gradient(135deg, #ffffff 0%, #a0a0b0 100%);
++    -webkit-background-clip: text;
++    -webkit-text-fill-color: transparent;
++    background-clip: text;
++    margin-bottom: var(--spacing-xs);
++}
++
++.header-title p {
++    color: var(--color-text-muted);
++    font-size: 0.875rem;
++}
++
++.header-actions {
++    display: flex;
++    align-items: center;
++    gap: var(--spacing-md);
++}
++
++.connection-status {
++    display: flex;
++    align-items: center;
++    gap: var(--spacing-xs);
++    padding: var(--spacing-xs) var(--spacing-sm);
++    font-size: 0.75rem;
++    font-weight: 500;
++    text-transform: uppercase;
++    letter-spacing: 0.05em;
++    border-radius: var(--radius-sm);
++    background: rgba(255, 255, 255, 0.05);
++}
++
++.status-dot {
++    width: 8px;
++    height: 8px;
++    border-radius: 50%;
++}
++
++.connection-status.connected .status-dot {
++    background: #22c55e;
++    box-shadow: 0 0 8px #22c55e;
++}
++
++.connection-status.disconnected .status-dot {
++    background: #f59e0b;
++    animation: pulse 2s infinite;
++}
++
++/* Stats Grid */
++.stats-grid {
++    display: grid;
++    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
++    gap: var(--spacing-md);
++    margin-bottom: var(--spacing-xl);
++}
++
++.stat-card {
++    display: flex;
++    align-items: center;
++    gap: var(--spacing-md);
++    padding: var(--spacing-lg);
++}
++
++.stat-icon {
++    width: 48px;
++    height: 48px;
++    display: flex;
++    align-items: center;
++    justify-content: center;
++    border-radius: var(--radius-md);
++    flex-shrink: 0;
++}
++
++.stat-icon.total {
++    background: rgba(99, 102, 241, 0.2);
++    color: #818cf8;
++}
++
++.stat-icon.pending {
++    background: rgba(100, 116, 139, 0.2);
++    color: #94a3b8;
++}
++
++.stat-icon.progress {
++    background: rgba(59, 130, 246, 0.2);
++    color: #60a5fa;
++}
++
++.stat-icon.success {
++    background: rgba(34, 197, 94, 0.2);
++    color: #4ade80;
++}
++
++.stat-icon.failed {
++    background: rgba(239, 68, 68, 0.2);
++    color: #f87171;
++}
++
++.stat-content {
++    display: flex;
++    flex-direction: column;
++}
++
++.stat-value {
++    font-size: 1.75rem;
++    font-weight: 700;
++    line-height: 1;
++}
++
++.stat-label {
++    font-size: 0.75rem;
++    color: var(--color-text-muted);
++    text-transform: uppercase;
++    letter-spacing: 0.05em;
++    margin-top: var(--spacing-xs);
++}
++
++/* Section Header */
++.section-header {
++    display: flex;
++    justify-content: space-between;
++    align-items: center;
++    margin-bottom: var(--spacing-lg);
++    flex-wrap: wrap;
++    gap: var(--spacing-md);
++}
++
++.section-header h2 {
++    font-size: 1.25rem;
++    font-weight: 600;
++}
++
++.queue-legend {
++    display: flex;
++    gap: var(--spacing-lg);
++}
++
++.legend-item {
++    display: flex;
++    align-items: center;
++    gap: var(--spacing-xs);
++    font-size: 0.75rem;
++    color: var(--color-text-muted);
++}
++
++.legend-dot {
++    width: 8px;
++    height: 8px;
++    border-radius: 50%;
++}
++
++.legend-item.high .legend-dot {
++    background: var(--color-priority-high);
++}
++
++.legend-item.medium .legend-dot {
++    background: var(--color-priority-medium);
++}
++
++.legend-item.low .legend-dot {
++    background: var(--color-priority-low);
++}
++
++/* Main Content */
++.dashboard-main {
++    margin-top: var(--spacing-lg);
++}
++
++/* Loading State */
++.loading-state {
++    display: flex;
++    flex-direction: column;
++    align-items: center;
++    justify-content: center;
++    padding: var(--spacing-2xl);
++    color: var(--color-text-muted);
++}
++
++.spinner {
++    width: 40px;
++    height: 40px;
++    border: 3px solid rgba(255, 255, 255, 0.1);
++    border-top-color: var(--color-accent-primary);
++    border-radius: 50%;
++    animation: spin 1s linear infinite;
++    margin-bottom: var(--spacing-md);
++}
++
++/* Error Banner */
++.error-banner {
++    display: flex;
++    align-items: center;
++    gap: var(--spacing-md);
++    padding: var(--spacing-md) var(--spacing-lg);
++    background: rgba(239, 68, 68, 0.1);
++    border-color: rgba(239, 68, 68, 0.3);
++    color: #f87171;
++    margin-bottom: var(--spacing-lg);
++}
++
++/* Modal */
++.modal-overlay {
++    position: fixed;
++    top: 0;
++    left: 0;
++    width: 100%;
++    height: 100%;
++    background: rgba(0, 0, 0, 0.7);
++    backdrop-filter: blur(4px);
++    display: flex;
++    align-items: center;
++    justify-content: center;
++    z-index: 1000;
++    animation: fadeIn 0.2s ease;
++}
++
++.modal-content {
++    width: 100%;
++    max-width: 480px;
++    margin: var(--spacing-lg);
++    animation: fadeIn 0.3s ease;
++}
++
++.modal-header {
++    display: flex;
++    justify-content: space-between;
++    align-items: center;
++    padding: var(--spacing-lg);
++    border-bottom: var(--border-glass);
++}
++
++.modal-header h3 {
++    font-size: 1.125rem;
++    font-weight: 600;
++}
++
++.modal-close {
++    background: none;
++    border: none;
++    color: var(--color-text-muted);
++    cursor: pointer;
++    padding: var(--spacing-xs);
++    display: flex;
++    align-items: center;
++    justify-content: center;
++    border-radius: var(--radius-sm);
++    transition: all var(--transition-fast);
++}
++
++.modal-close:hover {
++    background: rgba(255, 255, 255, 0.1);
++    color: var(--color-text-primary);
++}
++
++/* Responsive */
++@media (max-width: 768px) {
++    .dashboard {
++        padding: var(--spacing-md);
++    }
++
++    .header-content {
++        flex-direction: column;
++        align-items: stretch;
++    }
++
++    .header-actions {
++        justify-content: space-between;
++    }
++
++    .stats-grid {
++        grid-template-columns: repeat(2, 1fr);
++    }
++
++    .queue-legend {
++        flex-wrap: wrap;
++        gap: var(--spacing-sm);
++    }
++}
++
++@media (max-width: 480px) {
++    .stats-grid {
++        grid-template-columns: 1fr;
++    }
++}
+\ No newline at end of file
+diff -ruN repository_before/frontend/src/components/Dashboard.jsx repository_after/frontend/src/components/Dashboard.jsx
+--- repository_before/frontend/src/components/Dashboard.jsx	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/src/components/Dashboard.jsx	2026-02-03 21:16:38.154722000 +0300
+@@ -0,0 +1,197 @@
++import { useState } from 'react'
++import TaskList from './TaskList'
++import TaskForm from './TaskForm'
++import './Dashboard.css'
++
++function Dashboard({
++    tasks,
++    loading,
++    error,
++    wsConnected,
++    onSubmitTask,
++    onSubmitFailingTask,
++    onDeleteTask,
++    onRefresh,
++}) {
++    const [showForm, setShowForm] = useState(false)
++
++    // Calculate stats
++    const stats = {
++        total: tasks.length,
++        pending: tasks.filter(t => t.status === 'PENDING').length,
++        inProgress: tasks.filter(t => ['STARTED', 'PROGRESS'].includes(t.status)).length,
++        success: tasks.filter(t => t.status === 'SUCCESS').length,
++        failed: tasks.filter(t => t.status === 'FAILURE').length,
++    }
++
++    const handleSubmit = async (taskData, shouldFail) => {
++        try {
++            if (shouldFail) {
++                await onSubmitFailingTask(taskData)
++            } else {
++                await onSubmitTask(taskData)
++            }
++            setShowForm(false)
++        } catch (err) {
++            console.error('Submit error:', err)
++        }
++    }
++
++    return (
++        <div className="dashboard">
++            {/* Header */}
++            <header className="dashboard-header">
++                <div className="header-content">
++                    <div className="header-title">
++                        <h1>Task Priority Dashboard</h1>
++                        <p>Distributed background task management with Celery</p>
++                    </div>
++                    <div className="header-actions">
++                        <div className={`connection-status ${wsConnected ? 'connected' : 'disconnected'}`}>
++                            <span className="status-dot"></span>
++                            {wsConnected ? 'Live' : 'Polling'}
++                        </div>
++                        <button className="btn btn-secondary" onClick={onRefresh}>
++                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
++                                <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
++                            </svg>
++                            Refresh
++                        </button>
++                        <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>
++                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
++                                <path d="M12 5v14M5 12h14" />
++                            </svg>
++                            New Task
++                        </button>
++                    </div>
++                </div>
++            </header>
++
++            {/* Stats Cards */}
++            <div className="stats-grid">
++                <div className="stat-card glass-card">
++                    <div className="stat-icon total">
++                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
++                            <rect x="3" y="3" width="7" height="7" />
++                            <rect x="14" y="3" width="7" height="7" />
++                            <rect x="14" y="14" width="7" height="7" />
++                            <rect x="3" y="14" width="7" height="7" />
++                        </svg>
++                    </div>
++                    <div className="stat-content">
++                        <span className="stat-value">{stats.total}</span>
++                        <span className="stat-label">Total Tasks</span>
++                    </div>
++                </div>
++
++                <div className="stat-card glass-card">
++                    <div className="stat-icon pending">
++                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
++                            <circle cx="12" cy="12" r="10" />
++                            <path d="M12 6v6l4 2" />
++                        </svg>
++                    </div>
++                    <div className="stat-content">
++                        <span className="stat-value">{stats.pending}</span>
++                        <span className="stat-label">Pending</span>
++                    </div>
++                </div>
++
++                <div className="stat-card glass-card">
++                    <div className="stat-icon progress">
++                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
++                            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
++                        </svg>
++                    </div>
++                    <div className="stat-content">
++                        <span className="stat-value">{stats.inProgress}</span>
++                        <span className="stat-label">In Progress</span>
++                    </div>
++                </div>
++
++                <div className="stat-card glass-card">
++                    <div className="stat-icon success">
++                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
++                            <path d="M22 11.08V12a10 10 0 11-5.93-9.14" />
++                            <path d="M22 4L12 14.01l-3-3" />
++                        </svg>
++                    </div>
++                    <div className="stat-content">
++                        <span className="stat-value">{stats.success}</span>
++                        <span className="stat-label">Completed</span>
++                    </div>
++                </div>
++
++                <div className="stat-card glass-card">
++                    <div className="stat-icon failed">
++                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
++                            <circle cx="12" cy="12" r="10" />
++                            <path d="M15 9l-6 6M9 9l6 6" />
++                        </svg>
++                    </div>
++                    <div className="stat-content">
++                        <span className="stat-value">{stats.failed}</span>
++                        <span className="stat-label">Failed</span>
++                    </div>
++                </div>
++            </div>
++
++            {/* Task Form Modal */}
++            {showForm && (
++                <div className="modal-overlay" onClick={() => setShowForm(false)}>
++                    <div className="modal-content glass-card" onClick={e => e.stopPropagation()}>
++                        <div className="modal-header">
++                            <h3>Create New Task</h3>
++                            <button className="modal-close" onClick={() => setShowForm(false)}>
++                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
++                                    <path d="M18 6L6 18M6 6l12 12" />
++                                </svg>
++                            </button>
++                        </div>
++                        <TaskForm onSubmit={handleSubmit} onCancel={() => setShowForm(false)} />
++                    </div>
++                </div>
++            )}
++
++            {/* Error Display */}
++            {error && (
++                <div className="error-banner glass-card">
++                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
++                        <circle cx="12" cy="12" r="10" />
++                        <path d="M12 8v4M12 16h.01" />
++                    </svg>
++                    <span>{error}</span>
++                </div>
++            )}
++
++            {/* Main Content */}
++            <main className="dashboard-main">
++                <div className="section-header">
++                    <h2>Task Queue</h2>
++                    <div className="queue-legend">
++                        <span className="legend-item high">
++                            <span className="legend-dot"></span>High Priority
++                        </span>
++                        <span className="legend-item medium">
++                            <span className="legend-dot"></span>Medium Priority
++                        </span>
++                        <span className="legend-item low">
++                            <span className="legend-dot"></span>Low Priority
++                        </span>
++                    </div>
++                </div>
++
++                {loading ? (
++                    <div className="loading-state">
++                        <div className="spinner"></div>
++                        <p>Loading tasks...</p>
++                    </div>
++                ) : (
++                    <TaskList tasks={tasks} onDelete={onDeleteTask} />
++                )}
++            </main>
++        </div>
++    )
++}
++
++export default Dashboard
+diff -ruN repository_before/frontend/src/components/ProgressBar.css repository_after/frontend/src/components/ProgressBar.css
+--- repository_before/frontend/src/components/ProgressBar.css	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/src/components/ProgressBar.css	2026-02-03 21:18:06.637170900 +0300
+@@ -0,0 +1,15 @@
++/* ProgressBar Component Styles - already in index.css */
++/* This file exists for component modularity */
++
++/* Additional progress bar animations */
++.progress-bar {
++    position: relative;
++}
++
++.progress-bar.completed {
++    animation: none;
++}
++
++.progress-bar.completed::after {
++    display: none;
++}
+\ No newline at end of file
+diff -ruN repository_before/frontend/src/components/ProgressBar.jsx repository_after/frontend/src/components/ProgressBar.jsx
+--- repository_before/frontend/src/components/ProgressBar.jsx	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/src/components/ProgressBar.jsx	2026-02-03 21:18:04.980163200 +0300
+@@ -0,0 +1,20 @@
++import './ProgressBar.css'
++
++function ProgressBar({ progress, priority = 'default' }) {
++    const clampedProgress = Math.min(100, Math.max(0, progress))
++
++    return (
++        <div className="progress-container">
++            <div
++                className={`progress-bar ${priority}`}
++                style={{ width: `${clampedProgress}%` }}
++                role="progressbar"
++                aria-valuenow={clampedProgress}
++                aria-valuemin={0}
++                aria-valuemax={100}
++            />
++        </div>
++    )
++}
++
++export default ProgressBar
+diff -ruN repository_before/frontend/src/components/TaskForm.css repository_after/frontend/src/components/TaskForm.css
+--- repository_before/frontend/src/components/TaskForm.css	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/src/components/TaskForm.css	2026-02-03 21:18:01.751720000 +0300
+@@ -0,0 +1,166 @@
++/* TaskForm Component Styles */
++
++.task-form {
++    display: flex;
++    flex-direction: column;
++}
++
++.form-body {
++    padding: var(--spacing-lg);
++}
++
++.form-hint {
++    font-weight: 400;
++    color: var(--color-text-muted);
++    font-size: 0.75rem;
++}
++
++/* Priority Options */
++.priority-options {
++    display: flex;
++    gap: var(--spacing-sm);
++}
++
++.priority-option {
++    flex: 1;
++    display: flex;
++    align-items: center;
++    justify-content: center;
++    gap: var(--spacing-xs);
++    padding: var(--spacing-sm) var(--spacing-md);
++    background: rgba(255, 255, 255, 0.03);
++    border: 1px solid rgba(255, 255, 255, 0.1);
++    border-radius: var(--radius-md);
++    cursor: pointer;
++    transition: all var(--transition-fast);
++}
++
++.priority-option input {
++    position: absolute;
++    opacity: 0;
++    pointer-events: none;
++}
++
++.priority-option:hover {
++    background: rgba(255, 255, 255, 0.05);
++}
++
++.priority-option.selected {
++    border-color: currentColor;
++}
++
++.priority-option.high {
++    color: var(--color-priority-high);
++}
++
++.priority-option.high.selected {
++    background: rgba(239, 68, 68, 0.15);
++}
++
++.priority-option.medium {
++    color: var(--color-priority-medium);
++}
++
++.priority-option.medium.selected {
++    background: rgba(245, 158, 11, 0.15);
++}
++
++.priority-option.low {
++    color: var(--color-priority-low);
++}
++
++.priority-option.low.selected {
++    background: rgba(34, 197, 94, 0.15);
++}
++
++.priority-dot {
++    width: 8px;
++    height: 8px;
++    border-radius: 50%;
++    background: currentColor;
++}
++
++.priority-label {
++    font-size: 0.875rem;
++    font-weight: 500;
++    text-transform: capitalize;
++}
++
++/* Checkbox */
++.checkbox-label {
++    display: flex;
++    align-items: flex-start;
++    gap: var(--spacing-sm);
++    cursor: pointer;
++}
++
++.checkbox-label input {
++    position: absolute;
++    opacity: 0;
++}
++
++.checkbox-custom {
++    width: 18px;
++    height: 18px;
++    border: 2px solid rgba(255, 255, 255, 0.3);
++    border-radius: 4px;
++    flex-shrink: 0;
++    position: relative;
++    transition: all var(--transition-fast);
++}
++
++.checkbox-label input:checked+.checkbox-custom {
++    background: var(--color-accent-primary);
++    border-color: var(--color-accent-primary);
++}
++
++.checkbox-label input:checked+.checkbox-custom::after {
++    content: '';
++    position: absolute;
++    left: 5px;
++    top: 2px;
++    width: 4px;
++    height: 8px;
++    border: solid white;
++    border-width: 0 2px 2px 0;
++    transform: rotate(45deg);
++}
++
++.checkbox-text {
++    font-size: 0.875rem;
++    color: var(--color-text-secondary);
++    line-height: 1.4;
++}
++
++/* Form Footer */
++.form-footer {
++    display: flex;
++    justify-content: flex-end;
++    gap: var(--spacing-md);
++    padding: var(--spacing-lg);
++    border-top: var(--border-glass);
++    background: rgba(0, 0, 0, 0.2);
++}
++
++/* Button Spinner */
++.btn-spinner {
++    width: 16px;
++    height: 16px;
++    border: 2px solid rgba(255, 255, 255, 0.3);
++    border-top-color: white;
++    border-radius: 50%;
++    animation: spin 0.8s linear infinite;
++}
++
++@keyframes spin {
++    to {
++        transform: rotate(360deg);
++    }
++}
++
++/* Disabled state */
++.btn:disabled {
++    opacity: 0.5;
++    cursor: not-allowed;
++    transform: none;
++}
+\ No newline at end of file
+diff -ruN repository_before/frontend/src/components/TaskForm.jsx repository_after/frontend/src/components/TaskForm.jsx
+--- repository_before/frontend/src/components/TaskForm.jsx	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/src/components/TaskForm.jsx	2026-02-03 21:17:58.935158400 +0300
+@@ -0,0 +1,163 @@
++import { useState } from 'react'
++import './TaskForm.css'
++
++function TaskForm({ onSubmit, onCancel }) {
++    const [formData, setFormData] = useState({
++        name: '',
++        task_type: 'data_export',
++        priority: 'medium',
++        total_steps: 100,
++    })
++    const [isSubmitting, setIsSubmitting] = useState(false)
++    const [submitFailing, setSubmitFailing] = useState(false)
++
++    const handleChange = (e) => {
++        const { name, value } = e.target
++        setFormData(prev => ({
++            ...prev,
++            [name]: name === 'total_steps' ? parseInt(value) || 100 : value
++        }))
++    }
++
++    const handleSubmit = async (e) => {
++        e.preventDefault()
++        if (!formData.name.trim()) return
++
++        setIsSubmitting(true)
++        try {
++            await onSubmit(formData, submitFailing)
++        } catch (err) {
++            console.error('Form submit error:', err)
++        } finally {
++            setIsSubmitting(false)
++        }
++    }
++
++    return (
++        <form className="task-form" onSubmit={handleSubmit}>
++            <div className="form-body">
++                {/* Task Name */}
++                <div className="form-group">
++                    <label className="form-label" htmlFor="name">Task Name</label>
++                    <input
++                        type="text"
++                        id="name"
++                        name="name"
++                        className="form-input"
++                        placeholder="e.g., Export Q4 Sales Report"
++                        value={formData.name}
++                        onChange={handleChange}
++                        required
++                        autoFocus
++                    />
++                </div>
++
++                {/* Task Type */}
++                <div className="form-group">
++                    <label className="form-label" htmlFor="task_type">Task Type</label>
++                    <select
++                        id="task_type"
++                        name="task_type"
++                        className="form-select"
++                        value={formData.task_type}
++                        onChange={handleChange}
++                    >
++                        <option value="data_export">Data Export</option>
++                        <option value="pdf_generation">PDF Generation</option>
++                        <option value="report_generation">Report Generation</option>
++                        <option value="generic">Generic Task</option>
++                    </select>
++                </div>
++
++                {/* Priority */}
++                <div className="form-group">
++                    <label className="form-label">Priority</label>
++                    <div className="priority-options">
++                        {['high', 'medium', 'low'].map(priority => (
++                            <label
++                                key={priority}
++                                className={`priority-option ${priority} ${formData.priority === priority ? 'selected' : ''}`}
++                            >
++                                <input
++                                    type="radio"
++                                    name="priority"
++                                    value={priority}
++                                    checked={formData.priority === priority}
++                                    onChange={handleChange}
++                                />
++                                <span className="priority-dot"></span>
++                                <span className="priority-label">{priority}</span>
++                            </label>
++                        ))}
++                    </div>
++                </div>
++
++                {/* Total Steps */}
++                <div className="form-group">
++                    <label className="form-label" htmlFor="total_steps">
++                        Processing Steps
++                        <span className="form-hint"> (affects task duration)</span>
++                    </label>
++                    <input
++                        type="number"
++                        id="total_steps"
++                        name="total_steps"
++                        className="form-input"
++                        min="10"
++                        max="1000"
++                        value={formData.total_steps}
++                        onChange={handleChange}
++                    />
++                </div>
++
++                {/* Fail Checkbox - for testing */}
++                <div className="form-group">
++                    <label className="checkbox-label">
++                        <input
++                            type="checkbox"
++                            checked={submitFailing}
++                            onChange={(e) => setSubmitFailing(e.target.checked)}
++                        />
++                        <span className="checkbox-custom"></span>
++                        <span className="checkbox-text">
++                            Create a failing task
++                            <span className="form-hint"> (for testing error handling)</span>
++                        </span>
++                    </label>
++                </div>
++            </div>
++
++            <div className="form-footer">
++                <button
++                    type="button"
++                    className="btn btn-secondary"
++                    onClick={onCancel}
++                    disabled={isSubmitting}
++                >
++                    Cancel
++                </button>
++                <button
++                    type="submit"
++                    className="btn btn-primary"
++                    disabled={isSubmitting || !formData.name.trim()}
++                >
++                    {isSubmitting ? (
++                        <>
++                            <span className="btn-spinner"></span>
++                            Submitting...
++                        </>
++                    ) : (
++                        <>
++                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
++                                <path d="M12 5v14M5 12h14" />
++                            </svg>
++                            Create Task
++                        </>
++                    )}
++                </button>
++            </div>
++        </form>
++    )
++}
++
++export default TaskForm
+diff -ruN repository_before/frontend/src/components/TaskList.css repository_after/frontend/src/components/TaskList.css
+--- repository_before/frontend/src/components/TaskList.css	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/src/components/TaskList.css	2026-02-03 21:17:46.895040000 +0300
+@@ -0,0 +1,261 @@
++/* TaskList Component Styles */
++
++.task-list {
++    display: flex;
++    flex-direction: column;
++    gap: var(--spacing-md);
++}
++
++/* Empty State */
++.empty-state {
++    display: flex;
++    flex-direction: column;
++    align-items: center;
++    justify-content: center;
++    padding: var(--spacing-2xl);
++    text-align: center;
++    color: var(--color-text-muted);
++}
++
++.empty-state svg {
++    margin-bottom: var(--spacing-lg);
++    opacity: 0.5;
++}
++
++.empty-state h3 {
++    font-size: 1.125rem;
++    margin-bottom: var(--spacing-sm);
++    color: var(--color-text-secondary);
++}
++
++.empty-state p {
++    font-size: 0.875rem;
++}
++
++/* Task Card */
++.task-card {
++    padding: var(--spacing-lg);
++    position: relative;
++    overflow: hidden;
++}
++
++.task-card::before {
++    content: '';
++    position: absolute;
++    left: 0;
++    top: 0;
++    bottom: 0;
++    width: 4px;
++}
++
++.task-card.priority-high::before {
++    background: var(--color-priority-high);
++}
++
++.task-card.priority-medium::before {
++    background: var(--color-priority-medium);
++}
++
++.task-card.priority-low::before {
++    background: var(--color-priority-low);
++}
++
++/* Task Header */
++.task-header {
++    display: flex;
++    align-items: flex-start;
++    gap: var(--spacing-md);
++    margin-bottom: var(--spacing-md);
++}
++
++.task-icon {
++    width: 40px;
++    height: 40px;
++    display: flex;
++    align-items: center;
++    justify-content: center;
++    background: rgba(255, 255, 255, 0.05);
++    border-radius: var(--radius-md);
++    color: var(--color-text-secondary);
++    flex-shrink: 0;
++}
++
++.task-info {
++    flex: 1;
++    min-width: 0;
++}
++
++.task-name {
++    font-size: 1rem;
++    font-weight: 600;
++    margin-bottom: var(--spacing-xs);
++    white-space: nowrap;
++    overflow: hidden;
++    text-overflow: ellipsis;
++}
++
++.task-meta {
++    display: flex;
++    gap: var(--spacing-md);
++    font-size: 0.75rem;
++    color: var(--color-text-muted);
++}
++
++.task-id {
++    font-family: monospace;
++}
++
++.task-type {
++    text-transform: capitalize;
++}
++
++.task-badges {
++    display: flex;
++    gap: var(--spacing-sm);
++    flex-shrink: 0;
++}
++
++/* Task Body */
++.task-body {
++    margin-bottom: var(--spacing-md);
++}
++
++.task-progress {
++    margin-bottom: var(--spacing-sm);
++}
++
++.progress-header {
++    display: flex;
++    justify-content: space-between;
++    align-items: center;
++    margin-bottom: var(--spacing-xs);
++}
++
++.progress-label {
++    font-size: 0.75rem;
++    color: var(--color-text-secondary);
++}
++
++.progress-value {
++    font-size: 0.75rem;
++    font-weight: 600;
++    color: var(--color-text-primary);
++}
++
++/* Error Display */
++.task-error {
++    display: flex;
++    align-items: flex-start;
++    gap: var(--spacing-sm);
++    padding: var(--spacing-sm) var(--spacing-md);
++    background: rgba(239, 68, 68, 0.1);
++    border: 1px solid rgba(239, 68, 68, 0.2);
++    border-radius: var(--radius-sm);
++    color: #f87171;
++}
++
++.task-error svg {
++    flex-shrink: 0;
++    margin-top: 2px;
++}
++
++.error-message {
++    font-size: 0.75rem;
++    line-height: 1.4;
++    word-break: break-word;
++}
++
++/* Result Display */
++.task-result {
++    display: flex;
++    align-items: flex-start;
++    gap: var(--spacing-sm);
++    padding: var(--spacing-sm) var(--spacing-md);
++    background: rgba(34, 197, 94, 0.1);
++    border: 1px solid rgba(34, 197, 94, 0.2);
++    border-radius: var(--radius-sm);
++    color: #4ade80;
++}
++
++.task-result svg {
++    flex-shrink: 0;
++    margin-top: 2px;
++}
++
++.result-message {
++    font-size: 0.75rem;
++    line-height: 1.4;
++    word-break: break-word;
++}
++
++/* Task Footer */
++.task-footer {
++    display: flex;
++    justify-content: space-between;
++    align-items: center;
++    padding-top: var(--spacing-md);
++    border-top: var(--border-glass);
++}
++
++.task-timestamps {
++    display: flex;
++    gap: var(--spacing-lg);
++}
++
++.timestamp {
++    font-size: 0.7rem;
++    color: var(--color-text-muted);
++}
++
++.timestamp-label {
++    margin-right: var(--spacing-xs);
++    font-weight: 500;
++}
++
++.task-actions {
++    display: flex;
++    gap: var(--spacing-sm);
++}
++
++.btn-icon {
++    display: flex;
++    align-items: center;
++    justify-content: center;
++    width: 32px;
++    height: 32px;
++    padding: 0;
++    background: transparent;
++    border: none;
++    border-radius: var(--radius-sm);
++    color: var(--color-text-muted);
++    cursor: pointer;
++    transition: all var(--transition-fast);
++}
++
++.btn-icon:hover {
++    background: rgba(239, 68, 68, 0.1);
++    color: #f87171;
++}
++
++/* Responsive */
++@media (max-width: 640px) {
++    .task-header {
++        flex-wrap: wrap;
++    }
++
++    .task-badges {
++        width: 100%;
++        margin-top: var(--spacing-sm);
++    }
++
++    .task-footer {
++        flex-direction: column;
++        align-items: flex-start;
++        gap: var(--spacing-sm);
++    }
++
++    .task-timestamps {
++        flex-direction: column;
++        gap: var(--spacing-xs);
++    }
++}
+\ No newline at end of file
+diff -ruN repository_before/frontend/src/components/TaskList.jsx repository_after/frontend/src/components/TaskList.jsx
+--- repository_before/frontend/src/components/TaskList.jsx	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/src/components/TaskList.jsx	2026-02-03 21:17:02.405025700 +0300
+@@ -0,0 +1,189 @@
++import ProgressBar from './ProgressBar'
++import './TaskList.css'
++
++function TaskList({ tasks, onDelete }) {
++    if (!tasks || tasks.length === 0) {
++        return (
++            <div className="empty-state glass-card">
++                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
++                    <rect x="3" y="3" width="18" height="18" rx="2" />
++                    <path d="M9 9h6M9 13h6M9 17h4" />
++                </svg>
++                <h3>No Tasks Yet</h3>
++                <p>Create a new task to get started with the priority queue</p>
++            </div>
++        )
++    }
++
++    const getStatusBadgeClass = (status) => {
++        const statusMap = {
++            'PENDING': 'badge-pending',
++            'STARTED': 'badge-started',
++            'PROGRESS': 'badge-progress',
++            'SUCCESS': 'badge-success',
++            'FAILURE': 'badge-failure',
++            'RETRY': 'badge-retry',
++        }
++        return statusMap[status] || 'badge-pending'
++    }
++
++    const getPriorityBadgeClass = (priority) => {
++        const priorityMap = {
++            'high': 'badge-high',
++            'medium': 'badge-medium',
++            'low': 'badge-low',
++        }
++        return priorityMap[priority] || 'badge-medium'
++    }
++
++    const formatDate = (dateString) => {
++        if (!dateString) return '-'
++        const date = new Date(dateString)
++        return date.toLocaleString()
++    }
++
++    const getTaskTypeIcon = (taskType) => {
++        switch (taskType) {
++            case 'data_export':
++                return (
++                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
++                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
++                        <polyline points="7,10 12,15 17,10" />
++                        <line x1="12" y1="15" x2="12" y2="3" />
++                    </svg>
++                )
++            case 'pdf_generation':
++                return (
++                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
++                        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
++                        <polyline points="14,2 14,8 20,8" />
++                        <line x1="16" y1="13" x2="8" y2="13" />
++                        <line x1="16" y1="17" x2="8" y2="17" />
++                    </svg>
++                )
++            case 'report_generation':
++                return (
++                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
++                        <line x1="18" y1="20" x2="18" y2="10" />
++                        <line x1="12" y1="20" x2="12" y2="4" />
++                        <line x1="6" y1="20" x2="6" y2="14" />
++                    </svg>
++                )
++            default:
++                return (
++                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
++                        <rect x="3" y="3" width="18" height="18" rx="2" />
++                        <path d="M9 9h6M9 13h6M9 17h4" />
++                    </svg>
++                )
++        }
++    }
++
++    return (
++        <div className="task-list">
++            {tasks.map((task, index) => (
++                <div
++                    key={task.task_id}
++                    className={`task-card glass-card priority-${task.priority} animate-fade-in`}
++                    style={{ animationDelay: `${index * 50}ms` }}
++                >
++                    <div className="task-header">
++                        <div className="task-icon">
++                            {getTaskTypeIcon(task.task_type)}
++                        </div>
++                        <div className="task-info">
++                            <h4 className="task-name">{task.name}</h4>
++                            <div className="task-meta">
++                                <span className="task-id" title={task.task_id}>
++                                    ID: {task.task_id.substring(0, 8)}...
++                                </span>
++                                <span className="task-type">{task.task_type.replace('_', ' ')}</span>
++                            </div>
++                        </div>
++                        <div className="task-badges">
++                            <span className={`badge ${getPriorityBadgeClass(task.priority)}`}>
++                                {task.priority}
++                            </span>
++                            <span className={`badge ${getStatusBadgeClass(task.status)}`}>
++                                {task.status}
++                            </span>
++                        </div>
++                    </div>
++
++                    <div className="task-body">
++                        {/* Progress section */}
++                        {['STARTED', 'PROGRESS', 'SUCCESS'].includes(task.status) && (
++                            <div className="task-progress">
++                                <div className="progress-header">
++                                    <span className="progress-label">
++                                        {task.progress_message || `Progress: ${task.progress}%`}
++                                    </span>
++                                    <span className="progress-value">{task.progress}%</span>
++                                </div>
++                                <ProgressBar
++                                    progress={task.progress}
++                                    priority={task.priority}
++                                />
++                            </div>
++                        )}
++
++                        {/* Error display for failed tasks */}
++                        {task.status === 'FAILURE' && task.error && (
++                            <div className="task-error">
++                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
++                                    <circle cx="12" cy="12" r="10" />
++                                    <path d="M12 8v4M12 16h.01" />
++                                </svg>
++                                <span className="error-message">{task.error}</span>
++                            </div>
++                        )}
++
++                        {/* Result display for successful tasks */}
++                        {task.status === 'SUCCESS' && task.result && (
++                            <div className="task-result">
++                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
++                                    <path d="M22 11.08V12a10 10 0 11-5.93-9.14" />
++                                    <path d="M22 4L12 14.01l-3-3" />
++                                </svg>
++                                <span className="result-message">
++                                    {typeof task.result === 'object'
++                                        ? JSON.stringify(task.result)
++                                        : task.result.substring(0, 100)}
++                                </span>
++                            </div>
++                        )}
++                    </div>
++
++                    <div className="task-footer">
++                        <div className="task-timestamps">
++                            <span className="timestamp">
++                                <span className="timestamp-label">Created:</span>
++                                {formatDate(task.created_at)}
++                            </span>
++                            {task.completed_at && (
++                                <span className="timestamp">
++                                    <span className="timestamp-label">Completed:</span>
++                                    {formatDate(task.completed_at)}
++                                </span>
++                            )}
++                        </div>
++                        <div className="task-actions">
++                            <button
++                                className="btn-icon"
++                                onClick={() => onDelete(task.task_id)}
++                                title="Delete task"
++                            >
++                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
++                                    <polyline points="3 6 5 6 21 6" />
++                                    <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
++                                </svg>
++                            </button>
++                        </div>
++                    </div>
++                </div>
++            ))}
++        </div>
++    )
++}
++
++export default TaskList
+diff -ruN repository_before/frontend/src/main.jsx repository_after/frontend/src/main.jsx
+--- repository_before/frontend/src/main.jsx	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/src/main.jsx	2026-02-03 21:15:29.130862600 +0300
+@@ -0,0 +1,10 @@
++import React from 'react'
++import ReactDOM from 'react-dom/client'
++import App from './App.jsx'
++import './styles/index.css'
++
++ReactDOM.createRoot(document.getElementById('root')).render(
++    <React.StrictMode>
++        <App />
++    </React.StrictMode>,
++)
+diff -ruN repository_before/frontend/src/styles/index.css repository_after/frontend/src/styles/index.css
+--- repository_before/frontend/src/styles/index.css	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/src/styles/index.css	2026-02-03 21:15:31.475436800 +0300
+@@ -0,0 +1,429 @@
++/* ============================================
++   Global Styles - Task Priority Dashboard
++   Modern glassmorphism design with dark theme
++   ============================================ */
++
++:root {
++  /* Color palette */
++  --color-bg-primary: #0a0a0f;
++  --color-bg-secondary: #12121a;
++  --color-bg-card: rgba(20, 20, 30, 0.8);
++  --color-bg-glass: rgba(255, 255, 255, 0.05);
++  
++  --color-text-primary: #ffffff;
++  --color-text-secondary: #a0a0b0;
++  --color-text-muted: #606070;
++  
++  --color-accent-primary: #6366f1;
++  --color-accent-secondary: #818cf8;
++  --color-accent-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
++  
++  /* Priority colors */
++  --color-priority-high: #ef4444;
++  --color-priority-medium: #f59e0b;
++  --color-priority-low: #22c55e;
++  
++  /* Status colors */
++  --color-status-pending: #64748b;
++  --color-status-started: #3b82f6;
++  --color-status-progress: #6366f1;
++  --color-status-success: #22c55e;
++  --color-status-failure: #ef4444;
++  --color-status-retry: #f59e0b;
++  
++  /* Borders & shadows */
++  --border-glass: 1px solid rgba(255, 255, 255, 0.1);
++  --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.3);
++  --shadow-glow: 0 0 40px rgba(99, 102, 241, 0.15);
++  
++  /* Spacing */
++  --spacing-xs: 0.25rem;
++  --spacing-sm: 0.5rem;
++  --spacing-md: 1rem;
++  --spacing-lg: 1.5rem;
++  --spacing-xl: 2rem;
++  --spacing-2xl: 3rem;
++  
++  /* Border radius */
++  --radius-sm: 0.375rem;
++  --radius-md: 0.75rem;
++  --radius-lg: 1rem;
++  --radius-xl: 1.5rem;
++  
++  /* Transitions */
++  --transition-fast: 150ms ease;
++  --transition-base: 250ms ease;
++  --transition-slow: 400ms ease;
++}
++
++* {
++  margin: 0;
++  padding: 0;
++  box-sizing: border-box;
++}
++
++html {
++  font-size: 16px;
++}
++
++body {
++  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
++  background: var(--color-bg-primary);
++  color: var(--color-text-primary);
++  line-height: 1.6;
++  min-height: 100vh;
++  overflow-x: hidden;
++}
++
++/* Background gradient animation */
++body::before {
++  content: '';
++  position: fixed;
++  top: 0;
++  left: 0;
++  width: 100%;
++  height: 100%;
++  background: 
++    radial-gradient(ellipse at 20% 20%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
++    radial-gradient(ellipse at 80% 80%, rgba(139, 92, 246, 0.1) 0%, transparent 50%),
++    radial-gradient(ellipse at 50% 50%, rgba(99, 102, 241, 0.05) 0%, transparent 70%);
++  pointer-events: none;
++  z-index: -1;
++}
++
++#root {
++  min-height: 100vh;
++}
++
++/* ============================================
++   Typography
++   ============================================ */
++
++h1, h2, h3, h4, h5, h6 {
++  font-weight: 600;
++  line-height: 1.3;
++  color: var(--color-text-primary);
++}
++
++h1 { font-size: 2.5rem; }
++h2 { font-size: 2rem; }
++h3 { font-size: 1.5rem; }
++h4 { font-size: 1.25rem; }
++
++p {
++  color: var(--color-text-secondary);
++}
++
++/* ============================================
++   Glass Card Component
++   ============================================ */
++
++.glass-card {
++  background: var(--color-bg-glass);
++  backdrop-filter: blur(20px);
++  -webkit-backdrop-filter: blur(20px);
++  border: var(--border-glass);
++  border-radius: var(--radius-lg);
++  box-shadow: var(--shadow-glass);
++  transition: transform var(--transition-base), box-shadow var(--transition-base);
++}
++
++.glass-card:hover {
++  transform: translateY(-2px);
++  box-shadow: var(--shadow-glass), var(--shadow-glow);
++}
++
++/* ============================================
++   Buttons
++   ============================================ */
++
++.btn {
++  display: inline-flex;
++  align-items: center;
++  justify-content: center;
++  gap: var(--spacing-sm);
++  padding: var(--spacing-sm) var(--spacing-lg);
++  font-size: 0.875rem;
++  font-weight: 500;
++  border: none;
++  border-radius: var(--radius-md);
++  cursor: pointer;
++  transition: all var(--transition-fast);
++  text-decoration: none;
++}
++
++.btn-primary {
++  background: var(--color-accent-gradient);
++  color: white;
++  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
++}
++
++.btn-primary:hover {
++  transform: translateY(-1px);
++  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
++}
++
++.btn-secondary {
++  background: var(--color-bg-glass);
++  border: var(--border-glass);
++  color: var(--color-text-primary);
++}
++
++.btn-secondary:hover {
++  background: rgba(255, 255, 255, 0.1);
++}
++
++.btn-danger {
++  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
++  color: white;
++}
++
++/* ============================================
++   Form Elements
++   ============================================ */
++
++.form-group {
++  margin-bottom: var(--spacing-md);
++}
++
++.form-label {
++  display: block;
++  margin-bottom: var(--spacing-xs);
++  font-size: 0.875rem;
++  font-weight: 500;
++  color: var(--color-text-secondary);
++}
++
++.form-input,
++.form-select {
++  width: 100%;
++  padding: var(--spacing-sm) var(--spacing-md);
++  font-size: 0.875rem;
++  font-family: inherit;
++  background: rgba(255, 255, 255, 0.05);
++  border: 1px solid rgba(255, 255, 255, 0.1);
++  border-radius: var(--radius-md);
++  color: var(--color-text-primary);
++  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
++}
++
++.form-input:focus,
++.form-select:focus {
++  outline: none;
++  border-color: var(--color-accent-primary);
++  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
++}
++
++.form-input::placeholder {
++  color: var(--color-text-muted);
++}
++
++/* ============================================
++   Status Badges
++   ============================================ */
++
++.badge {
++  display: inline-flex;
++  align-items: center;
++  padding: var(--spacing-xs) var(--spacing-sm);
++  font-size: 0.75rem;
++  font-weight: 600;
++  text-transform: uppercase;
++  letter-spacing: 0.05em;
++  border-radius: var(--radius-sm);
++}
++
++.badge-pending {
++  background: rgba(100, 116, 139, 0.2);
++  color: #94a3b8;
++}
++
++.badge-started {
++  background: rgba(59, 130, 246, 0.2);
++  color: #60a5fa;
++}
++
++.badge-progress {
++  background: rgba(99, 102, 241, 0.2);
++  color: #818cf8;
++}
++
++.badge-success {
++  background: rgba(34, 197, 94, 0.2);
++  color: #4ade80;
++}
++
++.badge-failure {
++  background: rgba(239, 68, 68, 0.2);
++  color: #f87171;
++}
++
++.badge-retry {
++  background: rgba(245, 158, 11, 0.2);
++  color: #fbbf24;
++}
++
++/* Priority badges */
++.badge-high {
++  background: rgba(239, 68, 68, 0.2);
++  color: #f87171;
++}
++
++.badge-medium {
++  background: rgba(245, 158, 11, 0.2);
++  color: #fbbf24;
++}
++
++.badge-low {
++  background: rgba(34, 197, 94, 0.2);
++  color: #4ade80;
++}
++
++/* ============================================
++   Progress Bar
++   ============================================ */
++
++.progress-container {
++  width: 100%;
++  height: 8px;
++  background: rgba(255, 255, 255, 0.1);
++  border-radius: 4px;
++  overflow: hidden;
++}
++
++.progress-bar {
++  height: 100%;
++  border-radius: 4px;
++  transition: width var(--transition-base);
++  position: relative;
++  overflow: hidden;
++}
++
++.progress-bar::after {
++  content: '';
++  position: absolute;
++  top: 0;
++  left: 0;
++  width: 100%;
++  height: 100%;
++  background: linear-gradient(
++    90deg,
++    transparent,
++    rgba(255, 255, 255, 0.3),
++    transparent
++  );
++  animation: shimmer 2s infinite;
++}
++
++@keyframes shimmer {
++  0% { transform: translateX(-100%); }
++  100% { transform: translateX(100%); }
++}
++
++.progress-bar.high {
++  background: linear-gradient(90deg, #ef4444, #f87171);
++}
++
++.progress-bar.medium {
++  background: linear-gradient(90deg, #f59e0b, #fbbf24);
++}
++
++.progress-bar.low {
++  background: linear-gradient(90deg, #22c55e, #4ade80);
++}
++
++.progress-bar.default {
++  background: var(--color-accent-gradient);
++}
++
++/* ============================================
++   Animations
++   ============================================ */
++
++@keyframes fadeIn {
++  from {
++    opacity: 0;
++    transform: translateY(10px);
++  }
++  to {
++    opacity: 1;
++    transform: translateY(0);
++  }
++}
++
++@keyframes pulse {
++  0%, 100% {
++    opacity: 1;
++  }
++  50% {
++    opacity: 0.5;
++  }
++}
++
++@keyframes spin {
++  from {
++    transform: rotate(0deg);
++  }
++  to {
++    transform: rotate(360deg);
++  }
++}
++
++.animate-fade-in {
++  animation: fadeIn 0.3s ease forwards;
++}
++
++.animate-pulse {
++  animation: pulse 2s ease-in-out infinite;
++}
++
++.animate-spin {
++  animation: spin 1s linear infinite;
++}
++
++/* ============================================
++   Scrollbar
++   ============================================ */
++
++::-webkit-scrollbar {
++  width: 8px;
++  height: 8px;
++}
++
++::-webkit-scrollbar-track {
++  background: transparent;
++}
++
++::-webkit-scrollbar-thumb {
++  background: rgba(255, 255, 255, 0.2);
++  border-radius: 4px;
++}
++
++::-webkit-scrollbar-thumb:hover {
++  background: rgba(255, 255, 255, 0.3);
++}
++
++/* ============================================
++   Utilities
++   ============================================ */
++
++.text-center { text-align: center; }
++.text-right { text-align: right; }
++
++.mt-1 { margin-top: var(--spacing-sm); }
++.mt-2 { margin-top: var(--spacing-md); }
++.mt-3 { margin-top: var(--spacing-lg); }
++.mt-4 { margin-top: var(--spacing-xl); }
++
++.mb-1 { margin-bottom: var(--spacing-sm); }
++.mb-2 { margin-bottom: var(--spacing-md); }
++.mb-3 { margin-bottom: var(--spacing-lg); }
++.mb-4 { margin-bottom: var(--spacing-xl); }
++
++.flex { display: flex; }
++.flex-col { flex-direction: column; }
++.items-center { align-items: center; }
++.justify-between { justify-content: space-between; }
++.gap-1 { gap: var(--spacing-sm); }
++.gap-2 { gap: var(--spacing-md); }
++.gap-3 { gap: var(--spacing-lg); }
+diff -ruN repository_before/frontend/vite.config.js repository_after/frontend/vite.config.js
+--- repository_before/frontend/vite.config.js	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/vite.config.js	2026-02-03 21:14:57.428593800 +0300
+@@ -0,0 +1,24 @@
++import { defineConfig } from 'vite'
++import react from '@vitejs/plugin-react'
++
++export default defineConfig({
++    plugins: [react()],
++    server: {
++        host: '0.0.0.0',
++        port: 3000,
++        proxy: {
++            '/api': {
++                target: 'http://backend:8000',
++                changeOrigin: true,
++            },
++            '/ws': {
++                target: 'ws://backend:8000',
++                ws: true,
++            },
++        },
++    },
++    build: {
++        outDir: 'dist',
++        sourcemap: false,
++    },
++})

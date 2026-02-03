@@ -1,0 +1,15 @@
+/* ProgressBar Component Styles - already in index.css */
+/* This file exists for component modularity */
+
+/* Additional progress bar animations */
+.progress-bar {
+    position: relative;
+}
+
+.progress-bar.completed {
+    animation: none;
+}
+
+.progress-bar.completed::after {
+    display: none;
+}

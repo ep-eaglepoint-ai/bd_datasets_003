@@ -1,11 +1,19 @@
 {
-            "instance_id": "E6BOS4",
-            "problem_statement": "We require a new administrative capability to manage long-running data exports and high-intensity reporting tasks without impacting the performance of the primary web application. This feature must provide users with a centralized dashboard to submit tasks with varying business priorities and track their execution progress in real-time across a distributed worker pool using celery, fast api and react",
-            "base_commit": "repository_before/",
-            "test_patch": "tests/",
-            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/e6bos4-clelery-task-priority-dashboard",
-            "environment_setup": "Dockerfile",
-            "FAIL_TO_PASS": [],
-            "PASS_TO_PASS": []
-        }
-        
+    "instance_id": "E6BOS4",
+    "problem_statement": "Build a Distributed Task Priority Dashboard for managing long-running background tasks with priority-based queuing using FastAPI, Celery, Redis, PostgreSQL, and React.",
+    "base_commit": "repository_before/",
+    "test_patch": "tests/",
+    "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/e6bos4-clelery-task-priority-dashboard",
+    "environment_setup": "Dockerfile",
+    "FAIL_TO_PASS": [
+        "tests/test_priority_queue.py::TestPriorityQueueConfiguration::test_three_priority_queues_exist",
+        "tests/test_priority_queue.py::TestPriorityRouting::test_high_priority_routes_to_high_queue",
+        "tests/test_priority_queue.py::TestTenLowOneHighScenario::test_high_priority_processed_before_low_priority",
+        "tests/test_failure_display.py::TestErrorFieldStorage::test_task_has_error_field",
+        "tests/test_failure_display.py::TestToDictIncludesError::test_to_dict_includes_error",
+        "tests/test_failure_display.py::TestDashboardFailureDisplay::test_failure_has_visible_error_message",
+        "tests/test_api_schemas.py::TestTaskCreateSchema::test_create_with_all_fields",
+        "tests/test_celery_tasks.py::TestCeleryTaskConfiguration::test_execute_task_is_registered"
+    ],
+    "PASS_TO_PASS": []
+}

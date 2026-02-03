@@ -1,8 +1,9 @@
-# Minimal dependencies for evaluation tests
-pytest>=8.0.0
+fastapi>=0.109.0
+uvicorn>=0.27.0
 celery[redis]>=5.3.0
 sqlalchemy[asyncio]>=2.0.0
 asyncpg>=0.29.0
 psycopg2-binary>=2.9.0
 pydantic>=2.0.0
 pydantic-settings>=2.0.0
+websockets>=12.0

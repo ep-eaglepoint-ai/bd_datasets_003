@@ -1,9 +1,89 @@
-
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
-  app:
-    build: .
-    command: pytest -q tests
+services:
+  redis:
+    image: redis:7.4.2-alpine
+    ports:
+      - "6379:6379"
     volumes:
-      - .:/app
+      - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: taskdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./repository_after/backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/taskdb
+      - DATABASE_URL_SYNC=postgresql://postgres:postgres@postgres:5432/taskdb
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=db+postgresql://postgres:postgres@postgres:5432/taskdb
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ./repository_after/backend
+    command: celery -A app.celery_app worker --loglevel=info -Q high,medium,low -c 4
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/taskdb
+      - DATABASE_URL_SYNC=postgresql://postgres:postgres@postgres:5432/taskdb
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=db+postgresql://postgres:postgres@postgres:5432/taskdb
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./repository_after/frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+  after:
+    build:
+      context: ./repository_after/backend
+    command: echo "Application stack is running. Use 'docker-compose up' to start all services."
+    depends_on:
+      - backend
+      - worker
+      - frontend
+
+  evaluation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./evaluation/reports:/app/evaluation/reports
+
+volumes:
+  redis_data:
+  postgres_data:
