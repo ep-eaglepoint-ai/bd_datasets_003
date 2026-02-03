@@ -1,36 +1,14 @@
 import pytest
-import threading
 from concurrent.futures import ThreadPoolExecutor
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from repository_after import crud, models, schemas
+from repository_after import crud, schemas
 from repository_after.database import Base
-
-from sqlalchemy.pool import StaticPool
-
-# Setup file-based SQLite for concurrency unit test to avoid memory sharing issues
-# and better simulate concurrent access.
-SQLALCHEMY_DATABASE_URL = "sqlite:///test_concurrency.db"
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, 
-    connect_args={"check_same_thread": False}
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
-
-import os
-if os.path.exists("test_concurrency.db"):
-    os.remove("test_concurrency.db")
+from conftest import engine, TestingSessionLocal
 
 @pytest.fixture
 def db_session_factory():
     Base.metadata.create_all(bind=engine)
     yield TestingSessionLocal
     Base.metadata.drop_all(bind=engine)
-    if os.path.exists("test_concurrency.db"):
-        try:
-            os.remove("test_concurrency.db")
-        except:
-            pass
 
 def test_unit_crud_concurrency(db_session_factory):
     # Setup initial doc

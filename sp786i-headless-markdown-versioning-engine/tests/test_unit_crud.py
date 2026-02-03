@@ -1,23 +1,6 @@
-import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from repository_after import crud, models, schemas
-from repository_after.database import Base
+from repository_after import crud, schemas, models
 
-# Use in-memory SQLite for CRUD unit tests to ensure isolation and speed
-SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-@pytest.fixture
-def db_session():
-    Base.metadata.create_all(bind=engine)
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-        Base.metadata.drop_all(bind=engine)
+# Use db_session fixture from conftest.py which uses PostgreSQL
 
 def test_unit_create_document(db_session):
     # Requirement 1: Immutability / Creation

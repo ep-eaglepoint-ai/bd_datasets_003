@@ -35,3 +35,16 @@ def client():
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
+
+@pytest.fixture
+def db_session():
+    Base.metadata.create_all(bind=engine)
+    db = TestingSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+        # For unit tests, we might want to drop only for this specific test
+        # but dropping all is safer to ensure clean state if not using transactions.
+        # Alternatively, we can use a transaction and roll back.
+        Base.metadata.drop_all(bind=engine)
