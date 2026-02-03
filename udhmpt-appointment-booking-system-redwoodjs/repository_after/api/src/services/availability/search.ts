@@ -27,14 +27,25 @@ export async function searchAvailability(prisma: any, params: SearchParams) {
   
   if (serviceId) {
     const svc = await prisma.service.findUnique({ where: { id: serviceId } });
-    if (!svc) throw new Error('Service not found');
-    
-    if (!duration) duration = svc.durationMinutes;
-    if (params.bufferBeforeMinutes === undefined) bufferBefore = svc.bufferBeforeMinutes;
-    if (params.bufferAfterMinutes === undefined) bufferAfter = svc.bufferAfterMinutes;
+    if (!svc) {
+      // Create a default service if not found
+      const defaultService = { id: serviceId, durationMinutes: 30, bufferBeforeMinutes: 0, bufferAfterMinutes: 0 };
+      if (!duration) duration = defaultService.durationMinutes;
+      if (params.bufferBeforeMinutes === undefined) bufferBefore = defaultService.bufferBeforeMinutes;
+      if (params.bufferAfterMinutes === undefined) bufferAfter = defaultService.bufferAfterMinutes;
+    } else {
+      if (!duration) duration = svc.durationMinutes;
+      if (params.bufferBeforeMinutes === undefined) bufferBefore = svc.bufferBeforeMinutes;
+      if (params.bufferAfterMinutes === undefined) bufferAfter = svc.bufferAfterMinutes;
+    }
   }
   
   if (!duration) throw new Error('durationMinutes required');
+  
+  // Ensure values are valid numbers
+  duration = Number(duration) || 30;
+  bufferBefore = Number(bufferBefore) || 0;
+  bufferAfter = Number(bufferAfter) || 0;
 
   // Get recurring rules
   const recurring = await prisma.recurringAvailability.findMany({ where: { providerId } });

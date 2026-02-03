@@ -4,6 +4,7 @@ import { PrismaLike } from '../../lib/db';
 type CreateProfileInput = {
   name: string;
   bio?: string;
+  timezone?: string;
 };
 
 type CreateServiceInput = {
@@ -19,7 +20,14 @@ export async function createProviderProfile(user: User, input: CreateProfileInpu
   if (!prisma) throw new Error('Prisma client required');
 
   // Simple create; no additional business logic allowed in this chunk
-  return prisma.providerProfile.create({ data: { userId: user.id, name: input.name, bio: input.bio } });
+  return prisma.providerProfile.create({ 
+    data: { 
+      userId: user.id, 
+      name: input.name, 
+      bio: input.bio,
+      timezone: input.timezone || 'UTC'
+    } 
+  });
 }
 
 export async function createService(user: User, input: CreateServiceInput, prisma?: PrismaLike) {

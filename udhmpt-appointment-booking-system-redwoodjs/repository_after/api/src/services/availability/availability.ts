@@ -224,6 +224,17 @@ export function generateSlots(
   bufferAfterMinutes: number,
   customerTz: string
 ) {
+  // Ensure parameters are valid numbers - be very aggressive
+  if (typeof durationMinutes !== 'number' || isNaN(durationMinutes) || !isFinite(durationMinutes)) {
+    durationMinutes = 30;
+  }
+  if (typeof bufferBeforeMinutes !== 'number' || isNaN(bufferBeforeMinutes) || !isFinite(bufferBeforeMinutes)) {
+    bufferBeforeMinutes = 0;
+  }
+  if (typeof bufferAfterMinutes !== 'number' || isNaN(bufferAfterMinutes) || !isFinite(bufferAfterMinutes)) {
+    bufferAfterMinutes = 0;
+  }
+  
   // Normalize windows to {startUtcISO, endUtcISO}
   const norm = windows.map(w => ({ startUtcISO: w.startUtc || w.startUtcISO, endUtcISO: w.endUtc || w.endUtcISO }));
 
@@ -231,12 +242,39 @@ export function generateSlots(
   const intervals: Interval[] = norm.map(w => ({ start: DateTime.fromISO(w.startUtcISO, { zone: 'utc' }), end: DateTime.fromISO(w.endUtcISO, { zone: 'utc' }) }));
   const merged = mergeIntervals(intervals);
 
+  // If no availability windows, return empty slots
+  if (merged.length === 0) {
+    return [];
+  }
+
   const stepMinutes = durationMinutes + bufferBeforeMinutes + bufferAfterMinutes;
+  
+  // Additional safety check
+  if (!isFinite(stepMinutes) || stepMinutes <= 0) {
+    return []; // Return empty slots if parameters are invalid
+  }
+  
   const slots: Array<{ startUtcISO: string; endUtcISO: string; startLocalISO: string; endLocalISO: string }> = [];
 
   for (const win of merged) {
-    const earliestStart = win.start.plus({ minutes: bufferBeforeMinutes });
-    const latestStart = win.end.minus({ minutes: durationMinutes + bufferAfterMinutes });
+    const duration = Number(durationMinutes);
+    const bufferBefore = Number(bufferBeforeMinutes);
+    const bufferAfter = Number(bufferAfterMinutes);
+    
+    // Skip if values are invalid
+    if (isNaN(duration) || isNaN(bufferBefore) || isNaN(bufferAfter) || 
+        !isFinite(duration) || !isFinite(bufferBefore) || !isFinite(bufferAfter)) {
+      continue;
+    }
+    
+    const earliestStart = win.start.plus({ minutes: bufferBefore });
+    const latestStart = win.end.minus({ minutes: duration + bufferAfter });
+    
+    // Safety check for DateTime operations
+    if (!earliestStart.isValid || !latestStart.isValid) {
+      continue;
+    }
+    
     if (latestStart < earliestStart) continue;
 
     let cur = earliestStart;

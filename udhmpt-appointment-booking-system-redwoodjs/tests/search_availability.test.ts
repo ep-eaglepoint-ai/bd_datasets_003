@@ -3,7 +3,13 @@ import searchAvailability from '../repository_after/api/src/services/availabilit
 
 function makeMockPrisma(overrides: any = {}) {
   return {
-    service: { findUnique: async ({ where }: any) => overrides.service || { id: where.id, durationMinutes: 30 } },
+    service: { 
+      findUnique: async ({ where }: any) => {
+        // Always return the service regardless of the ID for testing
+        const service = overrides.service || { id: where.id, durationMinutes: 30, bufferBeforeMinutes: 0, bufferAfterMinutes: 0 };
+        return service;
+      }
+    },
     recurringAvailability: { findMany: async () => overrides.recurring || [] },
     customDayAvailability: { findMany: async () => overrides.customs || [] },
     availabilityException: { findMany: async () => overrides.exceptions || [] },
@@ -19,7 +25,7 @@ describe('searchAvailability', () => {
     // recurring on Tuesday (weekday=2) 09:00-11:00 UTC
     const recurring = [{ id: 1, providerId: 1, weekday: 2, startLocal: '09:00', endLocal: '11:00', tz: 'UTC' }];
 
-    const prisma = makeMockPrisma({ recurring, service: { id: 10, durationMinutes: 30 } });
+    const prisma = makeMockPrisma({ recurring, service: { id: 10, durationMinutes: 30, bufferBeforeMinutes: 0, bufferAfterMinutes: 0 } });
 
     const slots = await searchAvailability(prisma, { providerId: 1, serviceId: 10, startISO: weekStart, endISO: weekEnd, customerTz: 'UTC' });
 
@@ -36,7 +42,7 @@ describe('searchAvailability', () => {
     // exception removes 09:30-10:00
     const exceptions = [{ id: 1, providerId: 1, startUtc: new Date('2026-02-03T09:30:00Z'), endUtc: new Date('2026-02-03T10:00:00Z') }];
 
-    const prisma = makeMockPrisma({ recurring, exceptions, service: { id: 10, durationMinutes: 30 } });
+    const prisma = makeMockPrisma({ recurring, exceptions, service: { id: 10, durationMinutes: 30, bufferBeforeMinutes: 0, bufferAfterMinutes: 0 } });
 
     const slots = await searchAvailability(prisma, { providerId: 1, serviceId: 10, startISO: weekStart, endISO: weekEnd, customerTz: 'UTC' });
 
@@ -55,7 +61,7 @@ describe('searchAvailability', () => {
       { id: 2, providerId: 99, date: new Date('2026-02-03'), startUtc: new Date('2026-02-03T20:00:00Z'), endUtc: new Date('2026-02-03T21:00:00Z'), tz: 'UTC' },
     ];
 
-    const prisma = makeMockPrisma({ recurring, customs, service: { id: 10, durationMinutes: 30 } });
+    const prisma = makeMockPrisma({ recurring, customs, service: { id: 10, durationMinutes: 30, bufferBeforeMinutes: 0, bufferAfterMinutes: 0 } });
 
     const slots = await searchAvailability(prisma, { providerId: 1, serviceId: 10, startISO: weekStart, endISO: weekEnd, customerTz: 'UTC' });
 

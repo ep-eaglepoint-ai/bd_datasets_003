@@ -1,0 +1,624 @@
+import { DateTime } from 'luxon';
+import { createBooking } from '../../repository_after/api/src/services/bookings/bookings';
+import { createProviderProfile, createService } from '../../repository_after/api/src/services/providers/providers';
+import { createRecurringAvailability } from '../../repository_after/api/src/services/availability/availability';
+import { Role, User } from '../../repository_after/api/src/lib/auth';
+
+// Mock Prisma for testing
+const buildMockPrisma = () => {
+  const state: any = {
+    providerProfiles: [],
+    services: [],
+    recurringAvailability: [],
+    bookings: []
+  };
+  
+  let idSeq = 1;
+
+  return {
+    providerProfile: {
+      create: async ({ data }: any) => {
+        const profile = { id: idSeq++, ...data, createdAt: new Date(), updatedAt: new Date() };
+        state.providerProfiles.push(profile);
+        return profile;
+      },
+      findUnique: async ({ where }: any) => {
+        if (where.id) {
+          return state.providerProfiles.find((p: any) => p.id === where.id) || null;
+        }
+        if (where.userId) {
+          return state.providerProfiles.find((p: any) => p.userId === where.userId) || null;
+        }
+        return null;
+      },
+    },
+    service: {
+      create: async ({ data }: any) => {
+        const service = { id: idSeq++, ...data, createdAt: new Date(), updatedAt: new Date() };
+        state.services.push(service);
+        return service;
+      },
+      findUnique: async ({ where }: any) => 
+        state.services.find((s: any) => s.id === where.id) || null,
+    },
+    recurringAvailability: {
+      create: async ({ data }: any) => {
+        const recurring = { id: idSeq++, ...data, createdAt: new Date(), updatedAt: new Date() };
+        state.recurringAvailability.push(recurring);
+        return recurring;
+      },
+      findMany: async () => state.recurringAvailability,
+    },
+    booking: {
+      create: async ({ data }: any) => {
+        const booking = { id: idSeq++, ...data, createdAt: new Date(), updatedAt: new Date() };
+        state.bookings.push(booking);
+        return booking;
+      },
+      count: async () => 0, // No existing bookings for testing
+    },
+    $transaction: async (cb: any) => cb(buildMockPrisma()),
+  };
+};
+
+describe('Cross-Timezone Booking Scenarios', () => {
+  let prisma: any;
+
+  beforeEach(() => {
+    prisma = buildMockPrisma();
+  });
+
+  describe('Provider and Customer in Different Timezones', () => {
+    test('Provider in New York, Customer in Tokyo', async () => {
+      const providerTz = 'America/New_York';
+      const customerTz = 'Asia/Tokyo';
+      
+      const provider = { id: 1, email: 'provider@ny.com', role: Role.PROVIDER };
+      const customer = { id: 2, email: 'customer@tokyo.com', role: Role.CUSTOMER };
+      
+      // Create provider profile
+      const profile = await createProviderProfile(provider, {
+        name: 'NY Provider',
+        bio: 'Provider in New York',
+        timezone: providerTz
+      }, prisma);
+      
+      // Create service
+      const service = await createService(provider, {
+        name: 'Consultation',
+        durationMinutes: 60
+      }, prisma);
+      
+      // Set availability: 9 AM - 5 PM New York time
+      await createRecurringAvailability(provider, {
+        weekday: 1, // Monday
+        startLocal: '09:00',
+        endLocal: '17:00'
+      }, prisma);
+      
+      // Customer books 2 PM New York time (which is 3 AM Tokyo time next day)
+      const nyTime = DateTime.fromISO('2024-06-17T14:00:00', { zone: providerTz });
+      const tokyoTime = nyTime.setZone(customerTz);
+      
+      expect(tokyoTime.hour).toBe(3); // 3 AM Tokyo time
+      expect(tokyoTime.toISODate()).toBe('2024-06-18'); // Next day in Tokyo
+      
+      const booking = await createBooking(customer, {
+        providerId: profile.id,
+        serviceId: service.id,
+        startUtcISO: nyTime.toUTC().toISO()!,
+        endUtcISO: nyTime.plus({ hours: 1 }).toUTC().toISO()!,
+        customerEmail: customer.email,
+        cutoffHours: 24
+      }, prisma);
+      
+      expect(booking.reference).toBeDefined();
+      expect(booking.customerEmail).toBe(customer.email);
+    });
+
+    test('Provider in London, Customer in Sydney', async () => {
+      const providerTz = 'Europe/London';
+      const customerTz = 'Australia/Sydney';
+      
+      const provider = { id: 1, email: 'provider@london.com', role: Role.PROVIDER };
+      const customer = { id: 2, email: 'customer@sydney.com', role: Role.CUSTOMER };
+      
+      const profile = await createProviderProfile(provider, {
+        name: 'London Provider',
+        bio: 'Provider in London',
+        timezone: providerTz
+      }, prisma);
+      
+      const service = await createService(provider, {
+        name: 'Therapy Session',
+        durationMinutes: 90
+      }, prisma);
+      
+      // Set availability: 2 PM - 6 PM London time
+      await createRecurringAvailability(provider, {
+        weekday: 3, // Wednesday
+        startLocal: '14:00',
+        endLocal: '18:00'
+      }, prisma);
+      
+      // Customer books 3 PM London time (which is 1 AM Sydney time next day)
+      const londonTime = DateTime.fromISO('2024-06-19T15:00:00', { zone: providerTz });
+      const sydneyTime = londonTime.setZone(customerTz);
+      
+      expect(sydneyTime.hour).toBe(1); // 1 AM Sydney time
+      expect(sydneyTime.toISODate()).toBe('2024-06-20'); // Next day in Sydney
+      
+      const booking = await createBooking(customer, {
+        providerId: profile.id,
+        serviceId: service.id,
+        startUtcISO: londonTime.toUTC().toISO()!,
+        endUtcISO: londonTime.plus({ minutes: 90 }).toUTC().toISO()!,
+        customerEmail: customer.email,
+        cutoffHours: 24
+      }, prisma);
+      
+      expect(booking.reference).toBeDefined();
+    });
+
+    test('Provider in Los Angeles, Customer in Berlin', async () => {
+      const providerTz = 'America/Los_Angeles';
+      const customerTz = 'Europe/Berlin';
+      
+      const provider = { id: 1, email: 'provider@la.com', role: Role.PROVIDER };
+      const customer = { id: 2, email: 'customer@berlin.com', role: Role.CUSTOMER };
+      
+      const profile = await createProviderProfile(provider, {
+        name: 'LA Provider',
+        bio: 'Provider in Los Angeles',
+        timezone: providerTz
+      }, prisma);
+      
+      const service = await createService(provider, {
+        name: 'Coaching Session',
+        durationMinutes: 45
+      }, prisma);
+      
+      // Set availability: 10 AM - 2 PM LA time
+      await createRecurringAvailability(provider, {
+        weekday: 5, // Friday
+        startLocal: '10:00',
+        endLocal: '14:00'
+      }, prisma);
+      
+      // Customer books 11 AM LA time (which is 8 PM Berlin time same day)
+      const laTime = DateTime.fromISO('2024-06-21T11:00:00', { zone: providerTz });
+      const berlinTime = laTime.setZone(customerTz);
+      
+      expect(berlinTime.hour).toBe(20); // 8 PM Berlin time
+      expect(berlinTime.toISODate()).toBe('2024-06-21'); // Same day in Berlin
+      
+      const booking = await createBooking(customer, {
+        providerId: profile.id,
+        serviceId: service.id,
+        startUtcISO: laTime.toUTC().toISO()!,
+        endUtcISO: laTime.plus({ minutes: 45 }).toUTC().toISO()!,
+        customerEmail: customer.email,
+        cutoffHours: 24
+      }, prisma);
+      
+      expect(booking.reference).toBeDefined();
+    });
+  });
+
+  describe('Multiple Customers from Different Timezones', () => {
+    test('Same provider with customers from multiple timezones', async () => {
+      const providerTz = 'America/New_York';
+      const provider = { id: 1, email: 'provider@ny.com', role: Role.PROVIDER };
+      
+      const profile = await createProviderProfile(provider, {
+        name: 'NY Provider',
+        bio: 'Provider in New York',
+        timezone: providerTz
+      }, prisma);
+      
+      const service = await createService(provider, {
+        name: 'Group Consultation',
+        durationMinutes: 60,
+        capacity: 3
+      }, prisma);
+      
+      // Set availability: 2 PM - 5 PM New York time
+      await createRecurringAvailability(provider, {
+        weekday: 2, // Tuesday
+        startLocal: '14:00',
+        endLocal: '17:00'
+      }, prisma);
+      
+      // Customers from different timezones
+      const customers = [
+        { id: 2, email: 'customer@tokyo.com', role: Role.CUSTOMER, tz: 'Asia/Tokyo' },
+        { id: 3, email: 'customer@london.com', role: Role.CUSTOMER, tz: 'Europe/London' },
+        { id: 4, email: 'customer@sydney.com', role: Role.CUSTOMER, tz: 'Australia/Sydney' }
+      ];
+      
+      const baseTime = DateTime.fromISO('2024-06-25T14:00:00', { zone: providerTz });
+      
+      // All customers book the same time slot
+      const bookings = [];
+      for (const customer of customers) {
+        const localTime = baseTime.setZone(customer.tz);
+        
+        const booking = await createBooking(customer, {
+          providerId: profile.id,
+          serviceId: service.id,
+          startUtcISO: baseTime.toUTC().toISO()!,
+          endUtcISO: baseTime.plus({ hours: 1 }).toUTC().toISO()!,
+          customerEmail: customer.email,
+          cutoffHours: 24
+        }, prisma);
+        
+        bookings.push({ booking, localTime });
+      }
+      
+      // Verify all bookings were created
+      expect(bookings).toHaveLength(3);
+      bookings.forEach(({ booking }) => {
+        expect(booking.reference).toBeDefined();
+      });
+      
+      // Verify local times are different but represent the same moment
+      const localHours = bookings.map(({ localTime }) => localTime.hour);
+      expect(localHours).toContain(3); // Tokyo (next day 3 AM)
+      expect(localHours).toContain(19); // London (7 PM same day)
+      expect(localHours).toContain(4); // Sydney (next day 4 AM)
+    });
+  });
+
+  describe('International Date Line Crossings', () => {
+    test('Provider in Fiji, Customer in Hawaii', async () => {
+      const providerTz = 'Pacific/Fiji';
+      const customerTz = 'Pacific/Honolulu';
+      
+      const provider = { id: 1, email: 'provider@fiji.com', role: Role.PROVIDER };
+      const customer = { id: 2, email: 'customer@hawaii.com', role: Role.CUSTOMER };
+      
+      const profile = await createProviderProfile(provider, {
+        name: 'Fiji Provider',
+        bio: 'Provider in Fiji',
+        timezone: providerTz
+      }, prisma);
+      
+      const service = await createService(provider, {
+        name: 'Island Consultation',
+        durationMinutes: 60
+      }, prisma);
+      
+      // Set availability: 10 AM - 2 PM Fiji time
+      await createRecurringAvailability(provider, {
+        weekday: 4, // Thursday
+        startLocal: '10:00',
+        endLocal: '14:00'
+      }, prisma);
+      
+      // Customer books 12 PM Fiji time (which is 4 PM previous day in Hawaii)
+      const fijiTime = DateTime.fromISO('2024-06-27T12:00:00', { zone: providerTz });
+      const hawaiiTime = fijiTime.setZone(customerTz);
+      
+      expect(hawaiiTime.hour).toBe(16); // 4 PM Hawaii time
+      expect(hawaiiTime.toISODate()).toBe('2024-06-26'); // Previous day in Hawaii
+      
+      const booking = await createBooking(customer, {
+        providerId: profile.id,
+        serviceId: service.id,
+        startUtcISO: fijiTime.toUTC().toISO()!,
+        endUtcISO: fijiTime.plus({ hours: 1 }).toUTC().toISO()!,
+        customerEmail: customer.email,
+        cutoffHours: 24
+      }, prisma);
+      
+      expect(booking.reference).toBeDefined();
+    });
+
+    test('Provider in Samoa, Customer in Auckland', async () => {
+      const providerTz = 'Pacific/Apia';
+      const customerTz = 'Pacific/Auckland';
+      
+      const provider = { id: 1, email: 'provider@samoa.com', role: Role.PROVIDER };
+      const customer = { id: 2, email: 'customer@auckland.com', role: Role.CUSTOMER };
+      
+      const profile = await createProviderProfile(provider, {
+        name: 'Samoa Provider',
+        bio: 'Provider in Samoa',
+        timezone: providerTz
+      }, prisma);
+      
+      const service = await createService(provider, {
+        name: 'Pacific Session',
+        durationMinutes: 30
+      }, prisma);
+      
+      // Set availability: 3 PM - 6 PM Samoa time
+      await createRecurringAvailability(provider, {
+        weekday: 6, // Saturday
+        startLocal: '15:00',
+        endLocal: '18:00'
+      }, prisma);
+      
+      // Customer books 4 PM Samoa time (which is 6 PM same day in Auckland)
+      const samoaTime = DateTime.fromISO('2024-06-29T16:00:00', { zone: providerTz });
+      const aucklandTime = samoaTime.setZone(customerTz);
+      
+      expect(aucklandTime.hour).toBe(18); // 6 PM Auckland time
+      expect(aucklandTime.toISODate()).toBe('2024-06-29'); // Same day in Auckland
+      
+      const booking = await createBooking(customer, {
+        providerId: profile.id,
+        serviceId: service.id,
+        startUtcISO: samoaTime.toUTC().toISO()!,
+        endUtcISO: samoaTime.plus({ minutes: 30 }).toUTC().toISO()!,
+        customerEmail: customer.email,
+        cutoffHours: 24
+      }, prisma);
+      
+      expect(booking.reference).toBeDefined();
+    });
+  });
+
+  describe('DST Considerations in Cross-Timezone Bookings', () => {
+    test('Provider in DST, Customer in non-DST timezone', async () => {
+      const providerTz = 'America/New_York'; // Has DST
+      const customerTz = 'Asia/Dubai'; // No DST
+      
+      const provider = { id: 1, email: 'provider@ny.com', role: Role.PROVIDER };
+      const customer = { id: 2, email: 'customer@dubai.com', role: Role.CUSTOMER };
+      
+      const profile = await createProviderProfile(provider, {
+        name: 'NY Provider',
+        bio: 'Provider in New York',
+        timezone: providerTz
+      }, prisma);
+      
+      const service = await createService(provider, {
+        name: 'International Consultation',
+        durationMinutes: 60
+      }, prisma);
+      
+      // Set availability during DST period
+      await createRecurringAvailability(provider, {
+        weekday: 1, // Monday
+        startLocal: '10:00',
+        endLocal: '16:00'
+      }, prisma);
+      
+      // Book during DST (July)
+      const dstTime = DateTime.fromISO('2024-07-15T14:00:00', { zone: providerTz });
+      const dubaiTime = dstTime.setZone(customerTz);
+      
+      expect(dstTime.offset).toBe(-240); // UTC-4 (DST)
+      expect(dubaiTime.offset).toBe(240); // UTC+4 (no DST)
+      
+      const booking = await createBooking(customer, {
+        providerId: profile.id,
+        serviceId: service.id,
+        startUtcISO: dstTime.toUTC().toISO()!,
+        endUtcISO: dstTime.plus({ hours: 1 }).toUTC().toISO()!,
+        customerEmail: customer.email,
+        cutoffHours: 24
+      }, prisma);
+      
+      expect(booking.reference).toBeDefined();
+    });
+
+    test('Both provider and customer in DST but different transition dates', async () => {
+      const providerTz = 'America/New_York'; // DST starts March 10
+      const customerTz = 'Europe/London'; // DST starts March 31
+      
+      const provider = { id: 1, email: 'provider@ny.com', role: Role.PROVIDER };
+      const customer = { id: 2, email: 'customer@london.com', role: Role.CUSTOMER };
+      
+      const profile = await createProviderProfile(provider, {
+        name: 'NY Provider',
+        bio: 'Provider in New York',
+        timezone: providerTz
+      }, prisma);
+      
+      const service = await createService(provider, {
+        name: 'Transatlantic Session',
+        durationMinutes: 45
+      }, prisma);
+      
+      await createRecurringAvailability(provider, {
+        weekday: 3, // Wednesday
+        startLocal: '15:00',
+        endLocal: '18:00'
+      }, prisma);
+      
+      // Book during period when NY is in DST but London is not yet (March 20)
+      const transitionTime = DateTime.fromISO('2024-03-20T16:00:00', { zone: providerTz });
+      const londonTime = transitionTime.setZone(customerTz);
+      
+      expect(transitionTime.offset).toBe(-240); // UTC-4 (NY DST)
+      expect(londonTime.offset).toBe(0); // UTC+0 (London standard time)
+      
+      const booking = await createBooking(customer, {
+        providerId: profile.id,
+        serviceId: service.id,
+        startUtcISO: transitionTime.toUTC().toISO()!,
+        endUtcISO: transitionTime.plus({ minutes: 45 }).toUTC().toISO()!,
+        customerEmail: customer.email,
+        cutoffHours: 24
+      }, prisma);
+      
+      expect(booking.reference).toBeDefined();
+    });
+  });
+
+  describe('Edge Cases and Error Handling', () => {
+    test('Booking with very large timezone offset difference', async () => {
+      const providerTz = 'Pacific/Kiritimati'; // UTC+14
+      const customerTz = 'America/Adak'; // UTC-10
+      
+      const provider = { id: 1, email: 'provider@kiribati.com', role: Role.PROVIDER };
+      const customer = { id: 2, email: 'customer@alaska.com', role: Role.CUSTOMER };
+      
+      const profile = await createProviderProfile(provider, {
+        name: 'Kiritimati Provider',
+        bio: 'Provider in Kiribati',
+        timezone: providerTz
+      }, prisma);
+      
+      const service = await createService(provider, {
+        name: 'Extreme Timezone Session',
+        durationMinutes: 30
+      }, prisma);
+      
+      await createRecurringAvailability(provider, {
+        weekday: 5, // Friday
+        startLocal: '12:00',
+        endLocal: '16:00'
+      }, prisma);
+      
+      const kiritimatiTime = DateTime.fromISO('2024-06-14T13:00:00', { zone: providerTz });
+      const adakTime = kiritimatiTime.setZone(customerTz);
+      
+      // 24 hour difference
+      expect(kiritimatiTime.offset).toBe(840); // UTC+14
+      expect(adakTime.offset).toBe(-600); // UTC-10
+      
+      const booking = await createBooking(customer, {
+        providerId: profile.id,
+        serviceId: service.id,
+        startUtcISO: kiritimatiTime.toUTC().toISO()!,
+        endUtcISO: kiritimatiTime.plus({ minutes: 30 }).toUTC().toISO()!,
+        customerEmail: customer.email,
+        cutoffHours: 24
+      }, prisma);
+      
+      expect(booking.reference).toBeDefined();
+    });
+
+    test('Invalid timezone handling', async () => {
+      const provider = { id: 1, email: 'provider@test.com', role: Role.PROVIDER };
+      
+      // Should handle invalid timezone gracefully
+      await expect(createProviderProfile(provider, {
+        name: 'Test Provider',
+        bio: 'Test',
+        timezone: 'Invalid/Timezone'
+      }, prisma)).rejects.toThrow();
+    });
+
+    test('Booking with microseconds precision', async () => {
+      const providerTz = 'UTC';
+      const customerTz = 'UTC';
+      
+      const provider = { id: 1, email: 'provider@test.com', role: Role.PROVIDER };
+      const customer = { id: 2, email: 'customer@test.com', role: Role.CUSTOMER };
+      
+      const profile = await createProviderProfile(provider, {
+        name: 'UTC Provider',
+        bio: 'Provider in UTC',
+        timezone: providerTz
+      }, prisma);
+      
+      const service = await createService(provider, {
+        name: 'Precision Test',
+        durationMinutes: 30
+      }, prisma);
+      
+      // Use microsecond precision
+      const preciseTime = DateTime.fromISO('2024-06-15T14:30:15.123456', { zone: providerTz });
+      
+      const booking = await createBooking(customer, {
+        providerId: profile.id,
+        serviceId: service.id,
+        startUtcISO: preciseTime.toUTC().toISO()!,
+        endUtcISO: preciseTime.plus({ minutes: 30 }).toUTC().toISO()!,
+        customerEmail: customer.email,
+        cutoffHours: 24
+      }, prisma);
+      
+      expect(booking.reference).toBeDefined();
+    });
+  });
+
+  describe('Performance with Multiple Timezones', () => {
+    test('Rapid timezone conversions', async () => {
+      const timezones = [
+        'America/New_York',
+        'Europe/London',
+        'Asia/Tokyo',
+        'Australia/Sydney',
+        'America/Los_Angeles',
+        'Europe/Paris',
+        'Asia/Shanghai',
+        'America/Chicago'
+      ];
+      
+      const baseTime = DateTime.fromISO('2024-06-15T10:00:00Z');
+      
+      const startTime = Date.now();
+      
+      timezones.forEach(tz => {
+        for (let i = 0; i < 100; i++) {
+          const converted = baseTime.setZone(tz);
+          expect(converted.isValid).toBe(true);
+        }
+      });
+      
+      const endTime = Date.now();
+      
+      // Should complete quickly even with many conversions
+      expect(endTime - startTime).toBeLessThan(1000);
+    });
+
+    test('Bulk booking creation across timezones', async () => {
+      const provider = { id: 1, email: 'provider@test.com', role: Role.PROVIDER };
+      
+      const profile = await createProviderProfile(provider, {
+        name: 'Bulk Provider',
+        bio: 'Provider for bulk testing',
+        timezone: 'UTC'
+      }, prisma);
+      
+      const service = await createService(provider, {
+        name: 'Bulk Service',
+        durationMinutes: 30,
+        capacity: 50
+      }, prisma);
+      
+      const baseTime = DateTime.fromISO('2024-06-15T10:00:00Z');
+      
+      // Create many bookings for customers in different timezones
+      const bookingPromises = [];
+      for (let i = 0; i < 20; i++) {
+        const customer = { 
+          id: i + 2, 
+          email: `customer${i}@test.com`, 
+          role: Role.CUSTOMER 
+        };
+        
+        const customerTz = ['America/New_York', 'Europe/London', 'Asia/Tokyo'][i % 3];
+        const bookingTime = baseTime.plus({ minutes: i * 30 });
+        
+        bookingPromises.push(
+          createBooking(customer, {
+            providerId: profile.id,
+            serviceId: service.id,
+            startUtcISO: bookingTime.toUTC().toISO()!,
+            endUtcISO: bookingTime.plus({ minutes: 30 }).toUTC().toISO()!,
+            customerEmail: customer.email,
+            cutoffHours: 24
+          }, prisma)
+        );
+      }
+      
+      const startTime = Date.now();
+      const bookings = await Promise.all(bookingPromises);
+      const endTime = Date.now();
+      
+      expect(bookings).toHaveLength(20);
+      bookings.forEach(booking => {
+        expect(booking.reference).toBeDefined();
+      });
+      
+      // Should complete within reasonable time
+      expect(endTime - startTime).toBeLessThan(2000);
+    });
+  });
+});
