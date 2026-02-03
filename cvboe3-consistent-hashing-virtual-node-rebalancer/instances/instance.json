@@ -1,0 +1,11 @@
+{
+            "instance_id": "CVBOE3",
+            "problem_statement": "The core infrastructure team requires a high-performance shard management library in Go. You are tasked with building a consistent hashing ring that utilizes virtual nodes to ensure uniform data distribution and implements a rebalance controller to calculate minimal data migration plans when cluster membership changes.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/cvboe3-consistent-hashing-virtual-node-rebalancer",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
