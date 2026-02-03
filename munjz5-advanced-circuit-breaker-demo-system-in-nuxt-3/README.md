@@ -1,11 +1,13 @@
-# MUNJZ5 - Advanced Circuit Breaker Demo System in Nuxt 3
+## Commands
 
-    ## Before Test Docker Command
-    <docker before command here>
+### Run Tests Against repository_after
 
-    ## After Test Docker Command
-    <docker after command here>
+```bash
+docker-compose run --rm test-after
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+### Run Evaluation Script
+
+```bash
+docker-compose run --rm evaluation
+```

@@ -1,0 +1,15 @@
+{
+  "name": "circuit-breaker-demo-tools",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "npx tsx tests/test-runner.ts",
+    "test:after": "TEST_URL=http://app-after:3000 npx tsx tests/test-runner.ts",
+    "evaluate": "npx tsx evaluation/evaluate.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
