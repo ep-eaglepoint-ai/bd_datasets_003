@@ -36,7 +36,7 @@ function processResults(data) {
   // Strip ANSI codes first
   const cleanData = stripAnsi(data);
 
-  const tests = {};
+  const tests = [];
   let passed = 0;
   let failed = 0;
 
@@ -45,14 +45,14 @@ function processResults(data) {
 
     for (const line of lines) {
       // Match vitest verbose format: "✓ tests/file.ts > describe > test name"
-      // The format is: checkmark + file + " > " + describe blocks + " > " + test name
       const passMatch = line.match(/^\s*[✓√✔]\s+tests\/[^\s]+\s+>\s+(.+)$/);
       if (passMatch) {
-        // Extract the full test path after the file
         const testPath = passMatch[1].trim();
-        // Replace " > " with " " for cleaner names
         const testName = testPath.replace(/\s+>\s+/g, ' ');
-        tests[testName] = 'PASSED';
+        tests.push({
+          name: testName,
+          passed: true
+        });
         passed++;
         continue;
       }
@@ -62,14 +62,17 @@ function processResults(data) {
       if (failMatch) {
         const testPath = failMatch[1].trim();
         const testName = testPath.replace(/\s+>\s+/g, ' ');
-        tests[testName] = 'FAILED';
+        tests.push({
+          name: testName,
+          passed: false
+        });
         failed++;
         continue;
       }
     }
 
     // Fallback: if no tests parsed, get counts from summary
-    if (Object.keys(tests).length === 0) {
+    if (tests.length === 0) {
       const testsMatch = cleanData.match(/Tests\s+(\d+)\s+passed/);
       const failedMatch = cleanData.match(/(\d+)\s+failed/);
 
@@ -82,10 +85,10 @@ function processResults(data) {
 
       // Create placeholder entries
       for (let i = 1; i <= passed; i++) {
-        tests[`Test ${i}`] = 'PASSED';
+        tests.push({ name: `Test ${i}`, passed: true });
       }
       for (let i = 1; i <= failed; i++) {
-        tests[`Failed Test ${i}`] = 'FAILED';
+        tests.push({ name: `Failed Test ${i}`, passed: false });
       }
     }
 
@@ -114,10 +117,10 @@ function processResults(data) {
   console.log('============================================================');
 
   // Generate report
-  generateReport(tests, passed, failed, total, overallPass);
+  generateReport(tests, passed, failed, total);
 }
 
-function generateReport(tests, passed, failed, total, success) {
+function generateReport(tests, passed, failed, total) {
   const now = new Date();
   const dateFolder = now.toISOString().split('T')[0];
   const timeFolder = now.toISOString().split('T')[1].slice(0, 8).replace(/:/g, '-');
@@ -127,25 +130,15 @@ function generateReport(tests, passed, failed, total, success) {
 
   fs.mkdirSync(outputDir, { recursive: true });
 
+  // Build report in the correct format
   const report = {
     timestamp: now.toISOString(),
-    before: null,
-    after: {
-      tests: tests,
-      metrics: {
-        total: total,
-        passed: passed,
-        failed: failed
-      },
-      error: null
-    },
-    comparison: {
-      tests_fixed: [],
-      tests_broken: [],
-      improvement: 0
-    },
-    success: success,
-    error: null
+    repository_after: {
+      passed: passed,
+      failed: failed,
+      total: total,
+      tests: tests
+    }
   };
 
   const reportPath = path.join(outputDir, 'report.json');
