@@ -1,0 +1,11 @@
+{
+            "instance_id": "WLW6VN",
+            "problem_statement": "Refactor a failing Pandas-based financial ETL pipeline into a high-performance, incremental processing engine using Polars. The new system must handle 5GB+ of transaction data by implementing complex multi-table joins, currency normalization, and stateful incremental loading, all within a 500mbRAM constraint.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/wlw6vn-high-throughput-incremental-etl-polars",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
