@@ -122,20 +122,26 @@ def adain(content, style, content_mask=None, style_mask=None, alpha=None, style_
                 mask = mask.expand_as(tensor)
             
             mask_sum = mask.sum(dim=spatial_dims, keepdim=True)
-            mask_eps = torch.tensor(1e-8, dtype=mask.dtype, device=mask.device)
+            # Use dtype-aware epsilon for numerical stability
+            mask_eps = torch.tensor(1e-8, dtype=tensor.dtype, device=tensor.device)
             mask_sum = torch.maximum(mask_sum, mask_eps)
             
             weighted_sum = (tensor * mask).sum(dim=spatial_dims, keepdim=True)
             mean = weighted_sum / mask_sum
             
             weighted_var = ((tensor - mean) ** 2 * mask).sum(dim=spatial_dims, keepdim=True)
-            std = torch.sqrt(weighted_var.to(torch.float32) / mask_sum).to(mask.dtype)
+            # Use dtype-aware sqrt to handle fp16 limitations on CPU
+            if tensor.dtype == torch.float16 and not tensor.is_cuda:
+                std = torch.sqrt(weighted_var.to(torch.float32) / mask_sum).to(tensor.dtype)
+            else:
+                std = torch.sqrt(weighted_var / mask_sum)
         
         return mean, std
     
     content_mean, content_std = compute_masked_stats(content, content_mask)
     style_mean, style_std = compute_masked_stats(style, style_mask)
     
+    # Dtype-aware epsilon for numerical stability
     eps = 1e-6 if content.dtype == torch.float16 else 1e-8
     eps_tensor = torch.tensor(eps, dtype=content.dtype, device=content.device)
     content_std = torch.maximum(content_std, eps_tensor)
@@ -145,7 +151,10 @@ def adain(content, style, content_mask=None, style_mask=None, alpha=None, style_
     result = normalized_content * style_std + style_mean
     
     if alpha is not None:
-        result = alpha * result + (1.0 - alpha) * content
+        # Use dtype-consistent alpha interpolation
+        alpha_tensor = torch.tensor(alpha, dtype=content.dtype, device=content.device)
+        one_minus_alpha = torch.tensor(1.0 - alpha, dtype=content.dtype, device=content.device)
+        result = alpha_tensor * result + one_minus_alpha * content
     
     if not torch.isfinite(result).all():
         raise ValueError("Output contains NaN or Inf values - numerical stability violated")

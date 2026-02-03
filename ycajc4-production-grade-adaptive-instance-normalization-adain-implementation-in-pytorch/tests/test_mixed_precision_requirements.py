@@ -111,16 +111,20 @@ def test_mixed_precision_autocast_gpu_fp16():
     content = content.to(device)
     style = style.to(device)
     
-    try:
+    if device == 'cuda':
+        # Test fp16 autocast on GPU (should work)
         with torch.autocast(device_type=device, dtype=torch.float16):
             result = adain(content, style)
         
         assert result.shape == content.shape
         assert torch.isfinite(result).all()
-        if device == 'cuda':
-            assert result.dtype == torch.float32
-    except Exception:
-        pass
+        # Autocast should return float32 on GPU
+        assert result.dtype == torch.float32
+    else:
+        # On CPU, fp16 autocast should fail gracefully with specific error
+        with pytest.raises(RuntimeError, match="AutocastCPU only support Bfloat16"):
+            with torch.autocast(device_type='cpu', dtype=torch.float16):
+                result = adain(content, style)
 
 
 def test_mixed_precision_autocast_gpu_bf16():
@@ -131,16 +135,14 @@ def test_mixed_precision_autocast_gpu_bf16():
     content = content.to(device)
     style = style.to(device)
     
-    try:
-        with torch.autocast(device_type=device, dtype=torch.bfloat16):
-            result = adain(content, style)
-        
-        assert result.shape == content.shape
-        assert torch.isfinite(result).all()
-        if device == 'cuda':
-            assert result.dtype == torch.float32
-    except Exception:
-        pass
+    # Test bf16 autocast (should work on both CPU and GPU)
+    with torch.autocast(device_type=device, dtype=torch.bfloat16):
+        result = adain(content, style)
+    
+    assert result.shape == content.shape
+    assert torch.isfinite(result).all()
+    # Autocast should return float32
+    assert result.dtype == torch.float32
 
 
 def test_mixed_precision_mask_precision_preservation():
