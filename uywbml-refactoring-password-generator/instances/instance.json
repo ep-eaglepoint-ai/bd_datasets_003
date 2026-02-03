@@ -1,11 +1,28 @@
 {
             "instance_id": "UYWBML",
-            "problem_statement": "The company’s Tkinter-based password generator has become unstable after recent code changes introduced unsafe threading and shared-state “optimizations.” Users experience delayed, missing, or out-of-order password displays, UI freezes, clipboard failures, and random crashes. Memory and CPU usage grow continuously due to unmanaged background threads and infinite loops. UI updates are performed from non-main threads, causing race conditions and unpredictable behavior. The application must be urgently refactored to restore reliability, performance, and correctness while preserving all existing features and UI layout.",
+            "problem_statement": "The company's Tkinter-based password generator has become unstable after recent code changes introduced unsafe threading and shared-state 'optimizations.' Users experience delayed, missing, or out-of-order password displays, UI freezes, clipboard failures, and random crashes. Memory and CPU usage grow continuously due to unmanaged background threads and infinite loops. UI updates are performed from non-main threads, causing race conditions and unpredictable behavior. The application must be urgently refactored to restore reliability, performance, and correctness while preserving all existing features and UI layout.",
             "base_commit": "repository_before/",
             "test_patch": "tests/",
             "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/uywbml-refactoring-password-generator",
             "environment_setup": "Dockerfile",
-            "FAIL_TO_PASS": [],
-            "PASS_TO_PASS": []
+            "FAIL_TO_PASS": [
+                "tests/test_password_generator.py::TestRefactoredFeatures::test_class_based_api_exists",
+                "tests/test_password_generator.py::TestRefactoredFeatures::test_core_instance_has_required_methods",
+                "tests/test_password_generator.py::TestRefactoredFeatures::test_synchronous_password_generation",
+                "tests/test_password_generator.py::TestRefactoredFeatures::test_no_thread_pool_leak",
+                "tests/test_password_generator.py::TestRefactoredFeatures::test_history_is_bounded"
+            ],
+            "PASS_TO_PASS": [
+                "tests/test_password_generator.py::TestPasswordGeneratorCore::test_password_length_match",
+                "tests/test_password_generator.py::TestPasswordGeneratorCore::test_password_only_contains_valid_characters",
+                "tests/test_password_generator.py::TestPasswordGeneratorCore::test_password_not_empty_with_selection",
+                "tests/test_password_generator.py::TestPasswordGeneratorCore::test_password_different_each_time",
+                "tests/test_password_generator.py::TestPasswordGeneratorCore::test_minimum_length_password",
+                "tests/test_password_generator.py::TestPasswordGeneratorCore::test_password_maximum_length_password",
+                "tests/test_password_generator.py::TestPasswordGeneratorCore::test_no_characters_selected_raises_error",
+                "tests/test_password_generator.py::TestPasswordGeneratorHistory::test_password_history_stored",
+                "tests/test_password_generator.py::TestPasswordGeneratorHistory::test_clipboard_history_stored",
+                "tests/test_password_generator.py::TestPasswordGeneratorIntegration::test_complete_generate_workflow",
+                "tests/test_password_generator.py::TestPasswordGeneratorIntegration::test_rapid_generation"
+            ]
         }
-        
