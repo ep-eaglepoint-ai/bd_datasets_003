@@ -1,0 +1,11 @@
+{
+            "instance_id": "PSFI9A",
+            "problem_statement": "TCP is a byte stream, not a message queue. Data sent as two distinct write() calls from the client may arrive at the server as one combined chunk (Coalescing) or split into fragments (Fragmentation) due to MTU limits. A naive implementation that assumes data = await socket.read(1024) contains exactly one request will fail catastrophically under load. The engineering solution requires a Stateful Buffer: accumulating bytes until a full header is present, parsing the length, and then waiting until the full body is present. Additionally, the requirement for Out-of-Order Execution prevents simple await process() loops; the server must spawn detached tasks for processing while immediately returning to the read loop to handle the next pipelined request, necessitating a thread-safe (or coroutine-safe) mechanism to serialize the concurrent responses back onto the single socket stream.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/psfi9a-async-rpc-server-with-manual-tcp-framing-pipelining",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
