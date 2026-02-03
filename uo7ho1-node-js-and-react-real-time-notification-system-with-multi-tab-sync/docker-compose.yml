@@ -1,9 +1,20 @@
-
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
-  app:
-    build: .
-    command: pytest -q tests
+services:
+  app-after:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: npm test
     volumes:
       - .:/app
+      - /app/node_modules
+
+  evaluation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: sh -c "npx vitest run --reporter=verbose 2>&1 | node evaluation/evaluation.js"
+    environment:
+      - PROJECT_ROOT=/app
+    volumes:
+      - .:/app
+      - /app/node_modules
