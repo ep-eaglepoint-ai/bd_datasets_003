@@ -1,0 +1,11 @@
+{
+            "instance_id": "NWFFN4",
+            "problem_statement": "A multi-tenant SaaS project management platform has a permission system that performs poorly under load and lacks proper tenant isolation. The current implementation checks permissions by querying the database on every request, causing response times to degrade as user count grows. Additionally, permission checks don't properly inherit through the organization hierarchy, and users can occasionally access resources from other organizations due to missing tenant scoping. The permission logic is scattered across multiple views rather than centralized, making it difficult to audit and maintain. Core files include accounts/models.py, permissions/services/permission_checker.py, projects/views.py, and audit/services.py",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/nwffn4-multi-tenant-saas-permission-system",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
