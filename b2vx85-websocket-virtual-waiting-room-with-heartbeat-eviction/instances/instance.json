@@ -1,0 +1,11 @@
+{
+            "instance_id": "B2VX85",
+            "problem_statement": "Stateful WebSocket architectures require rigorous lifecycle management that stateless HTTP does not. The engineering challenge centers on the atomicity of the "Disconnect-Promote" sequence: when an active session terminates, the system must instantaneously and safely mutate two distinct data structures removing the user from the Active Set and shifting the FIFO Queue to maintain the strict concurrency limit without race conditions. ",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/b2vx85-websocket-virtual-waiting-room-with-heartbeat-eviction",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
