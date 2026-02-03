@@ -1,11 +1,12 @@
 # UDHMPT - Appointment Booking System (RedwoodJS) 
 
-    ## Before Test Docker Command
-    <docker before command here>
+## After Test Docker Command
+```bash
+docker compose run --rm test
+```
 
-    ## After Test Docker Command
-    <docker after command here>
-
-    ## Evaluation Docker Command
-    <evaluation command here>
+## Evaluation Docker Command
+```bash
+docker compose run --rm evaluate
+```
     

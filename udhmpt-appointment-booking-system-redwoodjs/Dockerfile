@@ -1,8 +1,12 @@
+FROM node:18
 
-        # Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
-
-        FROM python:3.11-slim
+# Install deps early so layer is cached across code changes
 WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+COPY package.json package-lock.json* ./
+RUN npm ci --silent || npm install --silent
+
+# Copy rest of the source
+COPY . .
+
+# Default command for test image (overrideable by docker-compose)
+CMD ["npm", "test", "--silent"]

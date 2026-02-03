@@ -1,9 +1,24 @@
 
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
+# Docker Compose file for running tests and evaluation. Use `docker compose run --rm test` or `docker compose run --rm evaluate`
+services:
   app:
     build: .
-    command: pytest -q tests
+    command: -q
     volumes:
       - .:/app
+
+  test:
+    build: .
+    working_dir: /app
+    environment:
+      CI: 'true'
+    command: "npm test --silent"
+
+  evaluate:
+    build: .
+    working_dir: /app
+    environment:
+      CI: 'true'
+    volumes:
+      - .:/app
+    command: "npx ts-node evaluation/evaluation.ts"
