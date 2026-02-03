@@ -1,0 +1,11 @@
+{
+            "instance_id": "FEUQWL",
+            "problem_statement": "Manual placement of containers in a microservices platform has led to uneven resource utilization, node overloads, and operational instability. There is no centralized system to accurately track node resources, manage container lifecycles, or respond automatically to container failures. To address these issues, a container orchestration scheduler is needed to act as a single source of truth for resource availability and container state, automatically assign containers to suitable nodes, monitor container health, and enforce restart policies while safely handling concurrent operations and preventing resource overcommitment.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/feuqwl-container-orchestration-scheduler",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
