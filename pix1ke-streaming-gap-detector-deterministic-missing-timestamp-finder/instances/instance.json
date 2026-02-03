@@ -1,0 +1,11 @@
+{
+            "instance_id": "PIX1KE",
+            "problem_statement": "Build a function that scans a sorted time-series and finds all missing ranges inside an expected coverage window. Records are expected to arrive at a fixed interval (in minutes). Given records, interval_minutes, window_start, and window_end (half-open), return a list of missing time gaps and a human-readable explanation. The output must be deterministic, validate inputs, and precisely align gaps to the expected timestamp grid so the gaps represent missing expected samples, not just “time between records.”",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/pix1ke-streaming-gap-detector-deterministic-missing-timestamp-finder",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
