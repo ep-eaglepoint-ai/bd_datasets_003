@@ -1,11 +1,14 @@
 # EN783T - Atomic Apache Configuration Rotation & Signal Management
 
-    ## Before Test Docker Command
-    <docker before command here>
 
-    ## After Test Docker Command
-    <docker after command here>
+## Before/After test
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+```bash
+docker compose run --rm app go test -timeout 60s -v ./tests
+```
+
+## Run evaluation (generate report)
+
+```bash
+docker compose run --rm app go run ./evaluation/evaluation.go
+```
