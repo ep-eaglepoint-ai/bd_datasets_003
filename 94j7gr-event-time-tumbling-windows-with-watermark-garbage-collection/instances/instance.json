@@ -1,0 +1,11 @@
+{
+            "instance_id": "94J7GR",
+            "problem_statement": "In distributed stream processing, data frequently arrives out of sequence due to network partitions or latency. A robust aggregator cannot rely on the server's wall-clock time (time.Now) to close windows, as this leads to inaccurate results when processing backlogged data. Instead, the system must implement logical clock progression via Watermarks—a heuristic that asserts that no events older than a certain timestamp will arrive. The engineering complexity lies in the dual responsibility of the Watermark: it determines the precise moment a window is mathematically complete (triggering emission) and signals the safe point for memory reclamation. Failing to implement aggressive, event-driven garbage collection results in unbounded memory growth (state explosion) as the map of windows grows indefinitely over time.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_002/tree/main/94j7gr-event-time-tumbling-windows-with-watermark-garbage-collection",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
