@@ -1,0 +1,11 @@
+{
+            "instance_id": "1SIT06",
+            "problem_statement": "The existing container scheduler struggles to handle high-throughput workloads due to inefficient scheduling algorithms, suboptimal resource tracking, excessive lock contention, and memory overhead. As scheduling request volume increases, latency rises and scalability degrades, while health checks and API responses further impact performance. A performance-optimized scheduler is required to significantly improve throughput and latency while preserving correctness, accurate resource accounting, and safe concurrent behavior at scale.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/1sit06-container-scheduler-performance-optimization",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
