@@ -1,9 +1,87 @@
+version: "3.8"
 
-        # Docker Compose file for running tests. You should customize this as needed.
+services:
+  mysql-db:
+    image: mysql:5.7
+    platform: linux/amd64
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: payments
+    volumes:
+      - ./sql/init_mysql.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
 
-        services:
-  app:
+  postgres-db:
+    image: postgres:14
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: payments
+    volumes:
+      - ./sql/init_postgres.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      timeout: 20s
+      retries: 10
+
+  test-runner:
     build: .
-    command: pytest -q tests
+    environment:
+      CI: "true"
+    volumes:
+      - ./evaluation/reports:/app/evaluation/reports
+
+  tests-before:
+    build: .
+    command: sh -c "npm test --prefix tests || true"
+    environment:
+      TEST_MODE: before
+      DB_HOST: mysql-db
+      DB_USER: root
+      DB_PASSWORD: root
+      DB_NAME: payments
+    depends_on:
+      mysql-db:
+        condition: service_healthy
     volumes:
       - .:/app
+      - /app/tests/node_modules
+      - /app/repository_before/node_modules
+
+  tests-after:
+    build: .
+    command: sh -c "npm run build --prefix repository_after && npm test --prefix tests"
+    environment:
+      TEST_MODE: after
+      DB_HOST: postgres-db
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: payments
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+    volumes:
+      - .:/app
+      - /app/tests/node_modules
+      - /app/repository_after/node_modules
+
+  evaluation:
+    build: .
+    command: sh -c "npm run build --prefix repository_after && node evaluation/evaluation.js"
+    environment:
+      TEST_MODE: after
+      DB_HOST: postgres-db
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: payments
+      INSIDE_DOCKER: "true"
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+    volumes:
+      - ./evaluation/reports:/app/evaluation/reports
+      - .:/app
+      - /app/tests/node_modules
+      - /app/repository_after/node_modules

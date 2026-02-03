@@ -1,11 +1,19 @@
 # XDSYR7 - Legacy Payment Module Callback to Async/Await Migration
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Run Tests Against Legacy Code (Before)
 
-    ## After Test Docker Command
-    <docker after command here>
+```bash
+docker compose run --rm tests-before
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## Run Tests Against Refactored Code (After)
+
+```bash
+docker compose run --rm tests-after
+```
+
+## Run Evaluation Script
+
+```bash
+docker compose run --rm evaluation
+```
