@@ -1,0 +1,11 @@
+{
+            "instance_id": "B08D7Z",
+            "problem_statement": "Optimistic UI requires strictly separating the visual state from the confirmed server state to eliminate perceived latency. The engineering complexity lies in the Rollback Mechanism: if the background API call fails or times out, the client must automatically revert the UI to its previous valid state without user intervention. Furthermore, the system must mediate race conditions between local optimistic updates and authoritative real-time streams (SSE) to prevent data desynchronization during high-concurrency periods.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/b08d7z-optimistic-concurrency-sse-sync-state-rollback",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
