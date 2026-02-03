@@ -1,0 +1,11 @@
+{
+            "instance_id": "F3R4GT",
+            "problem_statement": "The existing LSM-Tree storage engine uses a naive compaction strategy that loads all data into memory before sorting. This causes OutOfMemory (OOM) errors when merging files larger than 100MB on our 4GB RAM edge devices. You must refactor the compaction logic to use a streaming, constant-memory merge-sort approach that keeps the JVM heap usage below 100MB regardless of total data size.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/f3r4gt-java-lsm-tree-compaction-strategy-optimizer",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
