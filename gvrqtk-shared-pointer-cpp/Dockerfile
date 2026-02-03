@@ -1,8 +1,21 @@
+FROM gcc:11 as builder
 
-        # Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
+# Install build tools and valgrind for memory checking
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    valgrind \
+    && rm -rf /var/lib/apt/lists/*
 
-        FROM python:3.11-slim
+# Set working directory
 WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+# Create build directory
+RUN mkdir -p /app/build
+
+# Copy project files
+COPY repository_after/ /app/repository_after/
+COPY repository_before/ /app/repository_before/
+COPY tests/ /app/tests/
+
+# Default command
+CMD ["bash"]
