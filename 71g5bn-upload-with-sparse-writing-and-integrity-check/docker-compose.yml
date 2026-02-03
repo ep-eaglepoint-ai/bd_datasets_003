@@ -1,9 +1,13 @@
-
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
+services:
   app:
     build: .
-    command: pytest -q tests
+    environment:
+      - PORT=3000
+      - UPLOAD_DIR=/data/uploads
     volumes:
-      - .:/app
+      - uploads:/data/uploads
+      - ./evaluation:/app/evaluation
+    command: node /app/tests/run-integration.mjs
+
+volumes:
+  uploads:

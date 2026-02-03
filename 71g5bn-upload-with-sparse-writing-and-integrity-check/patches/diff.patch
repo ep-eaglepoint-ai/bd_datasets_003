@@ -1,0 +1,1187 @@
+diff --git a/repository_before/.gitkeep b/repository_before/.gitkeep
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/repository_after/backend/package.json b/repository_after/backend/package.json
+new file mode 100644
+index 0000000..40d56fc
+--- /dev/null
++++ b/repository_after/backend/package.json
+@@ -0,0 +1,20 @@
++{
++  "name": "resumable-upload-backend",
++  "private": true,
++  "type": "module",
++  "main": "dist/server.js",
++  "scripts": {
++    "build": "tsc -p tsconfig.json",
++    "dev": "node --watch --enable-source-maps dist/server.js",
++    "start": "node --enable-source-maps dist/server.js"
++  },
++  "dependencies": {
++    "cors": "^2.8.5",
++    "express": "^4.19.2"
++  },
++  "devDependencies": {
++    "@types/cors": "^2.8.17",
++    "@types/express": "^4.17.21",
++    "typescript": "^5.7.3"
++  }
++}
+diff --git a/repository_after/backend/src/bitmap.ts b/repository_after/backend/src/bitmap.ts
+new file mode 100644
+index 0000000..32c532f
+--- /dev/null
++++ b/repository_after/backend/src/bitmap.ts
+@@ -0,0 +1,21 @@
++export function encodeBitmapBase64(bits: boolean[]): string {
++  const byteLen = Math.ceil(bits.length / 8);
++  const bytes = new Uint8Array(byteLen);
++  for (let i = 0; i < bits.length; i++) {
++    if (bits[i]) bytes[i >> 3] |= 1 << (i & 7);
++  }
++  return Buffer.from(bytes).toString("base64");
++}
++
++export function decodeBitmapBase64(
++  base64: string,
++  bitLength: number
++): boolean[] {
++  const raw = Buffer.from(base64, "base64");
++  const out = new Array<boolean>(bitLength).fill(false);
++  for (let i = 0; i < bitLength; i++) {
++    const byte = raw[i >> 3] ?? 0;
++    out[i] = ((byte >> (i & 7)) & 1) === 1;
++  }
++  return out;
++}
+diff --git a/repository_after/backend/src/server.ts b/repository_after/backend/src/server.ts
+new file mode 100644
+index 0000000..6454341
+--- /dev/null
++++ b/repository_after/backend/src/server.ts
+@@ -0,0 +1,299 @@
++import fs from "node:fs";
++import path from "node:path";
++import crypto from "node:crypto";
++import { fileURLToPath } from "node:url";
++import express from "express";
++import cors from "cors";
++import { UploadStore, DEFAULT_CHUNK_SIZE } from "./uploadStore.js";
++import type { UploadInitRequest } from "./types.js";
++
++const PORT = Number(process.env.PORT ?? 3000);
++const UPLOAD_DIR =
++  process.env.UPLOAD_DIR ?? path.join(process.cwd(), ".uploads");
++
++const __filename = fileURLToPath(import.meta.url);
++const __dirname = path.dirname(__filename);
++// dist/server.js -> dist -> backend -> repository_after
++const DEFAULT_FRONTEND_DIST = path.resolve(
++  __dirname,
++  "..",
++  "..",
++  "frontend",
++  "dist"
++);
++const FRONTEND_DIST = process.env.FRONTEND_DIST ?? DEFAULT_FRONTEND_DIST;
++
++function parseContentRange(range: string): {
++  start: number;
++  endInclusive: number;
++  total: number;
++} {
++  // Format: bytes start-end/total
++  const m = /^bytes\s+(\d+)-(\d+)\/(\d+)$/.exec(range.trim());
++  if (!m) throw new Error("invalid_content_range");
++  const start = Number(m[1]);
++  const endInclusive = Number(m[2]);
++  const total = Number(m[3]);
++  if (
++    !Number.isFinite(start) ||
++    !Number.isFinite(endInclusive) ||
++    !Number.isFinite(total)
++  ) {
++    throw new Error("invalid_content_range");
++  }
++  if (start < 0 || endInclusive < start || total <= 0)
++    throw new Error("invalid_content_range");
++  return { start, endInclusive, total };
++}
++
++function sendJson(res: express.Response, status: number, body: unknown): void {
++  res.status(status);
++  res.setHeader("content-type", "application/json; charset=utf-8");
++  res.send(JSON.stringify(body));
++}
++
++async function main() {
++  const app = express();
++  app.use(cors());
++
++  const store = new UploadStore(UPLOAD_DIR);
++  await store.ensureRoot();
++
++  // Frontend static (optional for tests)
++  app.use(express.static(FRONTEND_DIST));
++
++  app.post(
++    "/api/uploads",
++    express.json({ limit: "64kb" }),
++    async (req, res) => {
++      const body = req.body as Partial<UploadInitRequest>;
++      if (!body?.fileName || typeof body.fileName !== "string")
++        return sendJson(res, 400, { error: "fileName_required" });
++      if (!Number.isFinite(body.totalSize) || (body.totalSize as number) <= 0)
++        return sendJson(res, 400, { error: "totalSize_required" });
++
++      const meta = await store.createUpload(
++        body.fileName,
++        body.totalSize as number,
++        DEFAULT_CHUNK_SIZE
++      );
++      return sendJson(res, 201, {
++        uploadId: meta.id,
++        chunkSize: meta.chunkSize,
++        totalChunks: meta.totalChunks,
++      });
++    }
++  );
++
++  // Handshake (resume): returns bitmap in headers
++  app.head("/api/uploads/:id", async (req, res) => {
++    const uploadId = req.params.id;
++    const status = await store.getStatus(uploadId);
++    if (!status) return res.sendStatus(404);
++
++    res.setHeader("x-upload-id", status.id);
++    res.setHeader("x-upload-status", status.state);
++    res.setHeader("x-total-size", String(status.totalSize));
++    res.setHeader("x-chunk-size", String(status.chunkSize));
++    res.setHeader("x-total-chunks", String(status.totalChunks));
++    res.setHeader("x-received-chunks", String(status.receivedCount));
++    res.setHeader("x-received-bitmap", status.receivedBitmapBase64);
++    res.sendStatus(200);
++  });
++
++  app.get("/api/uploads/:id/status", async (req, res) => {
++    const uploadId = req.params.id;
++    const status = await store.getStatus(uploadId);
++    if (!status) return sendJson(res, 404, { error: "not_found" });
++    return sendJson(res, 200, status);
++  });
++
++  // Upload chunk (out-of-order safe)
++  app.put("/api/uploads/:id/chunk", async (req, res) => {
++    const uploadId = req.params.id;
++    const meta = await store.getMeta(uploadId);
++    if (!meta) return sendJson(res, 404, { error: "not_found" });
++    if (meta.state === "complete")
++      return sendJson(res, 409, { error: "already_complete" });
++
++    const rangeHeader = req.header("content-range");
++    if (!rangeHeader)
++      return sendJson(res, 400, { error: "content_range_required" });
++
++    let startByte = 0;
++    let endInclusive = 0;
++    let total = 0;
++    try {
++      ({
++        start: startByte,
++        endInclusive,
++        total,
++      } = parseContentRange(rangeHeader));
++    } catch {
++      return sendJson(res, 400, { error: "invalid_content_range" });
++    }
++
++    if (total !== meta.totalSize)
++      return sendJson(res, 400, { error: "total_mismatch" });
++    if (endInclusive >= meta.totalSize)
++      return sendJson(res, 400, { error: "range_out_of_bounds" });
++
++    const expectedLen = endInclusive - startByte + 1;
++    const chunkIndex = Math.floor(startByte / meta.chunkSize);
++
++    if (startByte % meta.chunkSize !== 0)
++      return sendJson(res, 400, { error: "unaligned_chunk_start" });
++    if (chunkIndex < 0 || chunkIndex >= meta.totalChunks)
++      return sendJson(res, 400, { error: "chunk_out_of_range" });
++    if (expectedLen <= 0 || expectedLen > meta.chunkSize)
++      return sendJson(res, 400, { error: "invalid_chunk_length" });
++
++    // Write request stream directly to disk using random-access writes.
++    const filePath = store.dataFilePath(uploadId);
++
++    const fd: number = await new Promise((resolve, reject) => {
++      fs.open(filePath, "r+", (err, openedFd) => {
++        if (err) return reject(err);
++        resolve(openedFd);
++      });
++    });
++
++    let wrote = 0;
++    let aborted = false;
++
++    const closeFd = async () => {
++      await new Promise<void>((resolve) => fs.close(fd, () => resolve()));
++    };
++
++    req.on("aborted", () => {
++      aborted = true;
++    });
++
++    try {
++      await new Promise<void>((resolve, reject) => {
++        let pendingWrites = 0;
++        let ended = false;
++
++        const maybeDone = () => {
++          if (ended && pendingWrites === 0) resolve();
++        };
++
++        req.on("data", (buf: Buffer) => {
++          req.pause();
++          if (aborted) return;
++
++          if (wrote >= expectedLen) {
++            req.resume();
++            return;
++          }
++
++          // Ensure we don't write past the declared range even if client misbehaves.
++          const remaining = expectedLen - wrote;
++          const toWrite =
++            buf.length > remaining ? buf.subarray(0, remaining) : buf;
++
++          pendingWrites++;
++          fs.write(
++            fd,
++            toWrite,
++            0,
++            toWrite.length,
++            startByte + wrote,
++            (err, bytesWritten) => {
++              if (err) return reject(err);
++              wrote += bytesWritten;
++              pendingWrites--;
++              req.resume();
++              maybeDone();
++            }
++          );
++        });
++
++        req.on("end", () => {
++          ended = true;
++          maybeDone();
++        });
++        req.on("error", (e) => reject(e));
++      });
++
++      if (wrote !== expectedLen) {
++        return sendJson(res, 400, {
++          error: "chunk_length_mismatch",
++          expected: expectedLen,
++          wrote,
++        });
++      }
++
++      // Mark received (duplicate uploads are fine: overwrite is safe)
++      await store.markChunkReceived(uploadId, chunkIndex);
++
++      // Return a simple integrity token for the chunk (optional)
++      const etag = crypto
++        .createHash("sha256")
++        .update(String(startByte))
++        .update(String(endInclusive))
++        .digest("hex");
++      res.setHeader("etag", etag);
++      return sendJson(res, 200, { ok: true, chunkIndex });
++    } catch (e: any) {
++      return sendJson(res, 500, {
++        error: "write_failed",
++        details: String(e?.message ?? e),
++      });
++    } finally {
++      await closeFd();
++    }
++  });
++
++  app.post(
++    "/api/uploads/:id/complete",
++    express.json({ limit: "64kb" }),
++    async (req, res) => {
++      const uploadId = req.params.id;
++      const meta = await store.getMeta(uploadId);
++      if (!meta) return sendJson(res, 404, { error: "not_found" });
++
++      const clientSha256 = (
++        req.body?.sha256 as string | undefined
++      )?.toLowerCase();
++      if (!clientSha256 || !/^[0-9a-f]{64}$/.test(clientSha256))
++        return sendJson(res, 400, { error: "sha256_required" });
++
++      const allReceived = await store.verifyAllReceived(uploadId);
++      if (!allReceived) return sendJson(res, 409, { error: "missing_chunks" });
++
++      const sizeOk = await store.verifyFileSize(uploadId);
++      if (!sizeOk) return sendJson(res, 409, { error: "size_mismatch" });
++
++      const serverSha256 = (
++        await store.computeSha256Hex(uploadId)
++      ).toLowerCase();
++      if (serverSha256 !== clientSha256) {
++        return sendJson(res, 409, { error: "sha256_mismatch", serverSha256 });
++      }
++
++      await store.markComplete(uploadId);
++      return sendJson(res, 200, { ok: true, uploadId, sha256: serverSha256 });
++    }
++  );
++
++  // SPA fallback
++  app.get("*", (req, res) => {
++    res.sendFile(path.join(FRONTEND_DIST, "index.html"), (err) => {
++      if (err) res.status(404).send("Not Found");
++    });
++  });
++
++  app.listen(PORT, () => {
++    // eslint-disable-next-line no-console
++    console.log(`resumable-upload-backend listening on :${PORT}`);
++    // eslint-disable-next-line no-console
++    console.log(`UPLOAD_DIR=${UPLOAD_DIR}`);
++  });
++}
++
++main().catch((e) => {
++  // eslint-disable-next-line no-console
++  console.error(e);
++  process.exit(1);
++});
+diff --git a/repository_after/backend/src/types.ts b/repository_after/backend/src/types.ts
+new file mode 100644
+index 0000000..1232e80
+--- /dev/null
++++ b/repository_after/backend/src/types.ts
+@@ -0,0 +1,28 @@
++export interface UploadInitRequest {
++  fileName: string;
++  totalSize: number;
++}
++
++export type UploadState = "in_progress" | "complete";
++
++export interface UploadMeta {
++  id: string;
++  fileName: string;
++  totalSize: number;
++  chunkSize: number;
++  totalChunks: number;
++  received: boolean[];
++  state: UploadState;
++  createdAtMs: number;
++  updatedAtMs: number;
++}
++
++export interface UploadStatusResponse {
++  id: string;
++  state: UploadState;
++  totalSize: number;
++  chunkSize: number;
++  totalChunks: number;
++  receivedCount: number;
++  receivedBitmapBase64: string;
++}
+diff --git a/repository_after/backend/src/uploadStore.ts b/repository_after/backend/src/uploadStore.ts
+new file mode 100644
+index 0000000..908835d
+--- /dev/null
++++ b/repository_after/backend/src/uploadStore.ts
+@@ -0,0 +1,178 @@
++import fs from "node:fs";
++import fsp from "node:fs/promises";
++import path from "node:path";
++import crypto from "node:crypto";
++import { encodeBitmapBase64 } from "./bitmap.js";
++import type { UploadMeta, UploadStatusResponse } from "./types.js";
++
++export const DEFAULT_CHUNK_SIZE = 5 * 1024 * 1024;
++
++function safeId(): string {
++  return crypto.randomBytes(16).toString("hex");
++}
++
++function metaPath(rootDir: string, uploadId: string): string {
++  return path.join(rootDir, uploadId, "meta.json");
++}
++
++function dataPath(rootDir: string, uploadId: string): string {
++  return path.join(rootDir, uploadId, "data.bin");
++}
++
++function dirPath(rootDir: string, uploadId: string): string {
++  return path.join(rootDir, uploadId);
++}
++
++async function atomicWriteJson(
++  filePath: string,
++  value: unknown
++): Promise<void> {
++  const dir = path.dirname(filePath);
++  const tmp = path.join(
++    dir,
++    `.${path.basename(filePath)}.${process.pid}.${Date.now()}.tmp`
++  );
++  await fsp.writeFile(tmp, JSON.stringify(value, null, 2), "utf8");
++  await fsp.rename(tmp, filePath);
++}
++
++export class UploadStore {
++  private rootDir: string;
++  private metaWriteChains = new Map<string, Promise<void>>();
++
++  constructor(rootDir: string) {
++    this.rootDir = rootDir;
++  }
++
++  async ensureRoot(): Promise<void> {
++    await fsp.mkdir(this.rootDir, { recursive: true });
++  }
++
++  async createUpload(
++    fileName: string,
++    totalSize: number,
++    chunkSize = DEFAULT_CHUNK_SIZE
++  ): Promise<UploadMeta> {
++    const id = safeId();
++    const totalChunks = Math.ceil(totalSize / chunkSize);
++    const now = Date.now();
++
++    await fsp.mkdir(dirPath(this.rootDir, id), { recursive: true });
++
++    const meta: UploadMeta = {
++      id,
++      fileName,
++      totalSize,
++      chunkSize,
++      totalChunks,
++      received: new Array<boolean>(totalChunks).fill(false),
++      state: "in_progress",
++      createdAtMs: now,
++      updatedAtMs: now,
++    };
++
++    const dataFile = dataPath(this.rootDir, id);
++    const fd = await fsp.open(dataFile, "w+");
++    try {
++      await fd.truncate(totalSize);
++    } finally {
++      await fd.close();
++    }
++
++    await atomicWriteJson(metaPath(this.rootDir, id), meta);
++    return meta;
++  }
++
++  async getMeta(uploadId: string): Promise<UploadMeta | null> {
++    try {
++      const raw = await fsp.readFile(metaPath(this.rootDir, uploadId), "utf8");
++      return JSON.parse(raw) as UploadMeta;
++    } catch (e: any) {
++      if (e?.code === "ENOENT") return null;
++      throw e;
++    }
++  }
++
++  async getStatus(uploadId: string): Promise<UploadStatusResponse | null> {
++    const meta = await this.getMeta(uploadId);
++    if (!meta) return null;
++    const receivedCount = meta.received.reduce((a, b) => a + (b ? 1 : 0), 0);
++    return {
++      id: meta.id,
++      state: meta.state,
++      totalSize: meta.totalSize,
++      chunkSize: meta.chunkSize,
++      totalChunks: meta.totalChunks,
++      receivedCount,
++      receivedBitmapBase64: encodeBitmapBase64(meta.received),
++    };
++  }
++
++  async markChunkReceived(uploadId: string, chunkIndex: number): Promise<void> {
++    await this.enqueueMetaWrite(uploadId, async () => {
++      const meta = await this.getMeta(uploadId);
++      if (!meta) throw new Error("upload_not_found");
++      if (meta.state === "complete") return;
++      if (chunkIndex < 0 || chunkIndex >= meta.totalChunks)
++        throw new Error("chunk_out_of_range");
++      if (!meta.received[chunkIndex]) {
++        meta.received[chunkIndex] = true;
++        meta.updatedAtMs = Date.now();
++        await atomicWriteJson(metaPath(this.rootDir, uploadId), meta);
++      }
++    });
++  }
++
++  async markComplete(uploadId: string): Promise<void> {
++    await this.enqueueMetaWrite(uploadId, async () => {
++      const meta = await this.getMeta(uploadId);
++      if (!meta) throw new Error("upload_not_found");
++      meta.state = "complete";
++      meta.updatedAtMs = Date.now();
++      await atomicWriteJson(metaPath(this.rootDir, uploadId), meta);
++    });
++  }
++
++  dataFilePath(uploadId: string): string {
++    return dataPath(this.rootDir, uploadId);
++  }
++
++  private enqueueMetaWrite(
++    uploadId: string,
++    fn: () => Promise<void>
++  ): Promise<void> {
++    const prev = this.metaWriteChains.get(uploadId) ?? Promise.resolve();
++    const next = prev
++      .catch(() => {
++        // keep chain alive
++      })
++      .then(fn);
++    this.metaWriteChains.set(uploadId, next);
++    return next;
++  }
++
++  async computeSha256Hex(uploadId: string): Promise<string> {
++    const file = this.dataFilePath(uploadId);
++    const hash = crypto.createHash("sha256");
++    await new Promise<void>((resolve, reject) => {
++      const stream = fs.createReadStream(file);
++      stream.on("data", (chunk) => hash.update(chunk));
++      stream.on("error", reject);
++      stream.on("end", () => resolve());
++    });
++    return hash.digest("hex");
++  }
++
++  async verifyAllReceived(uploadId: string): Promise<boolean> {
++    const meta = await this.getMeta(uploadId);
++    if (!meta) return false;
++    return meta.received.every(Boolean);
++  }
++
++  async verifyFileSize(uploadId: string): Promise<boolean> {
++    const meta = await this.getMeta(uploadId);
++    if (!meta) return false;
++    const st = await fsp.stat(this.dataFilePath(uploadId));
++    return st.size === meta.totalSize;
++  }
++}
+diff --git a/repository_after/backend/tsconfig.json b/repository_after/backend/tsconfig.json
+new file mode 100644
+index 0000000..74dcd71
+--- /dev/null
++++ b/repository_after/backend/tsconfig.json
+@@ -0,0 +1,15 @@
++{
++  "compilerOptions": {
++    "target": "ES2022",
++    "module": "ES2022",
++    "moduleResolution": "Bundler",
++    "outDir": "dist",
++    "rootDir": "src",
++    "strict": true,
++    "esModuleInterop": true,
++    "skipLibCheck": true,
++    "forceConsistentCasingInFileNames": true,
++    "sourceMap": true
++  },
++  "include": ["src"]
++}
+diff --git a/repository_after/frontend/index.html b/repository_after/frontend/index.html
+new file mode 100644
+index 0000000..4c56fb9
+--- /dev/null
++++ b/repository_after/frontend/index.html
+@@ -0,0 +1,12 @@
++<!DOCTYPE html>
++<html lang="en">
++  <head>
++    <meta charset="UTF-8" />
++    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
++    <title>Resumable Upload</title>
++  </head>
++  <body>
++    <div id="root"></div>
++    <script type="module" src="/src/main.tsx"></script>
++  </body>
++</html>
+diff --git a/repository_after/frontend/package.json b/repository_after/frontend/package.json
+new file mode 100644
+index 0000000..2398d31
+--- /dev/null
++++ b/repository_after/frontend/package.json
+@@ -0,0 +1,22 @@
++{
++  "name": "resumable-upload-frontend",
++  "private": true,
++  "type": "module",
++  "scripts": {
++    "dev": "vite --host 0.0.0.0 --port 5173",
++    "build": "tsc -p tsconfig.json && vite build"
++  },
++  "dependencies": {
++    "@noble/hashes": "^1.7.1",
++    "axios": "^1.7.9",
++    "react": "^18.3.1",
++    "react-dom": "^18.3.1"
++  },
++  "devDependencies": {
++    "@types/react": "^18.3.12",
++    "@types/react-dom": "^18.3.1",
++    "typescript": "^5.7.3",
++    "vite": "^6.1.1",
++    "@vitejs/plugin-react": "^4.3.4"
++  }
++}
+diff --git a/repository_after/frontend/src/App.tsx b/repository_after/frontend/src/App.tsx
+new file mode 100644
+index 0000000..e8127db
+--- /dev/null
++++ b/repository_after/frontend/src/App.tsx
+@@ -0,0 +1,56 @@
++import React, { useMemo, useState } from "react";
++import { ResumableUploadEngine } from "./uploadEngine/uploadEngine";
++
++export function App() {
++  const engine = useMemo(() => new ResumableUploadEngine(), []);
++  const [file, setFile] = useState<File | null>(null);
++  const [status, setStatus] = useState<string>("Idle");
++
++  return (
++    <div style={{ fontFamily: "system-ui", padding: 16, maxWidth: 720 }}>
++      <h1>Resumable Upload</h1>
++      <p>Chunks: 5MB, concurrency: 3, resume via HEAD handshake.</p>
++
++      <input
++        type="file"
++        onChange={(e) => {
++          setFile(e.target.files?.[0] ?? null);
++          setStatus("Idle");
++        }}
++      />
++
++      <div style={{ marginTop: 12 }}>
++        <button
++          disabled={!file}
++          onClick={async () => {
++            if (!file) return;
++            setStatus("Uploading...");
++            try {
++              const st = await engine.startOrResume(file, (s) => {
++                setStatus(
++                  `${s.state} (${s.uploadedChunks}/${s.totalChunks} chunks)`
++                );
++              });
++              setStatus(`Done (${st.uploadId})`);
++            } catch (e: any) {
++              setStatus(`Error: ${String(e?.message ?? e)}`);
++            }
++          }}
++        >
++          Start / Resume
++        </button>
++      </div>
++
++      <pre
++        style={{
++          marginTop: 12,
++          background: "#f6f8fa",
++          padding: 12,
++          borderRadius: 6,
++        }}
++      >
++        {status}
++      </pre>
++    </div>
++  );
++}
+diff --git a/repository_after/frontend/src/main.tsx b/repository_after/frontend/src/main.tsx
+new file mode 100644
+index 0000000..a2f33db
+--- /dev/null
++++ b/repository_after/frontend/src/main.tsx
+@@ -0,0 +1,9 @@
++import React from "react";
++import { createRoot } from "react-dom/client";
++import { App } from "./App";
++
++createRoot(document.getElementById("root")!).render(
++  <React.StrictMode>
++    <App />
++  </React.StrictMode>
++);
+diff --git a/repository_after/frontend/src/uploadEngine/types.ts b/repository_after/frontend/src/uploadEngine/types.ts
+new file mode 100644
+index 0000000..6aa4002
+--- /dev/null
++++ b/repository_after/frontend/src/uploadEngine/types.ts
+@@ -0,0 +1,24 @@
++export interface Chunk {
++  index: number;
++  start: number;
++  endExclusive: number;
++  size: number;
++}
++
++export type UploadState = "idle" | "uploading" | "complete" | "error";
++
++export interface UploadStatus {
++  uploadId: string;
++  totalSize: number;
++  chunkSize: number;
++  totalChunks: number;
++  received: boolean[];
++  state: UploadState;
++  uploadedChunks: number;
++}
++
++export interface WorkerQueue {
++  readonly concurrency: number;
++  add<T>(task: () => Promise<T>): Promise<T>;
++  onIdle(): Promise<void>;
++}
+diff --git a/repository_after/frontend/src/uploadEngine/uploadEngine.ts b/repository_after/frontend/src/uploadEngine/uploadEngine.ts
+new file mode 100644
+index 0000000..9c4af9e
+--- /dev/null
++++ b/repository_after/frontend/src/uploadEngine/uploadEngine.ts
+@@ -0,0 +1,187 @@
++import axios from "axios";
++import { sha256 } from "@noble/hashes/sha256";
++import type { Chunk, UploadStatus } from "./types";
++import { PromiseWorkerQueue } from "./workerQueue";
++
++const CHUNK_SIZE = 5 * 1024 * 1024;
++const MAX_CONCURRENCY = 3;
++
++function sleep(ms: number): Promise<void> {
++  return new Promise((r) => setTimeout(r, ms));
++}
++
++function backoffMs(attempt: number): number {
++  const base = 400;
++  const cappedAttempt = Math.min(attempt, 6);
++  const jitter = Math.floor(Math.random() * 200);
++  return base * Math.pow(2, cappedAttempt) + jitter;
++}
++
++function fileKey(file: File): string {
++  return `resumable:${file.name}:${file.size}:${file.lastModified}`;
++}
++
++function decodeBitmap(base64: string, bitLength: number): boolean[] {
++  const raw = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
++  const out = new Array<boolean>(bitLength).fill(false);
++  for (let i = 0; i < bitLength; i++) {
++    const byte = raw[i >> 3] ?? 0;
++    out[i] = ((byte >> (i & 7)) & 1) === 1;
++  }
++  return out;
++}
++
++function toHex(bytes: Uint8Array): string {
++  let out = "";
++  for (let i = 0; i < bytes.length; i++) {
++    out += bytes[i]!.toString(16).padStart(2, "0");
++  }
++  return out;
++}
++
++export class ResumableUploadEngine {
++  async startOrResume(
++    file: File,
++    onProgress?: (st: UploadStatus) => void
++  ): Promise<UploadStatus> {
++    const key = fileKey(file);
++    const existingUploadId = localStorage.getItem(key) ?? "";
++
++    let uploadId = existingUploadId;
++    let totalChunks = Math.ceil(file.size / CHUNK_SIZE);
++    let received = new Array<boolean>(totalChunks).fill(false);
++
++    if (uploadId) {
++      const hs = await this.handshake(uploadId).catch(() => null);
++      if (
++        hs &&
++        hs.totalSize === file.size &&
++        hs.chunkSize === CHUNK_SIZE &&
++        hs.totalChunks === totalChunks
++      ) {
++        received = hs.received;
++      } else {
++        uploadId = "";
++      }
++    }
++
++    if (!uploadId) {
++      const init = await axios.post("/api/uploads", {
++        fileName: file.name,
++        totalSize: file.size,
++      });
++      uploadId = init.data.uploadId as string;
++      localStorage.setItem(key, uploadId);
++      const hs = await this.handshake(uploadId);
++      received = hs.received;
++    }
++
++    const status: UploadStatus = {
++      uploadId,
++      totalSize: file.size,
++      chunkSize: CHUNK_SIZE,
++      totalChunks,
++      received,
++      state: "uploading",
++      uploadedChunks: received.reduce((a, b) => a + (b ? 1 : 0), 0),
++    };
++
++    onProgress?.(status);
++
++    const queue = new PromiseWorkerQueue(MAX_CONCURRENCY);
++
++    // Rolling hash computed sequentially, independent from upload concurrency.
++    const hasher = sha256.create();
++    const hashingTask = (async () => {
++      for (let i = 0; i < totalChunks; i++) {
++        const start = i * CHUNK_SIZE;
++        const endExclusive = Math.min(file.size, start + CHUNK_SIZE);
++        // eslint-disable-next-line no-await-in-loop
++        const buf = new Uint8Array(
++          await file.slice(start, endExclusive).arrayBuffer()
++        );
++        hasher.update(buf);
++      }
++    })();
++
++    for (let i = 0; i < totalChunks; i++) {
++      const start = i * CHUNK_SIZE;
++      const endExclusive = Math.min(file.size, start + CHUNK_SIZE);
++      const chunk: Chunk = {
++        index: i,
++        start,
++        endExclusive,
++        size: endExclusive - start,
++      };
++
++      if (received[i]) continue;
++
++      queue.add(() => this.uploadChunkWithRetry(file, uploadId, chunk, 0));
++    }
++
++    await queue.onIdle();
++    await hashingTask;
++
++    // Re-handshake to confirm all received
++    const finalHs = await this.handshake(uploadId);
++    if (!finalHs.received.every(Boolean)) {
++      status.state = "error";
++      onProgress?.({ ...status, received: finalHs.received });
++      throw new Error("server_missing_chunks");
++    }
++
++    const digestHex = toHex(hasher.digest());
++    await axios.post(`/api/uploads/${uploadId}/complete`, {
++      sha256: digestHex,
++    });
++
++    status.state = "complete";
++    status.received = finalHs.received;
++    status.uploadedChunks = finalHs.receivedCount;
++    onProgress?.(status);
++    return status;
++  }
++
++  private async handshake(uploadId: string): Promise<{
++    totalSize: number;
++    chunkSize: number;
++    totalChunks: number;
++    receivedCount: number;
++    received: boolean[];
++  }> {
++    const res = await axios.head(`/api/uploads/${uploadId}`);
++    const totalSize = Number(res.headers["x-total-size"]);
++    const chunkSize = Number(res.headers["x-chunk-size"]);
++    const totalChunks = Number(res.headers["x-total-chunks"]);
++    const receivedCount = Number(res.headers["x-received-chunks"]);
++    const bitmap = String(res.headers["x-received-bitmap"] ?? "");
++    const received = decodeBitmap(bitmap, totalChunks);
++    return { totalSize, chunkSize, totalChunks, receivedCount, received };
++  }
++
++  private async uploadChunkWithRetry(
++    file: File,
++    uploadId: string,
++    chunk: Chunk,
++    attempt: number
++  ): Promise<void> {
++    try {
++      const blob = file.slice(chunk.start, chunk.endExclusive);
++      const contentRange = `bytes ${chunk.start}-${chunk.endExclusive - 1}/${
++        file.size
++      }`;
++      await axios.put(`/api/uploads/${uploadId}/chunk`, blob, {
++        headers: {
++          "content-type": "application/octet-stream",
++          "content-range": contentRange,
++        },
++        timeout: 30_000,
++      });
++    } catch (e) {
++      const nextAttempt = attempt + 1;
++      if (nextAttempt > 6) throw e;
++      await sleep(backoffMs(nextAttempt));
++      return this.uploadChunkWithRetry(file, uploadId, chunk, nextAttempt);
++    }
++  }
++}
+diff --git a/repository_after/frontend/src/uploadEngine/workerQueue.ts b/repository_after/frontend/src/uploadEngine/workerQueue.ts
+new file mode 100644
+index 0000000..b864d92
+--- /dev/null
++++ b/repository_after/frontend/src/uploadEngine/workerQueue.ts
+@@ -0,0 +1,52 @@
++import type { WorkerQueue } from "./types";
++
++export class PromiseWorkerQueue implements WorkerQueue {
++  readonly concurrency: number;
++  private active = 0;
++  private queue: Array<() => void> = [];
++  private idleResolvers: Array<() => void> = [];
++
++  constructor(concurrency: number) {
++    if (!Number.isFinite(concurrency) || concurrency <= 0)
++      throw new Error("invalid_concurrency");
++    this.concurrency = concurrency;
++  }
++
++  add<T>(task: () => Promise<T>): Promise<T> {
++    return new Promise<T>((resolve, reject) => {
++      const run = () => {
++        this.active++;
++        task()
++          .then(resolve, reject)
++          .finally(() => {
++            this.active--;
++            this.pump();
++            this.checkIdle();
++          });
++      };
++
++      this.queue.push(run);
++      this.pump();
++    });
++  }
++
++  async onIdle(): Promise<void> {
++    if (this.active === 0 && this.queue.length === 0) return;
++    await new Promise<void>((resolve) => this.idleResolvers.push(resolve));
++  }
++
++  private pump() {
++    while (this.active < this.concurrency && this.queue.length > 0) {
++      const next = this.queue.shift()!;
++      next();
++    }
++  }
++
++  private checkIdle() {
++    if (this.active === 0 && this.queue.length === 0) {
++      const resolvers = this.idleResolvers;
++      this.idleResolvers = [];
++      resolvers.forEach((r) => r());
++    }
++  }
++}
+diff --git a/repository_after/frontend/tsconfig.json b/repository_after/frontend/tsconfig.json
+new file mode 100644
+index 0000000..8ee0e10
+--- /dev/null
++++ b/repository_after/frontend/tsconfig.json
+@@ -0,0 +1,16 @@
++{
++  "compilerOptions": {
++    "target": "ES2022",
++    "useDefineForClassFields": true,
++    "lib": ["ES2022", "DOM", "DOM.Iterable"],
++    "module": "ES2022",
++    "skipLibCheck": true,
++    "moduleResolution": "Bundler",
++    "resolveJsonModule": true,
++    "isolatedModules": true,
++    "noEmit": true,
++    "jsx": "react-jsx",
++    "strict": true
++  },
++  "include": ["src"]
++}
+diff --git a/repository_after/frontend/vite.config.ts b/repository_after/frontend/vite.config.ts
+new file mode 100644
+index 0000000..35d3dc7
+--- /dev/null
++++ b/repository_after/frontend/vite.config.ts
+@@ -0,0 +1,14 @@
++import { defineConfig } from "vite";
++import react from "@vitejs/plugin-react";
++
++export default defineConfig({
++  plugins: [react()],
++  server: {
++    proxy: {
++      "/api": "http://localhost:3000",
++    },
++  },
++  build: {
++    outDir: "dist",
++  },
++});
+diff --git a/repository_after/package.json b/repository_after/package.json
+new file mode 100644
+index 0000000..defe25d
+--- /dev/null
++++ b/repository_after/package.json
+@@ -0,0 +1,30 @@
++{
++  "name": "resumable-upload-gateway",
++  "private": true,
++  "type": "module",
++  "packageManager": "npm@10",
++  "dependencies": {
++    "@noble/hashes": "^1.7.1",
++    "axios": "^1.7.9",
++    "cors": "^2.8.5",
++    "express": "^4.19.2",
++    "react": "^18.3.1",
++    "react-dom": "^18.3.1"
++  },
++  "devDependencies": {
++    "@types/cors": "^2.8.17",
++    "@types/express": "^4.17.21",
++    "@types/react": "^18.3.12",
++    "@types/react-dom": "^18.3.1",
++    "@vitejs/plugin-react": "^4.3.4",
++    "typescript": "^5.7.3",
++    "vite": "^6.1.1"
++  },
++  "scripts": {
++    "build:backend": "tsc -p backend/tsconfig.json",
++    "build:frontend": "cd frontend && tsc -p tsconfig.json && vite build",
++    "build": "npm run build:backend && npm run build:frontend",
++    "start": "node --enable-source-maps backend/dist/server.js",
++    "test:integration": "node run-integration.mjs"
++  }
++}
+diff --git a/repository_after/run-integration.mjs b/repository_after/run-integration.mjs
+new file mode 100644
+index 0000000..541f73a
+--- /dev/null
++++ b/repository_after/run-integration.mjs
+@@ -0,0 +1,99 @@
++import { spawn } from "node:child_process";
++import net from "node:net";
++
++const PORT = Number(process.env.PORT ?? 3000);
++const BASE_URL = `http://127.0.0.1:${PORT}`;
++
++function sleep(ms) {
++  return new Promise((r) => setTimeout(r, ms));
++}
++
++async function waitForPort(port) {
++  const deadline = Date.now() + 30_000;
++  while (Date.now() < deadline) {
++    const ok = await new Promise((resolve) => {
++      const socket = new net.Socket();
++      socket.setTimeout(500);
++      socket.once("connect", () => {
++        socket.destroy();
++        resolve(true);
++      });
++      socket.once("error", () => {
++        socket.destroy();
++        resolve(false);
++      });
++      socket.once("timeout", () => {
++        socket.destroy();
++        resolve(false);
++      });
++      socket.connect(port, "127.0.0.1");
++    });
++    if (ok) return;
++    // eslint-disable-next-line no-await-in-loop
++    await sleep(200);
++  }
++  throw new Error("server_port_not_ready");
++}
++
++function runNode(args, env = {}) {
++  return new Promise((resolve, reject) => {
++    const child = spawn("node", args, {
++      stdio: "inherit",
++      env: { ...process.env, ...env },
++    });
++    child.on("error", reject);
++    child.on("exit", (code) => {
++      if (code === 0) resolve();
++      else reject(new Error(`process_failed:${args.join(" ")}:${code}`));
++    });
++  });
++}
++
++async function main() {
++  // Start backend
++  const server = spawn(
++    "node",
++    ["/app/repository_after/backend/dist/server.js"],
++    {
++      stdio: "inherit",
++      env: { ...process.env, PORT: String(PORT) },
++    }
++  );
++
++  try {
++    await waitForPort(PORT);
++    // First run
++    await runNode(["/app/tests/resumable-upload.integration.mjs"], {
++      BASE_URL,
++    });
++
++    // Restart server to validate persisted upload metadata (resume source-of-truth behavior)
++    server.kill("SIGTERM");
++    await sleep(500);
++
++    const server2 = spawn(
++      "node",
++      ["/app/repository_after/backend/dist/server.js"],
++      {
++        stdio: "inherit",
++        env: { ...process.env, PORT: String(PORT) },
++      }
++    );
++
++    try {
++      await waitForPort(PORT);
++      await runNode(["/app/tests/resumable-upload.integration.mjs"], {
++        BASE_URL,
++      });
++    } finally {
++      server2.kill("SIGTERM");
++    }
++  } finally {
++    server.kill("SIGTERM");
++  }
++}
++
++main().catch((e) => {
++  console.error("INTEGRATION RUN FAILED:", e?.stack || e);
++  process.exit(1);
++});

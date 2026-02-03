@@ -1,11 +1,17 @@
-# 71G5BN -  Upload with Sparse Writing and Integrity Check
+# 71G5BN - Upload with Sparse Writing and Integrity Check
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Before Test Docker Command
 
-    ## After Test Docker Command
-    <docker after command here>
+`No  repository before`
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## After Test Docker Command
+
+```bash
+docker compose run --rm app
+```
+
+## Evaluation Report
+
+```bash
+docker compose run --rm --build app node evaluation/evaluation.js
+```
