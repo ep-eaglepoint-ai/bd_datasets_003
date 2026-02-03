@@ -1,7 +1,7 @@
 # EN783T - Atomic Apache Configuration Rotation & Signal Management
 
 
-## Before/After test
+## Run tests on repository_after
 
 ```bash
 docker compose run --rm app go test -timeout 60s -v ./tests
