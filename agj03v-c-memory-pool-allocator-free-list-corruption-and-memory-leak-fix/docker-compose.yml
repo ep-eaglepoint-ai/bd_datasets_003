@@ -1,9 +1,23 @@
-
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
+services:
   app:
     build: .
-    command: pytest -q tests
+    working_dir: /app
     volumes:
       - .:/app
+    entrypoint:
+      - sh
+      - -lc
+      - >
+        if [ "$$1" = "eval" ]; then
+          cc -Wall -Wextra -Werror -g -std=c11 evaluation/evaluation.c -o /tmp/pool_eval && /tmp/pool_eval;
+          exit 0;
+        fi;
+        repo="$${TARGET_REPO:-after}";
+        [ "$$repo" = "after" ] && repo="repository_after";
+        [ "$$repo" = "before" ] && repo="repository_before";
+        if [ "$$repo" = "repository_after" ]; then cflags="-Wall -Wextra -Werror -g -pthread -std=c11"; out="/tmp/test_pool_after";
+        elif [ "$$repo" = "repository_before" ]; then cflags="-Wall -Wextra -g -pthread -std=c11"; out="/tmp/test_pool_before";
+        else echo "Set TARGET_REPO=after|before" >&2; exit 2; fi;
+        gcc $$cflags -I"$$repo" "$$repo"/pool.c "$$repo"/freelist.c tests/test_pool.c -o "$$out" && "$$out"
+      - sh
+    command: []
