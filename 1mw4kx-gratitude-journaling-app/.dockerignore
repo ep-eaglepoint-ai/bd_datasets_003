@@ -1,0 +1,7 @@
+node_modules
+.git
+.cache
+build
+.react-router
+repository_after/node_modules
+repository_before/node_modules

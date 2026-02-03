@@ -4,9 +4,38 @@ __pycache__/
 .venv/
 .env
 
+repository_after/node_modules/
+repository_before/node_modules/
+
+repository_after/prisma/dev.db
+repository_before/prisma/dev.db
+
+# Local Databases & Migrations
+**/prisma/dev.db
+**/dev.db
+**/prisma/migrations/
+**/coverage/
+
+repository_after/.env
+repository_before/.env
+
+repository_after/README.md
+repository_before/README.md
+
 # Node
 node_modules/
 
 # OS
 .DS_Store
 evaluation/*.json
+
+
+# React Router / Remix (inside repository_after)
+repository_after/.react-router/
+repository_after/build/
+repository_before/.react-router/
+repository_before/build/
+
+
+
+evaluation/reports/

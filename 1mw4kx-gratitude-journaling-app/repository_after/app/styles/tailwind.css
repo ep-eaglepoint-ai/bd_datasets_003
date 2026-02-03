@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+@theme {
+    --font-serif: "Lora", Georgia, Cambria, "Times New Roman", Times, serif;
+    --font-sans: "Outfit", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+    --color-brand-primary: #a5d8ff;
+    --color-brand-secondary: #e7f5ff;
+    --color-brand-accent: #74c0fc;
+}
+
+@layer base {
+    body {
+        @apply font-sans bg-[#f7fbff] text-slate-800;
+    }
+}
+
+@keyframes float {
+    0% {
+        transform: translateY(0px) rotate(0deg);
+    }
+
+    50% {
+        transform: translateY(-20px) rotate(2deg);
+    }
+
+    100% {
+        transform: translateY(0px) rotate(0deg);
+    }
+}
+
+.animate-float {
+    animation: float 10s ease-in-out infinite;
+}
+
+.animate-float-delayed {
+    animation: float 12s ease-in-out infinite 2s;
+}
+
+.glass-card {
+    background-color: rgb(255 255 255 / 0.4);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgb(255 255 255 / 0.4);
+    box-shadow: 0 8px 32px 0 rgba(165, 216, 255, 0.1);
+}

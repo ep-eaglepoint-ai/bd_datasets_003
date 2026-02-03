@@ -1,11 +1,11 @@
 # 1MW4KX - gratitude journaling app
 
     ## Before Test Docker Command
-    <docker before command here>
+    REPO=repository_before docker compose run --rm tester || true
 
     ## After Test Docker Command
-    <docker after command here>
+    REPO=repository_after docker compose run --rm tester || true
 
     ## Evaluation Docker Command
-    <evaluation command here>
+    docker compose run --rm evaluator
     
