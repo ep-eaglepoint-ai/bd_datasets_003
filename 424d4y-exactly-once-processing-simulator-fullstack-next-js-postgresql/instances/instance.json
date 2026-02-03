@@ -1,11 +1,33 @@
 {
-            "instance_id": "424D4Y",
-            "problem_statement": "Build a fullstack web application that simulates exactly-once processing of tasks. Users can submit tasks with optional IDs, and the system ensures each task is processed only once, even with retries, duplicates, or simultaneous submissions. The app should include a dashboard to view task status, results, and history, and handle edge cases like failures or partial processing",
-            "base_commit": "repository_before/",
-            "test_patch": "tests/",
-            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/424d4y-exactly-once-processing-simulator-fullstack-next-js-postgresql",
-            "environment_setup": "Dockerfile",
-            "FAIL_TO_PASS": [],
-            "PASS_TO_PASS": []
-        }
-        
+  "instance_id": "424D4Y",
+  "problem_statement": "Build a fullstack web application that simulates exactly-once processing of tasks. Users can submit tasks with optional IDs, and the system ensures each task is processed only once, even with retries, duplicates, or simultaneous submissions. The app should include a dashboard to view task status, results, and history, and handle edge cases like failures or partial processing",
+  "base_commit": "repository_before/",
+  "test_patch": "tests/",
+  "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/424d4y-exactly-once-processing-simulator-fullstack-next-js-postgresql",
+  "environment_setup": "Dockerfile",
+  "FAIL_TO_PASS": [
+    "tests/frontend/TaskDashboard.test.tsx::TaskDashboard::renders the dashboard title",
+    "tests/frontend/TaskDashboard.test.tsx::TaskDashboard::fetches and displays tasks",
+    "tests/frontend/TaskDashboard.test.tsx::TaskDashboard::handles fetch error gracefully",
+    "tests/frontend/TaskDashboard.test.tsx::TaskDashboard::submits a new task successfully",
+    "tests/frontend/TaskDashboard.test.tsx::TaskDashboard::handles duplicate/idempotent submission",
+    "tests/frontend/TaskDashboard.test.tsx::TaskDashboard::handles invalid JSON payload",
+    "tests/frontend/TaskDashboard.test.tsx::TaskDashboard::handles submission error with error message",
+    "tests/frontend/TaskDashboard.test.tsx::TaskDashboard::handles submission error without response data",
+    "tests/unit/processing.test.ts::processTask::should process a pending task successfully",
+    "tests/unit/processing.test.ts::processTask::should handle processing failure",
+    "tests/unit/processing.test.ts::processTask::should not process if task not found",
+    "tests/unit/processing.test.ts::processTask::should not process if already processing or completed",
+    "tests/unit/processing.test.ts::processTask::should not process if failed and max retries reached",
+    "tests/unit/processing.test.ts::processTask::should process if failed and retries < max",
+    "tests/unit/processing.test.ts::processTask::should handle locking failure (race condition)",
+    "tests/unit/processing.test.ts::processTask::should handle unexpected errors during processing logic",
+    "tests/integration.test.ts::Exactly-Once Processing Simulator Integration Tests::should return health status",
+    "tests/integration.test.ts::Exactly-Once Processing Simulator Integration Tests::should submit a task successfully and return a task ID",
+    "tests/integration.test.ts::Exactly-Once Processing Simulator Integration Tests::should list tasks",
+    "tests/integration.test.ts::Exactly-Once Processing Simulator Integration Tests::should handle duplicate task submissions with same taskId (Idempotency)",
+    "tests/integration.test.ts::Exactly-Once Processing Simulator Integration Tests::should process a task exactly once",
+    "tests/integration.test.ts::Exactly-Once Processing Simulator Integration Tests::should handle concurrent submissions of the same task"
+  ],
+  "PASS_TO_PASS": []
+}

@@ -29,7 +29,7 @@ services:
       - ./repository_after:/app
       - /app/node_modules
       - ./tests:/app/tests
-    command: sh -c "rm -f /app/test_output.txt && npx prisma generate && npx prisma db push && npx jest --coverage --no-cache > /app/test_output.txt 2>&1"
+    command: sh -c "npx prisma generate && npx prisma db push && npx jest --coverage --no-cache"
 
   evaluation:
     build:
@@ -37,8 +37,10 @@ services:
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/postgres
       - TEST_ROOT=/app/tests
+      - BASE_URL=http://app:3000
     depends_on:
       - db
+      - app
     volumes:
       - ./repository_after:/app
       - /app/node_modules
