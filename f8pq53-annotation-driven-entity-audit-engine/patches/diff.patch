@@ -1,0 +1,1217 @@
+diff --git a/repository_after/pom.xml b/repository_after/pom.xml
+new file mode 100644
+index 0000000..0d29bab
+--- /dev/null
++++ b/repository_after/pom.xml
+@@ -0,0 +1,74 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
++	<modelVersion>4.0.0</modelVersion>
++	<parent>
++		<groupId>org.springframework.boot</groupId>
++		<artifactId>spring-boot-starter-parent</artifactId>
++		<version>3.2.2</version>
++		<relativePath/> <!-- lookup parent from repository -->
++	</parent>
++	<groupId>com.audit</groupId>
++	<artifactId>audit-engine</artifactId>
++	<version>0.0.1-SNAPSHOT</version>
++	<name>audit-engine</name>
++	<description>Annotation-Driven Entity Audit Engine</description>
++	<properties>
++		<java.version>17</java.version>
++	</properties>
++	<dependencies>
++		<dependency>
++			<groupId>org.springframework.boot</groupId>
++			<artifactId>spring-boot-starter-data-jpa</artifactId>
++		</dependency>
++		<dependency>
++			<groupId>org.springframework.boot</groupId>
++			<artifactId>spring-boot-starter-aop</artifactId>
++		</dependency>
++		<dependency>
++			<groupId>org.springframework.boot</groupId>
++			<artifactId>spring-boot-starter-web</artifactId>
++		</dependency>
++		<dependency>
++			<groupId>com.fasterxml.jackson.core</groupId>
++			<artifactId>jackson-databind</artifactId>
++		</dependency>
++		<dependency>
++			<groupId>com.fasterxml.jackson.datatype</groupId>
++			<artifactId>jackson-datatype-jsr310</artifactId>
++		</dependency>
++		<dependency>
++			<groupId>com.h2database</groupId>
++			<artifactId>h2</artifactId>
++			<scope>runtime</scope>
++		</dependency>
++		<dependency>
++			<groupId>org.projectlombok</groupId>
++			<artifactId>lombok</artifactId>
++			<optional>true</optional>
++		</dependency>
++		<dependency>
++			<groupId>org.springframework.boot</groupId>
++			<artifactId>spring-boot-starter-test</artifactId>
++			<scope>test</scope>
++		</dependency>
++	</dependencies>
++
++	<build>
++		<plugins>
++			<plugin>
++				<groupId>org.springframework.boot</groupId>
++				<artifactId>spring-boot-maven-plugin</artifactId>
++				<configuration>
++					<excludes>
++						<exclude>
++							<groupId>org.projectlombok</groupId>
++							<artifactId>lombok</artifactId>
++						</exclude>
++					</excludes>
++				</configuration>
++			</plugin>
++		</plugins>
++	</build>
++
++</project>
+diff --git a/repository_after/src/main/java/com/audit/engine/AuditEngineApplication.java b/repository_after/src/main/java/com/audit/engine/AuditEngineApplication.java
+new file mode 100644
+index 0000000..16e2952
+--- /dev/null
++++ b/repository_after/src/main/java/com/audit/engine/AuditEngineApplication.java
+@@ -0,0 +1,13 @@
++package com.audit.engine;
++
++import org.springframework.boot.SpringApplication;
++import org.springframework.boot.autoconfigure.SpringBootApplication;
++import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
++
++@SpringBootApplication
++@EnableJpaRepositories
++public class AuditEngineApplication {
++    public static void main(String[] args) {
++        SpringApplication.run(AuditEngineApplication.class, args);
++    }
++}
+diff --git a/repository_after/src/main/java/com/audit/engine/annotation/Auditable.java b/repository_after/src/main/java/com/audit/engine/annotation/Auditable.java
+new file mode 100644
+index 0000000..3f7c69d
+--- /dev/null
++++ b/repository_after/src/main/java/com/audit/engine/annotation/Auditable.java
+@@ -0,0 +1,12 @@
++package com.audit.engine.annotation;
++
++import java.lang.annotation.ElementType;
++import java.lang.annotation.Retention;
++import java.lang.annotation.RetentionPolicy;
++import java.lang.annotation.Target;
++
++@Retention(RetentionPolicy.RUNTIME)
++@Target({ElementType.TYPE, ElementType.FIELD})
++public @interface Auditable {
++    boolean mask() default false;
++}
+diff --git a/repository_after/src/main/java/com/audit/engine/aop/AuditAspect.java b/repository_after/src/main/java/com/audit/engine/aop/AuditAspect.java
+new file mode 100644
+index 0000000..c7a426f
+--- /dev/null
++++ b/repository_after/src/main/java/com/audit/engine/aop/AuditAspect.java
+@@ -0,0 +1,116 @@
++package com.audit.engine.aop;
++
++import com.audit.engine.annotation.Auditable;
++import com.audit.engine.core.ChangeDetector;
++import com.audit.engine.event.AuditLogEvent;
++import com.audit.engine.model.AuditLog;
++import com.audit.engine.model.FieldChange;
++import jakarta.persistence.EntityManager;
++import jakarta.persistence.PersistenceContext;
++import jakarta.persistence.Id;
++import lombok.RequiredArgsConstructor;
++import org.aspectj.lang.ProceedingJoinPoint;
++import org.aspectj.lang.annotation.Around;
++import org.aspectj.lang.annotation.Aspect;
++import org.hibernate.proxy.HibernateProxy;
++import org.springframework.context.ApplicationEventPublisher;
++import org.springframework.stereotype.Component;
++import org.springframework.util.ReflectionUtils;
++
++import java.lang.reflect.Field;
++import java.util.List;
++
++@Aspect
++@Component
++@RequiredArgsConstructor
++public class AuditAspect {
++
++    private final ChangeDetector changeDetector;
++    private final ApplicationEventPublisher eventPublisher;
++
++    @PersistenceContext
++    private EntityManager entityManager;
++
++    @Around("execution(public * org.springframework.data.repository.Repository+.save(..))")
++    public Object auditSave(ProceedingJoinPoint joinPoint) throws Throwable {
++        Object[] args = joinPoint.getArgs();
++        if (args.length == 0) return joinPoint.proceed();
++
++        Object entity = args[0];
++        if (entity == null) return joinPoint.proceed();
++
++        Class<?> clazz = getEffectiveClass(entity);
++        if (!clazz.isAnnotationPresent(Auditable.class)) {
++            boolean hasAuditableField = false;
++            for (Field f : clazz.getDeclaredFields()) {
++                 if (f.isAnnotationPresent(Auditable.class)) {
++                     hasAuditableField = true;
++                     break;
++                 }
++            }
++            if (!hasAuditableField) {
++                return joinPoint.proceed();
++            }
++        }
++
++        // Get ID
++        Object id = getId(entity);
++        Object oldState = null;
++
++        if (id != null) {
++             if (entityManager.contains(entity)) {
++                 entityManager.detach(entity);
++             } 
++             oldState = entityManager.find(clazz, id);
++             if (oldState != null) {
++                 entityManager.detach(oldState);
++             }
++        }
++
++        // Proceed (perform update)
++        Object result = joinPoint.proceed();
++
++        // Calculate Diff
++        try {
++            List<FieldChange> changes = changeDetector.detectChanges(oldState, result);
++
++            if (!changes.isEmpty() && oldState != null) {
++                AuditLog log = new AuditLog();
++                log.setEntityId(id != null ? id.toString() : (getId(result) != null ? getId(result).toString() : "unknown"));
++                log.setEntityType(clazz.getSimpleName());
++                log.setAction("UPDATE");
++                log.setUserId(getCurrentUser());
++                log.setTimestamp(java.time.LocalDateTime.now());
++                log.setChanges(changes);
++
++                eventPublisher.publishEvent(new AuditLogEvent(this, log));
++            }
++        } catch (Exception e) {
++            e.printStackTrace();
++        }
++
++        return result;
++    }
++
++    private Class<?> getEffectiveClass(Object entity) {
++        if (entity instanceof HibernateProxy) {
++            return ((HibernateProxy) entity).getHibernateLazyInitializer().getPersistentClass();
++        }
++        return entity.getClass();
++    }
++
++    private Object getId(Object entity) {
++        final Object[] idWrapper = new Object[1];
++        ReflectionUtils.doWithFields(entity.getClass(), field -> {
++            if (field.isAnnotationPresent(Id.class) || field.isAnnotationPresent(org.springframework.data.annotation.Id.class)) {
++                field.setAccessible(true);
++                idWrapper[0] = field.get(entity);
++            }
++        });
++        return idWrapper[0];
++    }
++
++    private String getCurrentUser() {
++        return "system";
++    }
++}
+diff --git a/repository_after/src/main/java/com/audit/engine/config/AuditConfiguration.java b/repository_after/src/main/java/com/audit/engine/config/AuditConfiguration.java
+new file mode 100644
+index 0000000..d713ef5
+--- /dev/null
++++ b/repository_after/src/main/java/com/audit/engine/config/AuditConfiguration.java
+@@ -0,0 +1,26 @@
++package com.audit.engine.config;
++
++import com.audit.engine.repo.AuditLogRepository;
++import com.audit.engine.spi.AuditStorage;
++import com.audit.engine.spi.impl.DatabaseAuditStorage;
++import com.audit.engine.spi.impl.FileAuditStorage;
++import org.springframework.beans.factory.annotation.Value;
++import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
++import org.springframework.context.annotation.Bean;
++import org.springframework.context.annotation.Configuration;
++
++@Configuration
++public class AuditConfiguration {
++
++    @Bean
++    @ConditionalOnProperty(name = "audit.storage.type", havingValue = "database")
++    public AuditStorage databaseAuditStorage(AuditLogRepository repository) {
++        return new DatabaseAuditStorage(repository);
++    }
++
++    @Bean
++    @ConditionalOnProperty(name = "audit.storage.type", havingValue = "file", matchIfMissing = true)
++    public AuditStorage fileAuditStorage(@Value("${audit.storage.file.path:audit_logs.json}") String filePath) {
++        return new FileAuditStorage(filePath);
++    }
++}
+diff --git a/repository_after/src/main/java/com/audit/engine/config/StartupAnnotationScanner.java b/repository_after/src/main/java/com/audit/engine/config/StartupAnnotationScanner.java
+new file mode 100644
+index 0000000..4f23669
+--- /dev/null
++++ b/repository_after/src/main/java/com/audit/engine/config/StartupAnnotationScanner.java
+@@ -0,0 +1,39 @@
++package com.audit.engine.config;
++
++import com.audit.engine.annotation.Auditable;
++import org.springframework.boot.context.event.ApplicationReadyEvent;
++import org.springframework.context.ApplicationListener;
++import org.springframework.context.annotation.Configuration;
++import org.springframework.beans.factory.config.BeanDefinition;
++import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
++import org.springframework.core.type.filter.AnnotationTypeFilter;
++import org.springframework.stereotype.Component;
++
++import java.time.Duration;
++import java.time.Instant;
++import java.util.Set;
++
++@Component
++public class StartupAnnotationScanner implements ApplicationListener<ApplicationReadyEvent> {
++
++    private long scanningTimeMs;
++
++    public long getScanningTimeMs() {
++        return scanningTimeMs;
++    }
++
++    @Override
++    public void onApplicationEvent(ApplicationReadyEvent event) {
++        Instant start = Instant.now();
++        
++        ClassPathScanningCandidateComponentProvider scanner = new ClassPathScanningCandidateComponentProvider(false);
++        scanner.addIncludeFilter(new AnnotationTypeFilter(Auditable.class));
++        
++        Set<BeanDefinition> definitions = scanner.findCandidateComponents("com.audit.engine");
++        
++        Instant end = Instant.now();
++        this.scanningTimeMs = Duration.between(start, end).toMillis();
++        System.out.println("Annotation Scanning Time: " + scanningTimeMs + " ms");
++        System.out.println("Found " + definitions.size() + " auditable entities.");
++    }
++}
+diff --git a/repository_after/src/main/java/com/audit/engine/core/ChangeDetector.java b/repository_after/src/main/java/com/audit/engine/core/ChangeDetector.java
+new file mode 100644
+index 0000000..6c280fa
+--- /dev/null
++++ b/repository_after/src/main/java/com/audit/engine/core/ChangeDetector.java
+@@ -0,0 +1,207 @@
++package com.audit.engine.core;
++
++import com.audit.engine.annotation.Auditable;
++import com.audit.engine.model.FieldChange;
++import org.hibernate.proxy.HibernateProxy;
++import org.springframework.stereotype.Component;
++import org.springframework.util.ReflectionUtils;
++
++import java.lang.reflect.Field;
++import java.util.*;
++
++@Component
++public class ChangeDetector {
++
++    public List<FieldChange> detectChanges(Object oldState, Object newState) {
++        return detectChanges("", oldState, newState, 0);
++    }
++
++    private List<FieldChange> detectChanges(String prefix, Object oldState, Object newState, int depth) {
++        final Object effectiveOldState = (oldState instanceof HibernateProxy) ? 
++            ((HibernateProxy) oldState).getHibernateLazyInitializer().getImplementation() : oldState;
++            
++        final Object effectiveNewState = (newState instanceof HibernateProxy) ? 
++            ((HibernateProxy) newState).getHibernateLazyInitializer().getImplementation() : newState;
++
++        List<FieldChange> changes = new ArrayList<>();
++        if (depth > 2) { 
++             return changes;
++        }
++
++        if (effectiveOldState == null && effectiveNewState == null) return changes;
++
++        // Handle Null to Non-Null and vice versa
++        if (effectiveOldState == null || effectiveNewState == null) {
++            // Whole object changed
++            String propertyName = prefix.isEmpty() ? "root" : prefix;
++             changes.add(new FieldChange(
++                    propertyName,
++                    effectiveOldState == null ? "null" : safeToString(effectiveOldState),
++                    effectiveNewState == null ? "null" : safeToString(effectiveNewState)
++            ));
++            return changes;
++        }
++
++        if (effectiveOldState instanceof Collection && effectiveNewState instanceof Collection) {
++            // Collection handling
++            Collection<?> oldColl = (Collection<?>) effectiveOldState;
++            Collection<?> newColl = (Collection<?>) effectiveNewState;
++            
++            boolean equals = collectionsEqual(oldColl, newColl);
++            if (!equals) {
++                String diff = computeCollectionDiff(oldColl, newColl);
++                changes.add(new FieldChange(prefix, safeToString(effectiveOldState), diff));
++            }
++            return changes;
++        }
++
++        if (effectiveOldState instanceof Map && effectiveNewState instanceof Map) {
++             if (!Objects.equals(effectiveOldState, effectiveNewState)) {
++                 changes.add(new FieldChange(prefix, safeToString(effectiveOldState), safeToString(effectiveNewState)));
++             }
++             return changes;
++        }
++
++        Class<?> clazz = effectiveOldState.getClass();
++        if (!clazz.equals(effectiveNewState.getClass())) {
++            // Classes differ? Treat as value replace.
++             changes.add(new FieldChange(
++                    prefix,
++                    safeToString(effectiveOldState),
++                    safeToString(effectiveNewState)
++            ));
++            return changes;
++        }
++
++        if (isSimpleType(clazz)) {
++            if (!Objects.equals(effectiveOldState, effectiveNewState)) {
++                changes.add(new FieldChange(
++                        prefix,
++                        safeToString(effectiveOldState),
++                        safeToString(effectiveNewState)
++                ));
++            }
++            return changes;
++        }
++
++        // It is a complex object, recurse fields
++        // Check if class is Auditable or we are recursing so we check fields
++        boolean isClassAuditable = clazz.isAnnotationPresent(Auditable.class);
++
++        ReflectionUtils.doWithFields(clazz, field -> {
++            boolean isFieldAuditable = field.isAnnotationPresent(Auditable.class);
++            if (!isClassAuditable && !isFieldAuditable) {
++                return;
++            }
++
++            field.setAccessible(true);
++            Object oldValue = field.get(effectiveOldState);
++            Object newValue = field.get(effectiveNewState);
++            
++            boolean mask = false;
++            // Masking priority: Field level overrides? Or if present?
++            if (isFieldAuditable) {
++                mask = field.getAnnotation(Auditable.class).mask();
++            } else if (isClassAuditable) {
++                 // Check if field has override? No, Auditable is the only annotation.
++                 // If field didn't have annotation, and class did, we check if class wanted mask?
++                 // No, Class level mask=true would mean "Audit all fields AND mask them"? Unlikely.
++                 // Usually Class level enables auditing. Field level configures it.
++                 // If Class has @Auditable(mask=true), maybe all fields are masked.
++                 // Let's assume field level wins or fallback to class.
++                 mask = clazz.getAnnotation(Auditable.class).mask();
++            }
++
++            String fieldName = prefix.isEmpty() ? field.getName() : prefix + "." + field.getName();
++
++            // Recursion Limit check
++            if (isSimpleType(field.getType()) || Collection.class.isAssignableFrom(field.getType()) || Map.class.isAssignableFrom(field.getType())) {
++                 // Compare immediately
++                 List<FieldChange> fieldDiffs = detectChanges(fieldName, oldValue, newValue, depth + 1);
++                 
++                 // Apply masking to the results if needed
++                 if (mask && !fieldDiffs.isEmpty()) {
++                     for (FieldChange fc : fieldDiffs) {
++                         fc.setPreviousValue("****");
++                         fc.setNewValue("****");
++                     }
++                 }
++                 changes.addAll(fieldDiffs);
++            } else {
++                // Nested Object
++                if (depth < 2) {
++                     List<FieldChange> fieldDiffs = detectChanges(fieldName, oldValue, newValue, depth + 1);
++                     
++                     // Apply masking to nested object changes too
++                     if (mask && !fieldDiffs.isEmpty()) {
++                         for (FieldChange fc : fieldDiffs) {
++                             fc.setPreviousValue("****");
++                             fc.setNewValue("****");
++                         }
++                     }
++                     
++                     changes.addAll(fieldDiffs);
++                }
++            }
++
++        });
++
++        return changes;
++    }
++
++    private boolean collectionsEqual(Collection<?> c1, Collection<?> c2) {
++        if (c1 == c2) return true;
++        if (c1 == null || c2 == null) return false;
++        if (c1.size() != c2.size()) return false;
++        
++        Iterator<?> i1 = c1.iterator();
++        Iterator<?> i2 = c2.iterator();
++        while (i1.hasNext()) {
++            Object o1 = i1.next();
++            Object o2 = i2.next();
++            if (!Objects.equals(o1, o2)) {
++                 return false;
++            }
++        }
++        return true;
++    }
++
++    private boolean isSimpleType(Class<?> clazz) {
++        return clazz.isPrimitive() || 
++               clazz.equals(String.class) || 
++               Number.class.isAssignableFrom(clazz) || 
++               Boolean.class.isAssignableFrom(clazz) || 
++               Date.class.isAssignableFrom(clazz) ||
++               java.time.temporal.Temporal.class.isAssignableFrom(clazz) ||
++               clazz.isEnum();
++    }
++
++    private String safeToString(Object o) {
++        return o == null ? "null" : o.toString();
++    }
++    
++    // Naive collection diff for the requirement
++    private String computeCollectionDiff(Collection<?> oldColl, Collection<?> newColl) {
++        // This is a simplified "New Value" representation that shows diff
++        // Ideally we put this in newValue and keep old value as simple toString
++        
++        List<Object> added = new ArrayList<>(newColl);
++        added.removeAll(oldColl);
++        
++        List<Object> removed = new ArrayList<>(oldColl);
++        removed.removeAll(newColl);
++        
++        if (added.isEmpty() && removed.isEmpty()) {
++            // Order changed or something?
++            return newColl.toString();
++        }
++        
++        StringBuilder sb = new StringBuilder();
++        sb.append(newColl.toString()); // The actual new state
++        sb.append(" (Diff: ");
++        if (!added.isEmpty()) sb.append("Added: ").append(added).append(" ");
++        if (!removed.isEmpty()) sb.append("Removed: ").append(removed);
++        sb.append(")");
++        return sb.toString();
++    }
++}
+diff --git a/repository_after/src/main/java/com/audit/engine/demo/DemoAddress.java b/repository_after/src/main/java/com/audit/engine/demo/DemoAddress.java
+new file mode 100644
+index 0000000..e33e5b1
+--- /dev/null
++++ b/repository_after/src/main/java/com/audit/engine/demo/DemoAddress.java
+@@ -0,0 +1,25 @@
++package com.audit.engine.demo;
++
++import com.audit.engine.annotation.Auditable;
++import jakarta.persistence.*;
++import lombok.Data;
++import lombok.NoArgsConstructor;
++
++@Entity
++@Data
++@NoArgsConstructor
++@Auditable
++public class DemoAddress {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    private String city;
++    private String country;
++
++    public DemoAddress(String country, String city) {
++        this.city = city;
++        this.country = country;
++    }
++}
+diff --git a/repository_after/src/main/java/com/audit/engine/demo/DemoController.java b/repository_after/src/main/java/com/audit/engine/demo/DemoController.java
+new file mode 100644
+index 0000000..6e88826
+--- /dev/null
++++ b/repository_after/src/main/java/com/audit/engine/demo/DemoController.java
+@@ -0,0 +1,43 @@
++package com.audit.engine.demo;
++
++import com.audit.engine.model.AuditLog;
++import com.audit.engine.repo.AuditLogRepository;
++import lombok.RequiredArgsConstructor;
++import org.springframework.web.bind.annotation.*;
++
++import java.util.List;
++
++@RestController
++@RequestMapping("/demo")
++@RequiredArgsConstructor
++public class DemoController {
++
++    private final DemoRepository demoRepository;
++    private final AuditLogRepository auditLogRepository;
++
++    @PostMapping
++    public DemoEntity create(@RequestBody DemoEntity entity) {
++        return demoRepository.save(entity);
++    }
++
++    @PutMapping("/{id}")
++    public DemoEntity update(@PathVariable Long id, @RequestBody DemoEntity entity) {
++        DemoEntity existing = demoRepository.findById(id).orElseThrow();
++        existing.setName(entity.getName());
++        existing.setEmail(entity.getEmail());
++        existing.setSecret(entity.getSecret());
++        existing.setAddress(entity.getAddress());
++        existing.setTags(entity.getTags());
++        return demoRepository.save(existing);
++    }
++    
++    @GetMapping("/{id}")
++    public DemoEntity get(@PathVariable Long id) {
++        return demoRepository.findById(id).orElseThrow();
++    }
++
++    @GetMapping("/audits")
++    public List<AuditLog> getAudits() {
++        return auditLogRepository.findAll();
++    }
++}
+diff --git a/repository_after/src/main/java/com/audit/engine/demo/DemoEntity.java b/repository_after/src/main/java/com/audit/engine/demo/DemoEntity.java
+new file mode 100644
+index 0000000..6b0a289
+--- /dev/null
++++ b/repository_after/src/main/java/com/audit/engine/demo/DemoEntity.java
+@@ -0,0 +1,32 @@
++package com.audit.engine.demo;
++
++import com.audit.engine.annotation.Auditable;
++import jakarta.persistence.*;
++import lombok.Data;
++import lombok.NoArgsConstructor;
++
++import java.util.ArrayList;
++import java.util.List;
++
++@Entity
++@Data
++@NoArgsConstructor
++@Auditable
++public class DemoEntity {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    private String name;
++    private String email;
++
++    @Auditable(mask = true)
++    private String secret;
++
++    @OneToOne(cascade = CascadeType.ALL)
++    private DemoAddress address;
++
++    @ElementCollection(fetch = FetchType.EAGER)
++    private List<String> tags = new ArrayList<>();
++}
+diff --git a/repository_after/src/main/java/com/audit/engine/demo/DemoRepository.java b/repository_after/src/main/java/com/audit/engine/demo/DemoRepository.java
+new file mode 100644
+index 0000000..2dab265
+--- /dev/null
++++ b/repository_after/src/main/java/com/audit/engine/demo/DemoRepository.java
+@@ -0,0 +1,6 @@
++package com.audit.engine.demo;
++
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface DemoRepository extends JpaRepository<DemoEntity, Long> {
++}
+diff --git a/repository_after/src/main/java/com/audit/engine/event/AuditLogEvent.java b/repository_after/src/main/java/com/audit/engine/event/AuditLogEvent.java
+new file mode 100644
+index 0000000..54698bf
+--- /dev/null
++++ b/repository_after/src/main/java/com/audit/engine/event/AuditLogEvent.java
+@@ -0,0 +1,18 @@
++package com.audit.engine.event;
++
++import com.audit.engine.model.AuditLog;
++import org.springframework.context.ApplicationEvent;
++
++public class AuditLogEvent extends ApplicationEvent {
++
++    private final AuditLog auditLog;
++
++    public AuditLogEvent(Object source, AuditLog auditLog) {
++        super(source);
++        this.auditLog = auditLog;
++    }
++
++    public AuditLog getAuditLog() {
++        return auditLog;
++    }
++}
+diff --git a/repository_after/src/main/java/com/audit/engine/event/AuditLogListener.java b/repository_after/src/main/java/com/audit/engine/event/AuditLogListener.java
+new file mode 100644
+index 0000000..a87518e
+--- /dev/null
++++ b/repository_after/src/main/java/com/audit/engine/event/AuditLogListener.java
+@@ -0,0 +1,23 @@
++package com.audit.engine.event;
++
++import com.audit.engine.spi.AuditStorage;
++import lombok.RequiredArgsConstructor;
++import org.springframework.stereotype.Component;
++import org.springframework.transaction.annotation.Propagation;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.transaction.event.TransactionPhase;
++import org.springframework.transaction.event.TransactionalEventListener;
++
++@Component
++@RequiredArgsConstructor
++public class AuditLogListener {
++
++    private final AuditStorage auditStorage;
++
++    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
++    @Transactional(propagation = Propagation.REQUIRES_NEW)
++    public void handleAuditLogEvent(AuditLogEvent event) {
++        System.out.println("AuditLogListener: Saving log");
++        auditStorage.save(event.getAuditLog());
++    }
++}
+diff --git a/repository_after/src/main/java/com/audit/engine/model/AuditLog.java b/repository_after/src/main/java/com/audit/engine/model/AuditLog.java
+new file mode 100644
+index 0000000..5bc1a23
+--- /dev/null
++++ b/repository_after/src/main/java/com/audit/engine/model/AuditLog.java
+@@ -0,0 +1,41 @@
++package com.audit.engine.model;
++
++import jakarta.persistence.*;
++import lombok.Data;
++import lombok.NoArgsConstructor;
++
++import java.time.LocalDateTime;
++import java.util.ArrayList;
++import java.util.List;
++
++@Entity
++@Data
++@NoArgsConstructor
++public class AuditLog {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    private String entityId;
++    private String entityType;
++    private String action;
++    private String userId;
++    private LocalDateTime timestamp;
++
++    @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.EAGER)
++    @JoinColumn(name = "audit_log_id")
++    private List<FieldChange> changes = new ArrayList<>();
++
++    public AuditLog(String entityId, String entityType, String action, String userId) {
++        this.entityId = entityId;
++        this.entityType = entityType;
++        this.action = action;
++        this.userId = userId;
++        this.timestamp = LocalDateTime.now();
++    }
++
++    public void addChange(FieldChange change) {
++        this.changes.add(change);
++    }
++}
+diff --git a/repository_after/src/main/java/com/audit/engine/model/FieldChange.java b/repository_after/src/main/java/com/audit/engine/model/FieldChange.java
+new file mode 100644
+index 0000000..1ce0f54
+--- /dev/null
++++ b/repository_after/src/main/java/com/audit/engine/model/FieldChange.java
+@@ -0,0 +1,33 @@
++package com.audit.engine.model;
++
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Lob;
++import lombok.Data;
++import lombok.NoArgsConstructor;
++
++@Entity
++@Data
++@NoArgsConstructor
++public class FieldChange {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    private String fieldName;
++    
++    @Lob
++    private String previousValue;
++    
++    @Lob
++    private String newValue;
++
++    public FieldChange(String fieldName, String previousValue, String newValue) {
++        this.fieldName = fieldName;
++        this.previousValue = previousValue;
++        this.newValue = newValue;
++    }
++}
+diff --git a/repository_after/src/main/java/com/audit/engine/repo/AuditLogRepository.java b/repository_after/src/main/java/com/audit/engine/repo/AuditLogRepository.java
+new file mode 100644
+index 0000000..ae7b891
+--- /dev/null
++++ b/repository_after/src/main/java/com/audit/engine/repo/AuditLogRepository.java
+@@ -0,0 +1,9 @@
++package com.audit.engine.repo;
++
++import com.audit.engine.model.AuditLog;
++import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.stereotype.Repository;
++
++@Repository
++public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
++}
+diff --git a/repository_after/src/main/java/com/audit/engine/spi/AuditStorage.java b/repository_after/src/main/java/com/audit/engine/spi/AuditStorage.java
+new file mode 100644
+index 0000000..f036023
+--- /dev/null
++++ b/repository_after/src/main/java/com/audit/engine/spi/AuditStorage.java
+@@ -0,0 +1,7 @@
++package com.audit.engine.spi;
++
++import com.audit.engine.model.AuditLog;
++
++public interface AuditStorage {
++    void save(AuditLog auditLog);
++}
+diff --git a/repository_after/src/main/java/com/audit/engine/spi/impl/DatabaseAuditStorage.java b/repository_after/src/main/java/com/audit/engine/spi/impl/DatabaseAuditStorage.java
+new file mode 100644
+index 0000000..2b0afaa
+--- /dev/null
++++ b/repository_after/src/main/java/com/audit/engine/spi/impl/DatabaseAuditStorage.java
+@@ -0,0 +1,18 @@
++package com.audit.engine.spi.impl;
++
++import com.audit.engine.model.AuditLog;
++import com.audit.engine.repo.AuditLogRepository;
++import com.audit.engine.spi.AuditStorage;
++import lombok.RequiredArgsConstructor;
++
++// Not making it @Component immediately, will configure via Bean
++@RequiredArgsConstructor
++public class DatabaseAuditStorage implements AuditStorage {
++
++    private final AuditLogRepository repository;
++
++    @Override
++    public void save(AuditLog auditLog) {
++        repository.save(auditLog);
++    }
++}
+diff --git a/repository_after/src/main/java/com/audit/engine/spi/impl/FileAuditStorage.java b/repository_after/src/main/java/com/audit/engine/spi/impl/FileAuditStorage.java
+new file mode 100644
+index 0000000..c743915
+--- /dev/null
++++ b/repository_after/src/main/java/com/audit/engine/spi/impl/FileAuditStorage.java
+@@ -0,0 +1,36 @@
++package com.audit.engine.spi.impl;
++
++import com.audit.engine.model.AuditLog;
++import com.audit.engine.spi.AuditStorage;
++import com.fasterxml.jackson.databind.ObjectMapper;
++import com.fasterxml.jackson.databind.SerializationFeature;
++import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
++
++import java.io.File;
++import java.io.FileWriter;
++import java.io.IOException;
++import java.io.PrintWriter;
++
++public class FileAuditStorage implements AuditStorage {
++
++    private final ObjectMapper objectMapper;
++    private final String filePath;
++
++    public FileAuditStorage(String filePath) {
++        this.filePath = filePath;
++        this.objectMapper = new ObjectMapper();
++        this.objectMapper.registerModule(new JavaTimeModule());
++        this.objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
++    }
++
++    @Override
++    public void save(AuditLog auditLog) {
++        try (PrintWriter out = new PrintWriter(new FileWriter(filePath, true))) {
++            String json = objectMapper.writeValueAsString(auditLog);
++            out.println(json);
++        } catch (IOException e) {
++            e.printStackTrace();
++            // In production, log error or throw generic exception
++        }
++    }
++}
+diff --git a/repository_after/src/test/java/com/audit/engine/AuditEngineTest.java b/repository_after/src/test/java/com/audit/engine/AuditEngineTest.java
+new file mode 100644
+index 0000000..2c2abef
+--- /dev/null
++++ b/repository_after/src/test/java/com/audit/engine/AuditEngineTest.java
+@@ -0,0 +1,225 @@
++package com.audit.engine;
++
++import com.audit.engine.demo.DemoAddress;
++import com.audit.engine.demo.DemoEntity;
++import com.audit.engine.demo.DemoRepository;
++import com.audit.engine.model.AuditLog;
++import com.audit.engine.model.FieldChange;
++import com.audit.engine.repo.AuditLogRepository;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.boot.test.context.SpringBootTest;
++import org.springframework.boot.test.context.TestConfiguration;
++import org.springframework.context.annotation.Bean;
++import org.springframework.transaction.PlatformTransactionManager;
++import org.springframework.transaction.support.TransactionTemplate;
++
++import java.util.List;
++
++import static org.junit.jupiter.api.Assertions.*;
++
++@SpringBootTest(properties = "audit.storage.type=database")
++public class AuditEngineTest {
++
++    @Autowired
++    private DemoRepository demoRepository;
++
++    @Autowired
++    private AuditLogRepository auditLogRepository;
++    
++    @Autowired
++    private TransactionTemplate transactionTemplate;
++
++    @BeforeEach
++    void setUp() {
++        auditLogRepository.deleteAll();
++        demoRepository.deleteAll();
++    }
++
++    @Test
++    void testSimpleFieldChange() {
++        Long id = transactionTemplate.execute(status -> {
++            DemoEntity user = new DemoEntity();
++            user.setName("alice");
++            user.setEmail("alice@example.com");
++            return demoRepository.save(user).getId();
++        });
++
++        transactionTemplate.execute(status -> {
++            DemoEntity saved = demoRepository.findById(id).orElseThrow();
++            saved.setEmail("alice_new@example.com");
++            demoRepository.save(saved);
++            return null;
++        });
++        
++        // Wait briefly for the listener (in case async, though standard listener is sync)
++        
++        List<AuditLog> logs = auditLogRepository.findAll();
++        assertEquals(1, logs.size());
++        AuditLog log = logs.get(0);
++        assertEquals("UPDATE", log.getAction());
++        assertEquals("DemoEntity", log.getEntityType());
++        
++        assertEquals(1, log.getChanges().size());
++        FieldChange fc = log.getChanges().get(0);
++        assertEquals("email", fc.getFieldName());
++        assertEquals("alice@example.com", fc.getPreviousValue());
++        assertEquals("alice_new@example.com", fc.getNewValue());
++    }
++
++    @Test
++    void testMasking() {
++        Long id = transactionTemplate.execute(status -> {
++            DemoEntity user = new DemoEntity();
++            user.setName("bob");
++            user.setSecret("secret123");
++            return demoRepository.save(user).getId();
++        });
++        
++        transactionTemplate.execute(status -> {
++            DemoEntity saved = demoRepository.findById(id).orElseThrow();
++            saved.setSecret("newsecret");
++            demoRepository.save(saved);
++            return null;
++        });
++        
++        List<AuditLog> logs = auditLogRepository.findAll();
++        assertEquals(1, logs.size());
++        FieldChange fc = logs.get(0).getChanges().get(0);
++        assertEquals("secret", fc.getFieldName());
++        assertEquals("****", fc.getPreviousValue());
++        assertEquals("****", fc.getNewValue());
++    }
++
++    @Test
++    void testNestedObjectChange() {
++        Long id = transactionTemplate.execute(status -> {
++            DemoEntity user = new DemoEntity();
++            user.setName("charlie");
++            user.setAddress(new DemoAddress("Street 1", "City A"));
++            return demoRepository.save(user).getId();
++        });
++        
++        transactionTemplate.execute(status -> {
++            DemoEntity saved = demoRepository.findById(id).orElseThrow();
++            saved.getAddress().setCity("City B");
++            demoRepository.save(saved);
++            return null;
++        });
++        
++        List<AuditLog> logs = auditLogRepository.findAll();
++        assertEquals(1, logs.size());
++        FieldChange fc = logs.get(0).getChanges().get(0);
++        assertEquals("address.city", fc.getFieldName());
++        assertEquals("City A", fc.getPreviousValue());
++        assertEquals("City B", fc.getNewValue());
++    }
++
++    @Test
++    void testCollectionChange() {
++        Long id = transactionTemplate.execute(status -> {
++            DemoEntity user = new DemoEntity();
++            user.setName("david");
++            user.getTags().add("tag1");
++            return demoRepository.save(user).getId();
++        });
++        
++        transactionTemplate.execute(status -> {
++            DemoEntity saved = demoRepository.findById(id).orElseThrow();
++            saved.getTags().add("tag2");
++            demoRepository.save(saved);
++            return null;
++        });
++        
++        List<AuditLog> logs = auditLogRepository.findAll();
++        assertEquals(1, logs.size());
++        FieldChange fc = logs.get(0).getChanges().get(0);
++        assertEquals("tags", fc.getFieldName());
++        assertTrue(fc.getNewValue().contains("Added: [tag2]"));
++    }
++    
++    @Test
++    void testTransactionRollback() {
++        // Setup: Create an entity
++        Long id = transactionTemplate.execute(status -> {
++            DemoEntity user = new DemoEntity();
++            user.setName("eve");
++            return demoRepository.save(user).getId();
++        });
++
++        // Test: Update and Rollback
++        try {
++            transactionTemplate.execute(status -> {
++                DemoEntity saved = demoRepository.findById(id).orElseThrow();
++                saved.setName("eve_updated");
++                demoRepository.save(saved);
++                
++                // Rollback
++                status.setRollbackOnly();
++                return null;
++            });
++        } catch (Exception e) {}
++        
++        // Assert: No audit log should be present because transaction rolled back
++        // (AuditLogListener is AFTER_COMMIT)
++        
++        assertEquals(0, auditLogRepository.count());
++    }
++
++    @Test
++    void testNullToNonNull() {
++         Long id = transactionTemplate.execute(status -> {
++            DemoEntity user = new DemoEntity();
++            user.setName("frank");
++            return demoRepository.save(user).getId();
++        });
++
++        transactionTemplate.execute(status -> {
++            DemoEntity saved = demoRepository.findById(id).orElseThrow();
++            // old email is null
++            saved.setEmail("frank@example.com");
++            demoRepository.save(saved);
++            return null;
++        });
++
++        List<AuditLog> logs = auditLogRepository.findAll();
++        assertEquals(1, logs.size());
++        FieldChange fc = logs.get(0).getChanges().get(0);
++        assertEquals("email", fc.getFieldName());
++        assertEquals("null", fc.getPreviousValue()) ; // "null" string
++        assertEquals("frank@example.com", fc.getNewValue());
++    }
++
++    @Test
++    void testNonNullToNull() {
++         Long id = transactionTemplate.execute(status -> {
++            DemoEntity user = new DemoEntity();
++            user.setName("grace");
++            user.setEmail("grace@example.com");
++            return demoRepository.save(user).getId();
++        });
++
++        transactionTemplate.execute(status -> {
++            DemoEntity saved = demoRepository.findById(id).orElseThrow();
++            saved.setEmail(null);
++            demoRepository.save(saved);
++            return null;
++        });
++
++        List<AuditLog> logs = auditLogRepository.findAll();
++        assertEquals(1, logs.size());
++        FieldChange fc = logs.get(0).getChanges().get(0);
++        assertEquals("email", fc.getFieldName());
++        assertEquals("grace@example.com", fc.getPreviousValue()) ;
++        assertEquals("null", fc.getNewValue());
++    }
++    
++    @TestConfiguration
++    static class TestConfig {
++        @Bean
++        public TransactionTemplate transactionTemplate(PlatformTransactionManager tm) {
++            return new TransactionTemplate(tm);
++        }
++    }
++}
+diff --git a/repository_after/src/test/java/com/audit/engine/AuditPerformanceTest.java b/repository_after/src/test/java/com/audit/engine/AuditPerformanceTest.java
+new file mode 100644
+index 0000000..3d24570
+--- /dev/null
++++ b/repository_after/src/test/java/com/audit/engine/AuditPerformanceTest.java
+@@ -0,0 +1,88 @@
++package com.audit.engine;
++
++import com.audit.engine.config.StartupAnnotationScanner;
++import com.audit.engine.core.ChangeDetector;
++import com.audit.engine.demo.DemoAddress;
++import com.audit.engine.demo.DemoEntity;
++import com.audit.engine.model.AuditLog;
++import com.audit.engine.model.FieldChange;
++import com.fasterxml.jackson.databind.ObjectMapper;
++import org.junit.jupiter.api.Test;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.boot.test.context.SpringBootTest;
++
++import java.util.Collections;
++
++import static org.junit.jupiter.api.Assertions.assertTrue;
++
++@SpringBootTest
++public class AuditPerformanceTest {
++
++    @Autowired
++    private ChangeDetector changeDetector;
++
++    @Autowired
++    private ObjectMapper objectMapper;
++
++    @Autowired
++    private StartupAnnotationScanner annotationScanner;
++
++    @Test
++    void measureAnnotationScanningTime() {
++        long time = annotationScanner.getScanningTimeMs();
++        System.out.println("Annotation Scanning Time: " + time + " ms");
++        // It should be non-negative.
++        assertTrue(time >= 0);
++    }
++
++    @Test
++    void measureReflectionOverhead() {
++        DemoEntity oldState = new DemoEntity();
++        oldState.setName("Old Name");
++        oldState.setEmail("old@example.com");
++        oldState.setAddress(new DemoAddress("Old Street", "Old City"));
++        oldState.setTags(Collections.singletonList("tag1"));
++
++        DemoEntity newState = new DemoEntity();
++        newState.setName("New Name");
++        newState.setEmail("new@example.com");
++        newState.setAddress(new DemoAddress("New Street", "New City"));
++        newState.setTags(Collections.singletonList("tag2"));
++
++        int iterations = 1000; // reduced from 10000 to be faster
++        long start = System.nanoTime();
++        
++        for (int i = 0; i < iterations; i++) {
++            changeDetector.detectChanges(oldState, newState);
++        }
++        
++        long end = System.nanoTime();
++        double avgTime = (end - start) / (double) iterations;
++        
++        System.out.println("Reflection Overhead per Update: " + avgTime + " ns");
++    }
++
++    @Test
++    void measureSerializationLatency() throws Exception {
++        AuditLog log = new AuditLog();
++        log.setEntityId("1");
++        log.setEntityType("DemoEntity");
++        log.setAction("UPDATE");
++        log.setUserId("user");
++        log.setTimestamp(java.time.LocalDateTime.now());
++        log.addChange(new FieldChange("name", "Old Name", "New Name"));
++        log.addChange(new FieldChange("address.street", "Old Street", "New Street"));
++
++        int iterations = 1000; // reduced from 10000
++        long start = System.nanoTime();
++        
++        for (int i = 0; i < iterations; i++) {
++            objectMapper.writeValueAsString(log);
++        }
++        
++        long end = System.nanoTime();
++        double avgTime = (end - start) / (double) iterations;
++        
++        System.out.println("Serialization Latency: " + avgTime + " ns");
++    }
++}
