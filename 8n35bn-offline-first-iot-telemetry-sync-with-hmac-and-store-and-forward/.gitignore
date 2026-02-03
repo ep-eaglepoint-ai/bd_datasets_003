@@ -1,6 +1,10 @@
 # Task Specific
 reports/
 
+# Test Data
+**/temp_test_data/
+*.db
+
 # Node
 node_modules/
 
