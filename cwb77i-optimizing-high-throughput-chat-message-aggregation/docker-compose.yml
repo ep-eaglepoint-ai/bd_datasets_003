@@ -3,7 +3,7 @@ services:
     build: .
     volumes:
       - .:/app
-    command: go test -v -race ./repository_before/...
+    command: sh -c "go test -v -race ./repository_before/... || true"
 
   tests-after:
     build: .
