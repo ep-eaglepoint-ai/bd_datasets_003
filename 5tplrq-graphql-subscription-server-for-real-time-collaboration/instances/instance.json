@@ -1,0 +1,11 @@
+{
+            "instance_id": "5TPLRQ",
+            "problem_statement": "The collaborative document editing application needs a real-time backend where multiple users can edit the same document simultaneously. Currently, users don't see each other's changes until they refresh the page, there's no indication of who else is viewing a document, and cursor positions aren't shared. The system must support GraphQL subscriptions over WebSocket, track user presence per document, broadcast cursor movements in real-time, and handle connection lifecycle properly. Core logic should be in src/resolvers/, src/pubsub/, and src/services/.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/5tplrq-graphql-subscription-server-for-real-time-collaboration",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
