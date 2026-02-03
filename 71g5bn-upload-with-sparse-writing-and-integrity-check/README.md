@@ -13,5 +13,5 @@ docker compose run --rm app
 ## Evaluation Report
 
 ```bash
-docker compose run --rm  app node evaluation/evaluation.js
+docker compose run --rm app node evaluation/evaluation.js
 ```
