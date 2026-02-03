@@ -36,6 +36,8 @@ int pool_init(memory_pool_t *pool, void *memory, size_t size);
 void *pool_alloc(memory_pool_t *pool, size_t size);
 void pool_free(memory_pool_t *pool, void *ptr);
 void pool_stats(memory_pool_t *pool, size_t *total, size_t *used, size_t *free_space);
+size_t pool_largest_free(memory_pool_t *pool);
+size_t pool_free_block_count(memory_pool_t *pool);
 void pool_destroy(memory_pool_t *pool);
 
 #endif

@@ -265,13 +265,13 @@ static void write_report_json(const char *path, const char run_id[9], const run_
     const char *req1 = pass_fail_notrun(after, "concurrent_alloc_unique_addresses");
     const char *req2 = pass_fail_notrun(after, "min_alloc_and_alignment");
     const char *req3 = pass_fail_notrun(after, "min_alloc_and_alignment");
-    const char *req4 = pass_fail_notrun(after, "coalescing_reclaims_header_space");
+    const char *req4 = pass_fail_notrun(after, "free_last_block_end_bounds");
     const char *req5 = pass_fail_notrun(after, "double_free_and_pointer_validation");
     const char *req6 = pass_fail_notrun(after, "double_free_and_pointer_validation");
     const char *req7 = pass_fail_notrun(after, "coalescing_prev_and_next");
     const char *req8 = pass_fail_notrun(after, "coalescing_reclaims_header_space");
     const char *req9 = pass_fail_notrun(after, "split_remainder_usable_rule");
-    const char *req10 = pass_fail_notrun(after, "stress_no_leak_over_loops");
+    const char *req10 = pass_fail_notrun(after, "freelist_helpers_only_count_free_blocks");
 
     fprintf(f, "{\n");
     fprintf(f, "  \"run_id\": ");

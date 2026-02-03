@@ -9,6 +9,12 @@
 extern int freelist_count(memory_pool_t *pool);
 extern size_t freelist_total_free(memory_pool_t *pool);
 
+// Fragmentation metrics are only available in the fixed (repository_after) implementation.
+#ifdef POOL_NULL_OFFSET
+extern size_t pool_largest_free(memory_pool_t *pool);
+extern size_t pool_free_block_count(memory_pool_t *pool);
+#endif
+
 #define ASSERT_TRUE(expr) do { \
     if (!(expr)) { \
         fprintf(stderr, "ASSERT_TRUE failed: %s (%s:%d)\n", #expr, __FILE__, __LINE__); \
@@ -388,6 +394,153 @@ static int test_stress_no_leak_over_loops(void) {
     return 0;
 }
 
+static int test_free_last_block_end_bounds(void) {
+    // Freeing a block at the end of the pool must not read beyond pool_end during coalescing.
+    // This test is designed so the second allocation consumes the last block in the pool.
+    memory_pool_t pool;
+    static uint8_t mem[80] __attribute__((aligned(8)));
+
+    ASSERT_TRUE(pool_init(&pool, mem, sizeof(mem)) == 0);
+
+    size_t initial_free;
+    stats(&pool, NULL, NULL, &initial_free);
+    ASSERT_EQ_U64(initial_free, 64u);
+
+    void *p1 = pool_alloc(&pool, 32);
+    ASSERT_TRUE(p1 != NULL);
+    void *p2 = pool_alloc(&pool, 16);
+    ASSERT_TRUE(p2 != NULL);
+
+    // Free the last block first; should not crash and should update bookkeeping sanely.
+    pool_free(&pool, p2);
+    ASSERT_EQ_U64(freelist_total_free(&pool), 16u);
+    ASSERT_EQ_U64((size_t)freelist_count(&pool), 1u);
+
+    // Free the first block; should coalesce everything back to one free block.
+    pool_free(&pool, p1);
+
+    size_t used, free_space;
+    stats(&pool, NULL, &used, &free_space);
+    ASSERT_EQ_U64(used, 0u);
+    ASSERT_EQ_U64(free_space, initial_free);
+    ASSERT_EQ_U64(free_space, freelist_total_free(&pool));
+    ASSERT_EQ_U64((size_t)freelist_count(&pool), 1u);
+
+    pool_destroy(&pool);
+    return 0;
+}
+
+static int test_freelist_helpers_only_count_free_blocks(void) {
+    // This test catches the legacy bug where allocated blocks remain linked
+    // and freelist_count/total_free end up counting non-free blocks.
+    memory_pool_t pool;
+    static uint8_t mem[128] __attribute__((aligned(8)));
+
+    ASSERT_TRUE(pool_init(&pool, mem, sizeof(mem)) == 0);
+
+    // Start with exactly one free block.
+    ASSERT_EQ_U64((size_t)freelist_count(&pool), 1u);
+    size_t total, used, free_space;
+    stats(&pool, &total, &used, &free_space);
+    ASSERT_EQ_U64(freelist_total_free(&pool), free_space);
+
+    // After a small allocation that causes a split, there should still be exactly one free block.
+    void *p = pool_alloc(&pool, 16);
+    ASSERT_TRUE(p != NULL);
+    ASSERT_EQ_U64((size_t)freelist_count(&pool), 1u);
+    stats(&pool, NULL, NULL, &free_space);
+    ASSERT_EQ_U64(freelist_total_free(&pool), free_space);
+
+    pool_free(&pool, p);
+    ASSERT_EQ_U64((size_t)freelist_count(&pool), 1u);
+    stats(&pool, NULL, NULL, &free_space);
+    ASSERT_EQ_U64(freelist_total_free(&pool), free_space);
+
+    pool_destroy(&pool);
+    return 0;
+}
+
+static int test_use_after_free_not_duplicated(void) {
+    // We can't detect arbitrary use-after-free reads/writes, but we can ensure the allocator
+    // never returns the same block twice without an intervening free.
+    memory_pool_t pool;
+    static uint8_t mem[256] __attribute__((aligned(8)));
+
+    ASSERT_TRUE(pool_init(&pool, mem, sizeof(mem)) == 0);
+
+    void *a = pool_alloc(&pool, 32);
+    ASSERT_TRUE(a != NULL);
+    void *b = pool_alloc(&pool, 32);
+    ASSERT_TRUE(b != NULL);
+    ASSERT_TRUE(a != b);
+
+    pool_free(&pool, a);
+
+    // Reallocate same size; should typically reuse the freed block.
+    void *a2 = pool_alloc(&pool, 32);
+    ASSERT_TRUE(a2 != NULL);
+    ASSERT_TRUE(a2 == a);
+
+    // And it must not be returned again while still allocated.
+    void *c = pool_alloc(&pool, 32);
+    ASSERT_TRUE(c != NULL);
+    ASSERT_TRUE(c != a2);
+    ASSERT_TRUE(c != b);
+
+    pool_free(&pool, b);
+    pool_free(&pool, a2);
+    pool_free(&pool, c);
+
+    size_t used, free_space;
+    stats(&pool, NULL, &used, &free_space);
+    ASSERT_EQ_U64(used, 0u);
+    ASSERT_EQ_U64(free_space, freelist_total_free(&pool));
+    ASSERT_EQ_U64((size_t)freelist_count(&pool), 1u);
+    pool_destroy(&pool);
+    return 0;
+}
+
+#ifdef POOL_NULL_OFFSET
+static int test_fragmentation_metrics(void) {
+    // Create fragmentation by freeing alternating blocks. Largest contiguous free should drop
+    // below total free space when fragmented.
+    memory_pool_t pool;
+    static uint8_t mem[512] __attribute__((aligned(8)));
+    ASSERT_TRUE(pool_init(&pool, mem, sizeof(mem)) == 0);
+
+    void *p[8];
+    for (int i = 0; i < 8; i++) {
+        p[i] = pool_alloc(&pool, 32);
+        ASSERT_TRUE(p[i] != NULL);
+    }
+
+    for (int i = 0; i < 8; i += 2) {
+        pool_free(&pool, p[i]);
+    }
+
+    size_t used, free_space;
+    stats(&pool, NULL, &used, &free_space);
+
+    size_t largest = pool_largest_free(&pool);
+    ASSERT_TRUE(largest <= free_space);
+    ASSERT_TRUE(pool_free_block_count(&pool) >= (size_t)2u);
+    // With alternating frees, fragmentation should exist: largest should be strictly smaller than total free.
+    ASSERT_TRUE(largest < free_space);
+
+    for (int i = 1; i < 8; i += 2) {
+        pool_free(&pool, p[i]);
+    }
+
+    stats(&pool, NULL, &used, &free_space);
+    ASSERT_EQ_U64(used, 0u);
+    ASSERT_EQ_U64(pool_free_block_count(&pool), 1u);
+    ASSERT_EQ_U64(pool_largest_free(&pool), free_space);
+
+    pool_destroy(&pool);
+    return 0;
+}
+#endif
+
 int main(void) {
     struct {
         const char *name;
@@ -401,6 +554,12 @@ int main(void) {
         {"double_free_and_pointer_validation", test_double_free_and_pointer_validation},
         {"concurrent_alloc_unique_addresses", test_concurrent_alloc_unique_addresses},
         {"stress_no_leak_over_loops", test_stress_no_leak_over_loops},
+        {"free_last_block_end_bounds", test_free_last_block_end_bounds},
+        {"freelist_helpers_only_count_free_blocks", test_freelist_helpers_only_count_free_blocks},
+        {"use_after_free_not_duplicated", test_use_after_free_not_duplicated},
+    #ifdef POOL_NULL_OFFSET
+        {"fragmentation_metrics", test_fragmentation_metrics},
+    #endif
     };
 
     int failures = 0;

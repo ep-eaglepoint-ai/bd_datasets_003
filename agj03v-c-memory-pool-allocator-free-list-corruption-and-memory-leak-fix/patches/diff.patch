@@ -127,10 +127,10 @@ index 6a5b317..d295f21 100644
      return total;
  }
 diff --git a/repository_before/pool.c b/repository_after/pool.c
-index feb54c6..ee1e4df 100644
+index feb54c6..4239399 100644
 --- a/repository_before/pool.c
 +++ b/repository_after/pool.c
-@@ -1,116 +1,306 @@
+@@ -1,116 +1,344 @@
  #include "pool.h"
 +
  #include <string.h>
@@ -162,10 +162,6 @@ index feb54c6..ee1e4df 100644
  
 -static size_t align_size(size_t size) {
 -    return (size + POOL_ALIGNMENT - 1) & ~(POOL_ALIGNMENT - 1);
-+static inline uint32_t offset_from_hdr(memory_pool_t *pool, const block_header_t *hdr) {
-+    return (uint32_t)((const uint8_t *)hdr - (const uint8_t *)pool->pool_start);
-+}
-+
 +static inline uint32_t block_end_offset_u32(uint32_t block_offset, uint32_t payload_size) {
 +    return block_offset + HEADER_SIZE + payload_size;
 +}
@@ -304,13 +300,7 @@ index feb54c6..ee1e4df 100644
 +            } else {
 +                // Allocate entire block.
 +                pool->free_space -= (size_t)cur_payload;
-             }
--            
--            current->is_free = 0;
--            
--            pool->allocated += current->size;
--            pool->free_space -= current->size;
--            
++            }
 +
 +            cur->flags &= ~FLAG_FREE;
 +            cur->next = POOL_NULL_OFFSET;
@@ -325,7 +315,13 @@ index feb54c6..ee1e4df 100644
 +                    return NULL;
 +                }
 +                prev->next = replacement_off;
-+            }
+             }
+-            
+-            current->is_free = 0;
+-            
+-            pool->allocated += current->size;
+-            pool->free_space -= current->size;
+-            
 +
 +            pool->allocated += (size_t)cur->size;
 +
@@ -485,16 +481,58 @@ index feb54c6..ee1e4df 100644
      if (!pool) return;
 -    
 +
-     pthread_mutex_lock(&pool->lock);
--    *total = pool->pool_size;
--    *used = pool->allocated;
--    *free_space = pool->free_space;
++    pthread_mutex_lock(&pool->lock);
 +
 +    if (total) *total = pool->pool_size;
 +    if (used) *used = pool->allocated;
 +    if (free_space) *free_space = pool->free_space;
 +
++    pthread_mutex_unlock(&pool->lock);
++}
++
++size_t pool_largest_free(memory_pool_t *pool) {
++    if (!pool) return 0u;
++
+     pthread_mutex_lock(&pool->lock);
+-    *total = pool->pool_size;
+-    *used = pool->allocated;
+-    *free_space = pool->free_space;
++
++    size_t largest = 0u;
++    uint32_t cur_off = pool->free_list;
++    int iter = 0;
++    while (cur_off != POOL_NULL_OFFSET && iter < 100000) {
++        block_header_t *cur = hdr_from_offset(pool, cur_off);
++        if (!cur) break;
++        if ((cur->flags & FLAG_FREE) && (size_t)cur->size > largest) {
++            largest = (size_t)cur->size;
++        }
++        cur_off = cur->next;
++        iter++;
++    }
++
      pthread_mutex_unlock(&pool->lock);
++    return largest;
++}
++
++size_t pool_free_block_count(memory_pool_t *pool) {
++    if (!pool) return 0u;
++
++    pthread_mutex_lock(&pool->lock);
++
++    size_t count = 0u;
++    uint32_t cur_off = pool->free_list;
++    int iter = 0;
++    while (cur_off != POOL_NULL_OFFSET && iter < 100000) {
++        block_header_t *cur = hdr_from_offset(pool, cur_off);
++        if (!cur) break;
++        if (cur->flags & FLAG_FREE) count++;
++        cur_off = cur->next;
++        iter++;
++    }
++
++    pthread_mutex_unlock(&pool->lock);
++    return count;
  }
  
  void pool_destroy(memory_pool_t *pool) {
@@ -509,10 +547,10 @@ index feb54c6..ee1e4df 100644
 +    pool->free_space = 0u;
  }
 diff --git a/repository_before/pool.h b/repository_after/pool.h
-index e72e854..5cbf3c8 100644
+index e72e854..0628a4a 100644
 --- a/repository_before/pool.h
 +++ b/repository_after/pool.h
-@@ -5,22 +5,31 @@
+@@ -5,28 +5,39 @@
  #include <stdint.h>
  #include <pthread.h>
  
@@ -552,3 +590,11 @@ index e72e854..5cbf3c8 100644
  } memory_pool_t;
  
  int pool_init(memory_pool_t *pool, void *memory, size_t size);
+ void *pool_alloc(memory_pool_t *pool, size_t size);
+ void pool_free(memory_pool_t *pool, void *ptr);
+ void pool_stats(memory_pool_t *pool, size_t *total, size_t *used, size_t *free_space);
++size_t pool_largest_free(memory_pool_t *pool);
++size_t pool_free_block_count(memory_pool_t *pool);
+ void pool_destroy(memory_pool_t *pool);
+ 
+ #endif

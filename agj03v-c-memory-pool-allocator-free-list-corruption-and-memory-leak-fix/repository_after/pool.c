@@ -26,10 +26,6 @@ static inline block_header_t *hdr_from_offset(memory_pool_t *pool, uint32_t offs
     return (block_header_t *)((uint8_t *)pool->pool_start + offset);
 }
 
-static inline uint32_t offset_from_hdr(memory_pool_t *pool, const block_header_t *hdr) {
-    return (uint32_t)((const uint8_t *)hdr - (const uint8_t *)pool->pool_start);
-}
-
 static inline uint32_t block_end_offset_u32(uint32_t block_offset, uint32_t payload_size) {
     return block_offset + HEADER_SIZE + payload_size;
 }
@@ -292,6 +288,48 @@ void pool_stats(memory_pool_t *pool, size_t *total, size_t *used, size_t *free_s
     if (free_space) *free_space = pool->free_space;
 
     pthread_mutex_unlock(&pool->lock);
+}
+
+size_t pool_largest_free(memory_pool_t *pool) {
+    if (!pool) return 0u;
+
+    pthread_mutex_lock(&pool->lock);
+
+    size_t largest = 0u;
+    uint32_t cur_off = pool->free_list;
+    int iter = 0;
+    while (cur_off != POOL_NULL_OFFSET && iter < 100000) {
+        block_header_t *cur = hdr_from_offset(pool, cur_off);
+        if (!cur) break;
+        if ((cur->flags & FLAG_FREE) && (size_t)cur->size > largest) {
+            largest = (size_t)cur->size;
+        }
+        cur_off = cur->next;
+        iter++;
+    }
+
+    pthread_mutex_unlock(&pool->lock);
+    return largest;
+}
+
+size_t pool_free_block_count(memory_pool_t *pool) {
+    if (!pool) return 0u;
+
+    pthread_mutex_lock(&pool->lock);
+
+    size_t count = 0u;
+    uint32_t cur_off = pool->free_list;
+    int iter = 0;
+    while (cur_off != POOL_NULL_OFFSET && iter < 100000) {
+        block_header_t *cur = hdr_from_offset(pool, cur_off);
+        if (!cur) break;
+        if (cur->flags & FLAG_FREE) count++;
+        cur_off = cur->next;
+        iter++;
+    }
+
+    pthread_mutex_unlock(&pool->lock);
+    return count;
 }
 
 void pool_destroy(memory_pool_t *pool) {
