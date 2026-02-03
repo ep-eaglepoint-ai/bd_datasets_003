@@ -1,0 +1,11 @@
+{
+            "instance_id": "16ORIN",
+            "problem_statement": "A comprehensive automated testing suite is required to validate functional behavior, enforce business rules, and ensure data consistency across ordering, inventory, payment, fulfillment, and refund workflows. The test suite must reliably detect errors under normal, concurrent, and edge-case scenarios to guarantee system correctness before deployment.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/16orin-e-commerce-order-processing-system-testing-suite",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
