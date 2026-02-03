@@ -1,8 +1,20 @@
+# Dockerfile for the Event Sourcing Order Management System
+FROM eclipse-temurin:17-jdk-alpine
 
-        # Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
+# Install Maven
+RUN apk add --no-cache maven
 
-        FROM python:3.11-slim
 WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+# Copy Maven wrapper and project files from repository_after
+COPY repository_after/mvnw ./mvnw
+COPY repository_after/pom.xml ./pom.xml
+
+# Copy source code
+COPY repository_after/src ./src
+
+# Copy tests from project root
+COPY ../tests ./tests
+
+# Build and test the application
+CMD ["mvn", "test", "-f", "pom.xml"]

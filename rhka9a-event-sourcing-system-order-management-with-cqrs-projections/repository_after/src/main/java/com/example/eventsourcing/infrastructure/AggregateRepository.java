@@ -1,0 +1,229 @@
+package com.example.eventsourcing.infrastructure;
+
+import com.example.eventsourcing.config.EventSourcingProperties;
+import com.example.eventsourcing.domain.Aggregate;
+import com.example.eventsourcing.domain.DomainEvent;
+import com.example.eventsourcing.exception.AggregateNotFoundException;
+import com.example.eventsourcing.infrastructure.persistence.SnapshotEntity;
+import com.example.eventsourcing.infrastructure.persistence.SnapshotRepository;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Supplier;
+
+/**
+ * Repository for loading and saving aggregates with event sourcing and snapshot support.
+ * 
+ * @param <T> The type of aggregate
+ * @param <E> The type of event the aggregate handles
+ */
+@Service
+public class AggregateRepository<T extends Aggregate<E>, E extends DomainEvent> {
+    
+    private static final Logger logger = LoggerFactory.getLogger(AggregateRepository.class);
+    
+    private final EventStore eventStore;
+    private final SnapshotRepository snapshotRepository;
+    private final ObjectMapper objectMapper;
+    private final ApplicationEventPublisher eventPublisher;
+    private final EventSourcingProperties properties;
+    private final Supplier<T> aggregateFactory;
+    
+    public AggregateRepository(EventStore eventStore, SnapshotRepository snapshotRepository,
+                               ObjectMapper objectMapper, ApplicationEventPublisher eventPublisher,
+                               EventSourcingProperties properties,
+                               Supplier<T> aggregateFactory) {
+        this.eventStore = eventStore;
+        this.snapshotRepository = snapshotRepository;
+        this.objectMapper = objectMapper;
+        this.eventPublisher = eventPublisher;
+        this.properties = properties;
+        this.aggregateFactory = aggregateFactory;
+    }
+    
+    /**
+     * Load an aggregate by its ID, using snapshots if available.
+     */
+    @SuppressWarnings("unchecked")
+    @Transactional(readOnly = true)
+    public T load(String aggregateId) {
+        logger.debug("Loading aggregate {}", aggregateId);
+        
+        // Try to load from snapshot first
+        SnapshotEntity snapshot = snapshotRepository.findLatestSnapshot(aggregateId).orElse(null);
+        Long snapshotVersion = snapshot != null ? snapshot.getVersion() : 0L;
+        
+        T aggregate = aggregateFactory.get();
+        aggregate.setAggregateId(aggregateId);
+        
+        if (snapshot != null) {
+            logger.debug("Found snapshot for aggregate {} at version {}", aggregateId, snapshotVersion);
+            // Load aggregate state from snapshot
+            restoreFromSnapshot(aggregate, snapshot);
+        }
+        
+        // Load events after snapshot version
+        List<DomainEvent> rawEvents = eventStore.loadEventsAfterVersion(aggregateId, snapshotVersion);
+        List<E> events = new ArrayList<>(rawEvents.size());
+        for (DomainEvent e : rawEvents) {
+            @SuppressWarnings("unchecked")
+            E casted = (E) e;
+            events.add(casted);
+        }
+        if (!events.isEmpty()) {
+            logger.debug("Loading {} events after snapshot for aggregate {}", events.size(), aggregateId);
+            aggregate.loadFromHistory(events);
+        }
+        
+        aggregate.setVersion(eventStore.getCurrentVersion(aggregateId));
+        return aggregate;
+    }
+    
+    /**
+     * Save an aggregate by appending its uncommitted events to the event store.
+     */
+    @Transactional
+    public T save(T aggregate) {
+        String aggregateId = aggregate.getAggregateId();
+        Long expectedVersion = aggregate.getVersion();
+        List<E> events = aggregate.getUncommittedEvents();
+        
+        if (events.isEmpty()) {
+            logger.debug("No uncommitted events for aggregate {}", aggregateId);
+            return aggregate;
+        }
+        
+        logger.debug("Saving aggregate {} with {} uncommitted events, expected version {}",
+                aggregateId, events.size(), expectedVersion);
+        
+        // Append events with optimistic locking
+        List<DomainEvent> rawSavedEvents = eventStore.appendEvents(aggregateId, expectedVersion, events);
+        List<E> savedEvents = new ArrayList<>(rawSavedEvents.size());
+        for (DomainEvent e : rawSavedEvents) {
+            @SuppressWarnings("unchecked")
+            E casted = (E) e;
+            savedEvents.add(casted);
+        }
+        
+        // Update aggregate version
+        aggregate.setVersion(expectedVersion + savedEvents.size());
+        
+        // Mark events as committed
+        aggregate.markEventsAsCommitted();
+        
+        // Publish events for projections
+        for (E event : savedEvents) {
+            eventStore.publishEvent(event);
+        }
+        
+        logger.info("Saved aggregate {} with {} events, new version {}",
+                aggregateId, savedEvents.size(), aggregate.getVersion());
+        
+        // Check if we need to create a snapshot
+        checkAndCreateSnapshot(aggregate);
+        
+        return aggregate;
+    }
+    
+    /**
+     * Save a new aggregate with its first event.
+     */
+    @Transactional
+    public T saveNew(T aggregate, E initialEvent) {
+        String aggregateId = aggregate.getAggregateId();
+        
+        logger.debug("Saving new aggregate {}", aggregateId);
+        
+        // Append the initial event
+        eventStore.appendInitialEvent(aggregateId, initialEvent);
+        
+        // Apply the event to the aggregate
+        aggregate.apply(initialEvent);
+        aggregate.setVersion(initialEvent.getVersion());
+        
+        // Publish event for projections
+        eventStore.publishEvent(initialEvent);
+        
+        logger.info("Saved new aggregate {} with version {}", aggregateId, aggregate.getVersion());
+        return aggregate;
+    }
+    
+    /**
+     * Check if a snapshot should be created and create it if needed.
+     */
+    private void checkAndCreateSnapshot(T aggregate) {
+        int snapshotThreshold = properties.getSnapshot().getThreshold();
+        int uncommittedEventCount = aggregate.getUncommittedEventCount();
+        
+        // Check if we've reached the snapshot threshold since last snapshot
+        if (aggregate.getVersion() % snapshotThreshold == 0) {
+            createSnapshot(aggregate);
+        }
+    }
+    
+    /**
+     * Create a snapshot of the aggregate state.
+     */
+    @Transactional
+    public void createSnapshot(T aggregate) {
+        String aggregateId = aggregate.getAggregateId();
+        
+        logger.debug("Creating snapshot for aggregate {} at version {}", aggregateId, aggregate.getVersion());
+        
+        try {
+            String state = objectMapper.writeValueAsString(aggregate);
+            SnapshotEntity snapshot = new SnapshotEntity(
+                    aggregateId,
+                    aggregate.getVersion(),
+                    Instant.now(),
+                    aggregate.getAggregateType(),
+                    state
+            );
+            snapshotRepository.save(snapshot);
+            
+            logger.info("Created snapshot for aggregate {} at version {}", aggregateId, aggregate.getVersion());
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("Failed to serialize aggregate state for snapshot", e);
+        }
+    }
+    
+    /**
+     * Restore aggregate state from a snapshot.
+     */
+    @SuppressWarnings("unchecked")
+    private void restoreFromSnapshot(T aggregate, SnapshotEntity snapshot) {
+        try {
+            T snapshotAggregate = objectMapper.readValue(snapshot.getState(), (Class<T>) aggregate.getClass());
+            // Copy relevant state from snapshot to current aggregate
+            aggregate.setAggregateId(snapshotAggregate.getAggregateId());
+            aggregate.setVersion(snapshotAggregate.getVersion());
+            copyStateFromSnapshot(aggregate, snapshotAggregate);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("Failed to deserialize aggregate state from snapshot", e);
+        }
+    }
+    
+    /**
+     * Copy state from a snapshot aggregate to the current aggregate.
+     * Subclasses should override this if they have additional state to restore.
+     */
+    protected void copyStateFromSnapshot(T aggregate, T snapshotAggregate) {
+        // Default implementation does nothing - subclasses can override
+    }
+    
+    /**
+     * Check if an aggregate exists.
+     */
+    @Transactional(readOnly = true)
+    public boolean exists(String aggregateId) {
+        return eventStore.getCurrentVersion(aggregateId) > 0L;
+    }
+}
