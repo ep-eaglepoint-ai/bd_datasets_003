@@ -1,24 +1,8 @@
-version: '3.8'
-
 services:
   repository-after:
     build: .
     working_dir: /app
-    command: >
-      /bin/bash -c "
-        echo '=== Building main project ===' &&
-        cd /app/repository_after && mvn clean install -DskipTests -q &&
-        echo '=== Compiling tests ===' &&
-        mkdir -p /app/repository_after/target/test-classes &&
-        javac -cp /app/repository_after/target/crane-sync-orchestrator-1.0.0.jar:/app/libs/junit-platform-console-standalone-1.10.0.jar \
-              -d /app/repository_after/target/test-classes \
-              /app/tests/*.java &&
-        echo '=== Running tests ===' &&
-        java -jar /app/libs/junit-platform-console-standalone-1.10.0.jar \
-             execute \
-             --class-path /app/repository_after/target/test-classes:/app/repository_after/target/crane-sync-orchestrator-1.0.0.jar \
-             --scan-class-path
-      "
+    command: bash -c "cd /app/repository_after && mvn clean install -DskipTests -q && mkdir -p /app/repository_after/target/test-classes && javac -cp /app/repository_after/target/crane-sync-orchestrator-1.0.0.jar:/app/libs/junit-platform-console-standalone-1.10.0.jar -d /app/repository_after/target/test-classes /app/tests/*.java && java -jar /app/libs/junit-platform-console-standalone-1.10.0.jar execute --class-path /app/repository_after/target/test-classes:/app/repository_after/target/crane-sync-orchestrator-1.0.0.jar --scan-class-path"
     volumes:
       - ./repository_after:/app/repository_after
       - ./tests:/app/tests
@@ -27,30 +11,7 @@ services:
   evaluation:
     build: .
     working_dir: /app
-    command: >
-      /bin/bash -c "
-        echo '=== Building main project ===' &&
-        cd /app/repository_after && mvn clean install -DskipTests -q &&
-        echo '=== Compiling tests ===' &&
-        mkdir -p /app/repository_after/target/test-classes &&
-        mkdir -p /app/repository_after/target/eval-classes &&
-        javac -cp /app/repository_after/target/crane-sync-orchestrator-1.0.0.jar:/app/libs/junit-platform-console-standalone-1.10.0.jar \
-              -d /app/repository_after/target/test-classes \
-              /app/tests/*.java 2>&1 &&
-        echo '=== Running tests ===' &&
-        java -jar /app/libs/junit-platform-console-standalone-1.10.0.jar \
-             execute \
-             --class-path /app/repository_after/target/test-classes:/app/repository_after/target/crane-sync-orchestrator-1.0.0.jar \
-             --scan-class-path > /tmp/test-output.txt 2>&1 || true &&
-        cat /tmp/test-output.txt &&
-        echo '=== Compiling evaluation ===' &&
-        javac -cp /app/repository_after/target/crane-sync-orchestrator-1.0.0.jar \
-              -d /app/repository_after/target/eval-classes \
-              /app/evaluation/Evaluation.java &&
-        echo '=== Running evaluation ===' &&
-        java -cp /app/repository_after/target/eval-classes:/app/repository_after/target/crane-sync-orchestrator-1.0.0.jar \
-             Evaluation /tmp/test-output.txt
-      "
+    command: bash -c "cd /app/repository_after && mvn clean install -DskipTests -q && mkdir -p /app/repository_after/target/test-classes /app/repository_after/target/eval-classes && javac -cp /app/repository_after/target/crane-sync-orchestrator-1.0.0.jar:/app/libs/junit-platform-console-standalone-1.10.0.jar -d /app/repository_after/target/test-classes /app/tests/*.java && java -jar /app/libs/junit-platform-console-standalone-1.10.0.jar execute --class-path /app/repository_after/target/test-classes:/app/repository_after/target/crane-sync-orchestrator-1.0.0.jar --scan-class-path > /tmp/test-output.txt 2>&1; cat /tmp/test-output.txt; javac -cp /app/repository_after/target/crane-sync-orchestrator-1.0.0.jar -d /app/repository_after/target/eval-classes /app/evaluation/Evaluation.java && java -cp /app/repository_after/target/eval-classes:/app/repository_after/target/crane-sync-orchestrator-1.0.0.jar Evaluation /tmp/test-output.txt"
     volumes:
       - ./repository_after:/app/repository_after
       - ./tests:/app/tests
