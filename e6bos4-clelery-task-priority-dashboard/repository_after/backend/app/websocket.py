@@ -2,7 +2,6 @@
 from typing import Dict, List, Set
 from fastapi import WebSocket
 import asyncio
-import json
 
 
 class ConnectionManager:
@@ -39,6 +38,7 @@ class ConnectionManager:
         try:
             await websocket.send_json(message)
         except Exception:
+            # Ignore send errors; connection may be closed or in bad state
             pass
     
     async def broadcast_to_task(self, task_id: str, message: dict):
@@ -49,6 +49,7 @@ class ConnectionManager:
                 try:
                     await connection.send_json(message)
                 except Exception:
+                    # Mark for cleanup; connection is no longer valid
                     disconnected.append(connection)
             
             # Clean up disconnected clients
@@ -62,6 +63,7 @@ class ConnectionManager:
             try:
                 await connection.send_json(message)
             except Exception:
+                # Mark for cleanup; connection is no longer valid
                 disconnected.append(connection)
         
         # Clean up disconnected clients

@@ -1,4 +1,5 @@
 services:
+  # Core services for running the actual application (optional - for manual testing)
   redis:
     image: redis:7-alpine
     ports:
@@ -10,6 +11,8 @@ services:
       interval: 5s
       timeout: 3s
       retries: 3
+    profiles:
+      - app
 
   postgres:
     image: postgres:16-alpine
@@ -26,6 +29,8 @@ services:
       interval: 5s
       timeout: 3s
       retries: 3
+    profiles:
+      - app
 
   backend:
     build:
@@ -43,6 +48,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+    profiles:
+      - app
 
   worker:
     build:
@@ -59,6 +66,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+    profiles:
+      - app
 
   frontend:
     build:
@@ -67,16 +76,10 @@ services:
       - "3000:80"
     depends_on:
       - backend
+    profiles:
+      - app
 
-  after:
-    build:
-      context: ./repository_after/backend
-    command: echo "Application stack running"
-    depends_on:
-      - backend
-      - worker
-      - frontend
-
+  # Evaluation service - runs tests and EXITS (no profile, always available)
   evaluation:
     build:
       context: .

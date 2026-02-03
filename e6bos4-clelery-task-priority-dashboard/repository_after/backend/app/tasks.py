@@ -118,8 +118,13 @@ def execute_task(
         with SyncSessionLocal() as session:
             task = session.query(Task).filter(Task.id == task_db_id).first()
             if task:
+                # Update status for retry attempt
+                task.status = TaskStatus.RETRY
+                task.error = f"Retry {self.request.retries + 1}/{self.max_retries}: {str(exc)}"
+                session.commit()
+                
                 try:
-                    # Attempt retry
+                    # Attempt retry (this always raises)
                     raise self.retry(exc=exc)
                 except MaxRetriesExceededError:
                     # Max retries exceeded - mark as failed
@@ -128,10 +133,6 @@ def execute_task(
                     task.completed_at = datetime.utcnow()
                     session.commit()
                     raise
-                else:
-                    task.status = TaskStatus.RETRY
-                    task.error = f"Retry {self.request.retries}/{self.max_retries}: {str(exc)}"
-                    session.commit()
         raise
 
 

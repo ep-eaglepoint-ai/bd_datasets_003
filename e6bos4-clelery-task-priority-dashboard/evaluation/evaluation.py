@@ -34,8 +34,6 @@ def run_tests(repo_name: str):
         # For repository_before, we expect no implementation (tests should fail)
         # For repository_after, tests should pass
         
-        repo_path = ROOT / repo_name
-        
         if repo_name == "repository_before":
             # repository_before has no implementation, so import will fail
             # This is expected behavior - proving the problem exists
@@ -105,10 +103,12 @@ def run_metrics(repo_path: Path):
             try:
                 total_lines += len(f.read_text().splitlines())
             except Exception:
+                # Ignore files that cannot be read (encoding or permission issues)
                 pass
         
         metrics["total_lines_of_code"] = total_lines
     except Exception:
+        # Metrics collection is best-effort; return whatever was gathered
         pass
     
     return metrics

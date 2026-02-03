@@ -1,4 +1,4 @@
-# Trajectory - Distributed Task Priority Dashboard
+# Trajectory - Distributed Task Priority Dashboard (Celery)
 
 ## Analysis
 
