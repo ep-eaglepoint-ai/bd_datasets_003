@@ -1,20 +1,18 @@
 """FastAPI main application with REST endpoints and WebSocket support."""
 import uuid
-import asyncio
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Depends, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, func
-from sqlalchemy.orm import selectinload
 
 from app.config import get_settings
-from app.database import get_db, init_db, engine, Base
+from app.database import get_db, engine, Base
 from app.models import Task, TaskStatus, TaskPriority
-from app.schemas import TaskCreate, TaskResponse, TaskListResponse, TaskSubmitResponse, ProgressUpdate
+from app.schemas import TaskCreate, TaskResponse, TaskListResponse, TaskSubmitResponse
 from app.celery_app import celery_app, get_queue_for_priority
 from app.tasks import execute_task
 from app.websocket import manager

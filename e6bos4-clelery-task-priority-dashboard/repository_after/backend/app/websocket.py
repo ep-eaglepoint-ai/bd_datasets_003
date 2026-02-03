@@ -1,7 +1,6 @@
 """WebSocket connection manager for real-time progress updates."""
 from typing import Dict, List, Set
 from fastapi import WebSocket
-import asyncio
 
 
 class ConnectionManager:

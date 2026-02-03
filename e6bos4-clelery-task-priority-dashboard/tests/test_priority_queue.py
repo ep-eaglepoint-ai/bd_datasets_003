@@ -8,9 +8,6 @@ These are lightweight code verification tests that check:
 4. Queue routing functions
 """
 import pytest
-import os
-import ast
-import re
 from pathlib import Path
 
 # Get the repository path

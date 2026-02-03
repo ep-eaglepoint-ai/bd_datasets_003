@@ -1,14 +1,14 @@
 """Celery tasks with progress tracking and error handling."""
 import time
 import random
+import os
 from datetime import datetime
 from celery import Task as CeleryTask
 from celery.exceptions import MaxRetriesExceededError
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from app.celery_app import celery_app
-from app.models import Task, TaskStatus, Base
-import os
+from app.models import Task, TaskStatus
 
 # Sync database connection for Celery workers
 DATABASE_URL_SYNC = os.getenv(
