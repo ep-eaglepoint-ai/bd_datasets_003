@@ -43,11 +43,13 @@ io.use(async (socket, next) => {
 **Implementation**: Socket.io client configured with increasing delays starting at 1s, doubling up to 30s max, with random jitter.
 
 **Key Files**:
-- `repository_after/frontend/src/hooks/useSocket.ts`
+- `repository_after/shared/utils.ts` - Pure utility function (testable)
+- `repository_after/frontend/src/hooks/useSocket.ts` - Imports and uses the utility
 
 **Approach**:
 ```typescript
-const calculateReconnectDelay = (attempt: number): number => {
+// In shared/utils.ts - imported by both frontend and tests
+export const calculateReconnectDelay = (attempt: number): number => {
   const baseDelay = 1000;
   const maxDelay = 30000;
   const exponentialDelay = Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
@@ -78,12 +80,25 @@ Jitter prevents thundering herd when many clients reconnect simultaneously.
 **Key Files**:
 - `repository_after/frontend/src/stores/notificationStore.ts`
 - `repository_after/frontend/src/hooks/useBroadcastChannel.ts`
+- `repository_after/frontend/src/components/NotificationList.tsx`
+- `repository_after/frontend/src/components/ToastContainer.tsx`
 
 **Approach**:
-1. Optimistic UI update before server confirmation
-2. Socket emits `notification:mark-read`
-3. Server broadcasts `notification:updated` to all user's connections
-4. BroadcastChannel propagates changes between tabs
+1. Optimistic UI update before server confirmation (store update)
+2. Broadcast to other tabs via BroadcastChannel
+3. **Persist to server via REST API** (`markAsRead` from `useNotifications`)
+4. Server broadcasts `notification:updated` to all user's connections
+5. Server broadcasts authoritative `unread-count:changed`
+
+**Critical Implementation Detail**:
+Both `NotificationList` and `ToastContainer` must call the REST API when marking as read:
+```typescript
+const handleMarkAsRead = useCallback((notificationId: string) => {
+  storeMarkAsRead(notificationId);    // Optimistic update
+  broadcastRead(notificationId);       // Broadcast to other tabs
+  markAsRead(notificationId);          // Persist to server via REST API
+}, [storeMarkAsRead, broadcastRead, markAsRead]);
+```
 
 ### Requirement 5: Offline Notification Recovery
 
@@ -274,7 +289,19 @@ const [tasks, projects, comments] = await Promise.all([
 
 ## Test Coverage
 
-55 tests covering all 15 requirements:
+55 tests covering all 15 requirements.
+
+**Tests import actual code from repository_after** via `shared/utils.ts`:
+- `calculateReconnectDelay` - Exponential backoff with jitter
+- `parseCookies` - Cookie parsing
+- `validateUrlForAuth` - URL token validation
+- `validateSession` - Session validation
+- `clampUnreadCount` - Ensure non-negative counts
+- `getBadgeText`, `shouldShowBadge` - Badge display logic
+- `getLuminance`, `getContrastRatio` - WCAG contrast calculation
+- `CONNECTION_STATUS_CONFIG` - Connection status configuration
+- `getToastClasses` - Reduced motion support
+- `paginateWithCursor` - Cursor-based pagination
 
 | Requirement | Tests |
 |-------------|-------|
@@ -306,6 +333,8 @@ uo7ho1-node-js-and-react-real-time-notification-system-with-multi-tab-sync/
 ├── .gitignore
 ├── repository_before/           # Empty (no before state)
 ├── repository_after/
+│   ├── shared/
+│   │   └── utils.ts             # Shared pure utilities (testable)
 │   ├── backend/
 │   │   ├── src/
 │   │   │   ├── index.ts         # Express server entry
@@ -361,6 +390,16 @@ uo7ho1-node-js-and-react-real-time-notification-system-with-multi-tab-sync/
 4. **Cursor-based over offset pagination**: Consistent results when data changes during pagination
 5. **Server-authoritative unread count**: Prevents race conditions in concurrent updates
 6. **HTTP-only cookies for auth**: Prevents XSS attacks from accessing tokens
+7. **Shared utilities module**: Pure functions extracted to `shared/utils.ts` for testability - tests import and verify actual implementation code
+
+## Critical Implementation Notes
+
+**Mark-as-Read Must Persist to Server**: When marking a notification as read from the UI (NotificationList or ToastContainer), the implementation must:
+1. Update local store (optimistic)
+2. Broadcast to other tabs (BroadcastChannel)
+3. **Call REST API** (`markAsRead` from `useNotifications`)
+
+Without step 3, state does not persist on refresh and server is not the source of truth.
 
 ## Accessibility Features
 

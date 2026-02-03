@@ -5,6 +5,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Toast } from './Toast';
 import { useBroadcastChannel } from '../hooks/useBroadcastChannel';
 import { useNotificationStore } from '../stores/notificationStore';
+import { useNotifications } from '../hooks/useNotifications';
 import type { Notification } from '../types';
 
 interface ToastItem {
@@ -16,7 +17,8 @@ export const ToastContainer: React.FC = () => {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const { shouldShowToast, broadcastRead } = useBroadcastChannel();
   const notifications = useNotificationStore((state) => state.notifications);
-  const markAsRead = useNotificationStore((state) => state.markAsRead);
+  const storeMarkAsRead = useNotificationStore((state) => state.markAsRead);
+  const { markAsRead: apiMarkAsRead } = useNotifications();
   const prevNotificationsRef = React.useRef<Notification[]>([]);
 
   // Detect new notifications and show toast
@@ -58,11 +60,14 @@ export const ToastContainer: React.FC = () => {
 
   const handleMarkAsRead = useCallback(
     (notification: Notification) => {
-      markAsRead(notification.id);
+      // Requirement 4: Optimistic update
+      storeMarkAsRead(notification.id);
       // Requirement 4: Broadcast to other tabs
       broadcastRead(notification.id);
+      // Persist to server via REST API
+      apiMarkAsRead(notification.id);
     },
-    [markAsRead, broadcastRead]
+    [storeMarkAsRead, broadcastRead, apiMarkAsRead]
   );
 
   return (

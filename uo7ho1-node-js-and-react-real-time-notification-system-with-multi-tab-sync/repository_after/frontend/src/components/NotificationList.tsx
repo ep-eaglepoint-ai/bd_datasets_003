@@ -14,7 +14,7 @@ interface NotificationListProps {
 }
 
 export const NotificationList: React.FC<NotificationListProps> = ({ onClose }) => {
-  const { notifications, isLoading, isFetchingNextPage, hasMore, loadMore, markAllAsRead } =
+  const { notifications, isLoading, isFetchingNextPage, hasMore, loadMore, markAsRead, markAllAsRead } =
     useNotifications();
   const { broadcastRead, broadcastAllRead } = useBroadcastChannel();
   const storeMarkAsRead = useNotificationStore((state) => state.markAsRead);
@@ -69,8 +69,10 @@ export const NotificationList: React.FC<NotificationListProps> = ({ onClose }) =
       storeMarkAsRead(notificationId);
       // Requirement 4: Broadcast to other tabs
       broadcastRead(notificationId);
+      // Persist to server via REST API
+      markAsRead(notificationId);
     },
-    [storeMarkAsRead, broadcastRead]
+    [storeMarkAsRead, broadcastRead, markAsRead]
   );
 
   const handleMarkAllAsRead = useCallback(() => {

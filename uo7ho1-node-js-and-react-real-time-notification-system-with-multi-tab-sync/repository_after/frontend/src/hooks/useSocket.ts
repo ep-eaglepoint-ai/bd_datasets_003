@@ -6,24 +6,10 @@ import { useEffect, useRef, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import type { ServerToClientEvents, ClientToServerEvents } from '../types';
 import { useNotificationStore } from '../stores/notificationStore';
+// Import shared utility for reconnection delay calculation
+import { calculateReconnectDelay } from '../../../shared/utils';
 
 type NotificationSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
-
-// Requirement 2: Calculate reconnection delay with exponential backoff and jitter
-const calculateReconnectDelay = (attempt: number): number => {
-  // Base delay starts at 1000ms (1 second)
-  const baseDelay = 1000;
-  // Max delay is 30000ms (30 seconds)
-  const maxDelay = 30000;
-
-  // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 30s (capped)
-  const exponentialDelay = Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
-
-  // Add random jitter (±25%) to prevent thundering herd
-  const jitter = exponentialDelay * 0.25 * (Math.random() * 2 - 1);
-
-  return Math.floor(exponentialDelay + jitter);
-};
 
 export const useSocket = () => {
   const socketRef = useRef<NotificationSocket | null>(null);
@@ -150,4 +136,5 @@ export const useSocket = () => {
   };
 };
 
-export { calculateReconnectDelay };
+// Re-export for backwards compatibility
+export { calculateReconnectDelay } from '../../../shared/utils';
