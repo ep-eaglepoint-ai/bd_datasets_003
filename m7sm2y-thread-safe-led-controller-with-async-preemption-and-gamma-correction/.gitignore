@@ -1,6 +1,20 @@
+# Evaluation outputs
+evaluation/*/*/*/report.json
+evaluation/**/report.json
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/vendor/
+*.test
+*.out
+
 # Python
 __pycache__/
-*.pyc
+*.py[cod]
 .venv/
 .env
 
@@ -9,4 +23,16 @@ node_modules/
 
 # OS
 .DS_Store
-evaluation/*.json
+Thumbs.db
+
+# IDE / editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Logs and temp
+*.log
+*.tmp
+.cache/

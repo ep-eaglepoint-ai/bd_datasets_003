@@ -1,11 +1,13 @@
 # M7SM2Y - Thread-Safe LED Controller with Async Preemption and Gamma Correction
 
-    ## Before Test Docker Command
-    <docker before command here>
+### Run tests with race detector(as specified in the requirements)
 
-    ## After Test Docker Command
-    <docker after command here>
+```bash
+docker compose run --rm app go test -race -timeout 50s -v ./tests
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+### Run evaluation (generate report.json)
+
+```bash
+docker compose run --rm app go run ./evaluation/evaluation.go
+```
