@@ -1,9 +1,18 @@
-
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
-  app:
+services:
+  tests-before:
     build: .
-    command: pytest -q tests
     volumes:
       - .:/app
+    command: go test -v -race ./repository_before/...
+
+  tests-after:
+    build: .
+    volumes:
+      - .:/app
+    command: go test -v -race ./repository_after/...
+
+  evaluation:
+    build: .
+    volumes:
+      - .:/app
+    command: go run evaluation/evaluation.go
