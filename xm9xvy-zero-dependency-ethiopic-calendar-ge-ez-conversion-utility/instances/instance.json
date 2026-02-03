@@ -1,0 +1,13 @@
+{
+            "instance_id": "XM9XVY",
+            "problem_statement": "The objective is to engineer a high-precision, standalone JavaScript utility to convert standard Gregorian Date objects into the Ethiopian (Ge'ez) Calendar format (MM/DD/YYYY). Designed for a high-security fintech environment, the implementation must be built from first principles without the aid of external libraries.
+
+The core challenge lies in handling the distinct structural differences of the Ethiopian calendar—which consists of 12 months of 30 days plus a 13th month (Pagumē) of 5 or 6 days—while maintaining mathematical accuracy through Julian Day Number (JDN) transformations. The solution must demonstrate senior-level architectural maturity by refactoring complex conversion logic into discrete, private helper functions and utilizing strict integer math to ensure deterministic results across leap year cycles.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/xm9xvy-zero-dependency-ethiopic-calendar-ge-ez-conversion-utility",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
