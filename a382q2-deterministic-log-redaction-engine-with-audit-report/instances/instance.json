@@ -1,0 +1,13 @@
+{
+            "instance_id": "A382Q2",
+            "problem_statement": "Build a Go module that takes a structured log entry (nested maps and slices) and produces a redacted deep-copy based on redaction rules. Rules can match either exact paths or field names, and overlapping matches must be resolved deterministically. The module must also return an ordered audit report listing every redaction applied with the exact path and why it matched.
+
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/a382q2-deterministic-log-redaction-engine-with-audit-report",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
