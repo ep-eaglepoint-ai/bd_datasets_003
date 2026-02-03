@@ -1,0 +1,11 @@
+{
+            "instance_id": "MBTDSF",
+            "problem_statement": "Point-to-point speed enforcement (Average Speed Check) is mathematically simple but operationally difficult. The mathematical trap is the Haversine Formula: converting degrees to radians and handling the Earth's radius correctly (km) is a common failure point for models that hallucinate simple Euclidean distance (), which is inaccurate for geospatial coordinates. The operational trap is Unbounded State Growth. In high-traffic systems, tracking "Entry" events without a cleanup mechanism for vehicles that exit the highway prematurely leads to a memory leak that grows linearly with traffic volume. The solution requires a "Stale Session" scavenger to delete records that have exceeded the maximum possible travel time for the section.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/mbtdsf-section-control-speed-enforcement",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
