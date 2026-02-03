@@ -1,11 +1,15 @@
 # ARZ2Z0 - CNC Path Optimization and Flow-Controlled G-Code Streaming
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Commands
 
-    ## After Test Docker Command
-    <docker after command here>
+### Run tests on repository_before
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+```bash
+docker compose run --rm test-after
+```
+
+### Run evaluation
+
+```bash
+docker compose run --rm evaluation
+```
