@@ -1,8 +1,17 @@
+# Use a Debian-based image
+FROM node:22-bookworm
 
-        # Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
-
-        FROM python:3.11-slim
+# Set working directory
 WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+COPY . .
+
+RUN rm -rf node_modules
+
+RUN npm ci
+
+RUN npm run build
+
+EXPOSE 5173
+
+CMD ["npm", "run", "dev", "--", "--host"]

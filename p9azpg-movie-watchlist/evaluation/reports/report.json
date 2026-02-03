@@ -1,0 +1,19 @@
+{
+  "run_id": "f4d59aba-b3b7-4803-8ef8-3b2537d7c3a5",
+  "started_at": "2026-02-03T17:46:08.346Z",
+  "finished_at": "2026-02-03T17:46:20.856Z",
+  "duration_seconds": 12.51,
+  "environment": {
+    "node_version": "v22.22.0",
+    "platform": "linux",
+    "arch": "x64",
+    "cpus": 8
+  },
+  "tests": {
+    "target": "repository_after",
+    "passed": true,
+    "return_code": 0,
+    "output": "\n> repository-after@0.0.1 test\n> npm run test:unit -- --run --reporter=json\n\n\n> repository-after@0.0.1 test:unit\n> vitest --run --reporter=json\n\n{\"numTotalTestSuites\":10,\"numPassedTestSuites\":10,\"numFailedTestSuites\":0,\"numPendingTestSuites\":0,\"numTotalTests\":28,\"numPassedTests\":28,\"numFailedTests\":0,\"numPendingTests\":0,\"numTodoTests\":0,\"snapshot\":{\"added\":0,\"failure\":false,\"filesAdded\":0,\"filesRemoved\":0,\"filesRemovedList\":[],\"filesUnmatched\":0,\"filesUpdated\":0,\"matched\":0,\"total\":0,\"unchecked\":0,\"uncheckedKeysByFile\":[],\"unmatched\":0,\"updated\":0,\"didUpdate\":false},\"startTime\":1770140779991,\"success\":true,\"testResults\":[{\"assertionResults\":[{\"ancestorTitles\":[\"sum test\"],\"fullName\":\"sum test adds 1 + 2 to equal 3\",\"status\":\"passed\",\"title\":\"adds 1 + 2 to equal 3\",\"duration\":1.424554999999998,\"failureMessages\":[],\"meta\":{}}],\"startTime\":1770140780657,\"endTime\":1770140780658.4246,\"status\":\"passed\",\"message\":\"\",\"name\":\"/app/src/demo.spec.ts\"},{\"assertionResults\":[{\"ancestorTitles\":[\"Cine"
+  },
+  "success": true
+}
