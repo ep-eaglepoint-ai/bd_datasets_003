@@ -1,0 +1,11 @@
+{
+            "instance_id": "LL38E1",
+            "problem_statement": "The current Node.js catalog ingestion endpoint crashes when processing large inventory updates (200MB+) due to memory exhaustion. You must refactor the existing synchronous parsing logic to use a streaming approach that processes objects one-by-one, keeping the memory footprint under 150MB.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ll38e1-optimize-nodejs-json-ingestion-streaming",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
