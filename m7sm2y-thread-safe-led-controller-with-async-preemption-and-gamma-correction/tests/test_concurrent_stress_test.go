@@ -35,7 +35,7 @@ func TestConcurrentSetColorAndFadeTo(t *testing.T) {
 	close(done)
 	wg.Wait()
 	c.SetColor(1, 2, 3)
-	time.Sleep(100 * time.Millisecond)  exit
+	time.Sleep(100 * time.Millisecond)
 	buf := c.CopyBuffer()
 	gr := led.Gamma(2)
 	rr := led.Gamma(1)
