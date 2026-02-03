@@ -57,10 +57,34 @@ All 8 meta tests passing means:
 ## Structure
 
 ```
-repository_after/lrucache/
-├── lru.py           # LRUCache implementation
-└── test_lru.py      # Test suite
-
-tests/resources/     # Broken implementations
-tests/test_meta.py   # Meta tests
+.
+├── Dockerfile
+├── README.md
+├── docker-compose.yml
+├── requirements.txt
+├── evaluation/
+│   ├── evaluation.py
+│   └── reports/
+├── patches/
+│   └── diff.patch
+├── repository_before/
+│   └── main.py
+├── repository_after/
+│   └── lrucache/
+│       ├── __init__.py
+│       ├── lru.py
+│       └── test_lru.py
+├── tests/
+│   ├── test_meta.py
+│   └── resources/
+│       ├── broken_capacity_impl.py
+│       ├── broken_clear_impl.py
+│       ├── broken_eviction_impl.py
+│       ├── broken_get_impl.py
+│       ├── broken_put_impl.py
+│       ├── broken_size_impl.py
+│       ├── broken_ttl_impl.py
+│       └── correct_impl.py
+└── trajectory/
+    └── trajectory.md
 ```
