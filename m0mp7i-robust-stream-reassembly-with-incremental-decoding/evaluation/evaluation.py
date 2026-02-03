@@ -13,6 +13,7 @@ import os
 from datetime import datetime
 from io import StringIO
 import unittest
+import json
 
 
 def run_tests():
@@ -53,6 +54,11 @@ def generate_report(test_result, output):
             "errors": len(test_result.errors)
         }
     }
+    
+    # Save report to file
+    report_path = os.path.join(os.path.dirname(__file__), 'report.json')
+    with open(report_path, 'w') as f:
+        json.dump(report, f, indent=2)
     
     return report
 
