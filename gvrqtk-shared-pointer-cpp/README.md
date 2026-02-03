@@ -1,9 +1,9 @@
 # GVRQTK - shared_pointer_Cpp
 
 ## Run tests
-docker-compose up test-after
+docker-compose run --rm test-after
 
 ## Run evaluation
-docker-compose up evaluate
+docker-compose run --rm evaluate
 
     

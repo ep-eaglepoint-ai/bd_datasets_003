@@ -78,49 +78,18 @@ std::string generate_output_path() {
     return dir_path + "/report.json";
 }
 
-std::string escape_json(const std::string& str) {
-    std::ostringstream oss;
-    for (char c : str) {
-        switch (c) {
-            case '"': oss << "\\\""; break;
-            case '\\': oss << "\\\\"; break;
-            case '\b': oss << "\\b"; break;
-            case '\f': oss << "\\f"; break;
-            case '\n': oss << "\\n"; break;
-            case '\r': oss << "\\r"; break;
-            case '\t': oss << "\\t"; break;
-            default:
-                if (c < 0x20) {
-                    oss << "\\u" << std::hex << std::setw(4) << std::setfill('0') << (int)c;
-                } else {
-                    oss << c;
-                }
-        }
-    }
-    return oss.str();
+bool file_exists(const std::string& path) {
+    struct stat buffer;
+    return (stat(path.c_str(), &buffer) == 0);
 }
 
-ImplementationResults run_tests(const std::string& label, const std::string& test_binary) {
+ImplementationResults run_tests(const std::string& label, const std::string& test_binary, bool should_exist) {
     std::cout << "\n========================================" << std::endl;
     std::cout << "RUNNING TESTS: " << label << std::endl;
     std::cout << "========================================" << std::endl;
     std::cout << "Binary: " << test_binary << std::endl;
 
     ImplementationResults results;
-    
-    // Execute the test binary
-    int exit_code = std::system(test_binary.c_str());
-    
-    if (WIFEXITED(exit_code)) {
-        results.exit_code = WEXITSTATUS(exit_code);
-        results.success = (results.exit_code == 0);
-    } else {
-        results.exit_code = -1;
-        results.success = false;
-    }
-
-    // For this implementation, we'll parse based on the test output
-    // Since we know the test structure, we can create test results
     
     std::vector<std::string> test_names = {
         "test_basic_construction",
@@ -135,6 +104,47 @@ ImplementationResults run_tests(const std::string& label, const std::string& tes
         "test_nullptr_handling"
     };
 
+    // Check if binary exists
+    if (!file_exists(test_binary)) {
+        std::cout << "❌ Test binary not found (expected for 'before' implementation)" << std::endl;
+        results.success = false;
+        results.exit_code = 1;
+        
+        // Create failed test results
+        for (const auto& test_name : test_names) {
+            TestResult test;
+            test.nodeid = "tests/main.cpp::" + test_name;
+            test.name = test_name;
+            test.outcome = "failed";
+            results.tests.push_back(test);
+        }
+        
+        results.summary.total = results.tests.size();
+        results.summary.passed = 0;
+        results.summary.failed = results.tests.size();
+        
+        std::cout << "\nResults: 0 passed, " << results.summary.failed 
+                  << " failed (total: " << results.summary.total << ")" << std::endl;
+        
+        for (const auto& test : results.tests) {
+            std::cout << "  ❌ " << test.nodeid << ": failed" << std::endl;
+        }
+        
+        return results;
+    }
+    
+    // Execute the test binary
+    int exit_code = std::system(test_binary.c_str());
+    
+    if (WIFEXITED(exit_code)) {
+        results.exit_code = WEXITSTATUS(exit_code);
+        results.success = (results.exit_code == 0);
+    } else {
+        results.exit_code = -1;
+        results.success = false;
+    }
+
+    // Create test results based on success
     for (const auto& test_name : test_names) {
         TestResult test;
         test.nodeid = "tests/main.cpp::" + test_name;
@@ -279,20 +289,15 @@ int main() {
     // Run tests for BEFORE implementation (should fail - no implementation)
     ImplementationResults before_results = run_tests(
         "BEFORE (repository_before)", 
-        "/app/build/test_before 2>/dev/null || echo"
+        "/app/build/test_before",
+        false  // Should not exist
     );
-    before_results.success = false;  // Force before to fail
-    before_results.exit_code = 1;
-    for (auto& test : before_results.tests) {
-        test.outcome = "failed";
-    }
-    before_results.summary.passed = 0;
-    before_results.summary.failed = before_results.summary.total;
 
     // Run tests for AFTER implementation (should pass)
     ImplementationResults after_results = run_tests(
         "AFTER (repository_after)", 
-        "/app/build/test_shared_ptr"
+        "/app/build/test_shared_ptr",
+        true  // Should exist
     );
 
     auto end_time = std::time(nullptr);
