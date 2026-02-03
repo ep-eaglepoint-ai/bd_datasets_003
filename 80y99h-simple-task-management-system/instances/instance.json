@@ -1,0 +1,11 @@
+{
+            "instance_id": "80Y99H",
+            "problem_statement": "Manual and spreadsheet-based task tracking led to duplicated tasks, missed deadlines, and inconsistent task states, especially when multiple users updated tasks simultaneously. A simple, full-stack task management system is required to act as a single source of truth for task data, enforce strict business rules, and ensure accuracy under concurrent updates. The system must support task creation, updates, history tracking, and concurrency-safe operations while remaining minimal, reliable, and fully runnable via Docker.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/80y99h-simple-task-management-system",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
