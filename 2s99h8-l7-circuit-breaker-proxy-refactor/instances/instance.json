@@ -1,0 +1,11 @@
+{
+            "instance_id": "2S99H8",
+            "problem_statement": "Refactor a legacy HTTP reverse proxy to include a high-performance, stateful L7 Circuit Breaker. The refactor must replace a slow, lock-heavy monitoring system with an atomic, lock-free state machine that protects upstream services from cascading failures under high load.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/2s99h8-l7-circuit-breaker-proxy-refactor",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
