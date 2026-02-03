@@ -50,9 +50,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: java -cp evaluation evaluation.Evaluation
+    command: java -cp "evaluation:target/lib/*:target/classes" com.example.evaluation.Evaluation
     volumes:
-      - ~/.m2:/root/.m2
+      - ./evaluation/reports:/app/evaluation/reports
 
 volumes:
   postgres_data:

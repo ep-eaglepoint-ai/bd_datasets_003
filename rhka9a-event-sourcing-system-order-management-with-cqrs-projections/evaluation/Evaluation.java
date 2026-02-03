@@ -85,7 +85,8 @@ public class Evaluation {
 
         // Write report
         Path reportPath = Paths.get(REPORTS_DIR, "latest.json");
-        mapper.writeValue(reportPath, report);
+        File reportFile = reportPath.toFile();
+        mapper.writeValue(reportFile, report);
 
         System.out.println("Report written to " + reportPath);
         System.out.println("Success: " + passedGate);
@@ -120,7 +121,7 @@ public class Evaluation {
         
         // Run Maven tests for repository_after
         ProcessBuilder pb = new ProcessBuilder();
-        pb.command("mvn", "test", "-f", "repository_after/pom.xml", "-q");
+        pb.command("mvn", "test", "-f", "pom.xml", "-q");
         pb.directory(new File(ROOT_DIR));
         pb.redirectErrorStream(true);
 

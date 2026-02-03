@@ -22,8 +22,13 @@ COPY ../evaluation ./evaluation
 # Build the application
 RUN mvn compile -q -f pom.xml
 
-# Build the evaluation class
-RUN mkdir -p evaluation && javac -cp "$(mvn -q dependency:build-classpath -f pom.xml -Dmdep.outputFile=/dev/stdout):target/classes" -d evaluation evaluation/Evaluation.java
+# Copy dependencies to lib folder for runtime use
+RUN mvn dependency:copy-dependencies -f pom.xml -DoutputDirectory=target/lib -q
+
+# Build the evaluation class with proper package structure
+RUN mkdir -p evaluation/com/example/evaluation && \
+    javac -cp "$(mvn -q dependency:build-classpath -f pom.xml -Dmdep.outputFile=/dev/stdout):target/classes:target/lib/*" \
+    -d evaluation evaluation/Evaluation.java
 
 # Default command runs tests
 CMD ["mvn", "test", "-f", "pom.xml"]
