@@ -1,9 +1,81 @@
+version: '3.8'
 
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
-  app:
-    build: .
-    command: pytest -q tests
+services:
+  repository-before:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /app
     volumes:
-      - .:/app
+      - ./repository_before/src:/app/src:ro
+      - ./repository_before/public:/app/public:ro
+      - ./repository_after:/app/test-suite:ro
+      - test-results:/tmp/test-results
+    environment:
+      - NODE_ENV=test
+    command: >
+      sh -c "
+        echo 'Setting up test environment...' &&
+        cp /app/test-suite/package.json /app/package.json &&
+        cp /app/test-suite/jest.config.cjs /app/jest.config.cjs &&
+        cp /app/test-suite/babel.config.cjs /app/babel.config.cjs &&
+        cp /app/test-suite/setupTests.js /app/setupTests.js &&
+        mkdir -p /app/mocks &&
+        cp /app/test-suite/mocks/fileMock.cjs /app/mocks/fileMock.cjs &&
+        mkdir -p /app/__tests__ &&
+        cp /app/test-suite/*.test.jsx /app/__tests__/ 2>/dev/null || true &&
+        echo 'Installing dependencies...' &&
+        npm install --legacy-peer-deps --silent &&
+        echo 'Running tests on repository_before...' &&
+        npm test -- --json --outputFile=/tmp/test-results/before-results.json 2>&1 || true &&
+        echo 'Tests completed' &&
+        exit 0
+      "
+
+  repository-after:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /app
+    volumes:
+      - ./repository_before/src:/app/src:ro
+      - ./repository_before/public:/app/public:ro
+      - ./repository_after:/app/test-suite:ro
+      - ./tests:/app/meta-tests:ro
+      - test-results:/tmp/test-results
+    environment:
+      - NODE_ENV=test
+    command: >
+      sh -c "
+        echo 'Setting up meta test environment...' &&
+        cp /app/meta-tests/package.json /app/package.json &&
+        cp /app/meta-tests/jest.config.cjs /app/jest.config.cjs &&
+        cp /app/meta-tests/babel.config.cjs /app/babel.config.cjs &&
+        mkdir -p /app/mocks &&
+        cp /app/meta-tests/mocks/fileMock.cjs /app/mocks/fileMock.cjs &&
+        echo 'Installing dependencies...' &&
+        npm install --legacy-peer-deps --silent &&
+        echo 'Running meta tests on repository_after...' &&
+        npm test -- --json --outputFile=/tmp/test-results/after-results.json 2>&1 || true &&
+        echo 'Meta tests completed' &&
+        exit 0
+      "
+
+  evaluation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /app
+    volumes:
+      - ./evaluation:/app/evaluation:ro
+      - ./evaluation/reports:/app/reports
+      - test-results:/tmp/test-results:ro
+    command: >
+      sh -c "
+        node /app/evaluation/evaluation.js &&
+        rm -f /tmp/test-results/before-results.json /tmp/test-results/after-results.json &&
+        echo 'Evaluation completed and temporary files cleaned'
+      "
+
+volumes:
+  test-results:
