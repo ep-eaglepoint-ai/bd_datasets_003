@@ -1,9 +1,30 @@
 
-        # Docker Compose file for running tests. You should customize this as needed.
+# Docker Compose file for running tests. You should customize this as needed.
 
-        services:
-  app:
+services:
+  server:
     build: .
-    command: pytest -q tests
+    container_name: reservation-server
+    ports:
+      - "8080:8080"
+    command: sh -c "./server"
+  client:
+    build: .
+    container_name: reservation-client
+    depends_on:
+      - server
+    environment:
+      - SERVER_URL=http://server:8080 
+    command: sh -c "./client"
+  tests:
+    build: .
+    container_name: reservation-tests
+    depends_on:
+      - server
+    command: sh -c "go test -v ./tests/..."
+  evaluator:
+    build: .
+    container_name: reservation-evaluator
     volumes:
-      - .:/app
+      - ./evaluation/reports:/app/evaluation/reports
+    command: ./evaluator
