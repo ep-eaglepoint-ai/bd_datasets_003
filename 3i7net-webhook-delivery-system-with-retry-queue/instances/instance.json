@@ -1,0 +1,11 @@
+{
+            "instance_id": "3I7NET",
+            "problem_statement": "The platform needs a reliable way to notify customers when events occur (user signup, payment completed, order shipped). Currently, webhook deliveries fail silently, customers have no visibility into delivery status, and failed webhooks are never retried. The system must queue events, deliver them to customer endpoints with cryptographic signatures, retry failures with exponential backoff, and provide delivery logs. Core logic should be in internal/delivery/, internal/queue/, and handlers/.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/3i7net-webhook-delivery-system-with-retry-queue",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
