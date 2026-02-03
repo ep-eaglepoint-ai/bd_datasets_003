@@ -9,3 +9,12 @@ services:
     environment:
       - NODE_ENV=test
     working_dir: /app/repository_before
+
+  evaluate:
+    build: .
+    command: node evaluation/evaluation.js
+    volumes:
+      - .:/app
+    environment:
+      - NODE_ENV=test
+    working_dir: /app

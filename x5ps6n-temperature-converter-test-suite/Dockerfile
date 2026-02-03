@@ -9,6 +9,8 @@ RUN cd repository_before && npm ci
 # Copy tests and meta-tests
 COPY tests/ ./tests/
 COPY repository_after/ ./repository_after/
+COPY evaluation/ ./evaluation/
+COPY instances/ ./instances/
 
 # Install test dependencies globally
 RUN npm install -g jest
