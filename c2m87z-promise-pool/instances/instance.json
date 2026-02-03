@@ -1,0 +1,11 @@
+{
+            "instance_id": "C2M87Z",
+            "problem_statement": "A data migration script needs to process 10000 records by making an API call for each one. Running all requests in parallel with Promise.all overwhelms the target API with rate limit errors, while processing sequentially with await in a loop takes 3 hours to complete. The team needs a utility that processes promises with controlled concurrency, limiting the number of simultaneous in-flight requests. The system needs to execute async tasks with a configurable concurrency limit, handle individual task failures without stopping the entire batch, and report progress as tasks complete. Initial implementation attempts revealed that Promise.all fails fast and aborts remaining work if any promise rejects, tracking which promises are in-flight versus complete requires careful state management, and dynamically starting new tasks as others complete is trickier than expected.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/c2m87z-promise-pool",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
