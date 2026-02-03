@@ -1,12 +1,22 @@
 {
             "instance_id": "8N35BN",
-            "problem_statement": "The fundamental engineering difficulty in this task is the reliable synchronization of continuous data streams over an unreliable transport layer without data loss or duplication. Naive implementations often buffer events in a simple JavaScript array (const buffer = []), which leads to immediate data loss if the device restarts (Power Cycle) and potential "Out of Memory" crashes if the network remains down for an extended period. The correct solution requires a persistent on-disk queue (Write-Ahead Log). Furthermore, the interaction implies a "Two Generals' Problem"; the server might process the data, but the network drops the ACK. The client will assume failure and re-send. Without strict Idempotency checks on the server side (deduplication by Event UUID), the reported water usage statistics will be inflated, corrupting the business metrics. Finally, the inclusion of HMAC signing tests the model's ability to ensure data integrity and authenticity in a hostile physical environment.
-",
+            "problem_statement": "The fundamental engineering difficulty in this task is the reliable synchronization of continuous data streams over an unreliable transport layer without data loss or duplication. Naive implementations often buffer events in a simple JavaScript array (const buffer = []), which leads to immediate data loss if the device restarts (Power Cycle) and potential \"Out of Memory\" crashes if the network remains down for an extended period. The correct solution requires a persistent on-disk queue (Write-Ahead Log). Furthermore, the interaction implies a \"Two Generals' Problem\"; the server might process the data, but the network drops the ACK. The client will assume failure and re-send. Without strict Idempotency checks on the server side (deduplication by Event UUID), the reported water usage statistics will be inflated, corrupting the business metrics. Finally, the inclusion of HMAC signing tests the model's ability to ensure data integrity and authenticity in a hostile physical environment.",
             "base_commit": "repository_before/",
             "test_patch": "tests/",
             "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/8n35bn-offline-first-iot-telemetry-sync-with-hmac-and-store-and-forward",
             "environment_setup": "Dockerfile",
-            "FAIL_TO_PASS": [],
+            "FAIL_TO_PASS": [
+                "should reject requests with invalid HMAC signature",
+                "should accept requests with valid HMAC signature",
+                "should not double-count volume on duplicate batch",
+                "should return zero addedVolume for duplicate batches",
+                "should reject requests with expired timestamp",
+                "should reject requests with future timestamp",
+                "should accept requests with valid recent timestamp",
+                "should persist events to disk before sending",
+                "should aggregate multiple events into single HTTP request",
+                "sensor loop should not be blocked by network sync",
+                "should handle connection errors gracefully without crashing"
+            ],
             "PASS_TO_PASS": []
         }
-        

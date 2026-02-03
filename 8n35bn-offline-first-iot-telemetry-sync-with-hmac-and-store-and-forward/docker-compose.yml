@@ -8,3 +8,4 @@ services:
       - SERVER_DB_PATH=/app/temp_test_data/server.db
     volumes:
       - ./temp_test_data:/app/temp_test_data
+      - ./evaluation/reports:/app/evaluation/reports
