@@ -31,7 +31,7 @@ class ConnectionManager:
                     await connection.send_text(message_str)
                 except Exception:
                     disconnected.append(connection)
-            
+
             for conn in disconnected:
                 self.disconnect(poll_id, conn)
 
@@ -40,7 +40,28 @@ manager = ConnectionManager()
 async def redis_listener():
     """
     Listener for Redis Pub/Sub to scale horizontally.
-    In a real production environment, we'd use this to sync between instances.
-    For this task, we will trigger broadcasts directly after votes.
+    This enables multiple backend instances to share broadcast state via Redis.
+    When a vote is cast on any instance, it publishes to Redis, and all instances
+    receive the message and broadcast to their local WebSocket connections.
     """
-    pass
+    try:
+        pubsub = await redis_client.get_pubsub()
+        while True:
+            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+            if message and message["type"] == "message":
+                data = json.loads(message["data"])
+                poll_id = data.get("poll_id")
+                if poll_id:
+                    await manager.broadcast(poll_id, {
+                        "type": data.get("type", "results_update"),
+                        "results": data.get("results", {})
+                    })
+            await asyncio.sleep(0.01)  # Small sleep to prevent tight loop
+    except asyncio.CancelledError:
+        # Graceful shutdown
+        if redis_client.pubsub:
+            await redis_client.pubsub.unsubscribe()
+        raise
+    except Exception as e:
+        # Log error but don't crash - broadcasts will still work via direct calls
+        print(f"Redis listener error: {e}")

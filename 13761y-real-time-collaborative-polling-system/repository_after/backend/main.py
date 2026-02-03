@@ -3,9 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import uuid
 import html
+import asyncio
 from .models import PollCreate, VoteRequest
 from .redis_client import redis_client
-from .websocket_manager import manager
+from .websocket_manager import manager, redis_listener
 
 # In-memory storage for poll metadata (title, options). 
 # Results are in Redis.
@@ -34,10 +35,25 @@ async def lifespan(app: FastAPI):
                 "status": "active"
             }
             await redis_client.create_poll(poll_id, poll_data["options"])
-    
+
+    # Start Redis Pub/Sub listener for horizontal scalability
+    listener_task = asyncio.create_task(redis_listener())
+
     yield
-    
-    # Shutdown: Cleanup resources
+
+    # Shutdown: Cancel listener and cleanup resources
+    listener_task.cancel()
+    try:
+        await listener_task
+    except asyncio.CancelledError:
+        pass
+
+    if redis_client.pubsub is not None:
+        try:
+            await redis_client.pubsub.close()
+        except Exception:
+            pass
+
     if redis_client.redis is not None:
         try:
             await redis_client.redis.aclose()
@@ -91,20 +107,24 @@ async def get_poll(poll_id: str):
 async def vote(poll_id: str, vote_req: VoteRequest, request: Request):
     if poll_id not in polls_db:
         raise HTTPException(status_code=404, detail="Poll not found")
-    
+
     if polls_db[poll_id]["status"] != "active":
         raise HTTPException(status_code=400, detail="Poll is closed")
 
-    client_ip = request.client.host
+    # Support X-Forwarded-For for proxy/load balancer scenarios and testing
+    client_ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+    if not client_ip:
+        client_ip = request.client.host
+
     success = await redis_client.cast_vote(poll_id, vote_req.option_id, client_ip)
-    
+
     if not success:
         raise HTTPException(status_code=403, detail="Already voted from this IP")
 
-    # Broadcast updated results
+    # Get updated results and publish to Redis for horizontal scaling
     updated_results = await redis_client.get_poll_results(poll_id)
-    await manager.broadcast(poll_id, {"type": "results_update", "results": updated_results})
-    
+    await redis_client.publish_vote_update(poll_id, updated_results)
+
     return {"status": "ok"}
 
 @app.websocket("/ws/polls/{poll_id}")

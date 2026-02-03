@@ -1,23 +1,44 @@
 import redis.asyncio as redis
 import os
+import json
 
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+POLL_UPDATES_CHANNEL = "poll_updates"
 
 class RedisClient:
     def __init__(self):
         self.redis = None
-    
+        self.pubsub = None
+
     async def _get_redis(self):
         """Get or create Redis connection with proper async handling"""
         if self.redis is None:
             self.redis = redis.Redis(
-                host=REDIS_HOST, 
-                port=REDIS_PORT, 
+                host=REDIS_HOST,
+                port=REDIS_PORT,
                 decode_responses=True,
                 single_connection_client=False  # Allow connection pooling
             )
         return self.redis
+
+    async def publish_vote_update(self, poll_id: str, results: dict):
+        """Publish vote update to Redis Pub/Sub channel for horizontal scaling"""
+        r = await self._get_redis()
+        message = json.dumps({
+            "poll_id": poll_id,
+            "type": "results_update",
+            "results": results
+        })
+        await r.publish(POLL_UPDATES_CHANNEL, message)
+
+    async def get_pubsub(self):
+        """Get or create Redis Pub/Sub connection"""
+        if self.pubsub is None:
+            r = await self._get_redis()
+            self.pubsub = r.pubsub()
+            await self.pubsub.subscribe(POLL_UPDATES_CHANNEL)
+        return self.pubsub
 
     async def get_poll_results(self, poll_id: str):
         r = await self._get_redis()

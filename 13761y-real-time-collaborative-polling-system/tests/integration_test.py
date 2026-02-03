@@ -9,37 +9,43 @@ import json
 
 @pytest.mark.asyncio
 async def test_high_concurrency_voting():
-    # 1. Create a poll
+    """
+    Integration test: 100 concurrent virtual clients submit votes through the API
+    and assert that the final count in Redis matches the total submissions exactly.
+    """
+    # 1. Create a poll via the API
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.post("/api/polls", json={
             "title": "Concurrency Test",
             "options": ["Option A", "Option B"]
         })
+        assert response.status_code == 200
         poll_id = response.json()["id"]
 
-    # 2. Simulate 100 concurrent votes
-    # Since we use IP-based limiting, we need to mock the request host or bypass it for the test
-    # Alternatively, we can just test the redis_client atomic property directly
-    # But the requirement asks for "virtual clients to submit votes"
-    
-    tasks = []
-    async def sub_vote(index):
+    # 2. Simulate 100 concurrent votes through the HTTP API
+    async def submit_vote(index: int):
+        """Each virtual client submits a vote with a unique IP via X-Forwarded-For"""
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-            # Fake the IP by providing a unique IP per virtual client
             headers = {"X-Forwarded-For": f"192.168.1.{index}"}
-            # We need to ensure the IP limiting uses X-Forwarded-For or we mock it
-            # For this test, let's call the redis client directly to ensure atomic INCRBY
-            await redis_client.cast_vote(poll_id, "Option A", f"ip-{index}")
+            response = await ac.post(
+                f"/api/polls/{poll_id}/vote",
+                json={"option_id": "Option A"},
+                headers=headers
+            )
+            return response.status_code
 
-    for i in range(100):
-        tasks.append(sub_vote(i))
-    
-    await asyncio.gather(*tasks)
+    # Launch 100 concurrent vote submissions
+    tasks = [submit_vote(i) for i in range(100)]
+    results = await asyncio.gather(*tasks)
 
-    # 3. Assert final count matches total submissions
-    results = await redis_client.get_poll_results(poll_id)
-    assert int(results["Option A"]) == 100
-    assert int(results["Option B"]) == 0
+    # Verify all 100 requests succeeded
+    success_count = sum(1 for status in results if status == 200)
+    assert success_count == 100, f"Expected 100 successful votes, got {success_count}"
+
+    # 3. Assert final count in Redis matches total submissions exactly
+    poll_results = await redis_client.get_poll_results(poll_id)
+    assert int(poll_results["Option A"]) == 100
+    assert int(poll_results["Option B"]) == 0
 
 
 @pytest.mark.asyncio
