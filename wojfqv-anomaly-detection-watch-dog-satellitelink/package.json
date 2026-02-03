@@ -1,0 +1,18 @@
+{
+  "name": "wojfqv-anomaly-detection-watch-dog-satellitelink",
+  "version": "1.0.0",
+  "description": "## Before Test Docker Command     <docker before command here>",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "jest"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "jest": "^30.2.0"
+  }
+}
