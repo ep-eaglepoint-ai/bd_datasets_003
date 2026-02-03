@@ -1,0 +1,11 @@
+{
+            "instance_id": "4GS8SH",
+            "problem_statement": "Previous Node.js REST API implementations embedded validation logic directly inside controllers, resulting in duplicated checks, inconsistent error handling, weak type safety, and poor scalability as the application grew. A centralized and reusable validation module is required to enforce input correctness before requests reach business or database logic. This module must provide consistent validation behavior, strong TypeScript type safety, and predictable error responses while remaining easy to extend as new endpoints are added.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/4gs8sh-reusable-validation-module-for-node-js-rest-api",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
