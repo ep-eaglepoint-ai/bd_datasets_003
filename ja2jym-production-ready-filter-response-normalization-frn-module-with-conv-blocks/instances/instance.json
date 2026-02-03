@@ -1,0 +1,11 @@
+{
+            "instance_id": "JA2JYM",
+            "problem_statement": "Create a PyTorch module implementing FRN and Conv + FRN blocks that are stable, deployable, ONNX-compatible, and replace BatchNorm + ReLU, handling all edge cases.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ja2jym-production-ready-filter-response-normalization-frn-module-with-conv-blocks",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
