@@ -15,7 +15,7 @@ public class Evaluation {
         {"TandemSyncServiceTest", "3"},
         {"DriftSimulationTest", "3"},
         {"JitterResilienceTest", "5"},
-        {"RequirementsTest", "1"}
+        {"RequirementsTest", "3"} // Updated to 3 (was 1 in original, but we added more)
     };
     
     public static void main(String[] args) {
@@ -59,34 +59,33 @@ public class Evaluation {
     private TestResults parseTestOutput(String output) {
         TestResults results = new TestResults();
         
-        Pattern successPattern = Pattern.compile("(\\d+) tests successful");
-        Pattern failedPattern = Pattern.compile("(\\d+) tests failed");
-        Pattern foundPattern = Pattern.compile("(\\d+) tests found");
+        // Parse JUnit Platform summary
+        Pattern summaryPattern = Pattern.compile("Tests run: (\\d+), Failures: (\\d+), Errors: (\\d+), Skipped: (\\d+)");
+        Matcher matcher = summaryPattern.matcher(output);
         
-        Matcher matcher = successPattern.matcher(output);
-        if (matcher.find()) {
-            results.passed = Integer.parseInt(matcher.group(1));
-        }
-        
-        matcher = failedPattern.matcher(output);
-        if (matcher.find()) {
-            results.failed = Integer.parseInt(matcher.group(1));
-        }
-        
-        matcher = foundPattern.matcher(output);
         if (matcher.find()) {
             results.total = Integer.parseInt(matcher.group(1));
+            results.failed = Integer.parseInt(matcher.group(2)) + Integer.parseInt(matcher.group(3));
+            results.passed = results.total - results.failed - Integer.parseInt(matcher.group(4));
+        } else {
+            // Fallback for different output format
+            Pattern successPattern = Pattern.compile("(\\d+) tests successful");
+            Pattern failedPattern = Pattern.compile("(\\d+) tests failed");
+            
+            matcher = successPattern.matcher(output);
+            if (matcher.find()) results.passed = Integer.parseInt(matcher.group(1));
+            
+            matcher = failedPattern.matcher(output);
+            if (matcher.find()) results.failed = Integer.parseInt(matcher.group(1));
+            
+            results.total = results.passed + results.failed;
         }
         
-        if (results.total == 0) {
-            results.total = 18;
-            if (output.contains("BUILD SUCCESS") || output.contains("18 tests successful")) {
-                results.passed = 18;
-                results.failed = 0;
-            } else {
-                results.passed = 0;
-                results.failed = 18;
-            }
+        // If parsing totally failed but build succeeded, assume success
+        if (results.total == 0 && output.contains("BUILD SUCCESS")) {
+            results.total = 20; // 6+3+3+5+3
+            results.passed = 20;
+            results.failed = 0;
         }
         
         results.success = results.failed == 0 && results.passed > 0;
@@ -104,23 +103,28 @@ public class Evaluation {
             String className = testDef[0];
             int count = Integer.parseInt(testDef[1]);
             
-            boolean classPassedInOutput = output.contains(className + " ✔") || 
-                                          (output.contains("Running " + className) && 
-                                           !output.contains(className + " ✘"));
+            // Check if this class had failures
+            boolean classFailed = output.contains(className) && 
+                                (output.contains("FAILURE!") || output.contains("Failures:"));
             
             for (int i = 1; i <= count; i++) {
                 TestEntry entry = new TestEntry();
                 entry.name = className + ".test_" + i;
                 
-                if (classPassedInOutput && passedRemaining > 0) {
-                    entry.status = "PASS";
-                    passedRemaining--;
-                } else if (failedRemaining > 0) {
+                // If we know which specific tests failed, we could be more precise
+                // Here we distribute pass/fail based on counts
+                if (failedRemaining > 0 && classFailed) {
                     entry.status = "FAIL";
                     failedRemaining--;
-                } else {
+                } else if (passedRemaining > 0) {
                     entry.status = "PASS";
+                    passedRemaining--;
+                } else {
+                    // Fallback
+                    entry.status = failedRemaining > 0 ? "FAIL" : "PASS";
+                    if (failedRemaining > 0) failedRemaining--;
                 }
+                
                 entry.duration = "0.00s";
                 entries.add(entry);
             }
@@ -183,13 +187,9 @@ public class Evaluation {
                 
         } catch (Exception e) {
             System.err.println("Error checking requirements: " + e.getMessage());
-            requirements.put("req1_temporal_alignment", false);
-            requirements.put("req2_safety_interlock", false);
-            requirements.put("req3_liveness_watchdog", false);
-            requirements.put("req4_high_concurrency", false);
-            requirements.put("req5_atomic_state", false);
-            requirements.put("req6_drift_simulation", false);
-            requirements.put("req7_jitter_resilience", false);
+            for (int i = 1; i <= 7; i++) {
+                requirements.putIfAbsent("req" + i + "_", false);
+            }
         }
         
         return requirements;
@@ -227,7 +227,6 @@ public class Evaluation {
         
         StringBuilder sb = new StringBuilder();
         sb.append("{\n");
-        
         sb.append("  \"evaluation_metadata\": {\n");
         sb.append("    \"evaluation_id\": \"").append(evaluationId).append("\",\n");
         sb.append("    \"timestamp\": \"").append(timestamp).append("\",\n");
@@ -235,27 +234,16 @@ public class Evaluation {
         sb.append("    \"project\": \"maritime_crane_sync_orchestrator\",\n");
         sb.append("    \"version\": \"1.0.0\"\n");
         sb.append("  },\n");
-        
         sb.append("  \"environment\": {\n");
         sb.append("    \"java_version\": \"17\",\n");
         sb.append("    \"platform\": \"linux\",\n");
         sb.append("    \"architecture\": \"amd64\",\n");
         sb.append("    \"build_tool\": \"Maven\"\n");
         sb.append("  },\n");
-        
         sb.append("  \"before\": {\n");
-        sb.append("    \"metrics\": {\n");
-        sb.append("      \"total_files\": 0,\n");
-        sb.append("      \"coverage_percent\": 0\n");
-        sb.append("    },\n");
-        sb.append("    \"tests\": {\n");
-        sb.append("      \"passed\": 0,\n");
-        sb.append("      \"failed\": ").append(results.total).append(",\n");
-        sb.append("      \"total\": ").append(results.total).append(",\n");
-        sb.append("      \"success\": false\n");
-        sb.append("    }\n");
+        sb.append("    \"metrics\": { \"total_files\": 0, \"coverage_percent\": 0 },\n");
+        sb.append("    \"tests\": { \"passed\": 0, \"failed\": ").append(results.total).append(", \"total\": ").append(results.total).append(", \"success\": false }\n");
         sb.append("  },\n");
-        
         sb.append("  \"after\": {\n");
         sb.append("    \"metrics\": {\n");
         sb.append("      \"total_files\": ").append(totalFiles).append(",\n");
@@ -275,11 +263,7 @@ public class Evaluation {
         sb.append("      \"tests\": [\n");
         for (int i = 0; i < results.tests.size(); i++) {
             TestEntry test = results.tests.get(i);
-            sb.append("        {\n");
-            sb.append("          \"name\": \"").append(test.name).append("\",\n");
-            sb.append("          \"status\": \"").append(test.status).append("\",\n");
-            sb.append("          \"duration\": \"").append(test.duration).append("\"\n");
-            sb.append("        }");
+            sb.append("        { \"name\": \"").append(test.name).append("\", \"status\": \"").append(test.status).append("\", \"duration\": \"0.00s\" }");
             if (i < results.tests.size() - 1) sb.append(",");
             sb.append("\n");
         }
@@ -288,7 +272,6 @@ public class Evaluation {
         sb.append("      \"output\": ").append(escapeJsonString(testOutput)).append("\n");
         sb.append("    }\n");
         sb.append("  },\n");
-        
         sb.append("  \"requirements_checklist\": {\n");
         int count = 0;
         for (Map.Entry<String, Boolean> entry : requirements.entrySet()) {
@@ -309,7 +292,6 @@ public class Evaluation {
         sb.append("    \"requirements_met\": ").append(requirementsMet).append(",\n");
         sb.append("    \"total_requirements\": 7\n");
         sb.append("  }\n");
-        
         sb.append("}");
         
         return sb.toString();
@@ -317,7 +299,6 @@ public class Evaluation {
     
     private String escapeJsonString(String value) {
         if (value == null || value.isEmpty()) return "\"\"";
-        
         StringBuilder sb = new StringBuilder("\"");
         for (char c : value.toCharArray()) {
             switch (c) {
@@ -326,8 +307,6 @@ public class Evaluation {
                 case '\n' -> sb.append("\\n");
                 case '\r' -> sb.append("\\r");
                 case '\t' -> sb.append("\\t");
-                case '\b' -> sb.append("\\b");
-                case '\f' -> sb.append("\\f");
                 default -> {
                     if (c < 32) sb.append(String.format("\\u%04x", (int) c));
                     else sb.append(c);
@@ -342,13 +321,10 @@ public class Evaluation {
         ZonedDateTime now = ZonedDateTime.now(ZoneOffset.UTC);
         String dateDir = now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
         String timeDir = now.format(DateTimeFormatter.ofPattern("HH-mm-ss"));
-        
         Path reportDir = Path.of(REPORTS_BASE_DIR, dateDir, timeDir);
         Files.createDirectories(reportDir);
-        
         Path reportPath = reportDir.resolve("report.json");
         Files.writeString(reportPath, report);
-        
         return reportPath.toString();
     }
     
@@ -358,12 +334,9 @@ public class Evaluation {
         System.out.println("FINAL VERDICT");
         System.out.println("============================================================");
         System.out.println("Tests: " + results.passed + " passed, " + results.failed + " failed, " + results.total + " total");
-        
         int requirementsMet = (int) requirements.values().stream().filter(v -> v).count();
         boolean success = results.success && requirementsMet >= 7;
-        
         System.out.println("Success: " + success);
-        System.out.println("Success Rate: " + String.format("%.1f", results.total > 0 ? (results.passed * 100.0 / results.total) : 0) + "%");
         System.out.println("Requirements Met: " + requirementsMet + "/7");
         System.out.println("\nRequirements:");
         for (Map.Entry<String, Boolean> entry : requirements.entrySet()) {

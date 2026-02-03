@@ -23,7 +23,9 @@
         "JitterResilienceTest.test_3",
         "JitterResilienceTest.test_4",
         "JitterResilienceTest.test_5",
-        "RequirementsTest.test_1"
+        "RequirementsTest.test_1",
+        "RequirementsTest.test_2",
+        "RequirementsTest.test_3"
     ],
     "PASS_TO_PASS": []
 }
