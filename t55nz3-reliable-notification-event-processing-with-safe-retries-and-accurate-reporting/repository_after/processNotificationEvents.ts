@@ -61,7 +61,7 @@ export function processNotificationEvents(events: NotificationEvent[]): {
   }
 
   events.forEach((ev, index) => {
-    // FIX: Explicitly type the entry so TypeScript knows 'reason' is an optional property
+   
     const entry: ProcessingReport['eventsProcessed'][number] = {
       eventIndex: index,
       eventId: ev.eventId,
@@ -71,7 +71,7 @@ export function processNotificationEvents(events: NotificationEvent[]): {
       outcome: "rejected",
     };
 
-    // ── Always update lastSeenAt when notificationId is present & non-empty ──
+    
     if (ev.notificationId && ev.notificationId.trim() !== "") {
       if (!states[ev.notificationId]) {
         states[ev.notificationId] = {
@@ -83,7 +83,7 @@ export function processNotificationEvents(events: NotificationEvent[]): {
         states[ev.notificationId].lastSeenAt = ev.timestamp;
       }
 
-      // ── Deduplication check ─────────────────────────────────────────────
+     
       if (appliedEventIds.has(ev.eventId)) {
         report.duplicates++;
         entry.outcome = "duplicate";
@@ -91,7 +91,7 @@ export function processNotificationEvents(events: NotificationEvent[]): {
         return;
       }
 
-      // ── Basic validation ────────────────────────────────────────────────
+   
       if (!["SENT", "DELIVERED", "ACKED"].includes(ev.type)) {
         addRejectedCount("invalid_event_type");
         entry.reason = "invalid event type";
@@ -101,7 +101,7 @@ export function processNotificationEvents(events: NotificationEvent[]): {
 
       const state = states[ev.notificationId];
 
-      // ── Terminal state protection ───────────────────────────────────────
+     
       if (state.status === "ACKED") {
         addRejectedCount("terminal_state_ACKED");
         entry.reason = "already ACKED (terminal)";
@@ -109,7 +109,7 @@ export function processNotificationEvents(events: NotificationEvent[]): {
         return;
       }
 
-      // ── Forward-only transitions ────────────────────────────────────────
+   
       if (!canTransition(state.status, ev.type)) {
         const reason = `invalid_transition_${state.status}_to_${ev.type}`;
         addRejectedCount(reason);
@@ -118,7 +118,7 @@ export function processNotificationEvents(events: NotificationEvent[]): {
         return;
       }
 
-      // ── Apply the event ─────────────────────────────────────────────────
+     
       appliedEventIds.add(ev.eventId);
       report.applied++;
 

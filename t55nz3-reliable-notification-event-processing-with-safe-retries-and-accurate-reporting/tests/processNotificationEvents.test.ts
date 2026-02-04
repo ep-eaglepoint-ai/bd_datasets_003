@@ -1,6 +1,6 @@
 import { processNotificationEvents, NotificationEvent } from '../repository_after/processNotificationEvents';
 
-describe('processNotificationEvents', () => {
+describe('processNotificationEvents (After)', () => {
   const baseEvent: NotificationEvent = {
     eventId: 'evt-1',
     recipientId: 'user-1',
@@ -37,8 +37,8 @@ describe('processNotificationEvents', () => {
 
   it('should identify duplicate event IDs', () => {
     const events: NotificationEvent[] = [
-      { ...baseEvent, eventId: 'same-id', type: 'SENT' },
-      { ...baseEvent, eventId: 'same-id', type: 'DELIVERED' },
+      { ...baseEvent, eventId: 'same-id', type: 'SENT', timestamp: 1000 },
+      { ...baseEvent, eventId: 'same-id', type: 'DELIVERED', timestamp: 1100 },
     ];
 
     const { report } = processNotificationEvents(events);
@@ -49,8 +49,8 @@ describe('processNotificationEvents', () => {
 
   it('should enforce terminal state (ACKED)', () => {
     const events: NotificationEvent[] = [
-      { ...baseEvent, eventId: 'e1', type: 'ACKED' },
-      { ...baseEvent, eventId: 'e2', type: 'DELIVERED' }, // Should be rejected
+      { ...baseEvent, eventId: 'e1', type: 'ACKED', timestamp: 1000 },
+      { ...baseEvent, eventId: 'e2', type: 'DELIVERED', timestamp: 1100 },
     ];
 
     const { report } = processNotificationEvents(events);
