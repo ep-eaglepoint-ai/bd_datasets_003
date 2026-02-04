@@ -1,6 +1,6 @@
 # BEFORE
 
-docker compose run --rm test-runner sh -lc "cd /app/repository_before && npm install --no-audit --no-fund && npm test -- --watchAll=false"
+docker compose up --build
 
 # AFTER (META TEST)
 

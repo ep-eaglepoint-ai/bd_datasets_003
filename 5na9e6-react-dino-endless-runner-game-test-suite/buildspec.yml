@@ -1,8 +1,0 @@
-version: 0.2
-
-phases:
-    build:
-        commands:
-            - docker compose run --rm test-runner sh -lc "cd /app/repository_before && npm install --no-audit --no-fund && npm test -- --watchAll=false"
-            - docker compose up --build
-            - docker compose run --rm evaluation
