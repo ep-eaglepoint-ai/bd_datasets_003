@@ -1,0 +1,11 @@
+{
+            "instance_id": "5RITKB",
+            "problem_statement": "Build a personal reading tracker using Vue 3 with Composition API and TypeScript on the frontend and Python/Flask with SQLite on the backend, allowing users to search and log books, track reading progress, and set yearly goals and streaks. Implement JWT authentication, integrate a mock book API from JSON data, and use Chart.js with Tailwind CSS for visualizing reading statistics and progress over time. The application must support progress updates, personal notes/ratings, and gamified elements like streaks while maintaining a clean, intuitive interface for book enthusiasts.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/5ritkb-personalized-reading-tracker",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
