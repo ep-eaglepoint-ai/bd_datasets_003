@@ -1,9 +1,52 @@
+version: '3.8'
 
-        # Docker Compose file for running tests. You should customize this as needed.
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: testuser
+      POSTGRES_PASSWORD: testpass
+      POSTGRES_DB: testdb
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U testuser -d testdb" ]
+      interval: 2s
+      timeout: 5s
+      retries: 5
 
-        services:
-  app:
+  evaluation:
     build: .
-    command: pytest -q tests
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: testpass
     volumes:
       - .:/app
+    # Dynamically generate timestamped path (YYYY-MM-DD/HH-MM-SS) and create directory before running psql
+    # Note: Double $$ is required to prevent docker-compose from interpolating variables on the host
+    command: >
+      /bin/sh -c '
+        TIMESTAMP=$$(date +"%Y-%m-%d/%H-%M-%S") &&
+        REPORT_DIR="evaluation/$$TIMESTAMP" &&
+        REPORT_FILE="$$REPORT_DIR/report.json" &&
+        mkdir -p "$$REPORT_DIR" &&
+        echo "Generating report at $$REPORT_FILE" &&
+        psql -h db -U testuser -d testdb -v output_file="$$REPORT_FILE" -f evaluation/evaluation.sql
+      '
+  # Service for manual testing that discards output (device-independent)
+  test:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: testpass
+    volumes:
+      - .:/app
+    command: >
+      /bin/sh -c '
+        TEMP_FILE=$$(mktemp) &&
+        echo "Running tests (output discarded)..." &&
+        psql -h db -U testuser -d testdb -v output_file="$$TEMP_FILE" -f evaluation/evaluation.sql &&
+        rm -f "$$TEMP_FILE"
+      '
