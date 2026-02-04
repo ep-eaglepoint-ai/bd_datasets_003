@@ -1,11 +1,19 @@
 # PNIW21 - Integration Tests for E-Commerce Order Processing Service
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Before Test Docker Command
 
-    ## After Test Docker Command
-    <docker after command here>
+```bash
+docker compose run --rm tests
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## After Test Docker Command
+
+```bash
+docker compose run --rm tests npm run test:meta
+```
+
+## Evaluation Docker Command
+
+```bash
+docker compose run --rm tests node evaluation/evaluation.js
+```
