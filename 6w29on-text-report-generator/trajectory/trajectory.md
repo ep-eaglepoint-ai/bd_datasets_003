@@ -52,9 +52,9 @@ The original code's inefficiency comes from implementation choices, not algorith
 
 ---
 
-### 3. Phase 3: DEFINE SUCCESS CRITERIA
+### 3. Phase 3: DEFINE SUCCESS CRITERIA (Establish Measurable Goals)
 
-**Guiding Question**: *"What does 'done' mean in objective terms?"*
+**Guiding Question**: *"What does 'done' mean in concrete, measurable terms?"*
 
 **Success Criteria**:
 
@@ -69,9 +69,9 @@ If any of these fail, the optimization is incomplete.
 
 ---
 
-### 4. Phase 4: MAP REQUIREMENTS TO VALIDATION
+### 4. Phase 4: MAP REQUIREMENTS TO VALIDATION (Define Test Strategy)
 
-**Guiding Question**: *"How do we prove this works?"*
+**Guiding Question**: *"How will we prove the solution is correct and complete?"*
 
 **Test Strategy**:
 
@@ -98,7 +98,7 @@ Tests focus on **proving equivalence AND proving optimization**, not just one or
 
 **Guiding Question**: *"What is the minimal set of changes to meet all requirements?"*
 
-**Core Changes**:
+**Components to Optimize**:
 
 * **`set_header()` and `set_footer()`**
   * Replace 8 and 6 `+=` operations with list building
@@ -129,9 +129,9 @@ No shared state changes. No algorithmic changes. Pure performance refactoring.
 
 ---
 
-### 6. Phase 6: TRACE DATA / CONTROL FLOW
+### 6. Phase 6: TRACE DATA / CONTROL FLOW (Follow the Path)
 
-**Guiding Question**: *"What changes in execution from original to optimized?"*
+**Guiding Question**: *"How will execution flow change from original to optimized?"*
 
 **Original Flow** (repository_before):
 ```
@@ -159,31 +159,31 @@ build_report() called
 
 ---
 
-### 7. Phase 7: ANTICIPATE OBJECTIONS
+### 7. Phase 7: ANTICIPATE OBJECTIONS (Play Devil's Advocate)
 
-**Guiding Question**: *"What would a reviewer push back on?"*
+**Guiding Question**: *"What could go wrong? What objections might arise?"*
 
-**Objection 1**: "Does `str.replace()` really behave identically to the manual loop?"
+**Concern 1**: "Does `str.replace()` really behave identically to the manual loop?"
 
-* **Counter**: Yes. The manual loop finds first occurrence, replaces, continues—exactly what `str.replace()` does. Validated by `test_sanitize_chain` and `test_sanitize_overlap`.
+* **Resolution**: Yes. The manual loop finds first occurrence, replaces, continues—exactly what `str.replace()` does. Validated by `test_sanitize_chain` and `test_sanitize_overlap` which test chained and overlapping replacements.
 
-**Objection 2**: "Single-pass `analyze_text()` is harder to read."
+**Concern 2**: "Single-pass `analyze_text()` might introduce subtle counting bugs."
 
-* **Counter**: The original had 5 nearly-identical loops. Merging them reduces duplication and is a standard optimization pattern. Readability is preserved through clear variable names.
+* **Resolution**: The original had 5 nearly-identical loops. Merging them reduces duplication risk. All counting logic (letters, digits, spaces, newlines, words) is preserved exactly. Word-counting state machine (`in_word` flag) remains unchanged.
 
-**Objection 3**: "How do we know f-strings produce identical output?"
+**Concern 3**: "F-strings might produce different output than manual concatenation."
 
-* **Counter**: F-strings are syntactic sugar for `str.format()`. For simple cases like `f"{key}: {value}"`, they produce identical results to `key + ": " + str(value)`. Validated by all functional tests.
+* **Resolution**: F-strings are syntactic sugar for `str.format()`. For simple cases like `f"{key}: {value}"`, they produce identical results to `key + ": " + str(value)`. Validated by all 24 functional tests comparing byte-for-byte output.
 
-**Objection 4**: "What if the original code had subtle bugs that the tests don't catch?"
+**Concern 4**: "What if the original code had subtle bugs that tests don't catch?"
 
-* **Counter**: We use the **original code itself** as the reference implementation (`tests/reference_report_generator.py`). We're not optimizing against a spec—we're optimizing against the actual behavior, bugs and all.
+* **Resolution**: We use the **original code itself** as the reference implementation (`tests/reference_report_generator.py`). We're not optimizing against a spec—we're optimizing against the actual behavior, bugs and all. This ensures perfect equivalence.
 
 ---
 
 ### 8. Phase 8: VERIFY INVARIANTS / DEFINE CONSTRAINTS
 
-**Guiding Question**: *"What must always be true?"*
+**Guiding Question**: *"What constraints must the optimized system satisfy?"*
 
 **Must Satisfy**:
 
@@ -206,9 +206,9 @@ build_report() called
 
 ---
 
-### 9. Phase 9: EXECUTE WITH SURGICAL PRECISION
+### 9. Phase 9: EXECUTE WITH SURGICAL PRECISION (Ordered Implementation)
 
-**Guiding Question**: *"What order minimizes risk of breaking equivalence?"*
+**Guiding Question**: *"In what order should changes be made to minimize risk?"*
 
 **Execution Order**:
 
@@ -234,14 +234,14 @@ Each step validated before proceeding. No "optimize everything then test" approa
 
 ### 10. Phase 10: MEASURE IMPACT / VERIFY COMPLETION
 
-**Guiding Question**: *"Can we prove it meets requirements?"*
+**Guiding Question**: *"Did we build what was required? Can we prove it?"*
 
-**Verification Results**:
+**Requirements Completion**:
 
-* ✅ **Requirement 1**: All methods use list + `''.join()` (validated by AST)
-* ✅ **Requirement 2**: All templates use f-strings (validated by output equivalence)
-* ✅ **Requirement 3**: `analyze_text()` has 1 loop (validated by AST: 5 loops → 1 loop)
-* ✅ **Requirement 4**: `sanitize_text()` uses `str.replace()` (validated by AST)
+* ✅ **REQ-01**: All methods use list + `''.join()` (validated by AST)
+* ✅ **REQ-02**: All templates use f-strings (validated by output equivalence)
+* ✅ **REQ-03**: `analyze_text()` has 1 loop (validated by AST: 5 loops → 1 loop)
+* ✅ **REQ-04**: `sanitize_text()` uses `str.replace()` (validated by AST)
 * ✅ **Byte-identical output**: 30/30 tests pass
 
 **Quality Metrics**:
@@ -258,7 +258,7 @@ Each step validated before proceeding. No "optimize everything then test" approa
 
 ---
 
-### 11. Phase 11: DOCUMENT THE DECISION
+### 11. Phase 11: DOCUMENT THE DECISION (Capture Context for Future)
 
 **Problem**: Existing text report generator has O(n²) string concatenation, redundant scans, and manual character iteration causing performance bottlenecks on large reports.
 
