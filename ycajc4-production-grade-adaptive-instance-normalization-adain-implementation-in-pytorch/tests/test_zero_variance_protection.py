@@ -17,6 +17,14 @@ def test_zero_variance_content_protection():
     
     content_std = content.std(dim=(2, 3), keepdim=True)
     assert torch.all(content_std == 0)
+    
+    result_mean = result.mean(dim=(2, 3), keepdim=True)
+    result_std = result.std(dim=(2, 3), keepdim=True, unbiased=False)
+    style_mean = style.mean(dim=(2, 3), keepdim=True)
+    style_std = style.std(dim=(2, 3), keepdim=True, unbiased=False)
+    
+    assert torch.allclose(result_mean, style_mean, atol=1e-5)
+    assert torch.all(result_std > 1e-8)
 
 
 def test_zero_variance_style_protection():
@@ -29,6 +37,14 @@ def test_zero_variance_style_protection():
     
     style_std = style.std(dim=(2, 3), keepdim=True)
     assert torch.all(style_std == 0)
+    
+    result_mean = result.mean(dim=(2, 3), keepdim=True)
+    result_std = result.std(dim=(2, 3), keepdim=True, unbiased=False)
+    style_mean = style.mean(dim=(2, 3), keepdim=True)
+    
+    assert torch.allclose(result_mean, style_mean, atol=1e-5)
+    assert torch.all(result_std > 1e-8)
+    assert torch.all(result_std < 1e-6)
 
 
 def test_both_zero_variance_protection():
@@ -43,6 +59,14 @@ def test_both_zero_variance_protection():
     style_std = style.std(dim=(2, 3), keepdim=True)
     assert torch.all(content_std == 0)
     assert torch.all(style_std == 0)
+    
+    result_mean = result.mean(dim=(2, 3), keepdim=True)
+    result_std = result.std(dim=(2, 3), keepdim=True, unbiased=False)
+    style_mean = style.mean(dim=(2, 3), keepdim=True)
+    
+    assert torch.allclose(result_mean, style_mean, atol=1e-5)
+    assert torch.all(result_std > 1e-8)
+    assert torch.all(result_std < 1e-6)
 
 
 def test_zero_variance_with_masks():
@@ -54,6 +78,15 @@ def test_zero_variance_with_masks():
     result = adain(content, style, content_mask=content_mask, style_mask=style_mask)
     assert result.shape == content.shape
     assert torch.isfinite(result).all()
+    
+    
+    result_mean = result.mean(dim=(2, 3), keepdim=True)
+    result_std = result.std(dim=(2, 3), keepdim=True, unbiased=False)
+    style_mean = style.mean(dim=(2, 3), keepdim=True)
+    style_std = style.std(dim=(2, 3), keepdim=True, unbiased=False)
+    
+    assert torch.allclose(result_mean, style_mean, atol=1e-5)
+    assert torch.all(result_std > 1e-8)
 
 
 def test_zero_variance_mixed_precision():
@@ -64,6 +97,14 @@ def test_zero_variance_mixed_precision():
     assert result.shape == content.shape
     assert result.dtype == torch.float16
     assert torch.isfinite(result).all()
+    
+    result_mean = result.mean(dim=(2, 3), keepdim=True)
+    result_std = result.std(dim=(2, 3), keepdim=True, unbiased=False)
+    style_mean = style.mean(dim=(2, 3), keepdim=True)
+    
+
+    assert torch.allclose(result_mean, style_mean, atol=1e-3)
+    assert torch.all(result_std > 1e-6)  # Larger epsilon for fp16
 
 
 def test_numerical_stability_extreme_values():
@@ -73,6 +114,14 @@ def test_numerical_stability_extreme_values():
     result = adain(content, style)
     assert result.shape == content.shape
     assert torch.isfinite(result).all()
+    
+    result_mean = result.mean(dim=(2, 3), keepdim=True)
+    result_std = result.std(dim=(2, 3), keepdim=True, unbiased=False)
+    style_mean = style.mean(dim=(2, 3), keepdim=True)
+    style_std = style.std(dim=(2, 3), keepdim=True, unbiased=False)
+    
+    assert torch.allclose(result_mean, style_mean, atol=1e-3)  # Looser tolerance for extreme values
+    assert torch.allclose(result_std, style_std, atol=1e-3)
 
 
 def test_numerical_stability_tiny_values():
@@ -82,10 +131,17 @@ def test_numerical_stability_tiny_values():
     result = adain(content, style)
     assert result.shape == content.shape
     assert torch.isfinite(result).all()
+    
+    result_mean = result.mean(dim=(2, 3), keepdim=True)
+    result_std = result.std(dim=(2, 3), keepdim=True, unbiased=False)
+    style_mean = style.mean(dim=(2, 3), keepdim=True)
+    style_std = style.std(dim=(2, 3), keepdim=True, unbiased=False)
+    
+    assert torch.allclose(result_mean, style_mean, atol=1e-10)
+    assert torch.allclose(result_std, style_std, atol=1e-10)
 
 
 def test_numerical_stability_mixed_precision_extreme():
-    # Test mixed precision with reasonable values to ensure stability
     content = torch.randn(2, 3, 32, 32, dtype=torch.float16) * 10
     style = torch.randn(2, 3, 32, 32, dtype=torch.float16) * 10
     
@@ -93,6 +149,14 @@ def test_numerical_stability_mixed_precision_extreme():
     assert result.shape == content.shape
     assert result.dtype == torch.float16
     assert torch.isfinite(result).all()
+    
+    result_mean = result.mean(dim=(2, 3), keepdim=True)
+    result_std = result.std(dim=(2, 3), keepdim=True, unbiased=False)
+    style_mean = style.mean(dim=(2, 3), keepdim=True)
+    style_std = style.std(dim=(2, 3), keepdim=True, unbiased=False)
+    
+    assert torch.allclose(result_mean, style_mean, atol=1e-2)
+    assert torch.allclose(result_std, style_std, atol=1e-2)
 
 
 def test_numerical_stability_bf16_extreme():
@@ -103,6 +167,14 @@ def test_numerical_stability_bf16_extreme():
     assert result.shape == content.shape
     assert result.dtype == torch.bfloat16
     assert torch.isfinite(result).all()
+    
+    result_mean = result.mean(dim=(2, 3), keepdim=True)
+    result_std = result.std(dim=(2, 3), keepdim=True, unbiased=False)
+    style_mean = style.mean(dim=(2, 3), keepdim=True)
+    style_std = style.std(dim=(2, 3), keepdim=True, unbiased=False)
+    
+    assert torch.allclose(result_mean, style_mean, atol=1e-1)  # Very loose tolerance for bf16 extreme values
+    assert torch.allclose(result_std, style_std, atol=1e-1)
 
 
 def test_numerical_stability_mask_based_zero_variance():
@@ -111,9 +183,18 @@ def test_numerical_stability_mask_based_zero_variance():
     content_mask = torch.zeros(2, 3, 32, 32)
     content_mask[:, :, 16:, :] = 1.0
     
-    result = adain(content, style, content_mask=content_mask)
+    result = adain(content, content_mask=content_mask, style=style)
     assert result.shape == content.shape
     assert torch.isfinite(result).all()
+    
+    masked_region = result[:, :, 16:, :]
+    unmasked_region = result[:, :, :16, :]
+    
+    style_mean = style.mean(dim=(2, 3), keepdim=True)
+    style_std = style.std(dim=(2, 3), keepdim=True, unbiased=False)
+    
+    masked_mean = masked_region.mean(dim=(2, 3), keepdim=True)
+    assert torch.allclose(masked_mean, style_mean, atol=1e-5)
 
 
 def test_numerical_stability_mask_all_zeros():
@@ -124,18 +205,33 @@ def test_numerical_stability_mask_all_zeros():
     result = adain(content, style, content_mask=content_mask)
     assert result.shape == content.shape
     assert torch.isfinite(result).all()
+    
+    result_std = result.std(dim=(2, 3), keepdim=True, unbiased=False)
+    assert torch.all(result_std > 1e-8)
+    assert torch.all(result_std < 1e-6)
 
 
 def test_numerical_stability_mixed_variance_channels():
     content = torch.randn(2, 3, 32, 32)
     style = torch.randn(2, 3, 32, 32)
     
-    content[:, 0, :, :] = 1.0
-    style[:, 1, :, :] = 1.0
+    content[:, 0, :, :] = 1.0  # Zero variance channel 0
+    style[:, 1, :, :] = 1.0  # Zero variance channel 1
     
     result = adain(content, style)
     assert result.shape == content.shape
     assert torch.isfinite(result).all()
+    
+    for ch in range(3):
+        result_ch_mean = result[:, ch:ch+1, :, :].mean(dim=(2, 3), keepdim=True)
+        result_ch_std = result[:, ch:ch+1, :, :].std(dim=(2, 3), keepdim=True, unbiased=False)
+        style_ch_mean = style[:, ch:ch+1, :, :].mean(dim=(2, 3), keepdim=True)
+        style_ch_std = style[:, ch:ch+1, :, :].std(dim=(2, 3), keepdim=True, unbiased=False)
+        
+        assert torch.allclose(result_ch_mean, style_ch_mean, atol=1e-5)
+        if ch == 0 or ch == 1:
+            assert torch.all(result_ch_std > 1e-8)
+            assert torch.all(result_ch_std < 1e-6)
 
 
 def test_numerical_stability_3d_spatial():
@@ -145,6 +241,14 @@ def test_numerical_stability_3d_spatial():
     result = adain(content, style)
     assert result.shape == content.shape
     assert torch.isfinite(result).all()
+    
+    result_mean = result.mean(dim=2, keepdim=True)
+    result_std = result.std(dim=2, keepdim=True, unbiased=False)
+    style_mean = style.mean(dim=2, keepdim=True)
+    style_std = style.std(dim=2, keepdim=True, unbiased=False)
+    
+    assert torch.allclose(result_mean, style_mean, atol=1e-5)
+    assert torch.all(result_std > 1e-8)
 
 
 def test_numerical_stability_high_dimensional():
@@ -154,6 +258,15 @@ def test_numerical_stability_high_dimensional():
     result = adain(content, style)
     assert result.shape == content.shape
     assert torch.isfinite(result).all()
+    
+    spatial_dims = (2, 3, 4)
+    result_mean = result.mean(dim=spatial_dims, keepdim=True)
+    result_std = result.std(dim=spatial_dims, keepdim=True, unbiased=False)
+    style_mean = style.mean(dim=spatial_dims, keepdim=True)
+    style_std = style.std(dim=spatial_dims, keepdim=True, unbiased=False)
+    
+    assert torch.allclose(result_mean, style_mean, atol=1e-5)
+    assert torch.all(result_std > 1e-8)
 
 
 def test_numerical_stability_statistical_accuracy():
@@ -189,6 +302,14 @@ def test_numerical_stability_with_alpha_extreme():
     
     assert torch.allclose(result_zero, content, atol=1e-6)
     assert torch.isfinite(result_one).all()
+    
+    result_one_mean = result_one.mean(dim=(2, 3), keepdim=True)
+    result_one_std = result_one.std(dim=(2, 3), keepdim=True, unbiased=False)
+    style_mean = style.mean(dim=(2, 3), keepdim=True)
+    style_std = style.std(dim=(2, 3), keepdim=True, unbiased=False)
+    
+    assert torch.allclose(result_one_mean, style_mean, atol=1e-5)
+    assert torch.all(result_one_std > 1e-8)
 
 
 def test_numerical_stability_gradient_flow():
@@ -203,3 +324,6 @@ def test_numerical_stability_gradient_flow():
     assert style.grad is not None
     assert torch.isfinite(content.grad).all()
     assert torch.isfinite(style.grad).all()
+    
+    assert torch.any(content.grad != 0)
+    assert torch.any(style.grad != 0)

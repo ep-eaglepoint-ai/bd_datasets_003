@@ -130,7 +130,6 @@ def test_module_equivalence_with_functional_api():
     content = torch.randn(2, 3, 32, 32)
     style = torch.randn(2, 3, 32, 32)
     
-    # Import functional API
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'repository_after'))
     from adain import adain
     

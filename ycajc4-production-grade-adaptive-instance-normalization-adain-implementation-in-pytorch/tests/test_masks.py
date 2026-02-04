@@ -269,9 +269,6 @@ def test_mask_edge_case_all_zeros_statistical_behavior():
     assert result.shape == content.shape
     assert torch.isfinite(result).all()
     
-    # With all-zeros mask, the computation should be numerically stable
-    # but the result may not be close to content due to the epsilon handling
-    # The key requirement is that it doesn't produce NaN/Inf
     assert torch.isfinite(result).all()
 
 
