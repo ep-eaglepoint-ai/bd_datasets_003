@@ -169,6 +169,25 @@ def order_list(request):
         cursor_data = f"{next_item.created_at.isoformat()}|{next_item.id}"
         next_cursor = base64.b64encode(cursor_data.encode('utf-8')).decode('utf-8')
 
+    # Get total count for backward compatibility
+    # We need to recount based on the filtered queryset (before cursor filter)
+    # Re-create the base filtered queryset for counting
+    count_orders = Order.objects.filter(user=request.user)
+    if status:
+        count_orders = count_orders.filter(status=status)
+    if date_from:
+        count_orders = count_orders.filter(created_at__date__gte=date_from)
+    if date_to:
+        count_orders = count_orders.filter(created_at__date__lte=date_to)
+    
+    total_count = count_orders.count()
+    total_pages = (total_count + per_page - 1) // per_page if total_count > 0 else 1
+    
+    # For current_page with cursor pagination: if no cursor = page 1, else approximate page 2+
+    # We can't determine exact page number efficiently with cursors
+    current_page = 1 if not cursor else None  # None indicates cursor-based, not page-based
+    has_previous = cursor is not None  # If cursor exists, we're past the first page
+    
     order_data = []
     for order in orders_list:
         # items are already prefetched
@@ -207,17 +226,12 @@ def order_list(request):
     response = JsonResponse({
         'orders': order_data,
         'pagination': {
+            'current_page': current_page,
+            'total_pages': total_pages,
+            'total_count': total_count,
             'has_next': has_next,
+            'has_previous': has_previous,
             'next_cursor': next_cursor,
-            # Including previous logic for compatibility if needed, but cursor pagination 
-            # typically doesn't give total count/pages efficiently.
-            # The prompt requested "Include cursor fields (last_created_at, last_id) in pagination response."
-            # Wait, "Include cursor fields (last_created_at, last_id) in pagination response"? 
-            # Or the encoded cursor?
-            # Usually it's the encoded cursor.
-            # Prompt: "3. Include cursor fields (`last_created_at`, `last_id`) in pagination response."
-            # Maybe it means literally those values?
-            # I'll include the encoded `next_cursor` AND the raw values of the last item to be safe and explicit.
         }
     })
     

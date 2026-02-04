@@ -10,3 +10,10 @@ DATABASES = {
         'CONN_MAX_AGE': 600,
     }
 }
+
+# Override cache for testing (use LocMemCache to avoid Redis dependency)
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+    }
+}

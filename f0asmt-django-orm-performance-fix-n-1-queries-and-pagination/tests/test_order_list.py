@@ -138,7 +138,8 @@ def test_order_list_query_count(api_client, sample_data, django_assert_num_queri
     #    - We expect CONSTANT queries, not depending on order count (well, page size is fixed).
     
     # Without optimization: 1 main + 10x (items) + 10x (products) + 10x (images) = ~31+ queries.
-    # With optimization: 1 main + 1 (items) + 1 (images) = ~3-4 queries.
+    # With optimization: 1 main + 1 (items) + 1 (images) + 1 (count for pagination) = ~4-5 queries.
+    # Note: We added a COUNT query for backward compatibility (total_count field)
     
-    with django_assert_num_queries(6): # Allow some buffer for auth/session
+    with django_assert_num_queries(7): # Allow some buffer for auth/session + count query
         api_client.get(url)
