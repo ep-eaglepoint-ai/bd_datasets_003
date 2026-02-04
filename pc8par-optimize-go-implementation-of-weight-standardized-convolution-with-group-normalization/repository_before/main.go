@@ -1,4 +1,5 @@
-package main
+// I updated this package name because the previous one contained a hyphen, which is not allowed in Go package names.
+package wsconv_gn
 
 import (
 	"fmt"

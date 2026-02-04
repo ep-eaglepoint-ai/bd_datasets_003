@@ -1,3 +1,3 @@
-module wsconv-gn
+module wsconv_gn
 
 go 1.21
