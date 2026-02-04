@@ -5,3 +5,4 @@ services:
       - .:/app
     environment:
       - PYTHONPATH=/app/repository_after:/app
+    working_dir: /app

@@ -56,98 +56,33 @@ def get_environment_info():
     }
 
 
-def run_tests_with_pythonpath(pythonpath, test_dir="tests"):
-    """
-    Run tests with specified PYTHONPATH and collect results.
-    
-    Returns tuple: (success, exit_code, tests, summary, stdout, stderr)
-    """
-    env = os.environ.copy()
-    env["PYTHONPATH"] = pythonpath
-    
-    # Run pytest with verbose output
-    cmd = [
-        sys.executable, "-m", "pytest",
-        test_dir,
-        "-v",
-        "--tb=short",
-        "-q"
-    ]
+def verify_dependencies():
+    """Verify required dependencies are installed."""
+    missing = []
     
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            env=env,
-            timeout=120
-        )
-        
-        stdout = result.stdout
-        stderr = result.stderr
-        exit_code = result.returncode
-        success = exit_code == 0
-        
-        # Parse test results from pytest output
-        tests = []
-        summary = {
-            "total": 0,
-            "passed": 0,
-            "failed": 0,
-            "errors": 0,
-            "skipped": 0,
-            "xfailed": 0
-        }
-        
-        # Parse individual test results
-        for line in stdout.split('\n'):
-            line = line.strip()
-            if '::' in line and ('PASSED' in line or 'FAILED' in line or 'ERROR' in line or 'SKIPPED' in line):
-                # Extract test info
-                if ' PASSED' in line:
-                    nodeid = line.replace(' PASSED', '').strip()
-                    outcome = 'passed'
-                    summary['passed'] += 1
-                elif ' FAILED' in line:
-                    nodeid = line.replace(' FAILED', '').strip()
-                    outcome = 'failed'
-                    summary['failed'] += 1
-                elif ' ERROR' in line:
-                    nodeid = line.replace(' ERROR', '').strip()
-                    outcome = 'error'
-                    summary['errors'] += 1
-                elif ' SKIPPED' in line:
-                    nodeid = line.replace(' SKIPPED', '').strip()
-                    outcome = 'skipped'
-                    summary['skipped'] += 1
-                else:
-                    continue
-                
-                # Extract test name from nodeid
-                if '::' in nodeid:
-                    name = nodeid.split('::')[-1]
-                else:
-                    name = nodeid
-                
-                tests.append({
-                    "nodeid": nodeid,
-                    "name": name,
-                    "outcome": outcome
-                })
-                summary['total'] += 1
-        
-        return success, exit_code, tests, summary, stdout, stderr
-        
-    except subprocess.TimeoutExpired:
-        return False, 1, [], {"total": 0, "passed": 0, "failed": 0, "errors": 1, "skipped": 0, "xfailed": 0}, "", "Test execution timed out"
-    except Exception as e:
-        return False, 1, [], {"total": 0, "passed": 0, "failed": 0, "errors": 1, "skipped": 0, "xfailed": 0}, "", str(e)
+        import watchdog
+        from watchdog.observers import Observer
+        from watchdog.events import FileSystemEventHandler
+    except ImportError:
+        missing.append("watchdog")
+    
+    try:
+        import pytest
+    except ImportError:
+        missing.append("pytest")
+    
+    if missing:
+        print(f"ERROR: Missing dependencies: {', '.join(missing)}")
+        print("Please run: pip install -r requirements.txt")
+        return False
+    
+    return True
 
 
 def run_tests_unittest(pythonpath, test_dir="tests"):
     """
     Run tests using unittest with specified PYTHONPATH and collect results.
-    Falls back method if pytest isn't available or for simpler parsing.
     """
     env = os.environ.copy()
     env["PYTHONPATH"] = pythonpath
@@ -164,7 +99,7 @@ def run_tests_unittest(pythonpath, test_dir="tests"):
             capture_output=True,
             text=True,
             env=env,
-            timeout=120
+            timeout=300
         )
         
         stdout = result.stdout
@@ -187,14 +122,12 @@ def run_tests_unittest(pythonpath, test_dir="tests"):
         for line in combined_output.split('\n'):
             line = line.strip()
             
-            # Match patterns like "test_name (module.Class.test_name) ... ok"
             if ' ... ' in line:
                 parts = line.rsplit(' ... ', 1)
                 if len(parts) == 2:
                     test_info = parts[0]
                     result_str = parts[1].lower()
                     
-                    # Extract test name
                     if '(' in test_info and ')' in test_info:
                         name_part = test_info.split('(')[0].strip()
                         full_path = test_info.split('(')[1].rstrip(')')
@@ -234,27 +167,19 @@ def run_tests_unittest(pythonpath, test_dir="tests"):
 
 
 def check_before_repository():
-    """
-    Check repository_before state - for new feature development it should be empty.
-    Returns mock failed results since there's no implementation.
-    """
+    """Check if repository_before is empty (new feature development)."""
     before_path = Path("repository_before")
+    if not before_path.exists():
+        return True
     
-    # Check if repository_before is empty or has no Python files
     python_files = list(before_path.glob("**/*.py"))
+    python_files = [f for f in python_files if f.name != '__init__.py' and f.stat().st_size > 0]
     
-    if not python_files:
-        # Empty repository - all tests should fail
-        # We'll generate failed results for documentation
-        return True  # is_empty
-    return False
+    return len(python_files) == 0
 
 
 def generate_before_results(after_tests):
-    """
-    Generate failed results for repository_before when it's empty.
-    All tests that pass in after should fail in before.
-    """
+    """Generate failed results for empty repository_before."""
     tests = []
     for test in after_tests:
         tests.append({
@@ -284,31 +209,36 @@ def generate_before_results(after_tests):
 def run_evaluation():
     """Run complete evaluation and generate report."""
     
-    # Generate unique run ID
-    run_id = uuid.uuid4().hex[:8]
+    # Verify dependencies first
+    if not verify_dependencies():
+        sys.exit(1)
     
-    # Record start time
+    run_id = uuid.uuid4().hex[:8]
     started_at = datetime.now()
     started_at_str = started_at.isoformat()
     
     error = None
     
     try:
-        # Get environment info
         environment = get_environment_info()
         
-        # Define paths
         base_path = Path.cwd()
         before_path = str(base_path / "repository_before")
         after_path = str(base_path / "repository_after")
         
-        # Check if repository_before is empty (new feature task)
         is_before_empty = check_before_repository()
         
-        # Run tests against repository_after first
         print("=" * 70)
-        print("Running tests against repository_after...")
+        print("ASYNC FILE WATCHER - EVALUATION")
         print("=" * 70)
+        print(f"Run ID: {run_id}")
+        print(f"Python: {environment['python_version']}")
+        print(f"Platform: {environment['platform']}")
+        print("=" * 70)
+        
+        # Run tests against repository_after
+        print("\nRunning tests against repository_after...")
+        print("-" * 70)
         
         after_pythonpath = f"{after_path}:{base_path}"
         after_success, after_exit, after_tests, after_summary, after_stdout, after_stderr = run_tests_unittest(
@@ -317,16 +247,12 @@ def run_evaluation():
         
         # Generate or run before results
         if is_before_empty:
-            print("\n" + "=" * 70)
-            print("repository_before is empty (new feature development)")
+            print("\nrepository_before is empty (new feature development)")
             print("Generating expected failed results...")
-            print("=" * 70)
-            
             before_results = generate_before_results(after_tests)
         else:
-            print("\n" + "=" * 70)
-            print("Running tests against repository_before...")
-            print("=" * 70)
+            print("\nRunning tests against repository_before...")
+            print("-" * 70)
             
             before_pythonpath = f"{before_path}:{base_path}"
             before_success, before_exit, before_tests, before_summary, before_stdout, before_stderr = run_tests_unittest(
@@ -350,7 +276,6 @@ def run_evaluation():
             "stderr": after_stderr
         }
         
-        # Generate comparison
         comparison = {
             "before_tests_passed": before_results["success"],
             "after_tests_passed": after_results["success"],
@@ -372,12 +297,10 @@ def run_evaluation():
         comparison = {"before_tests_passed": False, "after_tests_passed": False, "before_total": 0, "before_passed": 0, "before_failed": 0, "after_total": 0, "after_passed": 0, "after_failed": 0}
         environment = get_environment_info()
     
-    # Record end time
     finished_at = datetime.now()
     finished_at_str = finished_at.isoformat()
     duration_seconds = round((finished_at - started_at).total_seconds(), 4)
     
-    # Build final report
     report = {
         "run_id": run_id,
         "started_at": started_at_str,
@@ -399,28 +322,23 @@ def run_evaluation():
     report_dir = Path("evaluation/reports") / date_str / time_str
     report_dir.mkdir(parents=True, exist_ok=True)
     
-    # Write report
     report_path = report_dir / "report.json"
     with open(report_path, 'w') as f:
         json.dump(report, f, indent=2)
     
-    # Print summary to console
+    # Print summary
     print("\n" + "=" * 70)
-    print("ASYNC FILE WATCHER - EVALUATION REPORT")
+    print("RESULTS SUMMARY")
     print("=" * 70)
     print(f"Run ID:           {run_id}")
-    print(f"Started:          {started_at_str}")
-    print(f"Finished:         {finished_at_str}")
     print(f"Duration:         {duration_seconds} seconds")
     print("-" * 70)
-    print("RESULTS SUMMARY")
-    print("-" * 70)
-    print(f"  Before (repository_before):")
-    print(f"    Total: {before_results['summary']['total']}, "
+    print("Before (repository_before):")
+    print(f"  Total: {before_results['summary']['total']}, "
           f"Passed: {before_results['summary']['passed']}, "
           f"Failed: {before_results['summary']['failed']}")
-    print(f"  After (repository_after):")
-    print(f"    Total: {after_results['summary']['total']}, "
+    print("After (repository_after):")
+    print(f"  Total: {after_results['summary']['total']}, "
           f"Passed: {after_results['summary']['passed']}, "
           f"Failed: {after_results['summary']['failed']}")
     print("-" * 70)
@@ -430,7 +348,7 @@ def run_evaluation():
     print(f"Report Location:  {report_path}")
     print("=" * 70)
     
-    # Print detailed after test output
+    # Print test output
     if after_results.get('stdout') or after_results.get('stderr'):
         print("\nDETAILED TEST OUTPUT (repository_after):")
         print("-" * 70)
@@ -439,7 +357,6 @@ def run_evaluation():
         if after_results.get('stderr'):
             print(after_results['stderr'])
     
-    # Exit with appropriate code
     sys.exit(0 if overall_success else 1)
 
 

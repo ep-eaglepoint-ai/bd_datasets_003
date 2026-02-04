@@ -4,12 +4,20 @@ AsyncFileWatcher - An asynchronous file watcher with debouncing support.
 This module provides an asynchronous file watcher class that monitors a directory
 for file system changes and invokes registered callback functions when modifications
 are detected.
+
+Thread Safety:
+    The watchdog library runs its observer in a separate thread. This implementation
+    uses loop.call_soon_threadsafe() to safely communicate events from the watchdog
+    thread to the asyncio event loop. An asyncio.Queue is used as the thread-safe
+    buffer between the two contexts.
 """
 
 import asyncio
 import os
 from pathlib import Path
 from typing import Callable, List, Optional, Dict, Any
+
+# Requirement 8: Use watchdog library for cross-platform file system event detection
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler, FileSystemEvent
 
@@ -21,6 +29,12 @@ class AsyncEventHandler(FileSystemEventHandler):
     
     This handler runs in the watchdog observer thread and safely communicates
     events to the asyncio event loop using loop.call_soon_threadsafe().
+    
+    Requirement 8: Inherits from watchdog.events.FileSystemEventHandler and
+    overrides on_modified, on_created, and on_deleted methods.
+    
+    Requirement 10: Uses loop.call_soon_threadsafe() for thread-safe communication
+    between the watchdog observer thread and the asyncio event loop.
     """
     
     def __init__(
@@ -34,7 +48,7 @@ class AsyncEventHandler(FileSystemEventHandler):
         
         Args:
             loop: The asyncio event loop to communicate with.
-            queue: Thread-safe queue for passing events to async context.
+            queue: Thread-safe asyncio.Queue for passing events to async context.
             extensions: Optional list of file extensions to filter.
         """
         super().__init__()
@@ -49,13 +63,19 @@ class AsyncEventHandler(FileSystemEventHandler):
         return any(path.endswith(ext) for ext in self._extensions)
     
     def _queue_event(self, event: FileSystemEvent, event_type: str) -> None:
-        """Thread-safely enqueue an event to the async queue."""
+        """
+        Thread-safely enqueue an event to the async queue.
+        
+        Requirement 10: Uses loop.call_soon_threadsafe() to safely communicate
+        from the watchdog thread to the asyncio event loop.
+        """
         if event.is_directory:
             return
         if not self._matches_extension(event.src_path):
             return
         
         # Thread-safe communication with the event loop
+        # This is called from the watchdog observer thread
         self._loop.call_soon_threadsafe(
             self._queue.put_nowait,
             (event.src_path, event_type)
@@ -85,7 +105,7 @@ class AsyncFileWatcher:
     - Multiple registered callbacks
     - Async context manager protocol (__aenter__ and __aexit__)
     
-    Thread Safety:
+    Thread Safety (Requirement 10):
         Uses asyncio.Queue and loop.call_soon_threadsafe() to safely bridge
         between the watchdog observer thread and the asyncio event loop.
     
@@ -128,14 +148,14 @@ class AsyncFileWatcher:
         Raises:
             ValueError: If the directory does not exist or is not a directory.
         """
-        # Validate directory exists
+        # Requirement 9: Validate directory exists
         path = Path(directory)
         if not path.exists():
             raise ValueError(f"Directory does not exist: {directory}")
         if not path.is_dir():
             raise ValueError(f"Path is not a directory: {directory}")
         
-        # Store configuration as instance attributes
+        # Store configuration as instance attributes (Requirement 1)
         self.directory = str(path.resolve())
         self.debounce_interval = debounce_interval
         self.extensions = extensions
@@ -177,24 +197,27 @@ class AsyncFileWatcher:
         or an existing event loop.
         
         The watcher monitors the directory recursively, detecting changes in
-        all subdirectories as well.
+        all subdirectories as well (Requirement 6).
         """
         if self._running:
             return
         
         self._running = True
         loop = asyncio.get_running_loop()
+        
+        # Requirement 10: asyncio.Queue for thread-safe communication
         self._event_queue = asyncio.Queue()
         
-        # Set up watchdog observer with custom async-bridging handler
+        # Requirement 8: Set up watchdog observer with custom event handler
         handler = AsyncEventHandler(
             loop=loop,
             queue=self._event_queue,
             extensions=self.extensions
         )
         
+        # Requirement 8: Create Observer from watchdog
         self._observer = Observer()
-        # recursive=True enables recursive directory watching
+        # Requirement 6: recursive=True enables recursive directory watching
         self._observer.schedule(handler, self.directory, recursive=True)
         self._observer.start()
         
@@ -221,7 +244,7 @@ class AsyncFileWatcher:
         
         If a file is modified multiple times within the debounce interval,
         only one callback will fire after the interval has passed since
-        the last modification.
+        the last modification (Requirement 5).
         
         Args:
             file_path: Path of the changed file.
@@ -256,15 +279,14 @@ class AsyncFileWatcher:
             event_type = self._pending_events.pop(file_path, "modified")
             self._debounce_tasks.pop(file_path, None)
             
-            # Invoke all registered callbacks
+            # Requirement 4: Invoke all registered callbacks
             for callback in self._callbacks:
                 try:
                     result = callback(file_path, event_type)
                     if asyncio.iscoroutine(result):
                         await result
-                except Exception as e:
+                except Exception:
                     # Don't let one callback failure stop others
-                    # In production, you might want to log this
                     pass
         except asyncio.CancelledError:
             # Clean up on cancellation
@@ -277,7 +299,7 @@ class AsyncFileWatcher:
         Gracefully terminate the file watching operation.
         
         After stop() is called, the start() coroutine will exit cleanly without
-        raising exceptions.
+        raising exceptions (Requirement 3).
         
         Design Decision:
             Pending debounced callbacks are CANCELLED to ensure immediate and
@@ -288,7 +310,7 @@ class AsyncFileWatcher:
     
     def _cleanup(self) -> None:
         """
-        Clean up all resources.
+        Clean up all resources (Requirement 11).
         
         This method:
         - Stops and joins the watchdog observer thread
@@ -310,23 +332,17 @@ class AsyncFileWatcher:
     
     async def __aenter__(self) -> "AsyncFileWatcher":
         """
-        Async context manager entry.
+        Async context manager entry (Requirement 11).
         
         Returns the watcher instance for use in async with statements.
-        
-        Example:
-            async with AsyncFileWatcher("./src") as watcher:
-                watcher.on_change(callback)
-                await watcher.start()
         """
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         """
-        Async context manager exit with cleanup.
+        Async context manager exit with cleanup (Requirement 11).
         
-        Ensures proper cleanup when exiting the context manager, including
-        stopping the observer and cancelling pending tasks.
+        Ensures proper cleanup when exiting the context manager.
         """
         self.stop()
         await asyncio.sleep(0.05)
