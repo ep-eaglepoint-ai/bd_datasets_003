@@ -1,3 +1,5 @@
-# Minimal dependencies - only pytest needed
+# Minimal dependencies for evaluation
 pytest>=8.0.0
 pydantic>=2.0.0
+celery>=5.0.0
+kombu>=5.0.0

@@ -1,6 +1,6 @@
 diff -ruN repository_before/.env.example repository_after/.env.example
 --- repository_before/.env.example	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/.env.example	2026-02-03 22:04:51.854201400 +0300
++++ repository_after/.env.example	2026-02-04 18:54:51.360457800 +0300
 @@ -0,0 +1,13 @@
 +# Database
 +DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/taskdb
@@ -17,7 +17,7 @@ diff -ruN repository_before/.env.example repository_after/.env.example
 +DEBUG=false
 diff -ruN repository_before/backend/.gitignore repository_after/backend/.gitignore
 --- repository_before/backend/.gitignore	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/backend/.gitignore	2026-02-03 21:14:33.131049300 +0300
++++ repository_after/backend/.gitignore	2026-02-04 18:54:51.362015500 +0300
 @@ -0,0 +1,30 @@
 +# Byte-compiled files
 +__pycache__/
@@ -51,12 +51,12 @@ diff -ruN repository_before/backend/.gitignore repository_after/backend/.gitigno
 +*.egg-info/
 diff -ruN repository_before/backend/app/__init__.py repository_after/backend/app/__init__.py
 --- repository_before/backend/app/__init__.py	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/backend/app/__init__.py	2026-02-03 21:12:18.948032700 +0300
++++ repository_after/backend/app/__init__.py	2026-02-04 18:54:51.363645600 +0300
 @@ -0,0 +1 @@
 +# Distributed Task Priority Dashboard - Backend Package
 diff -ruN repository_before/backend/app/celery_app.py repository_after/backend/app/celery_app.py
 --- repository_before/backend/app/celery_app.py	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/backend/app/celery_app.py	2026-02-03 21:13:27.378668200 +0300
++++ repository_after/backend/app/celery_app.py	2026-02-04 18:54:51.363645600 +0300
 @@ -0,0 +1,76 @@
 +"""Celery application configuration with priority-based queuing."""
 +from celery import Celery
@@ -136,7 +136,7 @@ diff -ruN repository_before/backend/app/celery_app.py repository_after/backend/a
 +    return priority_map.get(priority.lower(), "medium")
 diff -ruN repository_before/backend/app/config.py repository_after/backend/app/config.py
 --- repository_before/backend/app/config.py	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/backend/app/config.py	2026-02-03 21:12:23.221747900 +0300
++++ repository_after/backend/app/config.py	2026-02-04 18:54:51.363645600 +0300
 @@ -0,0 +1,44 @@
 +"""Configuration settings for the Distributed Task Priority Dashboard."""
 +import os
@@ -184,7 +184,7 @@ diff -ruN repository_before/backend/app/config.py repository_after/backend/app/c
 +    return Settings()
 diff -ruN repository_before/backend/app/database.py repository_after/backend/app/database.py
 --- repository_before/backend/app/database.py	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/backend/app/database.py	2026-02-03 21:12:32.766940100 +0300
++++ repository_after/backend/app/database.py	2026-02-04 18:54:51.363645600 +0300
 @@ -0,0 +1,42 @@
 +"""PostgreSQL database configuration and session management."""
 +from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
@@ -230,25 +230,23 @@ diff -ruN repository_before/backend/app/database.py repository_after/backend/app
 +        await conn.run_sync(Base.metadata.create_all)
 diff -ruN repository_before/backend/app/main.py repository_after/backend/app/main.py
 --- repository_before/backend/app/main.py	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/backend/app/main.py	2026-02-03 21:14:10.789291700 +0300
-@@ -0,0 +1,331 @@
++++ repository_after/backend/app/main.py	2026-02-04 18:54:51.369077900 +0300
+@@ -0,0 +1,329 @@
 +"""FastAPI main application with REST endpoints and WebSocket support."""
 +import uuid
-+import asyncio
 +from datetime import datetime
-+from typing import Optional, List
++from typing import Optional
 +from contextlib import asynccontextmanager
 +
 +from fastapi import FastAPI, HTTPException, Depends, Query, WebSocket, WebSocketDisconnect
 +from fastapi.middleware.cors import CORSMiddleware
 +from sqlalchemy.ext.asyncio import AsyncSession
 +from sqlalchemy import select, desc, func
-+from sqlalchemy.orm import selectinload
 +
 +from app.config import get_settings
-+from app.database import get_db, init_db, engine, Base
++from app.database import get_db, engine, Base
 +from app.models import Task, TaskStatus, TaskPriority
-+from app.schemas import TaskCreate, TaskResponse, TaskListResponse, TaskSubmitResponse, ProgressUpdate
++from app.schemas import TaskCreate, TaskResponse, TaskListResponse, TaskSubmitResponse
 +from app.celery_app import celery_app, get_queue_for_priority
 +from app.tasks import execute_task
 +from app.websocket import manager
@@ -565,7 +563,7 @@ diff -ruN repository_before/backend/app/main.py repository_after/backend/app/mai
 +    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
 diff -ruN repository_before/backend/app/models.py repository_after/backend/app/models.py
 --- repository_before/backend/app/models.py	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/backend/app/models.py	2026-02-03 21:12:40.626145400 +0300
++++ repository_after/backend/app/models.py	2026-02-04 18:54:51.371103300 +0300
 @@ -0,0 +1,68 @@
 +"""SQLAlchemy models for task persistence."""
 +import uuid
@@ -637,7 +635,7 @@ diff -ruN repository_before/backend/app/models.py repository_after/backend/app/m
 +        }
 diff -ruN repository_before/backend/app/schemas.py repository_after/backend/app/schemas.py
 --- repository_before/backend/app/schemas.py	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/backend/app/schemas.py	2026-02-03 21:12:42.604236900 +0300
++++ repository_after/backend/app/schemas.py	2026-02-04 18:54:51.371103300 +0300
 @@ -0,0 +1,83 @@
 +"""Pydantic schemas for API request/response validation."""
 +from datetime import datetime
@@ -724,19 +722,19 @@ diff -ruN repository_before/backend/app/schemas.py repository_after/backend/app/
 +    error: Optional[str] = None
 diff -ruN repository_before/backend/app/tasks.py repository_after/backend/app/tasks.py
 --- repository_before/backend/app/tasks.py	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/backend/app/tasks.py	2026-02-04 00:52:23.427252200 +0300
++++ repository_after/backend/app/tasks.py	2026-02-04 18:54:51.373495700 +0300
 @@ -0,0 +1,244 @@
 +"""Celery tasks with progress tracking and error handling."""
 +import time
 +import random
++import os
 +from datetime import datetime
 +from celery import Task as CeleryTask
 +from celery.exceptions import MaxRetriesExceededError
 +from sqlalchemy import create_engine
 +from sqlalchemy.orm import sessionmaker
 +from app.celery_app import celery_app
-+from app.models import Task, TaskStatus, Base
-+import os
++from app.models import Task, TaskStatus
 +
 +# Sync database connection for Celery workers
 +DATABASE_URL_SYNC = os.getenv(
@@ -972,12 +970,11 @@ diff -ruN repository_before/backend/app/tasks.py repository_after/backend/app/ta
 +    }
 diff -ruN repository_before/backend/app/websocket.py repository_after/backend/app/websocket.py
 --- repository_before/backend/app/websocket.py	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/backend/app/websocket.py	2026-02-04 00:51:57.773448400 +0300
-@@ -0,0 +1,76 @@
++++ repository_after/backend/app/websocket.py	2026-02-04 18:54:51.375140800 +0300
+@@ -0,0 +1,75 @@
 +"""WebSocket connection manager for real-time progress updates."""
 +from typing import Dict, List, Set
 +from fastapi import WebSocket
-+import asyncio
 +
 +
 +class ConnectionManager:
@@ -1052,7 +1049,7 @@ diff -ruN repository_before/backend/app/websocket.py repository_after/backend/ap
 +manager = ConnectionManager()
 diff -ruN repository_before/backend/Dockerfile repository_after/backend/Dockerfile
 --- repository_before/backend/Dockerfile	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/backend/Dockerfile	2026-02-04 00:01:50.892947800 +0300
++++ repository_after/backend/Dockerfile	2026-02-04 18:54:51.362015500 +0300
 @@ -0,0 +1,19 @@
 +FROM python:3.11-slim
 +
@@ -1075,7 +1072,7 @@ diff -ruN repository_before/backend/Dockerfile repository_after/backend/Dockerfi
 +CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 diff -ruN repository_before/backend/requirements.txt repository_after/backend/requirements.txt
 --- repository_before/backend/requirements.txt	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/backend/requirements.txt	2026-02-03 22:03:38.898687800 +0300
++++ repository_after/backend/requirements.txt	2026-02-04 18:54:51.376392200 +0300
 @@ -0,0 +1,9 @@
 +fastapi>=0.109.0
 +uvicorn>=0.27.0
@@ -1088,7 +1085,7 @@ diff -ruN repository_before/backend/requirements.txt repository_after/backend/re
 +websockets>=12.0
 diff -ruN repository_before/frontend/Dockerfile repository_after/frontend/Dockerfile
 --- repository_before/frontend/Dockerfile	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/frontend/Dockerfile	2026-02-04 00:08:43.119179100 +0300
++++ repository_after/frontend/Dockerfile	2026-02-04 18:54:51.376392200 +0300
 @@ -0,0 +1,18 @@
 +FROM node:20-alpine AS builder
 +
@@ -1110,7 +1107,7 @@ diff -ruN repository_before/frontend/Dockerfile repository_after/frontend/Docker
 +CMD ["nginx", "-g", "daemon off;"]
 diff -ruN repository_before/frontend/index.html repository_after/frontend/index.html
 --- repository_before/frontend/index.html	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/frontend/index.html	2026-02-03 21:14:58.302404500 +0300
++++ repository_after/frontend/index.html	2026-02-04 18:54:51.378506800 +0300
 @@ -0,0 +1,17 @@
 +<!DOCTYPE html>
 +<html lang="en">
@@ -1131,7 +1128,7 @@ diff -ruN repository_before/frontend/index.html repository_after/frontend/index.
 +</html>
 diff -ruN repository_before/frontend/nginx.conf repository_after/frontend/nginx.conf
 --- repository_before/frontend/nginx.conf	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/frontend/nginx.conf	2026-02-03 21:18:36.595387600 +0300
++++ repository_after/frontend/nginx.conf	2026-02-04 18:54:51.378506800 +0300
 @@ -0,0 +1,42 @@
 +server {
 +    listen 80;
@@ -1177,7 +1174,7 @@ diff -ruN repository_before/frontend/nginx.conf repository_after/frontend/nginx.
 +}
 diff -ruN repository_before/frontend/package.json repository_after/frontend/package.json
 --- repository_before/frontend/package.json	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/frontend/package.json	2026-02-03 22:03:40.987395400 +0300
++++ repository_after/frontend/package.json	2026-02-04 18:54:51.379600600 +0300
 @@ -0,0 +1,19 @@
 +{
 +  "name": "task-dashboard",
@@ -1201,7 +1198,7 @@ diff -ruN repository_before/frontend/package.json repository_after/frontend/pack
 \ No newline at end of file
 diff -ruN repository_before/frontend/src/App.jsx repository_after/frontend/src/App.jsx
 --- repository_before/frontend/src/App.jsx	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/frontend/src/App.jsx	2026-02-03 21:16:16.608936700 +0300
++++ repository_after/frontend/src/App.jsx	2026-02-04 18:54:51.379600600 +0300
 @@ -0,0 +1,153 @@
 +import { useState, useEffect, useCallback } from 'react'
 +import Dashboard from './components/Dashboard'
@@ -1358,7 +1355,7 @@ diff -ruN repository_before/frontend/src/App.jsx repository_after/frontend/src/A
 +export default App
 diff -ruN repository_before/frontend/src/components/Dashboard.css repository_after/frontend/src/components/Dashboard.css
 --- repository_before/frontend/src/components/Dashboard.css	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/frontend/src/components/Dashboard.css	2026-02-03 21:17:00.239074100 +0300
++++ repository_after/frontend/src/components/Dashboard.css	2026-02-04 18:54:51.379600600 +0300
 @@ -0,0 +1,308 @@
 +/* Dashboard Component Styles */
 +
@@ -1671,7 +1668,7 @@ diff -ruN repository_before/frontend/src/components/Dashboard.css repository_aft
 \ No newline at end of file
 diff -ruN repository_before/frontend/src/components/Dashboard.jsx repository_after/frontend/src/components/Dashboard.jsx
 --- repository_before/frontend/src/components/Dashboard.jsx	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/frontend/src/components/Dashboard.jsx	2026-02-03 21:16:38.154722000 +0300
++++ repository_after/frontend/src/components/Dashboard.jsx	2026-02-04 18:54:51.384925400 +0300
 @@ -0,0 +1,197 @@
 +import { useState } from 'react'
 +import TaskList from './TaskList'
@@ -1872,7 +1869,7 @@ diff -ruN repository_before/frontend/src/components/Dashboard.jsx repository_aft
 +export default Dashboard
 diff -ruN repository_before/frontend/src/components/ProgressBar.css repository_after/frontend/src/components/ProgressBar.css
 --- repository_before/frontend/src/components/ProgressBar.css	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/frontend/src/components/ProgressBar.css	2026-02-03 21:18:06.637170900 +0300
++++ repository_after/frontend/src/components/ProgressBar.css	2026-02-04 18:54:51.385445800 +0300
 @@ -0,0 +1,15 @@
 +/* ProgressBar Component Styles - already in index.css */
 +/* This file exists for component modularity */
@@ -1892,7 +1889,7 @@ diff -ruN repository_before/frontend/src/components/ProgressBar.css repository_a
 \ No newline at end of file
 diff -ruN repository_before/frontend/src/components/ProgressBar.jsx repository_after/frontend/src/components/ProgressBar.jsx
 --- repository_before/frontend/src/components/ProgressBar.jsx	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/frontend/src/components/ProgressBar.jsx	2026-02-03 21:18:04.980163200 +0300
++++ repository_after/frontend/src/components/ProgressBar.jsx	2026-02-04 18:54:51.385445800 +0300
 @@ -0,0 +1,20 @@
 +import './ProgressBar.css'
 +
@@ -1916,7 +1913,7 @@ diff -ruN repository_before/frontend/src/components/ProgressBar.jsx repository_a
 +export default ProgressBar
 diff -ruN repository_before/frontend/src/components/TaskForm.css repository_after/frontend/src/components/TaskForm.css
 --- repository_before/frontend/src/components/TaskForm.css	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/frontend/src/components/TaskForm.css	2026-02-03 21:18:01.751720000 +0300
++++ repository_after/frontend/src/components/TaskForm.css	2026-02-04 18:54:51.387043700 +0300
 @@ -0,0 +1,166 @@
 +/* TaskForm Component Styles */
 +
@@ -2087,7 +2084,7 @@ diff -ruN repository_before/frontend/src/components/TaskForm.css repository_afte
 \ No newline at end of file
 diff -ruN repository_before/frontend/src/components/TaskForm.jsx repository_after/frontend/src/components/TaskForm.jsx
 --- repository_before/frontend/src/components/TaskForm.jsx	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/frontend/src/components/TaskForm.jsx	2026-02-03 21:17:58.935158400 +0300
++++ repository_after/frontend/src/components/TaskForm.jsx	2026-02-04 18:54:51.387043700 +0300
 @@ -0,0 +1,163 @@
 +import { useState } from 'react'
 +import './TaskForm.css'
@@ -2254,7 +2251,7 @@ diff -ruN repository_before/frontend/src/components/TaskForm.jsx repository_afte
 +export default TaskForm
 diff -ruN repository_before/frontend/src/components/TaskList.css repository_after/frontend/src/components/TaskList.css
 --- repository_before/frontend/src/components/TaskList.css	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/frontend/src/components/TaskList.css	2026-02-03 21:17:46.895040000 +0300
++++ repository_after/frontend/src/components/TaskList.css	2026-02-04 18:54:51.390070500 +0300
 @@ -0,0 +1,261 @@
 +/* TaskList Component Styles */
 +
@@ -2520,7 +2517,7 @@ diff -ruN repository_before/frontend/src/components/TaskList.css repository_afte
 \ No newline at end of file
 diff -ruN repository_before/frontend/src/components/TaskList.jsx repository_after/frontend/src/components/TaskList.jsx
 --- repository_before/frontend/src/components/TaskList.jsx	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/frontend/src/components/TaskList.jsx	2026-02-03 21:17:02.405025700 +0300
++++ repository_after/frontend/src/components/TaskList.jsx	2026-02-04 18:54:51.390070500 +0300
 @@ -0,0 +1,189 @@
 +import ProgressBar from './ProgressBar'
 +import './TaskList.css'
@@ -2713,7 +2710,7 @@ diff -ruN repository_before/frontend/src/components/TaskList.jsx repository_afte
 +export default TaskList
 diff -ruN repository_before/frontend/src/main.jsx repository_after/frontend/src/main.jsx
 --- repository_before/frontend/src/main.jsx	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/frontend/src/main.jsx	2026-02-03 21:15:29.130862600 +0300
++++ repository_after/frontend/src/main.jsx	2026-02-04 18:54:51.391683500 +0300
 @@ -0,0 +1,10 @@
 +import React from 'react'
 +import ReactDOM from 'react-dom/client'
@@ -2727,7 +2724,7 @@ diff -ruN repository_before/frontend/src/main.jsx repository_after/frontend/src/
 +)
 diff -ruN repository_before/frontend/src/styles/index.css repository_after/frontend/src/styles/index.css
 --- repository_before/frontend/src/styles/index.css	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/frontend/src/styles/index.css	2026-02-03 21:15:31.475436800 +0300
++++ repository_after/frontend/src/styles/index.css	2026-02-04 18:54:51.392819600 +0300
 @@ -0,0 +1,429 @@
 +/* ============================================
 +   Global Styles - Task Priority Dashboard
@@ -3158,9 +3155,60 @@ diff -ruN repository_before/frontend/src/styles/index.css repository_after/front
 +.gap-1 { gap: var(--spacing-sm); }
 +.gap-2 { gap: var(--spacing-md); }
 +.gap-3 { gap: var(--spacing-lg); }
+diff -ruN repository_before/frontend/src/tests/TaskList.test.jsx repository_after/frontend/src/tests/TaskList.test.jsx
+--- repository_before/frontend/src/tests/TaskList.test.jsx	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/src/tests/TaskList.test.jsx	2026-02-04 19:01:05.824704100 +0300
+@@ -0,0 +1,47 @@
++import { render, screen } from '@testing-library/react'
++import TaskList from '../components/TaskList'
++
++describe('TaskList Failure Display', () => {
++    const mockTasks = [
++        {
++            task_id: '123',
++            name: 'Failed Task',
++            task_type: 'data_export',
++            priority: 'high',
++            status: 'FAILURE',
++            progress: 0,
++            progress_message: 'Failed',
++            error: 'Connection timeout error',
++            created_at: '2023-01-01T12:00:00Z'
++        }
++    ]
++
++    test('renders error message when task status is FAILURE', () => {
++        render(<TaskList tasks={mockTasks} onDelete={() => {}} />)
++        
++        // Assert the error message is visible
++        const errorMessage = screen.getByText('Connection timeout error')
++        expect(errorMessage).toBeInTheDocument()
++        
++        // Assert the failure badge is visible
++        const badge = screen.getByText('FAILURE')
++        expect(badge).toBeInTheDocument()
++        expect(badge).toHaveClass('badge-failure')
++    })
++
++    test('renders tasks with different priorities', () => {
++         const priorityTasks = [
++            {
++                task_id: '1',
++                name: 'High Priority',
++                task_type: 'data_export',
++                priority: 'high',
++                status: 'PENDING',
++                created_at: '2023-01-01T12:00:00Z'
++            }
++        ]
++        render(<TaskList tasks={priorityTasks} onDelete={() => {}} />)
++        const badge = screen.getByText('high')
++        expect(badge).toHaveClass('badge-high')
++    })
++})
 diff -ruN repository_before/frontend/vite.config.js repository_after/frontend/vite.config.js
 --- repository_before/frontend/vite.config.js	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/frontend/vite.config.js	2026-02-03 21:14:57.428593800 +0300
++++ repository_after/frontend/vite.config.js	2026-02-04 18:54:51.392819600 +0300
 @@ -0,0 +1,24 @@
 +import { defineConfig } from 'vite'
 +import react from '@vitejs/plugin-react'

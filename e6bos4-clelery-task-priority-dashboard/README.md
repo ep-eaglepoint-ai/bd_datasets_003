@@ -7,5 +7,5 @@ docker-compose up --build
 
 ## Evaluation Docker Command
 ```bash
-docker-compose run --rm evaluation
+docker-compose --profile eval run --rm evaluation
 ```

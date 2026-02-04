@@ -77,6 +77,14 @@ Chose a microservices architecture with Docker Compose orchestration:
 
 **Resolution:** Cleaned up all unused imports, added explanatory comments to exception handlers, fixed unreachable code by moving retry status update before raise.
 
+### Feedback: Missing Integration & UI Tests
+**Problem:** Evaluation lacked runtime verification of priority queue logic (10 Low + 1 High) and actual React component testing for failure display.
+
+**Resolution:**
+- Added `test_priority_simulation.py` to verify worker consumption logic using a mocked broker.
+- Added `repository_after/frontend/src/tests/TaskList.test.jsx` to test React component failure rendering.
+- Added `celery` back to requirements to allow robust simulation testing.
+
 ## Key Decisions
 
 1. **Worker prefetch multiplier = 1** - Ensures single-task consumption for strict priority ordering

@@ -79,13 +79,24 @@ services:
     profiles:
       - app
 
-  # Evaluation service - runs tests and EXITS (no profile, always available)
+  # Verification service - runs ONLY tests (fast, default for 'up')
+  tests:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python -m pytest tests -v
+    volumes:
+      - .:/app
+
+  # Evaluation service - generates report (run explicitly)
   evaluation:
     build:
       context: .
       dockerfile: Dockerfile
     volumes:
       - ./evaluation/reports:/app/evaluation/reports
+    profiles:
+      - eval  # Hides from default 'up'
 
 volumes:
   redis_data:

@@ -8,11 +8,10 @@
     "FAIL_TO_PASS": [
         "tests/test_priority_queue.py::TestPriorityEnumExists::test_priority_enum_defined",
         "tests/test_priority_queue.py::TestCeleryAppConfiguration::test_three_queues_configured",
-        "tests/test_priority_queue.py::TestTaskRoutingLogic::test_high_priority_routes_to_high_queue",
-        "tests/test_failure_display.py::TestErrorFieldInModel::test_error_field_exists",
-        "tests/test_failure_display.py::TestToDictIncludesError::test_to_dict_method_exists",
-        "tests/test_api_schemas.py::TestTaskCreateSchema::test_task_create_class_defined",
-        "tests/test_celery_tasks.py::TestTaskFileStructure::test_execute_task_defined"
+        "tests/test_priority_simulation.py::TestPrioritySimulation::test_priority_consumption_order",
+        "tests/test_priority_simulation.py::TestPrioritySimulation::test_failure_handling_simulation",
+        "tests/test_static_checks.py::TestFrontendTestsExist::test_react_test_file_exists",
+        "tests/test_failure_display.py::TestErrorFieldInModel::test_error_field_exists"
     ],
     "PASS_TO_PASS": []
 }
