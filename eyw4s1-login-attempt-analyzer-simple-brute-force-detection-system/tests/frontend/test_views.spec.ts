@@ -4,11 +4,11 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
-import LoginTable from '../../../repository_after/frontend/src/components/LoginTable.vue'
-import { loginAttemptApi, type LoginAttempt, type SuspiciousActivity } from '../../../repository_after/frontend/src/api'
+import LoginTable from '../../repository_after/frontend/src/components/LoginTable.vue'
+import { loginAttemptApi, type LoginAttempt, type SuspiciousActivity } from '../../repository_after/frontend/src/api'
 
 // Mock the API module
-vi.mock('../../../repository_after/frontend/src/api', () => ({
+vi.mock('../../repository_after/frontend/src/api', () => ({
   loginAttemptApi: {
     getLoginAttempts: vi.fn(),
     getSuspiciousActivity: vi.fn(),
@@ -110,7 +110,7 @@ describe('LoginTable Enhanced', () => {
 
       // Mock new suspicious activity
       vi.mocked(loginAttemptApi.getSuspiciousActivity).mockResolvedValue(mockSuspiciousActivity)
-      
+
       // Trigger data refresh
       await wrapper.vm.fetchData()
       await new Promise(resolve => setTimeout(resolve, 0))
@@ -218,7 +218,7 @@ describe('LoginTable Enhanced', () => {
       ]
 
       vi.mocked(loginAttemptApi.getLoginAttempts).mockResolvedValue(newAttempts)
-      
+
       // Trigger data refresh
       await wrapper.vm.fetchData()
       await new Promise(resolve => setTimeout(resolve, 0))
@@ -247,7 +247,7 @@ describe('LoginTable Enhanced', () => {
       }))
 
       vi.mocked(loginAttemptApi.getLoginAttempts).mockResolvedValue(newAttempts)
-      
+
       // Trigger data refresh
       await wrapper.vm.fetchData()
       await new Promise(resolve => setTimeout(resolve, 0))
@@ -276,7 +276,7 @@ describe('LoginTable Enhanced', () => {
       }
 
       vi.mocked(loginAttemptApi.getSuspiciousActivity).mockResolvedValue(newSuspiciousActivity)
-      
+
       // Trigger data refresh
       await wrapper.vm.fetchData()
       await new Promise(resolve => setTimeout(resolve, 0))
@@ -302,7 +302,7 @@ describe('LoginTable Enhanced', () => {
 
       // Mock new suspicious activity
       vi.mocked(loginAttemptApi.getSuspiciousActivity).mockResolvedValue(mockSuspiciousActivity)
-      
+
       // Trigger data refresh
       await wrapper.vm.fetchData()
       await new Promise(resolve => setTimeout(resolve, 0))

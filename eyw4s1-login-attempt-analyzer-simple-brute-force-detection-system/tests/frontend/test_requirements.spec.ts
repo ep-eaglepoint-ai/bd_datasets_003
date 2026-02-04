@@ -3,10 +3,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { loginAttemptApi, type LoginAttempt, type SuspiciousActivity } from './src/api'
+import { loginAttemptApi, type LoginAttempt, type SuspiciousActivity } from '../../repository_after/frontend/src/api'
 
 // Mock the API module
-vi.mock('./src/api', () => ({
+vi.mock('../../repository_after/frontend/src/api', () => ({
   loginAttemptApi: {
     getLoginAttempts: vi.fn(),
     getSuspiciousActivity: vi.fn(),

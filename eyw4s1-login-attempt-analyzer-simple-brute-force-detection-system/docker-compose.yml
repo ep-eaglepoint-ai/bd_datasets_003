@@ -20,7 +20,7 @@ services:
         echo 'Running frontend tests...' &&
         cd /app/repository_after/frontend &&
         npm install &&
-        ./node_modules/.bin/vitest run --reporter=verbose
+        ./node_modules/.bin/vitest run -c ../../tests/vitest.config.ts --reporter=verbose
       "
     volumes:
       - .:/app

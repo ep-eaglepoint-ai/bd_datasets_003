@@ -5,14 +5,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createApp } from 'vue'
-import SummaryPanel from '../../../repository_after/frontend/src/components/SummaryPanel.vue'
-import LoginAttemptsTable from '../../../repository_after/frontend/src/components/LoginAttemptsTable.vue'
-import LoginTable from '../../../repository_after/frontend/src/components/LoginTable.vue'
-import App from '../../../repository_after/frontend/src/App.vue'
-import { loginAttemptApi, type LoginAttempt, type SuspiciousActivity } from '../../../repository_after/frontend/src/api'
+import SummaryPanel from '../../repository_after/frontend/src/components/SummaryPanel.vue'
+import LoginAttemptsTable from '../../repository_after/frontend/src/components/LoginAttemptsTable.vue'
+import LoginTable from '../../repository_after/frontend/src/components/LoginTable.vue'
+import App from '../../repository_after/frontend/src/App.vue'
+import { loginAttemptApi, type LoginAttempt, type SuspiciousActivity } from '../../repository_after/frontend/src/api'
 
 // Mock the API module
-vi.mock('../../../repository_after/frontend/src/api', () => ({
+vi.mock('../../repository_after/frontend/src/api', () => ({
   loginAttemptApi: {
     getLoginAttempts: vi.fn(),
     getSuspiciousActivity: vi.fn(),
@@ -299,6 +299,7 @@ describe('LoginTable', () => {
     )
 
     const wrapper = mount(LoginTable)
+    await wrapper.vm.$nextTick()
 
     // Initially should show loading
     expect(wrapper.find('.loading').text()).toBe('Loading login attempts...')
