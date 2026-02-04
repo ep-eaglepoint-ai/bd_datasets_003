@@ -1,4 +1,4 @@
-package client
+package main
 
 import (
 	"bytes"
@@ -18,8 +18,11 @@ const (
 	baseBackoff      = 100 * time.Millisecond
 )
 
+func main() {
+	RunClient()
+}
+
 func RunClient() {
-	//  New(NewSource(seed)) to get different sequences on each
 	rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	var wg sync.WaitGroup

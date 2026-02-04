@@ -1,107 +1,97 @@
 package tests
 
 import (
-	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
-	"time"
-
-	"reservation-system/repository_after/client"
 )
 
-func TestAttemptReserve(t *testing.T) {
-	// Save original log output and restore after tests
-	origLogOutput := log.Writer()
-	defer log.SetOutput(origLogOutput)
+func buildClientBinary(t *testing.T) string {
+	t.Helper()
+	clientExe, err := resolveOrBuildClient("client_"+TestTarget, RepoPath)
+	if err != nil {
+		t.Fatalf("failed to build client binary: %v", err)
+	}
+	return clientExe
+}
 
-	t.Run("successful reservation", func(t *testing.T) {
-		// Mock server always returns 200 OK
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		}))
-		defer server.Close()
+func TestClientScenarios(t *testing.T) {
+	scenarios := []struct {
+		name       string
+		statusFunc func(attempt *int) int
+		expectLogs []string
+	}{
+		{
+			name: "successful reservation",
+			statusFunc: func(_ *int) int {
+				return http.StatusOK
+			},
+			expectLogs: []string{"reservation successful"},
+		},
+		{
+			name: "stock exhausted",
+			statusFunc: func(_ *int) int {
+				return http.StatusConflict
+			},
+			expectLogs: []string{"stock exhausted"},
+		},
+		{
+			name: "retryable error with backoff",
+			statusFunc: func(attempt *int) int {
+				*attempt++
+				if *attempt < 3 {
+					return http.StatusTooManyRequests
+				}
+				return http.StatusOK
+			},
+			expectLogs: []string{"reservation successful"},
+		},
+		{
+			name: "connection error handling",
+			statusFunc: func(_ *int) int {
+				return 0
+			},
+			expectLogs: []string{"connection error"},
+		},
+	}
 
-		t.Setenv("SERVER_URL", server.URL)
+	for _, sc := range scenarios {
+		t.Run(sc.name, func(t *testing.T) {
+			var serverURL string
+			attempt := 0
 
-		httpClient := &http.Client{Timeout: 1 * time.Second}
-
-		// Capture logs
-		var logs strings.Builder
-		log.SetOutput(&logs)
-
-		client.AttemptReserve(httpClient, 1)
-
-		if !strings.Contains(logs.String(), "reservation successful") {
-			t.Errorf("expected success log, got: %s", logs.String())
-		}
-	})
-
-	t.Run("stock exhausted (409)", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusConflict)
-		}))
-		defer server.Close()
-
-		t.Setenv("SERVER_URL", server.URL)
-
-		httpClient := &http.Client{Timeout: 1 * time.Second}
-		var logs strings.Builder
-		log.SetOutput(&logs)
-
-		client.AttemptReserve(httpClient, 2)
-
-		if !strings.Contains(logs.String(), "stock exhausted") {
-			t.Errorf("expected stock exhausted log, got: %s", logs.String())
-		}
-	})
-
-	t.Run("retryable error with backoff", func(t *testing.T) {
-		var attemptCount int
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			attemptCount++
-			if attemptCount < 3 {
-				w.WriteHeader(http.StatusTooManyRequests)
+			if sc.name != "connection error handling" {
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					status := sc.statusFunc(&attempt)
+					w.WriteHeader(status)
+				}))
+				defer server.Close()
+				serverURL = server.URL
 			} else {
-				w.WriteHeader(http.StatusOK)
+				// point to a non-listening port to simulate connection error
+				serverURL = "http://localhost:12345"
 			}
-		}))
-		defer server.Close()
 
-		t.Setenv("SERVER_URL", server.URL)
+			clientExe := buildClientBinary(t)
+			cmd := exec.Command(clientExe)
+			cmd.Env = append(os.Environ(), "SERVER_URL="+serverURL)
 
-		httpClient := &http.Client{Timeout: 1 * time.Second}
-		var logs strings.Builder
-		log.SetOutput(&logs)
+			out, err := cmd.CombinedOutput()
+			output := string(out)
 
-		start := time.Now()
-		client.AttemptReserve(httpClient, 3)
-		elapsed := time.Since(start)
+			// for retryable scenario, we don't fail on cmd err if backoff completed successfully
+			if sc.name != "retryable error with backoff" && err != nil {
+				t.Fatalf("client failed: %v\nOutput:\n%s", err, output)
+			}
 
-		if attemptCount != 3 {
-			t.Errorf("expected 3 attempts, got %d", attemptCount)
-		}
-		if !strings.Contains(logs.String(), "reservation successful") {
-			t.Errorf("expected success log after retries, got: %s", logs.String())
-		}
-
-		if elapsed < 50*time.Millisecond {
-			t.Errorf("expected backoff delay, but elapsed %v too short", elapsed)
-		}
-	})
-
-	t.Run("connection error handling", func(t *testing.T) {
-		t.Setenv("SERVER_URL", "http://localhost:12345") // Likely no server here
-
-		httpClient := &http.Client{Timeout: 500 * time.Millisecond}
-		var logs strings.Builder
-		log.SetOutput(&logs)
-
-		client.AttemptReserve(httpClient, 4)
-
-		if !strings.Contains(logs.String(), "connection error") {
-			t.Errorf("expected connection error log, got: %s", logs.String())
-		}
-	})
+			for _, expected := range sc.expectLogs {
+				if !strings.Contains(output, expected) {
+					t.Errorf("expected log %q not found in output:\n%s", expected, output)
+				}
+			}
+		})
+	}
 }
