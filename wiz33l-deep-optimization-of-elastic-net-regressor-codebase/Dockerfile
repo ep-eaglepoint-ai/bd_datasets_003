@@ -12,7 +12,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . /app/
 
 # Make evaluation script executable
-RUN chmod +x evaluation/run_evaluation.py
+RUN chmod +x evaluation/evaluation.py
 
 # Default command runs evaluation
-CMD ["python3", "evaluation/run_evaluation.py"]
+CMD ["python3", "evaluation/evaluation.py"]
