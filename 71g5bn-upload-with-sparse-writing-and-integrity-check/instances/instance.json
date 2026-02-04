@@ -1,0 +1,11 @@
+{
+            "instance_id": "71G5BN",
+            "problem_statement": "The fundamental engineering challenge involves managing the asynchronous reassembly of a fragmented binary stream where strict ordering is not guaranteed. Naive implementations typically treat file writes as append-only operations, which leads to immediate data corruption when chunks transmitted in parallel arrive out of sequence (e.g., writing the bytes for offset 500 before offset 0). The solution requires utilizing random-access file I/O to write buffers to precise byte offsets on the disk. Additionally, the requirement to "Resume" necessitates a reconciliation protocol where the server acts as the source of truth for persisted bytes, and the client must interpret this state to compute the differential set of remaining chunks, all while managing memory pressure to avoid loading the entire gigabyte-sized file into the browser or server RAM.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/71g5bn-upload-with-sparse-writing-and-integrity-check",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
