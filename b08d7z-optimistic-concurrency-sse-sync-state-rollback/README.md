@@ -1,11 +1,13 @@
-# B08D7Z - Optimistic Concurrency: SSE Sync & State Rollback
+# High-Concurrency Seat Reservation System
 
-    ## Before Test Docker Command
-    <docker before command here>
+# Run tests
 
-    ## After Test Docker Command
-    <docker after command here>
+```bash
+docker compose run --rm -e REPO_PATH=repository_after app go run tests/runner.go
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+# Generate evaluation report
+
+```bash
+docker compose run --rm app go run ./evaluation/evaluation.go
+```

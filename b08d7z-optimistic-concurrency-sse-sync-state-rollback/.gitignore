@@ -6,7 +6,41 @@ __pycache__/
 
 # Node
 node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn-integrity
+
+# Build outputs
+dist/
+build/
+.next/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
 
 # OS
 .DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Config files
+.babelrc
+.eslintrc*
+.prettierrc*
+tsconfig.tsbuildinfo
+
+# Evaluation
 evaluation/*.json
+evaluation/*/
