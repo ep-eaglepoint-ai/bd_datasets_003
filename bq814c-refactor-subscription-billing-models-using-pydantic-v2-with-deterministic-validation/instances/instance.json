@@ -1,0 +1,13 @@
+{
+            "instance_id": "BQ814C",
+            "problem_statement": "The current subscription billing module is implemented using Python @dataclass models with ad-hoc __post_init__ validation. Validation logic is inconsistent, mutable default values introduce unsafe state mutations, and cross-field constraints between plan type, billing cycle, pricing, and discounts are incorrectly enforced. Several invalid states are silently ignored, leading to downstream billing errors and unpredictable behavior.
+
+The task is to migrate the models to Pydantic v2, enforce correct and explicit validation rules, eliminate unsafe mutations, and preserve existing billing behavior. Field dependencies must be clearly defined, validation must be deterministic, and all invalid states must surface structured, actionable errors. The refactored design must support future extensibility, auditability, and consistent serialization.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/bq814c-refactor-subscription-billing-models-using-pydantic-v2-with-deterministic-validation",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
