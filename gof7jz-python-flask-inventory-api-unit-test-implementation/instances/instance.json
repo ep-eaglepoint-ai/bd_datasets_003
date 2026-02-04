@@ -1,0 +1,12 @@
+{
+            "instance_id": "GOF7JZ",
+            "problem_statement": "Noticed a quality assurance gap when reviewing the deployment pipeline for a Python-based inventory management system. The issue appeared while working on the test coverage for the Flask REST API in the app/routes/ and app/services/ modules, where the goal is to create comprehensive unit tests that validate all endpoints and business logic.
+The system needs to test all 12 API endpoints with proper database isolation, cover edge cases like negative stock and expired tokens, mock external services correctly, and ensure tests run independently without shared state pollution. QA reported that the last 3 deployments introduced regressions that weren't caught because there are no automated tests, the stock_service.py has complex calculation logic that has never been validated, and developers are afraid to refactor because they can't verify behavior hasn't changed.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/gof7jz-python-flask-inventory-api-unit-test-implementation",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
