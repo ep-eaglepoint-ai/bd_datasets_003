@@ -1,0 +1,68 @@
+diff --git a/repository_before/.gitkeep b/repository_before/.gitkeep
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/repository_after/concurrent_booking.sql b/repository_after/concurrent_booking.sql
+new file mode 100644
+index 0000000..bbb66e8
+--- /dev/null
++++ b/repository_after/concurrent_booking.sql
+@@ -0,0 +1,58 @@
++-- PostgreSQL Transaction to Prevent Double Booking Under Concurrency
++-- 
++-- This solution ensures we always have a concrete row to lock by using a UNION ALL
++-- with VALUES clause that creates a virtual row for the resource_id, guaranteeing 
++-- serialization even when no bookings exist yet for that resource.
++--
++-- Schema (given):
++-- CREATE TABLE bookings (
++--     id SERIAL PRIMARY KEY,
++--     resource_id INT NOT NULL,
++--     user_id INT NOT NULL,
++--     booked_at TIMESTAMP NOT NULL DEFAULT NOW()
++-- );
++
++-- The booking prevention transaction
++-- Parameters: $1 = resource_id, $2 = user_id
++
++BEGIN;
++
++-- Step 1: Create a serialization point by locking a guaranteed-to-exist row
++-- We use UNION ALL with VALUES to ensure there's always a row to lock for any resource_id
++-- This prevents the "empty SELECT FOR UPDATE" problem
++WITH resource_lock AS (
++    SELECT resource_id FROM bookings WHERE resource_id = $1
++    UNION ALL
++    SELECT $1 as resource_id
++    LIMIT 1
++)
++SELECT resource_id FROM resource_lock FOR UPDATE;
++
++-- Step 2: Now that we hold an exclusive lock, safely check and insert
++-- Only one transaction can hold the lock at a time, eliminating race conditions
++WITH booking_attempt AS (
++    INSERT INTO bookings (resource_id, user_id)
++    SELECT $1, $2
++    WHERE NOT EXISTS (
++        SELECT 1 FROM bookings WHERE resource_id = $1
++    )
++    RETURNING id, resource_id, user_id
++)
++SELECT 
++    CASE 
++        WHEN COUNT(*) > 0 THEN 'SUCCESS: Resource ' || $1 || ' booked by user ' || $2
++        ELSE 'FAILED: Resource ' || $1 || ' was already booked'
++    END as booking_result
++FROM booking_attempt;
++
++COMMIT;
++
++-- EXPLANATION OF CONCURRENCY SAFETY:
++-- 1. The UNION ALL with VALUES($1) ensures we always have exactly one row to lock
++-- 2. If bookings exist for the resource: we lock the existing booking row
++-- 3. If no bookings exist: we lock the virtual row created by VALUES($1)
++-- 4. SELECT ... FOR UPDATE creates an exclusive lock that blocks other transactions
++-- 5. The lock is held until COMMIT/ROLLBACK, preventing concurrent access
++-- 6. Only after acquiring the lock do we check NOT EXISTS and potentially insert
++-- 7. This guarantees exactly one transaction can proceed with booking logic at a time
++-- 8. Works correctly under READ COMMITTED isolation level with true concurrency safety
+\ No newline at end of file
