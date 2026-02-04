@@ -6,9 +6,9 @@ import torch
 from torch import nn
 
 # Add repository_after or repository_before to path for imports
-# Use REPO_STATE environment variable to switch: "before" or "after" (default: "after")
-repo_state = os.environ.get('REPO_STATE', 'after')
-repo_dir = f'repository_{repo_state}'
+# Use REPO_PATH environment variable to switch: "repository_before" or "repository_after" (default: "repository_after")
+repo_path = os.environ.get('REPO_PATH', 'repository_after')
+repo_dir = repo_path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', repo_dir))
 
 from rmsnorm import RMSNorm, RMSNormWithResidual
@@ -35,7 +35,7 @@ def rms(x: torch.Tensor, dim, eps):
 
 
 # -------------------------
-# 1. Basic correctness
+# Basic correctness
 # -------------------------
 
 def test_rmsnorm_basic_correctness():
@@ -49,7 +49,7 @@ def test_rmsnorm_basic_correctness():
 
 
 # -------------------------
-# 2. Scale (gamma) support
+# Scale (gamma) support
 # -------------------------
 
 def test_rmsnorm_with_scale():
@@ -64,7 +64,7 @@ def test_rmsnorm_with_scale():
 
 
 # -------------------------
-# 3. Bias (beta) support
+# Bias (beta) support
 # -------------------------
 
 def test_rmsnorm_with_bias():
@@ -79,7 +79,7 @@ def test_rmsnorm_with_bias():
 
 
 # -------------------------
-# 4. Multiple normalization axes
+# Multiple normalization axes
 # -------------------------
 
 def test_rmsnorm_multiple_axes():
@@ -94,7 +94,7 @@ def test_rmsnorm_multiple_axes():
 
 
 # -------------------------
-# 5. Dynamic shapes & broadcasting
+# Dynamic shapes & broadcasting
 # -------------------------
 
 @pytest.mark.parametrize("shape", [
@@ -112,7 +112,7 @@ def test_rmsnorm_dynamic_shapes(shape):
 
 
 # -------------------------
-# 6. Mixed precision safety
+#  Mixed precision safety
 # -------------------------
 
 @pytest.mark.parametrize("dtype", [
@@ -131,7 +131,7 @@ def test_rmsnorm_mixed_precision(dtype):
 
 
 # -------------------------
-# 7. Zero-vector stability
+# Zero-vector stability
 # -------------------------
 
 def test_rmsnorm_zero_vector():
@@ -145,7 +145,7 @@ def test_rmsnorm_zero_vector():
 
 
 # -------------------------
-# 8. Learnable epsilon
+# Learnable epsilon
 # -------------------------
 
 def test_rmsnorm_learnable_epsilon():
@@ -162,7 +162,7 @@ def test_rmsnorm_learnable_epsilon():
 
 
 # -------------------------
-# 9. Preserve input dtype
+# Preserve input dtype
 # -------------------------
 
 def test_rmsnorm_preserves_dtype():
@@ -174,7 +174,7 @@ def test_rmsnorm_preserves_dtype():
 
 
 # -------------------------
-# 10. Residual scaling support
+# Residual scaling support
 # -------------------------
 
 def test_rmsnorm_residual_scaling():
@@ -197,7 +197,7 @@ def test_rmsnorm_residual_scaling():
 
 
 # -------------------------
-# 11. TorchScript compatibility
+# TorchScript compatibility
 # -------------------------
 
 def test_rmsnorm_torchscript():
@@ -212,7 +212,7 @@ def test_rmsnorm_torchscript():
 
 
 # -------------------------
-# 12. ONNX export compatibility
+# ONNX export compatibility
 # -------------------------
 
 def test_rmsnorm_onnx_export(tmp_path):
@@ -235,7 +235,7 @@ def test_rmsnorm_onnx_export(tmp_path):
 
 
 # -------------------------
-# 13. Gradient correctness
+# Gradient correctness
 # -------------------------
 
 def test_rmsnorm_backward():
