@@ -1,8 +1,8 @@
-# Docker Compose file for running tests. You should customize this as needed.
-
 services:
   app:
     build: .
-    command: pytest -q tests
+    working_dir: /app
     volumes:
-      - .:/app
+      - ./evaluation/reports:/app/evaluation/reports
+    environment:
+      - CGO_ENABLED=0

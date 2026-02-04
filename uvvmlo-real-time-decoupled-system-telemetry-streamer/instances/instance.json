@@ -1,11 +1,27 @@
 {
-            "instance_id": "UVVMLO",
-            "problem_statement": "Real-time telemetry systems face a critical bottleneck known as "Slow Consumer Syndrome," where a lagging WebSocket client blocks the core metrics collection loop, causing the entire monitoring service to freeze. Mid-tier implementations naively couple the sampling interval with the network transmission, resulting in a system that collapses under minor network latency or high concurrent client counts. The required architectural gap is implementing a strict Producer-Consumer model using Go channels, where the sampling goroutine acts as an independent producer that pushes state to a central distribution hub, completely agnostic to whether the downstream network clients can keep up.",
-            "base_commit": "repository_before/",
-            "test_patch": "tests/",
-            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/uvvmlo-real-time-decoupled-system-telemetry-streamer",
-            "environment_setup": "Dockerfile",
-            "FAIL_TO_PASS": [],
-            "PASS_TO_PASS": []
+    "instance_id": "UVVMLO",
+    "problem_statement": "Real-time telemetry systems face a critical bottleneck known as "Slow Consumer Syndrome,
+    " where a lagging WebSocket client blocks the core metrics collection loop, causing the entire monitoring service to freeze. Mid-tier implementations naively couple the sampling interval with the network transmission, resulting in a system that collapses under minor network latency or high concurrent client counts. The required architectural gap is implementing a strict Producer-Consumer model using Go channels, where the sampling goroutine acts as an independent producer that pushes state to a central distribution hub, completely agnostic to whether the downstream network clients can keep up.",
+    "base_commit": "repository_before/",
+    "test_patch": "tests/",
+    "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/uvvmlo-real-time-decoupled-system-telemetry-streamer",
+    "environment_setup": "Dockerfile",
+    "FAIL_TO_PASS": [
+        {
+            "tests": [
+                "TestConcurrentClientConnections",
+                "TestSlowConsumerDoesNotBlockBroadcaster",
+                "TestClientMapReturnsToZero",
+                "TestHubBroadcastNonBlocking",
+                "TestClientCleanupOnDisconnect",
+                "TestSelectWithDefaultCase",
+                "TestMutexProtectedClientRegistry",
+                "TestFullIntegration",
+                "TestMultipleClientsReceiveMetrics",
+                "TestMetricsCollector",
+                "TestMetricsCollectorBroadcast"
+            ]
         }
-        
+    ],
+    "PASS_TO_PASS": []
+}

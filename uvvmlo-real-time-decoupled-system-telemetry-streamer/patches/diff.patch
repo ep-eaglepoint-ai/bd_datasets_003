@@ -1,0 +1,834 @@
+diff --git a/repository_before/.gitkeep b/repository_before/.gitkeep
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/repository_after/frontend/package.json b/repository_after/frontend/package.json
+new file mode 100644
+index 0000000..8e7be2d
+--- /dev/null
++++ b/repository_after/frontend/package.json
+@@ -0,0 +1,27 @@
++{
++    "name": "telemetry-dashboard",
++    "version": "1.0.0",
++    "private": true,
++    "dependencies": {
++        "react": "^18.2.0",
++        "react-dom": "^18.2.0",
++        "react-scripts": "5.0.1"
++    },
++    "scripts": {
++        "start": "react-scripts start",
++        "build": "react-scripts build",
++        "test": "react-scripts test"
++    },
++    "browserslist": {
++        "production": [
++            ">0.2%",
++            "not dead",
++            "not op_mini all"
++        ],
++        "development": [
++            "last 1 chrome version",
++            "last 1 firefox version",
++            "last 1 safari version"
++        ]
++    }
++}
+\ No newline at end of file
+diff --git a/repository_after/frontend/public/index.html b/repository_after/frontend/public/index.html
+new file mode 100644
+index 0000000..0d23a00
+--- /dev/null
++++ b/repository_after/frontend/public/index.html
+@@ -0,0 +1,12 @@
++<!DOCTYPE html>
++<html lang="en">
++<head>
++    <meta charset="utf-8" />
++    <meta name="viewport" content="width=device-width, initial-scale=1" />
++    <title>System Telemetry Dashboard</title>
++</head>
++<body>
++    <noscript>You need to enable JavaScript to run this app.</noscript>
++    <div id="root"></div>
++</body>
++</html>
+\ No newline at end of file
+diff --git a/repository_after/frontend/src/App.js b/repository_after/frontend/src/App.js
+new file mode 100644
+index 0000000..29d9dbb
+--- /dev/null
++++ b/repository_after/frontend/src/App.js
+@@ -0,0 +1,109 @@
++import React, { useState, useEffect, useCallback } from 'react';
++
++function App() {
++  const [metrics, setMetrics] = useState(null);
++  const [connected, setConnected] = useState(false);
++  const [error, setError] = useState(null);
++
++  const connectWebSocket = useCallback(() => {
++    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
++    const wsUrl = `${wsProtocol}//${window.location.host}/ws`;
++    
++    const ws = new WebSocket(wsUrl);
++
++    ws.onopen = () => {
++      setConnected(true);
++      setError(null);
++      console.log('WebSocket connected');
++    };
++
++    ws.onmessage = (event) => {
++      try {
++        const data = JSON.parse(event.data);
++        setMetrics(data);
++      } catch (e) {
++        console.error('Failed to parse message:', e);
++      }
++    };
++
++    ws.onerror = (event) => {
++      console.error('WebSocket error:', event);
++      setError('Connection error');
++    };
++
++    ws.onclose = () => {
++      setConnected(false);
++      console.log('WebSocket disconnected');
++    };
++
++    return ws;
++  }, []);
++
++  useEffect(() => {
++    const ws = connectWebSocket();
++
++    // Cleanup function to close WebSocket when component unmounts
++    return () => {
++      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
++        ws.close();
++      }
++    };
++  }, [connectWebSocket]);
++
++  const formatBytes = (bytes) => {
++    if (!bytes) return '0 B';
++    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
++    const i = Math.floor(Math.log(bytes) / Math.log(1024));
++    return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${sizes[i]}`;
++  };
++
++  return (
++    <div className="dashboard">
++      <h1>System Telemetry Dashboard</h1>
++      
++      <div className="status">
++        <span className={`indicator ${connected ? 'connected' : 'disconnected'}`}></span>
++        {connected ? 'Connected' : 'Disconnected'}
++        {error && <span className="error"> - {error}</span>}
++      </div>
++
++      {metrics ? (
++        <div className="metrics-grid">
++          <div className="metric-card">
++            <h3>CPU Usage</h3>
++            <p className="metric-value">{metrics.cpu_usage?.toFixed(2) || 0}%</p>
++          </div>
++
++          <div className="metric-card">
++            <h3>Memory Usage</h3>
++            <p className="metric-value">{metrics.memory_usage_percent?.toFixed(2) || 0}%</p>
++            <p className="metric-detail">
++              {formatBytes(metrics.memory_used)} / {formatBytes(metrics.memory_total)}
++            </p>
++          </div>
++
++          <div className="metric-card">
++            <h3>Active Connections</h3>
++            <p className="metric-value">{metrics.active_connections || 0}</p>
++          </div>
++
++          <div className="metric-card">
++            <h3>Goroutines</h3>
++            <p className="metric-value">{metrics.num_goroutines || 0}</p>
++          </div>
++
++          <div className="metric-card">
++            <h3>Last Update</h3>
++            <p className="metric-value">
++              {new Date(metrics.timestamp).toLocaleTimeString()}
++            </p>
++          </div>
++        </div>
++      ) : (
++        <p className="waiting">Waiting for data...</p>
++      )}
++    </div>
++  );
++}
++
++export default App;
+\ No newline at end of file
+diff --git a/repository_after/frontend/src/index.css b/repository_after/frontend/src/index.css
+new file mode 100644
+index 0000000..cc275ad
+--- /dev/null
++++ b/repository_after/frontend/src/index.css
+@@ -0,0 +1,99 @@
++* {
++  box-sizing: border-box;
++  margin: 0;
++  padding: 0;
++}
++
++body {
++  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
++  background-color: #1a1a2e;
++  color: #eaeaea;
++  min-height: 100vh;
++}
++
++.dashboard {
++  max-width: 1200px;
++  margin: 0 auto;
++  padding: 2rem;
++}
++
++h1 {
++  text-align: center;
++  margin-bottom: 2rem;
++  color: #00d9ff;
++}
++
++.status {
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  gap: 0.5rem;
++  margin-bottom: 2rem;
++  font-size: 1rem;
++}
++
++.indicator {
++  width: 12px;
++  height: 12px;
++  border-radius: 50%;
++}
++
++.indicator.connected {
++  background-color: #00ff88;
++  box-shadow: 0 0 10px #00ff88;
++}
++
++.indicator.disconnected {
++  background-color: #ff4757;
++  box-shadow: 0 0 10px #ff4757;
++}
++
++.error {
++  color: #ff4757;
++}
++
++.metrics-grid {
++  display: grid;
++  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
++  gap: 1.5rem;
++}
++
++.metric-card {
++  background: linear-gradient(145deg, #16213e, #1a1a2e);
++  border: 1px solid #0f3460;
++  border-radius: 12px;
++  padding: 1.5rem;
++  text-align: center;
++  transition: transform 0.2s, box-shadow 0.2s;
++}
++
++.metric-card:hover {
++  transform: translateY(-2px);
++  box-shadow: 0 8px 25px rgba(0, 217, 255, 0.1);
++}
++
++.metric-card h3 {
++  color: #8a8a8a;
++  font-size: 0.9rem;
++  text-transform: uppercase;
++  letter-spacing: 1px;
++  margin-bottom: 0.75rem;
++}
++
++.metric-value {
++  font-size: 2.5rem;
++  font-weight: 700;
++  color: #00d9ff;
++}
++
++.metric-detail {
++  font-size: 0.85rem;
++  color: #6a6a6a;
++  margin-top: 0.5rem;
++}
++
++.waiting {
++  text-align: center;
++  color: #6a6a6a;
++  font-size: 1.2rem;
++}
+\ No newline at end of file
+diff --git a/repository_after/frontend/src/index.js b/repository_after/frontend/src/index.js
+new file mode 100644
+index 0000000..1e6f816
+--- /dev/null
++++ b/repository_after/frontend/src/index.js
+@@ -0,0 +1,11 @@
++import React from 'react';
++import ReactDOM from 'react-dom/client';
++import App from './App';
++import './index.css';
++
++const root = ReactDOM.createRoot(document.getElementById('root'));
++root.render(
++  <React.StrictMode>
++    <App />
++  </React.StrictMode>
++);
+\ No newline at end of file
+diff --git a/repository_after/go.mod b/repository_after/go.mod
+new file mode 100644
+index 0000000..a1c5e2c
+--- /dev/null
++++ b/repository_after/go.mod
+@@ -0,0 +1,5 @@
++module telemetry-streamer
++
++go 1.21
++
++require github.com/gorilla/websocket v1.5.1
+\ No newline at end of file
+diff --git a/repository_after/main.go b/repository_after/main.go
+new file mode 100644
+index 0000000..898fb9a
+--- /dev/null
++++ b/repository_after/main.go
+@@ -0,0 +1,28 @@
++package main
++
++import (
++	"log"
++	"net/http"
++	"time"
++
++	"telemetry-streamer/pkg/hub"
++	"telemetry-streamer/pkg/metrics"
++	wshandler "telemetry-streamer/pkg/websocket"
++)
++
++func main() {
++	h := hub.NewHub()
++	go h.Run()
++
++	collector := metrics.NewCollector(1 * time.Second)
++	go collector.Start(h.Broadcast)
++
++	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
++		wshandler.HandleConnection(w, r, h)
++	})
++
++	http.Handle("/", http.FileServer(http.Dir("./frontend/build")))
++
++	log.Println("Server starting on :8080")
++	log.Fatal(http.ListenAndServe(":8080", nil))
++}
+\ No newline at end of file
+diff --git a/repository_after/pkg/hub/hub.go b/repository_after/pkg/hub/hub.go
+new file mode 100644
+index 0000000..6c17bb2
+--- /dev/null
++++ b/repository_after/pkg/hub/hub.go
+@@ -0,0 +1,162 @@
++package hub
++
++import (
++	"sync"
++	"time"
++
++	"github.com/gorilla/websocket"
++)
++
++const (
++	// WriteWait time allowed to write a message to the peer
++	WriteWait = 10 * time.Second
++	// ClientBufferSize is the send buffer size per client
++	ClientBufferSize = 16
++	// SendTimeout for sending to client channel
++	SendTimeout = 100 * time.Millisecond
++)
++
++// Client represents a WebSocket client connection
++type Client struct {
++	Conn   *websocket.Conn
++	Send   chan []byte
++	Hub    *Hub
++	Done   chan struct{}
++	mu     sync.Mutex
++	closed bool
++}
++
++// Hub maintains the set of active clients and broadcasts messages
++type Hub struct {
++	Clients    map[*Client]bool
++	Mu         sync.RWMutex
++	broadcast  chan []byte
++	register   chan *Client
++	unregister chan *Client
++	done       chan struct{}
++}
++
++// NewHub creates a new Hub instance
++func NewHub() *Hub {
++	return &Hub{
++		Clients:    make(map[*Client]bool),
++		broadcast:  make(chan []byte, 256),
++		register:   make(chan *Client),
++		unregister: make(chan *Client),
++		done:       make(chan struct{}),
++	}
++}
++
++// Run starts the hub's main event loop
++func (h *Hub) Run() {
++	for {
++		select {
++		case client := <-h.register:
++			h.Mu.Lock()
++			h.Clients[client] = true
++			h.Mu.Unlock()
++
++		case client := <-h.unregister:
++			h.Mu.Lock()
++			if _, ok := h.Clients[client]; ok {
++				delete(h.Clients, client)
++				client.Close()
++			}
++			h.Mu.Unlock()
++
++		case message := <-h.broadcast:
++			h.Mu.RLock()
++			for client := range h.Clients {
++				// Non-blocking send with select and default case
++				// This ensures slow consumers don't block the broadcaster
++				select {
++				case client.Send <- message:
++					// Message sent successfully
++				case <-time.After(SendTimeout):
++					// Client too slow, drop message to prevent blocking
++				default:
++					// Channel full, drop message immediately
++				}
++			}
++			h.Mu.RUnlock()
++
++		case <-h.done:
++			h.Mu.Lock()
++			for client := range h.Clients {
++				client.Close()
++				delete(h.Clients, client)
++			}
++			h.Mu.Unlock()
++			return
++		}
++	}
++}
++
++// Broadcast sends data to all connected clients
++func (h *Hub) Broadcast(data []byte) {
++	select {
++	case h.broadcast <- data:
++	default:
++		// Broadcast channel full, drop message to prevent blocking
++	}
++}
++
++// Register adds a client to the hub
++func (h *Hub) Register(client *Client) {
++	h.register <- client
++}
++
++// Unregister removes a client from the hub
++func (h *Hub) Unregister(client *Client) {
++	select {
++	case h.unregister <- client:
++	case <-h.done:
++	}
++}
++
++// ClientCount returns the number of connected clients
++func (h *Hub) ClientCount() int {
++	h.Mu.RLock()
++	defer h.Mu.RUnlock()
++	return len(h.Clients)
++}
++
++// Stop gracefully stops the hub
++func (h *Hub) Stop() {
++	select {
++	case <-h.done:
++		// Already closed
++	default:
++		close(h.done)
++	}
++}
++
++// NewClient creates a new client
++func NewClient(conn *websocket.Conn, hub *Hub) *Client {
++	return &Client{
++		Conn:   conn,
++		Send:   make(chan []byte, ClientBufferSize),
++		Hub:    hub,
++		Done:   make(chan struct{}),
++		closed: false,
++	}
++}
++
++// Close safely closes the client connection and channels
++func (c *Client) Close() {
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	if !c.closed {
++		c.closed = true
++		close(c.Done)
++		close(c.Send)
++		c.Conn.Close()
++	}
++}
++
++// IsClosed returns whether the client is closed
++func (c *Client) IsClosed() bool {
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	return c.closed
++}
+\ No newline at end of file
+diff --git a/repository_after/pkg/metrics/collector.go b/repository_after/pkg/metrics/collector.go
+new file mode 100644
+index 0000000..5ebc849
+--- /dev/null
++++ b/repository_after/pkg/metrics/collector.go
+@@ -0,0 +1,209 @@
++package metrics
++
++import (
++	"bufio"
++	"encoding/json"
++	"net"
++	"os"
++	"runtime"
++	"strconv"
++	"strings"
++	"time"
++)
++
++// SystemMetrics represents the telemetry data collected from the system
++type SystemMetrics struct {
++	Timestamp          int64   `json:"timestamp"`
++	CPUUsage           float64 `json:"cpu_usage"`
++	MemoryTotal        uint64  `json:"memory_total"`
++	MemoryUsed         uint64  `json:"memory_used"`
++	MemoryUsagePercent float64 `json:"memory_usage_percent"`
++	ActiveConnections  int     `json:"active_connections"`
++	NumGoroutines      int     `json:"num_goroutines"`
++}
++
++// Collector samples system metrics at regular intervals
++type Collector struct {
++	interval  time.Duration
++	prevIdle  uint64
++	prevTotal uint64
++	stopChan  chan struct{}
++}
++
++// NewCollector creates a new metrics collector
++func NewCollector(interval time.Duration) *Collector {
++	return &Collector{
++		interval: interval,
++		stopChan: make(chan struct{}),
++	}
++}
++
++// Start begins the metrics collection loop
++func (c *Collector) Start(broadcast func([]byte)) {
++	ticker := time.NewTicker(c.interval)
++	defer ticker.Stop()
++
++	for {
++		select {
++		case <-ticker.C:
++			metrics := c.Collect()
++			data, err := json.Marshal(metrics)
++			if err != nil {
++				continue
++			}
++			broadcast(data)
++		case <-c.stopChan:
++			return
++		}
++	}
++}
++
++// Stop terminates the collection loop
++func (c *Collector) Stop() {
++	close(c.stopChan)
++}
++
++// Collect gathers current system metrics
++func (c *Collector) Collect() SystemMetrics {
++	return SystemMetrics{
++		Timestamp:          time.Now().UnixMilli(),
++		CPUUsage:           c.getCPUUsage(),
++		MemoryTotal:        c.getMemoryTotal(),
++		MemoryUsed:         c.getMemoryUsed(),
++		MemoryUsagePercent: c.getMemoryUsagePercent(),
++		ActiveConnections:  c.getActiveConnections(),
++		NumGoroutines:      runtime.NumGoroutine(),
++	}
++}
++
++func (c *Collector) getCPUUsage() float64 {
++	file, err := os.Open("/proc/stat")
++	if err != nil {
++		// Fallback for non-Linux systems
++		var m runtime.MemStats
++		runtime.ReadMemStats(&m)
++		return float64(m.NumGC % 100)
++	}
++	defer file.Close()
++
++	scanner := bufio.NewScanner(file)
++	if scanner.Scan() {
++		line := scanner.Text()
++		if strings.HasPrefix(line, "cpu ") {
++			fields := strings.Fields(line)
++			if len(fields) < 5 {
++				return 0
++			}
++
++			var total uint64
++			var idle uint64
++
++			for i := 1; i < len(fields); i++ {
++				val, _ := strconv.ParseUint(fields[i], 10, 64)
++				total += val
++				if i == 4 {
++					idle = val
++				}
++			}
++
++			if c.prevTotal == 0 {
++				c.prevTotal = total
++				c.prevIdle = idle
++				return 0
++			}
++
++			totalDiff := float64(total - c.prevTotal)
++			idleDiff := float64(idle - c.prevIdle)
++
++			c.prevTotal = total
++			c.prevIdle = idle
++
++			if totalDiff == 0 {
++				return 0
++			}
++
++			return (1 - idleDiff/totalDiff) * 100
++		}
++	}
++	return 0
++}
++
++func (c *Collector) getMemoryTotal() uint64 {
++	val := getMemInfo("MemTotal")
++	if val == 0 {
++		var m runtime.MemStats
++		runtime.ReadMemStats(&m)
++		return m.Sys
++	}
++	return val
++}
++
++func (c *Collector) getMemoryUsed() uint64 {
++	total := getMemInfo("MemTotal")
++	if total == 0 {
++		var m runtime.MemStats
++		runtime.ReadMemStats(&m)
++		return m.Alloc
++	}
++	available := getMemInfo("MemAvailable")
++	if available == 0 {
++		free := getMemInfo("MemFree")
++		buffers := getMemInfo("Buffers")
++		cached := getMemInfo("Cached")
++		available = free + buffers + cached
++	}
++	return total - available
++}
++
++func (c *Collector) getMemoryUsagePercent() float64 {
++	total := c.getMemoryTotal()
++	used := c.getMemoryUsed()
++	if total == 0 {
++		return 0
++	}
++	return float64(used) / float64(total) * 100
++}
++
++func getMemInfo(key string) uint64 {
++	file, err := os.Open("/proc/meminfo")
++	if err != nil {
++		return 0
++	}
++	defer file.Close()
++
++	scanner := bufio.NewScanner(file)
++	for scanner.Scan() {
++		line := scanner.Text()
++		if strings.HasPrefix(line, key+":") {
++			fields := strings.Fields(line)
++			if len(fields) >= 2 {
++				val, _ := strconv.ParseUint(fields[1], 10, 64)
++				return val * 1024
++			}
++		}
++	}
++	return 0
++}
++
++func (c *Collector) getActiveConnections() int {
++	count := 0
++
++	tcpFile, err := os.Open("/proc/net/tcp")
++	if err == nil {
++		scanner := bufio.NewScanner(tcpFile)
++		for scanner.Scan() {
++			count++
++		}
++		tcpFile.Close()
++		if count > 0 {
++			count--
++		}
++	}
++
++	if count <= 0 {
++		addrs, _ := net.InterfaceAddrs()
++		count = len(addrs)
++	}
++
++	return count
++}
+\ No newline at end of file
+diff --git a/repository_after/pkg/websocket/handler.go b/repository_after/pkg/websocket/handler.go
+new file mode 100644
+index 0000000..4c1a417
+--- /dev/null
++++ b/repository_after/pkg/websocket/handler.go
+@@ -0,0 +1,99 @@
++package websocket
++
++import (
++	"log"
++	"net/http"
++	"time"
++
++	"github.com/gorilla/websocket"
++	"telemetry-streamer/pkg/hub"
++)
++
++var upgrader = websocket.Upgrader{
++	ReadBufferSize:  1024,
++	WriteBufferSize: 1024,
++	CheckOrigin: func(r *http.Request) bool {
++		return true
++	},
++}
++
++const (
++	writeWait  = 10 * time.Second
++	pongWait   = 60 * time.Second
++	pingPeriod = (pongWait * 9) / 10
++)
++
++// HandleConnection upgrades HTTP to WebSocket and manages the connection
++func HandleConnection(w http.ResponseWriter, r *http.Request, h *hub.Hub) {
++	conn, err := upgrader.Upgrade(w, r, nil)
++	if err != nil {
++		log.Printf("WebSocket upgrade error: %v", err)
++		return
++	}
++
++	client := hub.NewClient(conn, h)
++	h.Register(client)
++
++	// Start decoupled read and write goroutines
++	go writePump(client)
++	go readPump(client)
++}
++
++// readPump handles incoming messages and connection monitoring
++func readPump(client *hub.Client) {
++	defer func() {
++		client.Hub.Unregister(client)
++	}()
++
++	conn := client.Conn
++	conn.SetReadDeadline(time.Now().Add(pongWait))
++	conn.SetPongHandler(func(string) error {
++		conn.SetReadDeadline(time.Now().Add(pongWait))
++		return nil
++	})
++
++	for {
++		_, _, err := conn.ReadMessage()
++		if err != nil {
++			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
++				log.Printf("WebSocket read error: %v", err)
++			}
++			break
++		}
++	}
++}
++
++// writePump sends messages to the WebSocket connection
++func writePump(client *hub.Client) {
++	ticker := time.NewTicker(pingPeriod)
++	defer func() {
++		ticker.Stop()
++	}()
++
++	conn := client.Conn
++
++	for {
++		select {
++		case message, ok := <-client.Send:
++			conn.SetWriteDeadline(time.Now().Add(writeWait))
++			if !ok {
++				conn.WriteMessage(websocket.CloseMessage, []byte{})
++				return
++			}
++
++			err := conn.WriteMessage(websocket.TextMessage, message)
++			if err != nil {
++				return
++			}
++
++		case <-ticker.C:
++			conn.SetWriteDeadline(time.Now().Add(writeWait))
++			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
++				return
++			}
++
++		case <-client.Done:
++			return
++		}
++	}
++}
+\ No newline at end of file

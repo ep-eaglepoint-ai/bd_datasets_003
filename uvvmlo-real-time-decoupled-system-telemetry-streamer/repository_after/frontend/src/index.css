@@ -1,0 +1,99 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  background-color: #1a1a2e;
+  color: #eaeaea;
+  min-height: 100vh;
+}
+
+.dashboard {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+h1 {
+  text-align: center;
+  margin-bottom: 2rem;
+  color: #00d9ff;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+  font-size: 1rem;
+}
+
+.indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.indicator.connected {
+  background-color: #00ff88;
+  box-shadow: 0 0 10px #00ff88;
+}
+
+.indicator.disconnected {
+  background-color: #ff4757;
+  box-shadow: 0 0 10px #ff4757;
+}
+
+.error {
+  color: #ff4757;
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+}
+
+.metric-card {
+  background: linear-gradient(145deg, #16213e, #1a1a2e);
+  border: 1px solid #0f3460;
+  border-radius: 12px;
+  padding: 1.5rem;
+  text-align: center;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.metric-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 217, 255, 0.1);
+}
+
+.metric-card h3 {
+  color: #8a8a8a;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 0.75rem;
+}
+
+.metric-value {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: #00d9ff;
+}
+
+.metric-detail {
+  font-size: 0.85rem;
+  color: #6a6a6a;
+  margin-top: 0.5rem;
+}
+
+.waiting {
+  text-align: center;
+  color: #6a6a6a;
+  font-size: 1.2rem;
+}
