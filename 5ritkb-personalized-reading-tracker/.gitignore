@@ -22,6 +22,7 @@ Thumbs.db
 # Evaluation Reports 
 evaluation/*.json
 !evaluation/reports/report.json 
+report.json
 
 # Project specific
 repository_before/
