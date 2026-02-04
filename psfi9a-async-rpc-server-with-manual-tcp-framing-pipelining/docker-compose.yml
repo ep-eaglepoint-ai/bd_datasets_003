@@ -1,7 +1,7 @@
 services:
   test:
     build: .
-    command: python3 -m pytest tests/ -v --tb=short --json-report --json-report-file=/app/test_results.json
+    command: python3 -m pytest tests/ -v --tb=short
     volumes:
       - .:/app
     working_dir: /app
