@@ -36,15 +36,23 @@ logger = logging.getLogger(__name__)
 
 # Payload size limit for incoming requests (256KB)
 MAX_REQUEST_SIZE = 256 * 1024
+CHUNK_SIZE = 64 * 1024  # 64KB chunks for streaming validation
 
 
 class PayloadSizeMiddleware(BaseHTTPMiddleware):
-    """Middleware to validate Content-Length before reading request body."""
+    """Middleware to validate payload size before full body is read into memory.
+    
+    Handles both Content-Length header validation and streaming body validation
+    for chunked or missing-length requests.
+    """
     
     async def dispatch(self, request: Request, call_next):
-        # Get Content-Length header
-        content_length = request.headers.get("content-length")
+        # Skip for GET/HEAD/OPTIONS requests that shouldn't have bodies
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            return await call_next(request)
         
+        # First try Content-Length header
+        content_length = request.headers.get("content-length")
         if content_length:
             try:
                 size = int(content_length)
@@ -53,9 +61,24 @@ class PayloadSizeMiddleware(BaseHTTPMiddleware):
                         status_code=413,
                         content={"detail": "Payload too large. Maximum size is 262144 bytes."}
                     )
+                # Content-Length is valid, proceed normally
+                return await call_next(request)
             except ValueError:
                 pass
         
+        # No Content-Length or invalid - need to stream and validate
+        body = b""
+        async for chunk in request.stream():
+            body += chunk
+            if len(body) > MAX_REQUEST_SIZE:
+                # Already exceeds limit, reject without further processing
+                return JSONResponse(
+                    status_code=413,
+                    content={"detail": "Payload too large. Maximum size is 262144 bytes."}
+                )
+        
+        # Replace request.stream() with validated body
+        request._body = body
         response = await call_next(request)
         return response
 

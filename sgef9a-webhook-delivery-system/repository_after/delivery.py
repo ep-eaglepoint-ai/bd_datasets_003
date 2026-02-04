@@ -13,7 +13,7 @@ import json
 import logging
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import httpx
 from sqlalchemy import select
@@ -264,10 +264,17 @@ async def schedule_retry(
         jitter_range
     )
     
+    # Generate new idempotency key for retry (prevents unique constraint violation)
+    # Use original key with retry suffix, or generate new one
+    if attempt.idempotency_key:
+        retry_idempotency_key = f"{attempt.idempotency_key}:retry:{next_attempt_number}"
+    else:
+        retry_idempotency_key = f"scheduled-retry:{uuid4().hex}"
+    
     # Create new attempt for retry
     retry_attempt = DeliveryAttempt(
         webhook_id=attempt.webhook_id,
-        idempotency_key=attempt.idempotency_key,  # Preserve idempotency key
+        idempotency_key=retry_idempotency_key,
         attempt_number=next_attempt_number,
         status=DeliveryStatus.RETRYING,
         payload=attempt.payload,
@@ -325,14 +332,10 @@ async def update_health_score(
     # Calculate health score using exponential moving average
     # alpha = 0.2 gives each new result 20% weight
     alpha = 0.2
-    total = health.success_count + health.failure_count
-    
-    if total == 0:
-        health.health_score = 1.0
-    else:
-        # Simple ratio weighted by EMA
-        success_rate = health.success_count / total
-        health.health_score = alpha * success_rate + (1 - alpha) * health.health_score
+    # Proper EMA: each new result gets alpha weight, old score gets (1-alpha)
+    # This weights recent results more heavily regardless of historical counts
+    outcome = 1.0 if success else 0.0
+    health.health_score = alpha * outcome + (1 - alpha) * health.health_score
     
     await session.commit()
 

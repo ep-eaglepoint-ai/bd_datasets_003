@@ -15,7 +15,9 @@ import time
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Body, status
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -331,7 +333,7 @@ async def list_deliveries(
 async def retry_delivery(
     webhook_id: UUID,
     delivery_id: UUID,
-    retry_request: DeliveryRetryRequest = None,
+    retry_request: DeliveryRetryRequest | None = Body(None, description="Optional retry parameters"),
     session: AsyncSession = Depends(get_session),
 ) -> DeliveryRetryResponse:
     """
@@ -374,8 +376,14 @@ async def retry_delivery(
             detail="Cannot retry successful delivery"
         )
     
-    # Create new delivery attempt for retry
-    new_idempotency_key = retry_request.idempotency_key if retry_request else delivery.idempotency_key
+    # Generate new idempotency key for retry (prevents unique constraint violation)
+    # Use original key with retry attempt suffix, or generate new one
+    if retry_request and retry_request.idempotency_key:
+        new_idempotency_key = f"{retry_request.idempotency_key}:retry:{uuid.uuid4().hex[:8]}"
+    elif delivery.idempotency_key:
+        new_idempotency_key = f"{delivery.idempotency_key}:retry:{uuid.uuid4().hex[:8]}"
+    else:
+        new_idempotency_key = f"manual-retry:{uuid.uuid4().hex}"
     
     new_delivery = DeliveryAttempt(
         webhook_id=webhook.id,
