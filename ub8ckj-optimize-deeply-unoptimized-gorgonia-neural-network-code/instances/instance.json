@@ -1,0 +1,11 @@
+{
+            "instance_id": "UB8CKJ",
+            "problem_statement": "The current Go/Gorgonia neural network code is extremely inefficient, wastes memory, recomputes operations, and runs very slowly even on small inputs. Optimize it while preserving functional correctness.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ub8ckj-optimize-deeply-unoptimized-gorgonia-neural-network-code",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
