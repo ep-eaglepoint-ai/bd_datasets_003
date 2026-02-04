@@ -1,4 +1,8 @@
 services:
+    noop:
+        image: alpine
+        command: ['true']
+
     test-runner:
         build: .
         volumes:

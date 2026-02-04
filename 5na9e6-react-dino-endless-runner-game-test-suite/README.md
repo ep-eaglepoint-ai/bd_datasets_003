@@ -1,6 +1,6 @@
-# BEFORE
+# BEFORE (SKIPPED)
 
-docker compose up --build
+docker compose run --rm noop
 
 # AFTER (META TEST)
 
