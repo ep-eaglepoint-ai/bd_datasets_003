@@ -18,8 +18,11 @@ public class DemoAddress {
     private String city;
     private String country;
 
+    @OneToOne(cascade = CascadeType.ALL)
+    private DemoZipCode zipCode;
+
     public DemoAddress(String country, String city) {
-        this.city = city;
         this.country = country;
+        this.city = city;
     }
 }

@@ -29,4 +29,7 @@ public class DemoEntity {
 
     @ElementCollection(fetch = FetchType.EAGER)
     private List<String> tags = new ArrayList<>();
+
+    @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+    private List<DemoAddress> secondaryAddresses = new ArrayList<>();
 }

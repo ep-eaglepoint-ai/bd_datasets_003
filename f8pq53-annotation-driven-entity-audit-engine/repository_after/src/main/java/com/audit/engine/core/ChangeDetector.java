@@ -6,35 +6,31 @@ import org.hibernate.proxy.HibernateProxy;
 import org.springframework.stereotype.Component;
 import org.springframework.util.ReflectionUtils;
 
+import jakarta.persistence.Id;
 import java.lang.reflect.Field;
 import java.util.*;
 
 @Component
 public class ChangeDetector {
 
+    private static final int MAX_DEPTH = 3;
+
     public List<FieldChange> detectChanges(Object oldState, Object newState) {
         return detectChanges("", oldState, newState, 0);
     }
 
     private List<FieldChange> detectChanges(String prefix, Object oldState, Object newState, int depth) {
-        final Object effectiveOldState = (oldState instanceof HibernateProxy) ? 
-            ((HibernateProxy) oldState).getHibernateLazyInitializer().getImplementation() : oldState;
-            
-        final Object effectiveNewState = (newState instanceof HibernateProxy) ? 
-            ((HibernateProxy) newState).getHibernateLazyInitializer().getImplementation() : newState;
+        final Object effectiveOldState = unproxy(oldState);
+        final Object effectiveNewState = unproxy(newState);
 
         List<FieldChange> changes = new ArrayList<>();
-        if (depth > 2) { 
-             return changes;
-        }
 
         if (effectiveOldState == null && effectiveNewState == null) return changes;
 
         // Handle Null to Non-Null and vice versa
         if (effectiveOldState == null || effectiveNewState == null) {
-            // Whole object changed
             String propertyName = prefix.isEmpty() ? "root" : prefix;
-             changes.add(new FieldChange(
+            changes.add(new FieldChange(
                     propertyName,
                     effectiveOldState == null ? "null" : safeToString(effectiveOldState),
                     effectiveNewState == null ? "null" : safeToString(effectiveNewState)
@@ -42,29 +38,9 @@ public class ChangeDetector {
             return changes;
         }
 
-        if (effectiveOldState instanceof Collection && effectiveNewState instanceof Collection) {
-            // Collection handling
-            Collection<?> oldColl = (Collection<?>) effectiveOldState;
-            Collection<?> newColl = (Collection<?>) effectiveNewState;
-            
-            boolean equals = collectionsEqual(oldColl, newColl);
-            if (!equals) {
-                String diff = computeCollectionDiff(oldColl, newColl);
-                changes.add(new FieldChange(prefix, safeToString(effectiveOldState), diff));
-            }
-            return changes;
-        }
-
-        if (effectiveOldState instanceof Map && effectiveNewState instanceof Map) {
-             if (!Objects.equals(effectiveOldState, effectiveNewState)) {
-                 changes.add(new FieldChange(prefix, safeToString(effectiveOldState), safeToString(effectiveNewState)));
-             }
-             return changes;
-        }
-
         Class<?> clazz = effectiveOldState.getClass();
+        
         if (!clazz.equals(effectiveNewState.getClass())) {
-            // Classes differ? Treat as value replace.
              changes.add(new FieldChange(
                     prefix,
                     safeToString(effectiveOldState),
@@ -84,8 +60,22 @@ public class ChangeDetector {
             return changes;
         }
 
+        if (depth >= MAX_DEPTH) { 
+             return changes;
+        }
+
+        if (effectiveOldState instanceof Collection && effectiveNewState instanceof Collection) {
+            return detectCollectionChanges(prefix, (Collection<?>) effectiveOldState, (Collection<?>) effectiveNewState, depth);
+        }
+
+        if (effectiveOldState instanceof Map && effectiveNewState instanceof Map) {
+             if (!Objects.equals(effectiveOldState, effectiveNewState)) {
+                 changes.add(new FieldChange(prefix, safeToString(effectiveOldState), safeToString(effectiveNewState)));
+             }
+             return changes;
+        }
+
         // It is a complex object, recurse fields
-        // Check if class is Auditable or we are recursing so we check fields
         boolean isClassAuditable = clazz.isAnnotationPresent(Auditable.class);
 
         ReflectionUtils.doWithFields(clazz, field -> {
@@ -99,71 +89,115 @@ public class ChangeDetector {
             Object newValue = field.get(effectiveNewState);
             
             boolean mask = false;
-            // Masking priority: Field level overrides? Or if present?
             if (isFieldAuditable) {
                 mask = field.getAnnotation(Auditable.class).mask();
             } else if (isClassAuditable) {
-                 // Check if field has override? No, Auditable is the only annotation.
-                 // If field didn't have annotation, and class did, we check if class wanted mask?
-                 // No, Class level mask=true would mean "Audit all fields AND mask them"? Unlikely.
-                 // Usually Class level enables auditing. Field level configures it.
-                 // If Class has @Auditable(mask=true), maybe all fields are masked.
-                 // Let's assume field level wins or fallback to class.
                  mask = clazz.getAnnotation(Auditable.class).mask();
             }
 
             String fieldName = prefix.isEmpty() ? field.getName() : prefix + "." + field.getName();
 
-            // Recursion Limit check
-            if (isSimpleType(field.getType()) || Collection.class.isAssignableFrom(field.getType()) || Map.class.isAssignableFrom(field.getType())) {
-                 // Compare immediately
-                 List<FieldChange> fieldDiffs = detectChanges(fieldName, oldValue, newValue, depth + 1);
+            // Recurse
+            List<FieldChange> fieldDiffs = detectChanges(fieldName, oldValue, newValue, depth + 1);
                  
-                 // Apply masking to the results if needed
-                 if (mask && !fieldDiffs.isEmpty()) {
-                     for (FieldChange fc : fieldDiffs) {
-                         fc.setPreviousValue("****");
-                         fc.setNewValue("****");
-                     }
-                 }
-                 changes.addAll(fieldDiffs);
-            } else {
-                // Nested Object
-                if (depth < 2) {
-                     List<FieldChange> fieldDiffs = detectChanges(fieldName, oldValue, newValue, depth + 1);
-                     
-                     // Apply masking to nested object changes too
-                     if (mask && !fieldDiffs.isEmpty()) {
-                         for (FieldChange fc : fieldDiffs) {
-                             fc.setPreviousValue("****");
-                             fc.setNewValue("****");
-                         }
-                     }
-                     
-                     changes.addAll(fieldDiffs);
+            if (mask && !fieldDiffs.isEmpty()) {
+                for (FieldChange fc : fieldDiffs) {
+                    fc.setPreviousValue("****");
+                    fc.setNewValue("****");
                 }
             }
-
+            changes.addAll(fieldDiffs);
         });
 
         return changes;
     }
-
-    private boolean collectionsEqual(Collection<?> c1, Collection<?> c2) {
-        if (c1 == c2) return true;
-        if (c1 == null || c2 == null) return false;
-        if (c1.size() != c2.size()) return false;
+    
+    // Improved Collection Auditing
+    private List<FieldChange> detectCollectionChanges(String prefix, Collection<?> oldColl, Collection<?> newColl, int depth) {
+        List<FieldChange> changes = new ArrayList<>();
         
-        Iterator<?> i1 = c1.iterator();
-        Iterator<?> i2 = c2.iterator();
-        while (i1.hasNext()) {
-            Object o1 = i1.next();
-            Object o2 = i2.next();
-            if (!Objects.equals(o1, o2)) {
-                 return false;
+        if (oldColl instanceof List && newColl instanceof List) {
+            // List specific handling for modification at index
+            List<?> oldList = (List<?>) oldColl;
+            List<?> newList = (List<?>) newColl;
+            int max = Math.max(oldList.size(), newList.size());
+            
+            for (int i = 0; i < max; i++) {
+                String itemPrefix = prefix + "[" + i + "]";
+                if (i < oldList.size() && i < newList.size()) {
+                    changes.addAll(detectChanges(itemPrefix, oldList.get(i), newList.get(i), depth + 1));
+                } else if (i < newList.size()) {
+                    changes.add(new FieldChange(prefix, null, "Added: " + safeToString(newList.get(i))));
+                } else {
+                    changes.add(new FieldChange(prefix, safeToString(oldList.get(i)), "Removed"));
+                }
+            }
+            return changes;
+        }
+        
+        // For Set or general Collection
+        Map<Object, Object> oldMap = mapByIdOrValue(oldColl);
+        Map<Object, Object> newMap = mapByIdOrValue(newColl);
+        
+        Set<Object> allKeys = new HashSet<>();
+        allKeys.addAll(oldMap.keySet());
+        allKeys.addAll(newMap.keySet());
+        
+        for (Object key : allKeys) {
+            Object oldVal = oldMap.get(key);
+            Object newVal = newMap.get(key);
+            
+            if (oldVal != null && newVal != null) {
+                // Both exist, did it modify?
+                String itemPrefix = prefix + "[" + key + "]"; 
+                changes.addAll(detectChanges(itemPrefix, oldVal, newVal, depth + 1));
+            } else if (oldVal == null && newVal != null) {
+                changes.add(new FieldChange(prefix, null, "Added: " + safeToString(newVal)));
+            } else if (oldVal != null && newVal == null) {
+                changes.add(new FieldChange(prefix, safeToString(oldVal), "Removed"));
             }
         }
-        return true;
+        
+        return changes;
+    }
+
+    private Map<Object, Object> mapByIdOrValue(Collection<?> coll) {
+        Map<Object, Object> map = new HashMap<>();
+        for (Object item : coll) {
+            Object id = getId(item);
+            if (id != null) {
+                map.put(id, item);
+            } else {
+                map.put(item, item);
+            }
+        }
+        return map;
+    }
+
+    private Object getId(Object o) {
+        if (o == null || isSimpleType(o.getClass())) return null;
+        
+        // Try @Id annotation
+        Class<?> clazz = o.getClass();
+        
+        for (Field f : clazz.getDeclaredFields()) {
+            if (f.isAnnotationPresent(Id.class) || f.getName().equalsIgnoreCase("id")) {
+                try {
+                    f.setAccessible(true);
+                    return f.get(o);
+                } catch (IllegalAccessException e) {
+                    // ignore
+                }
+            }
+        }
+        return null; // No ID found
+    }
+
+    private Object unproxy(Object o) {
+        if (o instanceof HibernateProxy) {
+            return ((HibernateProxy) o).getHibernateLazyInitializer().getImplementation();
+        }
+        return o;
     }
 
     private boolean isSimpleType(Class<?> clazz) {
@@ -178,30 +212,5 @@ public class ChangeDetector {
 
     private String safeToString(Object o) {
         return o == null ? "null" : o.toString();
-    }
-    
-    // Naive collection diff for the requirement
-    private String computeCollectionDiff(Collection<?> oldColl, Collection<?> newColl) {
-        // This is a simplified "New Value" representation that shows diff
-        // Ideally we put this in newValue and keep old value as simple toString
-        
-        List<Object> added = new ArrayList<>(newColl);
-        added.removeAll(oldColl);
-        
-        List<Object> removed = new ArrayList<>(oldColl);
-        removed.removeAll(newColl);
-        
-        if (added.isEmpty() && removed.isEmpty()) {
-            // Order changed or something?
-            return newColl.toString();
-        }
-        
-        StringBuilder sb = new StringBuilder();
-        sb.append(newColl.toString()); // The actual new state
-        sb.append(" (Diff: ");
-        if (!added.isEmpty()) sb.append("Added: ").append(added).append(" ");
-        if (!removed.isEmpty()) sb.append("Removed: ").append(removed);
-        sb.append(")");
-        return sb.toString();
     }
 }

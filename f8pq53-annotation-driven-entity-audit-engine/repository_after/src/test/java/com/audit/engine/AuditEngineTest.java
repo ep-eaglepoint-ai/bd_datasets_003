@@ -3,6 +3,7 @@ package com.audit.engine;
 import com.audit.engine.demo.DemoAddress;
 import com.audit.engine.demo.DemoEntity;
 import com.audit.engine.demo.DemoRepository;
+import com.audit.engine.demo.DemoZipCode;
 import com.audit.engine.model.AuditLog;
 import com.audit.engine.model.FieldChange;
 import com.audit.engine.repo.AuditLogRepository;
@@ -52,8 +53,6 @@ public class AuditEngineTest {
             demoRepository.save(saved);
             return null;
         });
-        
-        // Wait briefly for the listener (in case async, though standard listener is sync)
         
         List<AuditLog> logs = auditLogRepository.findAll();
         assertEquals(1, logs.size());
@@ -117,6 +116,35 @@ public class AuditEngineTest {
     }
 
     @Test
+    void testDeepNestedObjectChange() {
+        Long id = transactionTemplate.execute(status -> {
+            DemoEntity user = new DemoEntity();
+            user.setName("dan");
+            DemoAddress addr = new DemoAddress("CountryA", "CityA");
+            addr.setZipCode(new DemoZipCode("11111"));
+            user.setAddress(addr);
+            return demoRepository.save(user).getId();
+        });
+        
+        transactionTemplate.execute(status -> {
+            DemoEntity saved = demoRepository.findById(id).orElseThrow();
+            saved.getAddress().getZipCode().setCode("22222");
+            demoRepository.save(saved);
+            return null;
+        });
+        
+        List<AuditLog> logs = auditLogRepository.findAll();
+        assertEquals(1, logs.size());
+        // Verify we found the change at level 3 (root -> address -> zipCode -> code)
+        // With MAX_DEPTH=3, this is allowed (0, 1, 2 recurses, 3 is simple)
+        assertFalse(logs.get(0).getChanges().isEmpty(), "Should detect deep change");
+        FieldChange fc = logs.get(0).getChanges().get(0);
+        assertEquals("address.zipCode.code", fc.getFieldName());
+        assertEquals("11111", fc.getPreviousValue());
+        assertEquals("22222", fc.getNewValue());
+    }
+
+    @Test
     void testCollectionChange() {
         Long id = transactionTemplate.execute(status -> {
             DemoEntity user = new DemoEntity();
@@ -134,35 +162,76 @@ public class AuditEngineTest {
         
         List<AuditLog> logs = auditLogRepository.findAll();
         assertEquals(1, logs.size());
-        FieldChange fc = logs.get(0).getChanges().get(0);
-        assertEquals("tags", fc.getFieldName());
-        assertTrue(fc.getNewValue().contains("Added: [tag2]"));
+        boolean found = false;
+        for (FieldChange fc : logs.get(0).getChanges()) {
+            if ("tags".equals(fc.getFieldName()) && fc.getNewValue().contains("Added: tag2")) {
+                found = true;
+            }
+        }
+        assertTrue(found, "Should detect added tag");
     }
     
     @Test
+    void testObjectCollectionModification() {
+        // Req 6: Modified items within a collection
+        Long id = transactionTemplate.execute(status -> {
+            DemoEntity user = new DemoEntity();
+            user.setName("collection_mod_user");
+            DemoAddress addr1 = new DemoAddress("C1", "City1"); 
+            user.getSecondaryAddresses().add(addr1);
+            return demoRepository.save(user).getId();
+        });
+        
+        transactionTemplate.execute(status -> {
+            DemoEntity saved = demoRepository.findById(id).orElseThrow();
+            // Modify existing address
+            saved.getSecondaryAddresses().get(0).setCity("City1_Modified");
+            // Add new
+            saved.getSecondaryAddresses().add(new DemoAddress("C2", "City2"));
+            demoRepository.save(saved);
+            return null;
+        });
+        
+        List<AuditLog> logs = auditLogRepository.findAll();
+        assertEquals(1, logs.size());
+        AuditLog log = logs.get(0);
+        
+        boolean foundMod = false;
+        boolean foundAdd = false;
+        
+        for (FieldChange fc : log.getChanges()) {
+            // Check for modification of existing item
+            // Expected format depends on ChangeDetector for Lists/Collections
+            // For List, it uses index: secondaryAddresses[0].city
+            if (fc.getFieldName().contains("secondaryAddresses") && fc.getFieldName().contains("city") && fc.getNewValue().equals("City1_Modified")) {
+                foundMod = true;
+            }
+            // Check for added item
+            if (fc.getFieldName().startsWith("secondaryAddresses") && fc.getNewValue().contains("Added:")) {
+                foundAdd = true;
+            }
+        }
+        assertTrue(foundMod, "Should detect modification in object collection item");
+        assertTrue(foundAdd, "Should detect addition to object collection");
+    }
+
+    @Test
     void testTransactionRollback() {
-        // Setup: Create an entity
         Long id = transactionTemplate.execute(status -> {
             DemoEntity user = new DemoEntity();
             user.setName("eve");
             return demoRepository.save(user).getId();
         });
 
-        // Test: Update and Rollback
         try {
             transactionTemplate.execute(status -> {
                 DemoEntity saved = demoRepository.findById(id).orElseThrow();
                 saved.setName("eve_updated");
                 demoRepository.save(saved);
-                
-                // Rollback
                 status.setRollbackOnly();
                 return null;
             });
         } catch (Exception e) {}
-        
-        // Assert: No audit log should be present because transaction rolled back
-        // (AuditLogListener is AFTER_COMMIT)
         
         assertEquals(0, auditLogRepository.count());
     }
@@ -177,7 +246,6 @@ public class AuditEngineTest {
 
         transactionTemplate.execute(status -> {
             DemoEntity saved = demoRepository.findById(id).orElseThrow();
-            // old email is null
             saved.setEmail("frank@example.com");
             demoRepository.save(saved);
             return null;
@@ -187,7 +255,7 @@ public class AuditEngineTest {
         assertEquals(1, logs.size());
         FieldChange fc = logs.get(0).getChanges().get(0);
         assertEquals("email", fc.getFieldName());
-        assertEquals("null", fc.getPreviousValue()) ; // "null" string
+        assertEquals("null", fc.getPreviousValue());
         assertEquals("frank@example.com", fc.getNewValue());
     }
 
@@ -211,7 +279,7 @@ public class AuditEngineTest {
         assertEquals(1, logs.size());
         FieldChange fc = logs.get(0).getChanges().get(0);
         assertEquals("email", fc.getFieldName());
-        assertEquals("grace@example.com", fc.getPreviousValue()) ;
+        assertEquals("grace@example.com", fc.getPreviousValue());
         assertEquals("null", fc.getNewValue());
     }
     

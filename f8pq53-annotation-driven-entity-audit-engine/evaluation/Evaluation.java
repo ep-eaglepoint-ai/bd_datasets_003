@@ -188,10 +188,6 @@ public class Evaluation {
         System.out.println("\n  [2/2] Testing repository_after (Ground Truth)...");
         Map<String, Object> after = runTestsDirect("after");
 
-        if (after != null) {
-            Map<String, Object> tests = (Map<String, Object>) after.get("tests");
-            tests.remove("output");
-        }
 
         Map<String, Object> comparison = new HashMap<>();
         Map<String, Object> afterTests = (Map<String, Object>) after.get("tests");

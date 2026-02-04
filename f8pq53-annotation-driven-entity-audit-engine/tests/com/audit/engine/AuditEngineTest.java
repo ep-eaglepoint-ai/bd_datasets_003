@@ -3,6 +3,7 @@ package com.audit.engine;
 import com.audit.engine.demo.DemoAddress;
 import com.audit.engine.demo.DemoEntity;
 import com.audit.engine.demo.DemoRepository;
+import com.audit.engine.demo.DemoZipCode;
 import com.audit.engine.model.AuditLog;
 import com.audit.engine.model.FieldChange;
 import com.audit.engine.repo.AuditLogRepository;
@@ -10,6 +11,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
@@ -49,6 +53,8 @@ public class AuditEngineTest {
             demoRepository.save(saved);
             return null;
         });
+        
+        // Wait briefly for the listener (in case async, though standard listener is sync)
         
         List<AuditLog> logs = auditLogRepository.findAll();
         assertEquals(1, logs.size());
@@ -112,6 +118,33 @@ public class AuditEngineTest {
     }
 
     @Test
+    void testDeepNestedObjectChange() {
+        Long id = transactionTemplate.execute(status -> {
+            DemoEntity user = new DemoEntity();
+            user.setName("dan");
+            DemoAddress addr = new DemoAddress("CountryA", "CityA");
+            addr.setZipCode(new DemoZipCode("11111"));
+            user.setAddress(addr);
+            return demoRepository.save(user).getId();
+        });
+        
+        transactionTemplate.execute(status -> {
+            DemoEntity saved = demoRepository.findById(id).orElseThrow();
+            saved.getAddress().getZipCode().setCode("22222");
+            demoRepository.save(saved);
+            return null;
+        });
+        
+        List<AuditLog> logs = auditLogRepository.findAll();
+        assertEquals(1, logs.size());
+        // Depending on order or implementation, there should be one change
+        FieldChange fc = logs.get(0).getChanges().get(0);
+        assertEquals("address.zipCode.code", fc.getFieldName());
+        assertEquals("11111", fc.getPreviousValue());
+        assertEquals("22222", fc.getNewValue());
+    }
+
+    @Test
     void testCollectionChange() {
         Long id = transactionTemplate.execute(status -> {
             DemoEntity user = new DemoEntity();
@@ -131,7 +164,8 @@ public class AuditEngineTest {
         assertEquals(1, logs.size());
         FieldChange fc = logs.get(0).getChanges().get(0);
         assertEquals("tags", fc.getFieldName());
-        assertTrue(fc.getNewValue().contains("Added: [tag2]"));
+        // Updated expectation for granular collection changes
+        assertTrue(fc.getNewValue().contains("Added: tag2"));
     }
     
     @Test
@@ -201,12 +235,20 @@ public class AuditEngineTest {
             demoRepository.save(saved);
             return null;
         });
-        
+
         List<AuditLog> logs = auditLogRepository.findAll();
         assertEquals(1, logs.size());
         FieldChange fc = logs.get(0).getChanges().get(0);
         assertEquals("email", fc.getFieldName());
-        assertEquals("grace@example.com", fc.getPreviousValue());
-        assertEquals("null", fc.getNewValue()); 
+        assertEquals("grace@example.com", fc.getPreviousValue()) ;
+        assertEquals("null", fc.getNewValue());
+    }
+    
+    @TestConfiguration
+    static class TestConfig {
+        @Bean
+        public TransactionTemplate transactionTemplate(PlatformTransactionManager tm) {
+            return new TransactionTemplate(tm);
+        }
     }
 }
