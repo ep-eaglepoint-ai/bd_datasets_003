@@ -1,0 +1,12 @@
+{
+            "instance_id": "9AJV9V",
+            "problem_statement": "he fundamental pattern of Agentic AI is the execution loop. While frameworks abstract this away, the core engineering challenge is robust Feedback Propagation. A naive implementation runs func(*args); if this crashes (e.g., ValueError), the entire program exits. The correct solution treats exceptions as data. The runtime must wrap every tool execution in a try...except block, convert the traceback or error message into a string, and append it to the conversation history. This allows the LLM to "see" its mistake and retry (e.g., "Oh, I used the wrong argument type, let me fix that").
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/9ajv9v-basic-react-loop-with-error-feedback",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
