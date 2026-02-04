@@ -1,0 +1,43 @@
+{
+    "instance_id": "FBYM99",
+    "problem_statement": "Create a robust, deterministic, and maintainable test suite for a highly stateful and configurable spectral normalization implementation in PyTorch. The task requires validating correctness across multiple normalization modes, state transitions, caching and scheduling behaviors, gradient flow, and integration with complex model hierarchies, while avoiding flaky or non-reproducible tests.",
+    "base_commit": "repository_before/",
+    "test_patch": "repository_after/test_spectral_normalization.py",
+    "meta_tests": "tests/test_meta.py",
+    "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/fbym99-design-and-implement-a-deterministic-test-suite-for-a-complex-spectral-normalization-system",
+    "environment_setup": "Dockerfile",
+    "FAIL_TO_PASS": [
+        "repository_after/test_spectral_normalization.py::TestParameterSurgery::test_weight_becomes_buffer_linear",
+        "repository_after/test_spectral_normalization.py::TestParameterSurgery::test_weight_orig_is_parameter",
+        "repository_after/test_spectral_normalization.py::TestRemoveSpectralNorm::test_restore_original_parameter",
+        "repository_after/test_spectral_normalization.py::TestExactSVDMode::test_exact_svd_normalizes_to_one",
+        "repository_after/test_spectral_normalization.py::TestPowerIterMode::test_power_iter_buffers_exist",
+        "repository_after/test_spectral_normalization.py::TestPowerIterMode::test_power_iter_updates_uv",
+        "repository_after/test_spectral_normalization.py::TestRayleighMode::test_rayleigh_finite_sigma",
+        "repository_after/test_spectral_normalization.py::TestRayleighMode::test_rayleigh_does_not_update_uv",
+        "repository_after/test_spectral_normalization.py::TestUpdateScheduling::test_warmup_steps_always_updates",
+        "repository_after/test_spectral_normalization.py::TestUpdateScheduling::test_update_every_skips_updates",
+        "repository_after/test_spectral_normalization.py::TestEMASmoothing::test_ema_modifies_sigma_over_steps",
+        "repository_after/test_spectral_normalization.py::TestCaching::test_cached_weight_reused_when_update_skipped",
+        "repository_after/test_spectral_normalization.py::TestAllowNonfinite::test_nonfinite_raises_error",
+        "repository_after/test_spectral_normalization.py::TestGradientFlow::test_gradients_flow_to_weight_orig",
+        "repository_after/test_spectral_normalization.py::TestMultiConfig::test_multi_config_applies_to_weight",
+        "repository_after/test_spectral_normalization.py::TestIntegration::test_apply_wraps_intended_modules",
+        "repository_after/test_spectral_normalization.py::TestTracing::test_trace_enabled_emits_events"
+    ],
+    "PASS_TO_PASS": [
+        "repository_after/test_spectral_normalization.py::TestDeterminism::test_full_forward_deterministic",
+        "repository_after/test_spectral_normalization.py::TestDeterminism::test_backward_deterministic"
+    ],
+    "META_TESTS": [
+        "tests/test_meta.py::TestMetaParameterSurgery::test_detects_missing_buffer_registration",
+        "tests/test_meta.py::TestMetaExactSVD::test_detects_wrong_normalization_factor",
+        "tests/test_meta.py::TestMetaPowerIteration::test_detects_no_uv_update",
+        "tests/test_meta.py::TestMetaUpdateScheduling::test_detects_warmup_not_updating",
+        "tests/test_meta.py::TestMetaNonfiniteCheck::test_detects_missing_validation",
+        "tests/test_meta.py::TestMetaRestoration::test_detects_incomplete_restoration",
+        "tests/test_meta.py::TestMetaIntegration::test_detects_missing_wrap",
+        "tests/test_meta.py::TestMetaGradientFlow::test_detects_detached_gradients",
+        "tests/test_meta.py::TestMetaTracing::test_detects_trace_not_emitting"
+    ]
+}
