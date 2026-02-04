@@ -1,7 +1,4 @@
-# Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
-
-FROM python:3.11-slim
+FROM node:20-slim
 WORKDIR /app
 COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+ENTRYPOINT ["/bin/sh", "-c", "set -e; npm install; if [ \"$REPO_PATH\" = 'repository_before' ]; then npm run test -w repository_before || true; elif [ \"$REPO_PATH\" = 'repository_after' ]; then npm run test -w repository_after; else node evaluation/evaluate.mjs; fi"]

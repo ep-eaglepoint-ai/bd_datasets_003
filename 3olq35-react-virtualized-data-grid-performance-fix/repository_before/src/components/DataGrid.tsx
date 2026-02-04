@@ -7,6 +7,7 @@ import { formatCurrency, formatDate } from '../utils/formatters';
 
 interface DataGridProps {
   data: Transaction[];
+  onLoadMore?: () => void;
 }
 
 const columns: ColumnDef[] = [
@@ -22,7 +23,7 @@ const columns: ColumnDef[] = [
   { id: 'broker', header: 'Broker', accessor: 'broker', width: 120, sortable: true, filterable: true },
 ];
 
-export const DataGrid: React.FC<DataGridProps> = ({ data }) => {
+export const DataGrid: React.FC<DataGridProps> = ({ data, onLoadMore: _onLoadMore }) => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [filters, setFilters] = useState<FilterState[]>([]);
   const [sort, setSort] = useState<SortState | null>(null);

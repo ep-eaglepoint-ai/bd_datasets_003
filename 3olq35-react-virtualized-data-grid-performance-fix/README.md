@@ -1,11 +1,16 @@
-# 3OLQ35 - React Virtualized Data Grid Performance fix
+# React Virtualized Data Grid Performance Fix
 
-    ## Before Test Docker Command
-    <docker before command here>
+**Run tests (repository_before):**
+```bash
+docker compose run --rm -e REPO_PATH=repository_before app
+```
 
-    ## After Test Docker Command
-    <docker after command here>
+**Run tests (repository_after):**
+```bash
+docker compose run --rm -e REPO_PATH=repository_after app
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+**Generate report.json:**
+```bash
+docker compose run --rm app node evaluation/evaluate.mjs
+```

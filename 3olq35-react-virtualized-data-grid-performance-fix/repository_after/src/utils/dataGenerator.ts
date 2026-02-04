@@ -6,7 +6,10 @@ const statuses: ('PENDING' | 'COMPLETED' | 'CANCELLED')[] = ['PENDING', 'COMPLET
 const accounts = ['IRA-001', 'IRA-002', 'BROK-001', 'BROK-002', 'ROTH-001'];
 const brokers = ['Fidelity', 'Schwab', 'Vanguard', 'TD Ameritrade', 'E*TRADE'];
 
-export const generateTransactions = (count: number, startIndex = 0): Transaction[] => {
+export const generateTransactions = (
+  count: number,
+  startIndex = 0
+): Transaction[] => {
   const transactions: Transaction[] = [];
 
   for (let i = 0; i < count; i++) {

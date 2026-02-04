@@ -7,17 +7,19 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
 
 export default defineConfig({
+  root: __dirname,
+  server: {
+    fs: { allow: [projectRoot, __dirname] },
+  },
   plugins: [react()],
   resolve: {
     alias: {
+      '@': path.join(__dirname, 'src'),
       '@impl': path.join(__dirname, 'src'),
       '@testing-library/react': path.join(projectRoot, 'node_modules', '@testing-library/react'),
       '@testing-library/jest-dom': path.join(projectRoot, 'node_modules', '@testing-library/jest-dom'),
       '@testing-library/user-event': path.join(projectRoot, 'node_modules', '@testing-library/user-event'),
     },
-  },
-  server: {
-    fs: { allow: [projectRoot, __dirname] },
   },
   test: {
     globals: true,
