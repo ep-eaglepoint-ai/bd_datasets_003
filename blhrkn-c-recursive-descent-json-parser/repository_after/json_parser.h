@@ -104,6 +104,7 @@ public:
     Lexer(std::string_view input) : input_(input), pos_(0), line_(1), col_(1) {}
     
     Token nextToken();
+    size_t scanArrayElementCount();
     
 private:
     std::string_view input_;

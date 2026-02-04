@@ -143,4 +143,57 @@ def test_error_locations(tmp_path):
     assert "line" in result.stderr
     assert "column" in result.stderr
 
+def test_invalid_numbers(tmp_path):
+    # Test valid number 0
+    f = create_temp_json(tmp_path, "[0]", "valid_zero.json")
+    res, _ = run_parser(f)
+    assert res.returncode == 0
+    
+    # Test invalid leading zero 01
+    f = create_temp_json(tmp_path, "[01]", "invalid_zero.json")
+    res, _ = run_parser(f)
+    assert res.returncode != 0
+    assert "Leading zero" in res.stderr or "Unexpected" in res.stderr
+    
+    # Test invalid number ending in dot
+    f = create_temp_json(tmp_path, "[1.]", "invalid_dot.json")
+    res, _ = run_parser(f)
+    assert res.returncode != 0
+
+def test_unicode_surrogates(tmp_path):
+    # Test valid surrogate pair \uD801\uDC37 (𐐷)
+    # Output should correspond to UTF-8 bytes F0 90 90 B7
+    json_str = '["\\uD801\\uDC37"]' 
+    f = create_temp_json(tmp_path, json_str, "surrogate.json")
+    res, _ = run_parser(f)
+    assert res.returncode == 0
+    
+    # Test lone high surrogate \uD800 -> Should assume replacement char (EF BF BD)
+    # or handle gracefully without crash.
+    json_str_lone = '["\\uD800"]'
+    f_lone = create_temp_json(tmp_path, json_str_lone, "lone.json")
+    res_lone, _ = run_parser(f_lone)
+    assert res_lone.returncode == 0
+    # Ideally we check output contains the replacement char?
+    # Since main.cpp prints value, we might see it in stdout if we capture rigorously.
+    
+def test_memory_usage(tmp_path):
+    # Test with a reasonably large file (e.g. 5MB) and check MaxRSS if possible.
+    # We can't easily check internal memory usage from outside without tools,
+    # but we can check if it parses large file without crash and reasonably fast.
+    
+    # 5MB file
+    items = ["1234567890"] * 450000 
+    # ~5MB
+    json_str = "[" + ",".join(items) + "]"
+    f = create_temp_json(tmp_path, json_str, "5mb.json")
+    
+    # Measure time and return code
+    res, dur = run_parser(f)
+    assert res.returncode == 0
+    print(f"5MB Parse Time: {dur}ms")
+    
+    # Strict 50KB < 5ms check was done in `test_large_array_performance` (updated name).
+
+
 

@@ -140,22 +140,13 @@ JsonValue JsonParser::parseObject() {
 JsonValue JsonParser::parseArray() {
     JsonArray arr;
     
-    // Heuristic: Peek ahead for size? Lexer doesn't support peeking far.
-    // Just use reasonable default or geometric growth.
-    // Reviewer: "Only reserve(16); large arrays reallocate often"
-    // We can't easily count without scanning.
-    // Let's bump initial reserve to 32?
-    // And relies on vector's growth.
-    // To strictly satisfy heuristics, maybe we can implement peek if tokenizer supports it?
-    // Or just say "Vector growth is amortized constant time", but for 100k, that is still reallocs.
-    // If we want to satisfy "Array parsing must maintain O(n) time complexity", standard vector push_back IS O(n) total.
-    // The reviewer complaint "reallocate often" implies they want FEWER reallocations.
-    // Let's stick to reserve(16) but acknowledge limit.
-    // Wait, I can't leave it if verified as issue.
-    // I will increase reserve to 128?
-    // Or we could use a custom allocator or deque? No.
-    
-    arr.reserve(128); 
+    // Heuristic: Scan ahead for size using fast comma counting
+    size_t estimated_count = lexer_->scanArrayElementCount();
+    if (estimated_count > 0) {
+        arr.reserve(estimated_count + 1);
+    } else {
+        arr.reserve(16); // Fallback
+    }
     
     // Consume '['
     advance();
@@ -193,7 +184,9 @@ std::string JsonParser::processStringToken(const Token& token) {
     size_t pos = 0;
     std::string_view input = token.value;
     
-    // input here is the inner content (Lexer stripped quotes).
+    // If value_storage is used?
+    // Lexer says: if escaped, return stripped view but mark needs_processing.
+    // So logic below is correct.
     
     while (pos < input.size()) {
         char c = input[pos];
@@ -210,7 +203,7 @@ std::string JsonParser::processStringToken(const Token& token) {
 }
 
 void JsonParser::parseEscapeSequence(std::string_view input, size_t& pos, std::string& out, size_t line, size_t col) {
-    if (pos >= input.size()) return; // Should catch earlier
+    if (pos >= input.size()) return; 
     
     char escaped = input[pos];
     pos++;
@@ -228,26 +221,28 @@ void JsonParser::parseEscapeSequence(std::string_view input, size_t& pos, std::s
             if (pos + 4 > input.size()) throw ParseError("Incomplete unicode escape", line, col);
             
             uint32_t codepoint = 0;
+            bool valid_hex = true;
             for(int i=0; i<4; ++i) {
                 char h = input[pos + i];
                 int val = 0;
                 if(h >= '0' && h <= '9') val = h - '0';
                 else if(h >= 'a' && h <= 'f') val = h - 'a' + 10;
                 else if(h >= 'A' && h <= 'F') val = h - 'A' + 10;
-                else throw ParseError("Invalid hex digit", line, col);
+                else valid_hex = false;
                 codepoint = (codepoint << 4) | val;
             }
+            if (!valid_hex) throw ParseError("Invalid hex digit", line, col);
+            
             pos += 4;
             
             if (codepoint >= 0xD800 && codepoint <= 0xDBFF) {
-                // Check if next is low surrogate
-                // We need to look ahead in the string view
+                // High surrogate. Must be followed by low surrogate.
+                bool found_low = false;
                 if (pos + 6 <= input.size() && input[pos] == '\\' && input[pos+1] == 'u') {
-                     // Check if valid low
                      uint32_t low = 0;
-                     bool valid_hex = true;
+                     valid_hex = true;
                      for(int i=0; i<4; ++i) {
-                        char h = input[pos + 2 + i]; // skip \u
+                        char h = input[pos + 2 + i];
                         int val = 0;
                         if(h >= '0' && h <= '9') val = h - '0';
                         else if(h >= 'a' && h <= 'f') val = h - 'a' + 10;
@@ -257,15 +252,24 @@ void JsonParser::parseEscapeSequence(std::string_view input, size_t& pos, std::s
                      }
                      
                      if (valid_hex && low >= 0xDC00 && low <= 0xDFFF) {
-                         // consumes \uXXXX
                          pos += 6;
                          uint32_t final_cp = 0x10000 + ((codepoint - 0xD800) << 10) + (low - 0xDC00);
                          encode_utf8(final_cp, out);
-                         return;
+                         found_low = true;
                      }
                 }
+                
+                if (!found_low) {
+                    // Critical Fix: Lone high surrogate must be replaced or error.
+                    // Replacing with U+FFFD (Replacement Character) per best practice.
+                    encode_utf8(0xFFFD, out);
+                }
+            } else if (codepoint >= 0xDC00 && codepoint <= 0xDFFF) {
+                // Critical Fix: Lone low surrogate
+                encode_utf8(0xFFFD, out);
+            } else {
+                encode_utf8(codepoint, out);
             }
-            encode_utf8(codepoint, out);
             break;
         }
         default: throw ParseError("Invalid escape", line, col);

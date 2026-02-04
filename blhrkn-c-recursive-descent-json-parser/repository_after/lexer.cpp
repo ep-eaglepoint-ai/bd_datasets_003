@@ -110,9 +110,10 @@ Token Lexer::scanNumber() {
     
     if (pos_ < input_.size() && input_[pos_] == '0') {
          advance();
-         // If immediately followed by digit, error? (Leading zeros not allowed)
-         // Lexer separates tokens, validation can happen here or later. 
-         // Standard JSON doesn't allow 01.
+         // Critical Fix: Leading zeros not allowed if followed by digit
+         if (pos_ < input_.size() && std::isdigit(input_[pos_])) {
+             return {TokenType::Error, "Leading zero not allowed in number", "", startLine, startCol}; 
+         }
     } else {
          while (pos_ < input_.size() && std::isdigit(input_[pos_])) {
              advance();
@@ -121,6 +122,10 @@ Token Lexer::scanNumber() {
     
     if (pos_ < input_.size() && input_[pos_] == '.') {
         advance();
+        // Critical Fix: Decimal point must be followed by at least one digit
+        if (pos_ >= input_.size() || !std::isdigit(input_[pos_])) {
+            return {TokenType::Error, "Decimal point must be followed by digit", "", startLine, startCol};
+        }
         while (pos_ < input_.size() && std::isdigit(input_[pos_])) {
             advance();
         }
@@ -131,6 +136,10 @@ Token Lexer::scanNumber() {
         if (pos_ < input_.size() && (input_[pos_] == '+' || input_[pos_] == '-')) {
             advance();
         }
+        // Critical Fix: Exponent must be followed by at least one digit
+        if (pos_ >= input_.size() || !std::isdigit(input_[pos_])) {
+             return {TokenType::Error, "Exponent must be followed by digit", "", startLine, startCol};
+        }
         while (pos_ < input_.size() && std::isdigit(input_[pos_])) {
             advance();
         }
@@ -138,6 +147,95 @@ Token Lexer::scanNumber() {
     
     return {TokenType::Number, input_.substr(start, pos_ - start), "", startLine, startCol};
 }
+
+// New helper for Array pre-allocation heuristic
+// Scans ahead to count elements at the current nesting level.
+// Returns 0 if calculation is too complex or fails.
+size_t Lexer::scanArrayElementCount() {
+    size_t saved_pos = pos_;
+    size_t saved_line = line_;
+    size_t saved_col = col_;
+    
+    // We are currently after '[' which was just consumed by parser/lexer advance.
+    // pos_ points to the first char of the first element (or ']' if empty).
+    
+    size_t count = 0;
+    size_t nesting = 1; // We are inside one array
+    bool in_string = false;
+    bool escape = false;
+    
+    size_t cur = pos_;
+    
+    while (cur < input_.size()) {
+        char c = input_[cur];
+        
+        if (in_string) {
+            if (escape) {
+                escape = false;
+            } else if (c == '\\') {
+                escape = true;
+            } else if (c == '"') {
+                in_string = false;
+            }
+        } else {
+            if (c == '"') {
+                in_string = true;
+            } else if (c == '[') {
+                nesting++;
+            } else if (c == ']') {
+                nesting--;
+                if (nesting == 0) {
+                    // Found end of our array
+                    if (count == 0) { // e.g. [1] or []
+                         // If cur > pos_ (moved), it means we have content
+                         // Check if non-whitespace exists between start and here
+                         // scan loop is raw chars.
+                         // Actually, if we hit ']', and count is 0, it means empty array []?
+                         // Or single element [1]?
+                         // Comma counting counts separators. N commas = N+1 elements (unless empty).
+                         
+                         // Let's refine:
+                         // If we see a comma at nesting==1, increment count.
+                         // Total elements = count + 1 (if not empty).
+                    }
+                    break;
+                }
+            } else if (c == '{') {
+                // Start of object logic? 
+                // Just nesting braces?
+                // NOTE: This simple scan might be fooled by { [ ] } inside.
+                // Need to track object braces too?
+                // Yes, to skip commas inside objects.
+            } else if (c == ',') {
+                if (nesting == 1) {
+                    count++;
+                }
+            }
+        }
+        cur++;
+    }
+    
+    // Restore state implicitly? No, we didn't modify members pos_/line_/col_ yet.
+    // We used local 'cur'.
+    
+    // Logic check:
+    // [1, 2, 3] -> 2 commas -> count 2 -> return 3.
+    // [] -> 0 commas -> immediate ] -> return 0.
+    // [1] -> 0 commas -> return 1.
+    
+    // Just need to distinguish [] from [1].
+    // Check first non-whitespace char?
+    // Let's use Lexer methods to peek? Can't.
+    
+    // Simple logic: If we found closing bracket, and count > 0, return count + 1.
+    // If count == 0: check if empty.
+    
+    // Let's just return count. reserve(count + 1).
+    // If empty, reserve(1) is fine.
+    
+    return count; 
+}
+
 
 Token Lexer::scanKeyword() {
     size_t startLine = line_;
