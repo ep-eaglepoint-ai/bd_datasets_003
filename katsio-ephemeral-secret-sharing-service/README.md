@@ -1,11 +1,25 @@
-# KATSIO - Ephemeral-Secret-Sharing-Service
+# Ephemeral Secret Sharing Service
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Project Context
 
-    ## After Test Docker Command
-    <docker after command here>
+The goal is to implement a burn-on-read secret sharing platform using a FastAPI/Redis backend and a React frontend. Secrets are encrypted with AES-256-GCM, stored in Redis with a TTL, and are immediately deleted after a single successful read.
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## Commands
+
+### 1. Setup Environment
+
+Builds the Python application containers, runs tests against the baseline and refactored implementations, and generates an evaluation report.
+
+```bash
+# Run tests against the baseline implementation in repository_before (allowed to fail)
+docker compose run --rm -e REPO_PATH=repository_before backend pytest -q tests && docker compose run --rm frontend pnpm test
+
+# Run tests against the refactored implementation in repository_after
+docker compose run --rm -e REPO_PATH=repository_after backend pytest -q tests && docker compose run --rm frontend pnpm test 
+
+# Run the evaluation script to produce a JSON report under evaluation/reports/
+docker compose run --rm backend python evaluation/evaluation.py
+
+```
+
+

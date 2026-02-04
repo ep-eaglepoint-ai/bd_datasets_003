@@ -6,7 +6,10 @@ __pycache__/
 
 # Node
 node_modules/
+*lock*
 
 # OS
 .DS_Store
-evaluation/*.json
+evaluation/reports
+
+#project
