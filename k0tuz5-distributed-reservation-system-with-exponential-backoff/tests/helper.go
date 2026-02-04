@@ -83,9 +83,7 @@ func resolveOrBuildClient(name, dir string) (string, error) {
 	}
 
 	outPath := filepath.Join(RepoRoot, bin)
-	fmt.Println("repo path", RepoRoot)
 	src := filepath.Join(RepoRoot, dir, "client", "client.go")
-	fmt.Println("final path", src)
 	if _, err := os.Stat(src); err != nil {
 		return "", fmt.Errorf("client entrypoint not found: %s", src)
 	}
