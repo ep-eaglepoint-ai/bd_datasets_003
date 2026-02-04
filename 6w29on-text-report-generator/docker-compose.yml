@@ -1,9 +1,14 @@
+version: '3.8'
 
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
-  app:
+services:
+  test:
     build: .
     command: pytest -q tests
+    volumes:
+      - .:/app
+
+  evaluate:
+    build: .
+    command: python3 evaluation/evaluation.py
     volumes:
       - .:/app
