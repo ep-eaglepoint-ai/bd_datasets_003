@@ -1,11 +1,19 @@
 # YTB49Z - Comprehensive Concurrency-Safe Testing of Order Fulfillment Handler in Go
 
-    ## Before Test Docker Command
-    <docker before command here>
+## After Test Docker Command
 
-    ## After Test Docker Command
-    <docker after command here>
+```
+docker compose run --rm after-tests
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## Meta Test Docker Command
+
+```
+docker compose run --rm meta-tests
+```
+
+## Evaluation Docker Command
+
+```
+docker compose run --rm evaluation
+```

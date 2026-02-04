@@ -1,8 +1,10 @@
 
-        # Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
+        FROM golang:1.22-alpine
 
-        FROM python:3.11-slim
-WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+        WORKDIR /app
+        COPY . /app
+
+        # Disable VCS stamping for reproducible builds.
+        ENV GOFLAGS="-buildvcs=false"
+
+        CMD ["sh", "-c", "echo 'Container ready. Use docker compose run --rm app <command>'"]
