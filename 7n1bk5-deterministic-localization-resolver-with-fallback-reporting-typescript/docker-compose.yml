@@ -1,14 +1,13 @@
-services:
-  after:
-    build: .
-    image: localization-resolver
-    command: /app/node_modules/.bin/ts-node --project tsconfig.json tests/localizationResolver.test.ts
-    volumes:
-      - .:/app
+after:
+  build: .
+  command: npm test
+  volumes:
+    - .:/app
+    - /app/node_modules
 
-  evaluation:
-    build: .
-    image: localization-resolver
-    command: python3 evaluation/evaluation.py
-    volumes:
-      - .:/app
+evaluation:
+  build: .
+  command: python3 evaluation/evaluation.py
+  volumes:
+    - .:/app
+    - /app/node_modules

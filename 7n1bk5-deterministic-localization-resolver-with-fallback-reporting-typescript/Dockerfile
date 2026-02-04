@@ -3,6 +3,8 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 COPY . .
-RUN apk add --no-cache python3 py3-pip
 
-CMD ["/app/node_modules/.bin/ts-node", "--project", "tsconfig.json", "tests/localizationResolver.test.ts"]
+RUN apk add --no-cache python3 py3-pip
+RUN if [ -f requirements.txt ]; then pip install --break-system-packages -r requirements.txt; fi
+
+CMD ["npm", "test"]
