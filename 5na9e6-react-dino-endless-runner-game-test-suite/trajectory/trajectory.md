@@ -8,7 +8,7 @@ Only the correct version must pass.
 
 ## `tests/`
 
-I added files here to act as the **judge**.
+I added the files here to act as the **judge**.
 They control time, animation frames, and keyboard input.
 Docker runs only these tests.
 
