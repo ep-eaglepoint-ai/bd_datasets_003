@@ -16,7 +16,7 @@ docker compose run --rm app bash -c 'cd repository_before && python -c "print(\"
 
 ### 3. Run Tests on repository_after
 ```bash
-c
+docker compose run --rm app bash -c 'cd repository_after && python -m pytest ../tests/test_news_feed.py -v'
 ```
 
 ### 4. Run Evaluation
