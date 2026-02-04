@@ -1,11 +1,13 @@
 # G6JI3T - Hierarchical-Content-Moderation-Pipeline
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Before Test Docker Command
 
-    ## After Test Docker Command
-    <docker after command here>
+docker compose run --rm noop
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## After Test Docker Command
+
+docker compose run --rm tests
+
+## Evaluation Docker Command
+
+docker compose run --rm evaluation
