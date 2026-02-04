@@ -1,0 +1,11 @@
+{
+            "instance_id": "1H6LVZ",
+            "problem_statement": "Develop a dependency resolution engine in Python that handles 'Soft Conflicts'—conditional versioning rules that change based on the presence of unrelated packages in the dependency graph. Unlike standard resolvers (like pip or npm) that rely on static version constraints, this system must evaluate 3rd-order logic: 'Package A requires B@1.0, but if Package C is present anywhere in the graph, Package B must be upgraded to @1.5'.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/1h6lvz-context-aware-dependency-resolver",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
