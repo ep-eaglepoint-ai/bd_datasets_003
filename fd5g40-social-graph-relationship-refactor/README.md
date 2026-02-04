@@ -1,11 +1,10 @@
 # FD5G40 - Social-Graph-Relationship-Refactor
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Before Test Docker Command
+docker compose run --rm app-before
 
-    ## After Test Docker Command
-    <docker after command here>
+## After Test Docker Command
+docker compose run --rm app-after
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## Evaluation Docker Command
+docker compose run --rm evaluation

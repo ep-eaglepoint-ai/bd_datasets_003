@@ -1,11 +1,21 @@
 {
-            "instance_id": "FD5G40",
-            "problem_statement": "Refactor a legacy, I/O-bound user relationship checker into a high-performance, NoSQL-backed graph engine. The objective is to replace O(N) SQL lookups with a dual-layer architecture utilizing a fast-access NoSQL layer (Redis) for O(1) membership checks, while maintaining the flexibility to transition to a formal Graph Database or Relational-Graph hybrid.",
-            "base_commit": "repository_before/",
-            "test_patch": "tests/",
-            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/fd5g40-social-graph-relationship-refactor",
-            "environment_setup": "Dockerfile",
-            "FAIL_TO_PASS": [],
-            "PASS_TO_PASS": []
-        }
-        
+  "instance_id": "FD5G40",
+  "problem_statement": "Refactor a legacy, I/O-bound user relationship checker into a high-performance, NoSQL-backed graph engine. The objective is to replace O(N) SQL lookups with a dual-layer architecture utilizing a fast-access NoSQL layer (Redis) for O(1) membership checks, while maintaining the flexibility to transition to a formal Graph Database or Relational-Graph hybrid.",
+  "base_commit": "repository_before/",
+  "test_patch": "tests/",
+  "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/fd5g40-social-graph-relationship-refactor",
+  "environment_setup": "Dockerfile",
+  "FAIL_TO_PASS": [],
+  "PASS_TO_PASS": [
+    "tests/test_relationship_system.py::test_basic_visibility_check",
+    "tests/test_relationship_system.py::test_o1_lookup_performance",
+    "tests/test_relationship_system.py::test_write_through_cache_synchronization",
+    "tests/test_relationship_system.py::test_mutual_visibility_bidirectional",
+    "tests/test_relationship_system.py::test_separate_block_mute_keyspaces",
+    "tests/test_relationship_system.py::test_bulk_filter_with_pipeline",
+    "tests/test_relationship_system.py::test_thread_safe_connection_pooling",
+    "tests/test_relationship_system.py::test_performance_benchmark_10k_checks",
+    "tests/test_relationship_system.py::test_cache_invalidation_on_delete",
+    "tests/test_relationship_system.py::test_performance_comparison_legacy_vs_refactored"
+  ]
+}
