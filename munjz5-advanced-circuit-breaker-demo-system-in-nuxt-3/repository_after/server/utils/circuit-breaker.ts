@@ -10,6 +10,15 @@ export interface BreakerConfig {
   timeout: number;
   minimumRequestVolume: number;
   failureRateThreshold: number;
+  rollingWindowSize: number;  // Rolling window duration in ms
+  rollingBucketCount: number; // Number of buckets in rolling window
+}
+
+export interface TimeBucket {
+  timestamp: number;
+  successes: number;
+  failures: number;
+  timeouts: number;
 }
 
 export interface Metrics {
@@ -18,7 +27,12 @@ export interface Metrics {
   totalTimeouts: number;
   failureRate: number;
   totalRequests: number;
-  buckets: any[];
+  buckets: TimeBucket[];
+  windowSuccesses: number;
+  windowFailures: number;
+  windowTimeouts: number;
+  windowRequests: number;
+  windowFailureRate: number;
 }
 
 export interface BreakerStats {
@@ -52,7 +66,9 @@ const DEFAULT_CONFIG: BreakerConfig = {
   successThreshold: 3,
   timeout: 5000,
   minimumRequestVolume: 10,
-  failureRateThreshold: 50
+  failureRateThreshold: 50,
+  rollingWindowSize: 60000,  // 60 seconds rolling window
+  rollingBucketCount: 10     // 10 buckets (6 seconds each)
 };
 
 // Breaker instance
@@ -65,6 +81,7 @@ interface CircuitBreakerInstance {
   failures: number;
   timeouts: number;
   config: BreakerConfig;
+  buckets: TimeBucket[];
 }
 
 const breakers = new Map<string, CircuitBreakerInstance>();
@@ -118,7 +135,8 @@ function getBreaker(serviceKey: string, config?: Partial<BreakerConfig>): Circui
       successes: 0,
       failures: 0,
       timeouts: 0,
-      config: { ...DEFAULT_CONFIG, ...config }
+      config: { ...DEFAULT_CONFIG, ...config },
+      buckets: []
     });
   } else if (config) {
     const breaker = breakers.get(serviceKey)!;
@@ -127,15 +145,90 @@ function getBreaker(serviceKey: string, config?: Partial<BreakerConfig>): Circui
   return breakers.get(serviceKey)!;
 }
 
+// Get the current bucket for the rolling window, creating if necessary
+function getCurrentBucket(breaker: CircuitBreakerInstance): TimeBucket {
+  const now = Date.now();
+  const bucketDuration = breaker.config.rollingWindowSize / breaker.config.rollingBucketCount;
+  const bucketTimestamp = Math.floor(now / bucketDuration) * bucketDuration;
+
+  // Find existing bucket for current time slot
+  let bucket = breaker.buckets.find(b => b.timestamp === bucketTimestamp);
+
+  if (!bucket) {
+    bucket = {
+      timestamp: bucketTimestamp,
+      successes: 0,
+      failures: 0,
+      timeouts: 0
+    };
+    breaker.buckets.push(bucket);
+
+    // Clean up old buckets outside the rolling window
+    const windowStart = now - breaker.config.rollingWindowSize;
+    breaker.buckets = breaker.buckets.filter(b => b.timestamp >= windowStart);
+  }
+
+  return bucket;
+}
+
+// Record a success in the rolling window
+function recordSuccess(breaker: CircuitBreakerInstance): void {
+  const bucket = getCurrentBucket(breaker);
+  bucket.successes++;
+}
+
+// Record a failure in the rolling window
+function recordFailure(breaker: CircuitBreakerInstance): void {
+  const bucket = getCurrentBucket(breaker);
+  bucket.failures++;
+}
+
+// Record a timeout in the rolling window
+function recordTimeout(breaker: CircuitBreakerInstance): void {
+  const bucket = getCurrentBucket(breaker);
+  bucket.timeouts++;
+}
+
+// Get aggregated metrics from the rolling window
+function getWindowMetrics(breaker: CircuitBreakerInstance): { successes: number; failures: number; timeouts: number } {
+  const now = Date.now();
+  const windowStart = now - breaker.config.rollingWindowSize;
+
+  // Filter to only buckets within the rolling window
+  const activeBuckets = breaker.buckets.filter(b => b.timestamp >= windowStart);
+
+  return activeBuckets.reduce(
+    (acc, bucket) => ({
+      successes: acc.successes + bucket.successes,
+      failures: acc.failures + bucket.failures,
+      timeouts: acc.timeouts + bucket.timeouts
+    }),
+    { successes: 0, failures: 0, timeouts: 0 }
+  );
+}
+
 function getMetrics(breaker: CircuitBreakerInstance): Metrics {
   const total = breaker.successes + breaker.failures + breaker.timeouts;
+  const windowMetrics = getWindowMetrics(breaker);
+  const windowTotal = windowMetrics.successes + windowMetrics.failures + windowMetrics.timeouts;
+
+  // Get active buckets within the rolling window
+  const now = Date.now();
+  const windowStart = now - breaker.config.rollingWindowSize;
+  const activeBuckets = breaker.buckets.filter(b => b.timestamp >= windowStart);
+
   return {
     totalSuccesses: breaker.successes,
     totalFailures: breaker.failures,
     totalTimeouts: breaker.timeouts,
     failureRate: total > 0 ? (breaker.failures / total) * 100 : 0,
     totalRequests: total,
-    buckets: []
+    buckets: activeBuckets,
+    windowSuccesses: windowMetrics.successes,
+    windowFailures: windowMetrics.failures,
+    windowTimeouts: windowMetrics.timeouts,
+    windowRequests: windowTotal,
+    windowFailureRate: windowTotal > 0 ? (windowMetrics.failures / windowTotal) * 100 : 0
   };
 }
 
@@ -165,6 +258,7 @@ function transitionState(breaker: CircuitBreakerInstance, serviceKey: string, ne
     breaker.failures = 0;
     breaker.timeouts = 0;
     breaker.successes = 0;
+    breaker.buckets = [];  // Clear rolling window buckets
   } else if (newState === 'HALF_OPEN') {
     // Reset consecutive successes to start counting probes
     breaker.consecutiveSuccesses = 0;
@@ -177,12 +271,15 @@ function checkStateTransition(breaker: CircuitBreakerInstance, serviceKey: strin
 
   if (breaker.state === 'CLOSED') {
     // Transition to OPEN if failure threshold exceeded
-    // Check both: absolute failure count OR failure rate (when we have enough requests)
-    if (breaker.failures >= breaker.config.failureThreshold) {
-      transitionState(breaker, serviceKey, 'OPEN', `Failure threshold exceeded: ${breaker.failures} failures`);
-    } else if (metrics.totalRequests >= breaker.config.minimumRequestVolume &&
-               metrics.failureRate >= breaker.config.failureRateThreshold) {
-      transitionState(breaker, serviceKey, 'OPEN', `Failure rate threshold exceeded: ${metrics.failureRate.toFixed(1)}%`);
+    // Use rolling window metrics for more accurate recent failure tracking
+    const windowFailures = metrics.windowFailures + metrics.windowTimeouts;
+
+    // Check both: absolute failure count in window OR failure rate (when we have enough requests in window)
+    if (windowFailures >= breaker.config.failureThreshold) {
+      transitionState(breaker, serviceKey, 'OPEN', `Failure threshold exceeded in rolling window: ${windowFailures} failures`);
+    } else if (metrics.windowRequests >= breaker.config.minimumRequestVolume &&
+               metrics.windowFailureRate >= breaker.config.failureRateThreshold) {
+      transitionState(breaker, serviceKey, 'OPEN', `Failure rate threshold exceeded in rolling window: ${metrics.windowFailureRate.toFixed(1)}%`);
     }
   } else if (breaker.state === 'OPEN') {
     // Transition to HALF_OPEN after reset timeout
@@ -267,6 +364,7 @@ export async function executeWithBreaker<T>(
 
     if (outcome.timedOut) {
       breaker.timeouts++;
+      recordTimeout(breaker);
       logEvent(serviceKey, 'TIMEOUT', { timeoutMs: breaker.config.timeout });
 
       if (breaker.state === 'HALF_OPEN') {
@@ -287,6 +385,7 @@ export async function executeWithBreaker<T>(
 
     // Success
     breaker.successes++;
+    recordSuccess(breaker);
     const duration = Date.now() - startTime;
     logEvent(serviceKey, 'SUCCESS', { duration });
 
@@ -305,6 +404,7 @@ export async function executeWithBreaker<T>(
     };
   } catch (error) {
     breaker.failures++;
+    recordFailure(breaker);
     const duration = Date.now() - startTime;
     const errorMessage = error instanceof Error ? error.message : String(error);
     logEvent(serviceKey, 'FAILURE', { error: errorMessage, duration });
@@ -361,6 +461,7 @@ export function resetBreaker(serviceKey: string): void {
     breaker.successes = 0;
     breaker.failures = 0;
     breaker.timeouts = 0;
+    breaker.buckets = [];
   }
 }
 

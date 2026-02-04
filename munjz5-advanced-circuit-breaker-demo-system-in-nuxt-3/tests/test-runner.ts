@@ -214,20 +214,46 @@ const tests: Array<{ requirement: number; name: string; fn: TestFunction }> = [
     name: 'Request failures and timeouts tracked using rolling time window',
     fn: async () => {
       await resetBreakers();
+      // Make a request to populate buckets
       await makeRequest('fast');
       const statusResponse = await fetch(`${BASE_URL}/api/breaker/status?serviceKey=upstream-fast`);
       const status = await statusResponse.json();
       if (!status.status.metrics) {
         throw new Error('Expected metrics in status');
       }
-      const requiredFields = ['totalSuccesses', 'totalFailures', 'totalTimeouts', 'failureRate', 'buckets'];
-      for (const field of requiredFields) {
+      // Check lifetime totals
+      const lifetimeFields = ['totalSuccesses', 'totalFailures', 'totalTimeouts', 'failureRate', 'totalRequests'];
+      for (const field of lifetimeFields) {
         if (!(field in status.status.metrics)) {
-          throw new Error(`Missing metric field: ${field}`);
+          throw new Error(`Missing lifetime metric field: ${field}`);
         }
       }
+      // Check rolling window metrics
+      const windowFields = ['windowSuccesses', 'windowFailures', 'windowTimeouts', 'windowRequests', 'windowFailureRate'];
+      for (const field of windowFields) {
+        if (!(field in status.status.metrics)) {
+          throw new Error(`Missing rolling window metric field: ${field}`);
+        }
+      }
+      // Check buckets array exists and has proper structure
       if (!Array.isArray(status.status.metrics.buckets)) {
         throw new Error('Expected buckets to be an array');
+      }
+      // Verify buckets contain data after request
+      if (status.status.metrics.buckets.length === 0) {
+        throw new Error('Expected buckets to contain time-windowed data after request');
+      }
+      // Verify bucket structure
+      const bucket = status.status.metrics.buckets[0];
+      const bucketFields = ['timestamp', 'successes', 'failures', 'timeouts'];
+      for (const field of bucketFields) {
+        if (!(field in bucket)) {
+          throw new Error(`Missing bucket field: ${field}`);
+        }
+      }
+      // Verify window metrics reflect the request we made
+      if (status.status.metrics.windowSuccesses < 1) {
+        throw new Error('Expected windowSuccesses to track the successful request');
       }
     }
   },
