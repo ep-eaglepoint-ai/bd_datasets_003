@@ -549,3 +549,137 @@ def test_pipelining_10_fast_1_slow():
             assert data['status'] == 'completed'
     
     asyncio.run(run_test())
+
+
+def test_coalescing_5_requests_end_to_end():
+    """Requirement 12: 5 requests in single sendall() through handle_client - end-to-end test"""
+    from main import handle_client
+    
+    async def run_test():
+        # Create exactly 5 requests with different IDs
+        requests = []
+        for i in range(5):
+            body = json.dumps({'sleep': 0.01}).encode('utf-8')
+            header = struct.pack('>III', MAGIC_NUMBER, 1000 + i, len(body))
+            requests.append(header + body)
+        
+        # Concatenate all 5 into single chunk (simulating single socket.sendall())
+        all_data = b''.join(requests)
+        chunks = [all_data, b'']  # Single sendall + EOF
+        
+        reader = MockStreamReader(chunks)
+        writer = MockStreamWriter()
+        
+        # Run handle_client end-to-end
+        await handle_client(reader, writer)
+        await asyncio.sleep(0.1)
+        
+        # Parse responses
+        buffer = StatefulBuffer()
+        responses = buffer.feed(bytes(writer.buffer))
+        
+        # Verify exactly 5 responses
+        assert len(responses) == 5, f"Expected 5 responses, got {len(responses)}"
+        
+        # Verify all IDs present and correct
+        response_ids = sorted([resp[0] for resp in responses])
+        assert response_ids == [1000, 1001, 1002, 1003, 1004]
+        
+        # Verify all responses are valid
+        for req_id, resp_body in responses:
+            data = json.loads(resp_body.decode('utf-8'))
+            assert data['request_id'] == req_id
+            assert data['status'] == 'completed'
+    
+    asyncio.run(run_test())
+
+
+def test_sigint_drain_integration():
+    """Requirement 8: Upon SIGINT, server must stop accepting new connections but process pending ones."""
+    import subprocess
+    import socket
+    import signal
+    import time
+    import os
+
+    # Path to main.py
+    main_path = Path(__file__).parent.parent / 'repository_after' / 'main.py'
+
+    # Start server in subprocess
+    # Using sys.executable to ensure we use the same python version
+    proc = subprocess.Popen(
+        [sys.executable, str(main_path)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE
+    )
+
+    try:
+        # Give server time to start (it needs to bind to port 8888)
+        time.sleep(1.0)
+
+        # 1. Connect and send a slow request
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect(('127.0.0.1', 8888))
+
+        request_id = 5000
+        sleep_time = 1.0  # Server will sleep for 1s
+        body = json.dumps({'sleep': sleep_time}).encode('utf-8')
+        header = struct.pack('>III', MAGIC_NUMBER, request_id, len(body))
+        
+        sock.sendall(header + body)
+
+        # 2. Wait a bit so the server's handle_client starts processing
+        time.sleep(0.3)
+
+        # 3. Send SIGINT to the server process
+        sigint_sent_at = time.time()
+        proc.send_signal(signal.SIGINT)
+
+        # 4. Attempt to connect NEW client - should fail (eventually)
+        # Note: Depending on OS/timing, the listen socket might still accept but close immediately
+        # or the connection might be refused.
+        
+        # 5. Receive response for the pending request
+        # The server MUST process this even after receiving SIGINT
+        sock.settimeout(2.0)
+        response_data = b''
+        # Read full header + body
+        while True:
+            try:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    break
+                response_data += chunk
+            except socket.timeout:
+                break
+        
+        sock.close()
+
+        # 6. Wait for process to exit
+        proc.wait(timeout=5.0)
+        exit_at = time.time()
+        
+        # Verify exit duration: must have waited at least for the rest of the sleep
+        # sleep_time(1.0) - wait_time(0.3) = 0.7s expected minimum wait after SIGINT
+        wait_duration = exit_at - sigint_sent_at
+        assert wait_duration >= 0.5, f"Server exited too fast ({wait_duration:.2f}s), didn't drain tasks"
+
+        # Verify response integrity
+        buffer = StatefulBuffer()
+        results = buffer.feed(response_data)
+        assert len(results) == 1, f"Expected 1 response, got {len(results)}"
+        assert results[0][0] == request_id
+        
+        resp_payload = json.loads(results[0][1].decode('utf-8'))
+        assert resp_payload['status'] == 'completed'
+        
+        # Verify clean exit code (0)
+        assert proc.returncode == 0
+
+    finally:
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=1.0)
+            except subprocess.TimeoutExpired:
+                proc.kill()

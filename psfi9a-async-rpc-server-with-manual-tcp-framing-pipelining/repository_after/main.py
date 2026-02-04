@@ -109,6 +109,7 @@ async def main():
     import signal
     
     shutdown_event = asyncio.Event()
+    client_tasks = set()
     
     def signal_handler():
         shutdown_event.set()
@@ -116,24 +117,34 @@ async def main():
     loop = asyncio.get_running_loop()
     loop.add_signal_handler(signal.SIGINT, signal_handler)
     
-    server = await asyncio.start_server(handle_client, '0.0.0.0', 8888)
+    def wrapped_handle_client(reader, writer):
+        task = asyncio.create_task(handle_client(reader, writer))
+        client_tasks.add(task)
+        task.add_done_callback(client_tasks.discard)
+    
+    server = await asyncio.start_server(wrapped_handle_client, '0.0.0.0', 8888)
     
     async with server:
         # Serve in background task
         serve_task = asyncio.create_task(server.serve_forever())
         
         # Wait for shutdown signal
-        await shutdown_event.wait()
-        
-        # Cancel serve task to stop accepting new connections
-        serve_task.cancel()
         try:
-            await serve_task
-        except asyncio.CancelledError:
-            pass
-        
-        # server.wait_closed() waits for all client handlers to finish
-        await server.wait_closed()
+            await shutdown_event.wait()
+        finally:
+            # Stop accepting new connections
+            server.close()
+            serve_task.cancel()
+            try:
+                await serve_task
+            except asyncio.CancelledError:
+                pass
+            
+            # Wait for all current client tasks to finish
+            if client_tasks:
+                await asyncio.gather(*client_tasks, return_exceptions=True)
+            
+            await server.wait_closed()
 
 
 if __name__ == '__main__':
