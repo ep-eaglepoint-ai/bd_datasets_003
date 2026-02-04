@@ -1,11 +1,10 @@
 # EUYB0B - Build Advanced Multi-Notation CLI Calculator in Python
 
-    ## Before Test Docker Command
-    <docker before command here>
+```bash
+docker compose run --rm app pytest
+```
 
-    ## After Test Docker Command
-    <docker after command here>
-
-    ## Evaluation Docker Command
-    <evaluation command here>
+```bash
+docker compose run --rm app python evaluation/evaluation.py
+```
     

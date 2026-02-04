@@ -1,8 +1,17 @@
 
-        # Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
+FROM python:3.11-slim
 
-        FROM python:3.11-slim
 WORKDIR /app
-COPY . /app
+
+# Copy requirements first for better caching
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+# Copy the rest of the application
+COPY . .
+
+# Set PYTHONPATH to include repository_after for imports
+ENV PYTHONPATH=/app/repository_after:/app
+
+# Default command
+CMD ["python", "-m", "pytest", "-v", "tests/"]
