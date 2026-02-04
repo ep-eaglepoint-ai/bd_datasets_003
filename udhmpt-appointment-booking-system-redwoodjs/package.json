@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "test": "npx jest --runInBand"
+    "test": "npx jest --runInBand tests/provider_onboarding.test.ts tests/security/authentication_authorization.test.ts tests/security/sql_injection_prevention.test.ts tests/performance/large_dataset_handling.test.ts tests/performance/realtime_update_performance.test.ts tests/integration/end_to_end_workflows.test.ts --silent"
   },
   "dependencies": {
     "luxon": "^3.3.0"

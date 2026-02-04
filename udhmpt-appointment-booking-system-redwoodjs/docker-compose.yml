@@ -14,7 +14,7 @@ services:
       CI: 'true'
     volumes:
       - .:/app
-    command: sh -c "npm ci --silent 2>/dev/null || npm install --silent; npm test --silent"
+    command: sh -c "npm ci --silent 2>/dev/null || npm install --silent; npm test"
 
   evaluate:
     build: .

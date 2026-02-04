@@ -1,0 +1,13 @@
+mac@macs-MacBook-Pro udhmpt-appointment-booking-system-redwoodjs % docker compose run --rm test
+Container udhmpt-appointment-booking-system-redwoodjs-test-run-e76e5c7850dd Creating 
+Container udhmpt-appointment-booking-system-redwoodjs-test-run-e76e5c7850dd Created 
+● Validation Error:
+
+  Module ts-jest in the transform option was not found.
+         <rootDir> is: /app
+
+  Configuration Documentation:
+  https://jestjs.io/docs/configuration
+
+
+mac@macs-MacBook-Pro udhmpt-appointment-booking-system-redwoodjs % 

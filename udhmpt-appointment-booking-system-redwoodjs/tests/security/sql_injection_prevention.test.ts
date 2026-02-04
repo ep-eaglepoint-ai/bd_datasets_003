@@ -425,7 +425,6 @@ describe('SQL Injection Prevention Tests', () => {
         const isSuspicious = suspiciousPatterns.some(pattern => pattern.test(query));
         
         if (isSuspicious) {
-          console.warn('Suspicious query detected:', query);
           return true;
         }
         

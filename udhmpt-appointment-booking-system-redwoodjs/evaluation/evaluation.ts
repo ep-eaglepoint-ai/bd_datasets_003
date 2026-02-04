@@ -49,8 +49,8 @@ function runEvaluate() {
   const runId = randomUUID();
   const startedAt = new Date();
 
-  // Compose a shell command that prints node info, environment JSON, runs Jest directly with JSON output file and prints it
-  const shCommand = `node -v; node -p \"JSON.stringify({node_version:process.version, platform:process.platform, os:require('os').type(), architecture:process.arch, hostname:require('os').hostname()})\"; npx jest --runInBand --json --outputFile=/tmp/jest-results.json || true; cat /tmp/jest-results.json`;
+  // Compose a shell command that prints node info, environment JSON, runs npm test with JSON output and prints it
+  const shCommand = `node -v; node -p \"JSON.stringify({node_version:process.version, platform:process.platform, os:require('os').type(), architecture:process.arch, hostname:require('os').hostname()})\"; npm test -- --json --outputFile=/tmp/jest-results.json --silent || true; cat /tmp/jest-results.json`;
 
   const proc = spawnSync('docker', ['compose', 'run', '--rm', 'test', 'sh', '-c', shCommand], { encoding: 'utf8', maxBuffer: 50 * 1024 * 1024 });
 
@@ -72,7 +72,7 @@ function runEvaluate() {
   if (!jestJson) {
     fallbackUsed = true;
     try {
-      const localOut = spawnSync('npx', ['jest', '--runInBand', '--json', '--outputFile=/tmp/jest-results-local.json'], { encoding: 'utf8', maxBuffer: 50 * 1024 * 1024 });
+      const localOut = spawnSync('npm', ['test', '--', '--json', '--outputFile=/tmp/jest-results-local.json', '--silent'], { encoding: 'utf8', maxBuffer: 50 * 1024 * 1024 });
       const localStdout = localOut.stdout || '';
       const localStderr = localOut.stderr || '';
       const localJest = extractJestJson(localStdout);

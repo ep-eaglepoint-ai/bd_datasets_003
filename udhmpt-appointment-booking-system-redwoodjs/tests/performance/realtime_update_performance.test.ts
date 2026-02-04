@@ -35,7 +35,7 @@ class MockRealtimeSystem {
         try {
           callback(data);
         } catch (error) {
-          console.error('Subscriber error:', error);
+          // Silently handle subscriber errors
         }
       });
     }

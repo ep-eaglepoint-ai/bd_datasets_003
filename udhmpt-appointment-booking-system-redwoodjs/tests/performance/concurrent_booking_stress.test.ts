@@ -185,7 +185,7 @@ describe('Concurrent Booking Stress Tests - Realistic', () => {
     const services = await Promise.all(servicePromises);
     
     expect(services).toHaveLength(3);
-    services.forEach((service, index) => {
+    services.forEach((service: any, index: number) => {
       expect(service.name).toBe(`Service ${index}`);
       expect(service.durationMinutes).toBe(30 + (index * 15));
     });
