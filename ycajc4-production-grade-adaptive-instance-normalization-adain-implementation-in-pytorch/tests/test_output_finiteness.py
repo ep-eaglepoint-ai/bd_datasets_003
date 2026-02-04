@@ -86,7 +86,7 @@ def test_output_finiteness_with_both_zero_variance():
     assert torch.allclose(result_mean, style_mean, atol=1e-5)
     
     result_std = result.std(dim=(2, 3), keepdim=True, unbiased=False)
-    assert torch.all(result_std > 0)  # Should be > 0 due to epsilon
+    assert torch.all(result_std > 0) 
 
 
 def test_output_finiteness_with_mixed_precision_fp16():

@@ -308,5 +308,5 @@ def test_mixed_precision_extreme_values():
     style_mean = style.mean(dim=(2, 3), keepdim=True)
     style_std = style.std(dim=(2, 3), keepdim=True, unbiased=False)
     
-    assert torch.allclose(result_mean, style_mean, atol=1e-2)  # Looser tolerance for extreme values
+    assert torch.allclose(result_mean, style_mean, atol=1e-2) 
     assert torch.allclose(result_std, style_std, atol=1e-2)

@@ -116,7 +116,7 @@ def test_spatial_dimensions_large_resolution():
     style_mean = style.mean(dim=(2, 3), keepdim=True)
     style_std = style.std(dim=(2, 3), keepdim=True, unbiased=False)
     
-    assert torch.allclose(result_mean, style_mean, atol=1e-4)  # Looser tolerance for large tensors
+    assert torch.allclose(result_mean, style_mean, atol=1e-4) 
     assert torch.allclose(result_std, style_std, atol=1e-4)
 
 
@@ -195,7 +195,7 @@ def test_spatial_dimensions_maximum_size():
     style_mean = style.mean(dim=(2, 3), keepdim=True)
     style_std = style.std(dim=(2, 3), keepdim=True, unbiased=False)
     
-    assert torch.allclose(result_mean, style_mean, atol=1e-4)  # Looser tolerance for large tensors
+    assert torch.allclose(result_mean, style_mean, atol=1e-4)
     assert torch.allclose(result_std, style_std, atol=1e-4)
 
 

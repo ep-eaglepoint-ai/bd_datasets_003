@@ -118,7 +118,7 @@ def test_large_batch_broadcast():
     result_mean = result.mean(dim=(2, 3), keepdim=True)
     result_std = result.std(dim=(2, 3), keepdim=True, unbiased=False)
     
-    assert torch.allclose(result_mean, style_mean, atol=1e-4)  # Looser tolerance for large tensors
+    assert torch.allclose(result_mean, style_mean, atol=1e-4)
     assert torch.allclose(result_std, style_std, atol=1e-4)
 
 
