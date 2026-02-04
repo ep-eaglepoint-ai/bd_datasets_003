@@ -15,18 +15,10 @@ module.exports = {
   transformIgnorePatterns: [
     'node_modules/(?!(.*\\.mjs$))'
   ],
-  testMatch: [
-    '<rootDir>/__tests__/**/*.test.{js,jsx}'
-  ],
   testPathIgnorePatterns: [
-    '/node_modules/',
-    '/test-suite/'
-  ],
-  modulePathIgnorePatterns: [
-    '/test-suite/'
+    '/node_modules/'
   ],
   moduleFileExtensions: ['js', 'jsx', 'json', 'node'],
   verbose: true,
-  testTimeout: 15000,
-  resolver: undefined
+  testTimeout: 15000
 };

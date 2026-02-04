@@ -1679,19 +1679,6 @@ index f768e33..0000000
 -
 -- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
 -- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
-diff --git a/repository_after/babel.config.cjs b/repository_after/babel.config.cjs
-new file mode 100644
-index 0000000..8e8776e
---- /dev/null
-+++ b/repository_after/babel.config.cjs
-@@ -0,0 +1,6 @@
-+module.exports = {
-+  presets: [
-+    ['@babel/preset-env', { targets: { node: 'current' } }],
-+    ['@babel/preset-react', { runtime: 'automatic' }]
-+  ]
-+};
-\ No newline at end of file
 diff --git a/repository_before/index.html b/repository_before/index.html
 deleted file mode 100644
 index 4ce4133..0000000
@@ -1711,45 +1698,6 @@ index 4ce4133..0000000
 -    <script type="module" src="/src/main.jsx"></script>
 -  </body>
 -</html>
-diff --git a/repository_after/jest.config.cjs b/repository_after/jest.config.cjs
-new file mode 100644
-index 0000000..00653f0
---- /dev/null
-+++ b/repository_after/jest.config.cjs
-@@ -0,0 +1,32 @@
-+module.exports = {
-+  testEnvironment: 'jsdom',
-+  setupFilesAfterEnv: ['<rootDir>/setupTests.js'],
-+  roots: ['<rootDir>'],
-+  modulePaths: ['<rootDir>'],
-+  moduleDirectories: ['node_modules', '<rootDir>'],
-+  moduleNameMapper: {
-+    '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
-+    '\\.(jpg|jpeg|png|gif|webp|svg)$': '<rootDir>/mocks/fileMock.cjs',
-+    '^@/(.*)$': '<rootDir>/src/$1'
-+  },
-+  transform: {
-+    '^.+\\.(js|jsx)$': 'babel-jest'
-+  },
-+  transformIgnorePatterns: [
-+    'node_modules/(?!(.*\\.mjs$))'
-+  ],
-+  testMatch: [
-+    '<rootDir>/__tests__/**/*.test.{js,jsx}'
-+  ],
-+  testPathIgnorePatterns: [
-+    '/node_modules/',
-+    '/test-suite/'
-+  ],
-+  modulePathIgnorePatterns: [
-+    '/test-suite/'
-+  ],
-+  moduleFileExtensions: ['js', 'jsx', 'json', 'node'],
-+  verbose: true,
-+  testTimeout: 15000,
-+  resolver: undefined
-+};
-\ No newline at end of file
 diff --git a/repository_after/mocks/fileMock.cjs b/repository_after/mocks/fileMock.cjs
 new file mode 100644
 index 0000000..84c1da6
@@ -5491,12 +5439,13 @@ index fa74880..0000000
 -    }
 -  }
 -}
-diff --git a/repository_before/package.json b/repository_after/package.json
-index 60be96a..0feee9c 100644
+diff --git a/repository_before/package.json b/repository_before/package.json
+deleted file mode 100644
+index 60be96a..0000000
 --- a/repository_before/package.json
-+++ b/repository_after/package.json
-@@ -1,26 +1,25 @@
- {
++++ /dev/null
+@@ -1,26 +0,0 @@
+-{
 -  "name": "dogpicapi",
 -  "private": true,
 -  "version": "0.0.0",
@@ -5522,31 +5471,6 @@ index 60be96a..0feee9c 100644
 -    "vite": "^4.4.5"
 -  }
 -}
-+    "name": "dog-picture-generator-tests",
-+    "version": "1.0.0",
-+    "description": "Test suite for React Random Dog Picture Generator",
-+    "scripts": {
-+        "test": "jest --config jest.config.cjs --detectOpenHandles --forceExit"
-+    },
-+    "dependencies": {
-+        "react": "^18.2.0",
-+        "react-dom": "^18.2.0"
-+    },
-+    "devDependencies": {
-+        "@babel/core": "^7.23.0",
-+        "@babel/preset-env": "^7.22.20",
-+        "@babel/preset-react": "^7.22.15",
-+        "@jest/globals": "^29.7.0",
-+        "@testing-library/jest-dom": "^6.1.4",
-+        "@testing-library/react": "^14.0.0",
-+        "@testing-library/user-event": "^14.5.1",
-+        "babel-jest": "^29.7.0",
-+        "identity-obj-proxy": "^3.0.0",
-+        "jest": "^29.7.0",
-+        "jest-environment-jsdom": "^29.7.0"
-+    }
-+}
-\ No newline at end of file
 diff --git a/repository_before/public/dog.svg b/repository_before/public/dog.svg
 deleted file mode 100644
 index 3b8afda..0000000
@@ -5570,72 +5494,6 @@ index 3b8afda..0000000
 -		S48.455,16.861,45.727,15.602z"/>
 -</g>
 -</svg>
-\ No newline at end of file
-diff --git a/repository_after/setupTests.js b/repository_after/setupTests.js
-new file mode 100644
-index 0000000..439181e
---- /dev/null
-+++ b/repository_after/setupTests.js
-@@ -0,0 +1,59 @@
-+import '@testing-library/jest-dom';
-+import { jest } from '@jest/globals';
-+
-+// Mock localStorage
-+const localStorageMock = (() => {
-+  let store = {};
-+  return {
-+    getItem: jest.fn((key) => store[key] || null),
-+    setItem: jest.fn((key, value) => {
-+      store[key] = String(value);
-+    }),
-+    removeItem: jest.fn((key) => {
-+      delete store[key];
-+    }),
-+    clear: jest.fn(() => {
-+      store = {};
-+    }),
-+    get length() {
-+      return Object.keys(store).length;
-+    },
-+    key: jest.fn((index) => Object.keys(store)[index] || null)
-+  };
-+})();
-+
-+Object.defineProperty(global, 'localStorage', {
-+  value: localStorageMock,
-+  writable: true
-+});
-+
-+// Mock fetch globally
-+global.fetch = jest.fn();
-+
-+// Suppress console in tests
-+const originalError = console.error;
-+const originalWarn = console.warn;
-+const originalLog = console.log;
-+
-+global.beforeAll(() => {
-+  console.error = jest.fn();
-+  console.warn = jest.fn();
-+  console.log = jest.fn();
-+});
-+
-+global.afterAll(() => {
-+  console.error = originalError;
-+  console.warn = originalWarn;
-+  console.log = originalLog;
-+});
-+
-+// Reset mocks before each test
-+global.beforeEach(() => {
-+  jest.clearAllMocks();
-+  localStorageMock.clear();
-+  global.fetch.mockReset();
-+});
-+
-+global.afterEach(() => {
-+  jest.restoreAllMocks();
-+});
 \ No newline at end of file
 diff --git a/repository_before/src/App.jsx b/repository_before/src/App.jsx
 deleted file mode 100644
