@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import React from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 
-import PomodoroTimer from "../components/PomodoroTimer";
+import PomodoroTimer from "../repository_after/components/PomodoroTimer";
 
 const HISTORY_KEY = "pomodoro_focus_history_v1";
 
@@ -87,6 +87,10 @@ describe("PomodoroTimer requirements", () => {
     expect(getTimerText()).not.toBe(paused);
 
     click("btn-reset");
+    expect(getTimerText()).toBe("25:00");
+
+    // Reset should stop a running timer (no further ticking).
+    advance(3000);
     expect(getTimerText()).toBe("25:00");
     expect(screen.getByTestId("history-list")).toHaveTextContent(
       "No completed focus sessions yet"
@@ -237,6 +241,12 @@ describe("PomodoroTimer requirements", () => {
     render(<PomodoroTimer />);
     const items = screen.getAllByTestId("history-item");
     expect(items.length).toBe(2);
+
+    // Most recent first.
+    expect(items[0].getAttribute("data-completed-iso")).toBe(now.toISOString());
+    expect(items[1].getAttribute("data-completed-iso")).toBe(
+      older.toISOString()
+    );
   });
 
   it("filters invalid entries when loading history from localStorage", () => {

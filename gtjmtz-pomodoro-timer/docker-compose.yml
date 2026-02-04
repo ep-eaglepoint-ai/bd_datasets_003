@@ -1,9 +1,5 @@
 services:
   app:
     build: .
-
-  eval:
-    build: .
-    command: ["node", "/app/evaluation/evaluation.js"]
     volumes:
       - ./evaluation:/app/evaluation

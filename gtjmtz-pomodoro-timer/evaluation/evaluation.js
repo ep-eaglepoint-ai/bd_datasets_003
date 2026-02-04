@@ -229,7 +229,7 @@ function writeReportJson(reportPath, runId, before, after) {
   const nodeV = runOneLine("node --version 2>/dev/null") || "unknown";
   const npmV = runOneLine("npm --version 2>/dev/null") || "unknown";
 
-  // Map our 10 requirement tests to criteria fields (similar to the C harness approach)
+  // Map our requirement + edge-case tests to criteria fields (similar to the C harness approach)
   const REQ_TESTS = [
     "shows initial Focus 25:00, monospaced digits, controls, and audio src",
     "mode switching stops running timer and resets to new full duration",
@@ -239,8 +239,11 @@ function writeReportJson(reportPath, runId, before, after) {
     "Focus completion logs history only when run from full duration to 00:00; persists; plays audio",
     "does NOT log focus history if user resets or switches modes before completion",
     "loads existing history from localStorage on mount (most recent first)",
+    "filters invalid entries when loading history from localStorage",
     "handles invalid localStorage history gracefully",
     "cleans up intervals when paused (no extra ticking after pause)",
+    "Start from 00:00 resets to full duration and starts ticking",
+    "does not accelerate when Start is clicked again while running",
   ];
 
   const criteria = {
@@ -255,8 +258,11 @@ function writeReportJson(reportPath, runId, before, after) {
       REQ_TESTS[6]
     ),
     req8_history_loads_from_storage: passFailNotRun(after, REQ_TESTS[7]),
-    req9_invalid_storage_handled: passFailNotRun(after, REQ_TESTS[8]),
-    req10_interval_cleanup: passFailNotRun(after, REQ_TESTS[9]),
+    req9_filters_invalid_storage_entries: passFailNotRun(after, REQ_TESTS[8]),
+    req10_invalid_storage_handled: passFailNotRun(after, REQ_TESTS[9]),
+    req11_interval_cleanup: passFailNotRun(after, REQ_TESTS[10]),
+    req12_start_from_zero_restarts: passFailNotRun(after, REQ_TESTS[11]),
+    req13_no_double_start_acceleration: passFailNotRun(after, REQ_TESTS[12]),
   };
 
   function summarize(rr) {

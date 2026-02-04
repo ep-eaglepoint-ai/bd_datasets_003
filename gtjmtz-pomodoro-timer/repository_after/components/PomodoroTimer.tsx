@@ -283,11 +283,25 @@ export default function PomodoroTimer() {
         </div>
         <button
           type="button"
-          className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
           onClick={() => setSettingsOpen(true)}
           data-testid="settings-open"
+          aria-label="Settings"
+          title="Settings"
         >
-          Settings
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            className="h-5 w-5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
+            <path d="M19.4 15a7.9 7.9 0 0 0 .1-1 7.9 7.9 0 0 0-.1-1l2-1.6-2-3.4-2.4 1a7.7 7.7 0 0 0-1.7-1L14.9 4h-3.8l-.4 2.4a7.7 7.7 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7.9 7.9 0 0 0-.1 1c0 .34.03.67.1 1l-2 1.6 2 3.4 2.4-1c.53.4 1.1.75 1.7 1l.4 2.4h3.8l.4-2.4c.6-.25 1.17-.6 1.7-1l2.4 1 2-3.4-2-1.6Z" />
+          </svg>
         </button>
       </header>
 
@@ -313,8 +327,8 @@ export default function PomodoroTimer() {
                 aria-selected={active}
                 className={
                   active
-                    ? "rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
-                    : "rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200"
+                    ? "min-h-[44px] rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
+                    : "min-h-[44px] rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200"
                 }
                 onClick={() => handleModeChange(m.key)}
                 data-testid={`mode-${m.key}`}
@@ -343,7 +357,7 @@ export default function PomodoroTimer() {
         <div className="grid grid-cols-3 gap-3">
           <button
             type="button"
-            className="rounded-lg bg-slate-900 px-4 py-3 text-base font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            className="min-h-[44px] rounded-lg bg-slate-900 px-4 py-3 text-base font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
             onClick={handleStart}
             disabled={isRunning}
             data-testid="btn-start"
@@ -352,7 +366,7 @@ export default function PomodoroTimer() {
           </button>
           <button
             type="button"
-            className="rounded-lg bg-slate-100 px-4 py-3 text-base font-semibold text-slate-900 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+            className="min-h-[44px] rounded-lg bg-slate-100 px-4 py-3 text-base font-semibold text-slate-900 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
             onClick={handlePause}
             disabled={!isRunning}
             data-testid="btn-pause"
@@ -361,7 +375,7 @@ export default function PomodoroTimer() {
           </button>
           <button
             type="button"
-            className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-base font-semibold text-slate-900 hover:bg-slate-50"
+            className="min-h-[44px] rounded-lg border border-slate-200 bg-white px-4 py-3 text-base font-semibold text-slate-900 hover:bg-slate-50"
             onClick={handleReset}
             data-testid="btn-reset"
           >
@@ -394,6 +408,7 @@ export default function PomodoroTimer() {
                 key={entry.id}
                 className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800"
                 data-testid="history-item"
+                data-completed-iso={entry.completedAtIso}
               >
                 <span className="font-medium">Focus Session</span> completed at{" "}
                 {formatCompletedAt(entry.completedAtIso)}
