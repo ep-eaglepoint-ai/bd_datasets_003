@@ -1,11 +1,11 @@
 # T55NZ3 - Reliable Notification Event Processing with Safe Retries and Accurate Reporting
 
     ## Before Test Docker Command
-    <docker before command here>
+    docker-compose run --rm app npm run test:before || true
 
     ## After Test Docker Command
-    <docker after command here>
+    docker-compose run --rm app npm run test:after
 
     ## Evaluation Docker Command
-    <evaluation command here>
+   docker-compose run --rm app npm run evaluate
     

@@ -1,8 +1,16 @@
+# Use a specific, stable version of Node
+FROM node:20-slim
 
-        # Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
-
-        FROM python:3.11-slim
+# Set the working directory
 WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+# Copy package files and install dependencies
+# This ensures npx and jest are available in the container
+COPY package*.json ./
+RUN npm install
+
+# Copy the rest of the application
+COPY . .
+
+# Add node_modules/.bin to PATH just in case
+ENV PATH /app/node_modules/.bin:$PATH
