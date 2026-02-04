@@ -7,21 +7,18 @@
     "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/uvvmlo-real-time-decoupled-system-telemetry-streamer",
     "environment_setup": "Dockerfile",
     "FAIL_TO_PASS": [
-        {
-            "tests": [
-                "TestConcurrentClientConnections",
-                "TestSlowConsumerDoesNotBlockBroadcaster",
-                "TestClientMapReturnsToZero",
-                "TestHubBroadcastNonBlocking",
-                "TestClientCleanupOnDisconnect",
-                "TestSelectWithDefaultCase",
-                "TestMutexProtectedClientRegistry",
-                "TestFullIntegration",
-                "TestMultipleClientsReceiveMetrics",
-                "TestMetricsCollector",
-                "TestMetricsCollectorBroadcast"
-            ]
-        }
+        "Concurrent client connections are supported",
+        "Slow consumer does not block broadcaster",
+        "Slow consumer handled correctly with real connection",
+        "Client registry returns to zero after disconnects",
+        "Hub broadcast is non-blocking",
+        "Clients are cleaned up on disconnect",
+        "Select statement uses default case correctly",
+        "Client registry is protected by mutex",
+        "Full system integration works correctly",
+        "Multiple clients receive metrics",
+        "Metrics collector functions correctly",
+        "Metrics collector broadcasts metrics correctly"
     ],
     "PASS_TO_PASS": []
 }

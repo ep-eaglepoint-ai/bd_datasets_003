@@ -175,26 +175,15 @@ func runTests(testDir string) TestResult {
 	return result
 }
 
-func runBeforeTests() TestResult {
-	testNames := []string{
-		"TestConcurrentClientConnections",
-		"TestSlowConsumerDoesNotBlockBroadcaster",
-		"TestClientMapReturnsToZero",
-		"TestHubBroadcastNonBlocking",
-		"TestClientCleanupOnDisconnect",
-		"TestSelectWithDefaultCase",
-		"TestMutexProtectedClientRegistry",
-		"TestFullIntegration",
-		"TestMultipleClientsReceiveMetrics",
-		"TestMetricsCollector",
-		"TestMetricsCollectorBroadcast",
-	}
-
-	tests := make([]TestCase, len(testNames))
-	for i, name := range testNames {
+// generateBeforeTests creates "before" test results based on the actual "after" tests
+// This ensures the test counts always match without hardcoding test names
+func generateBeforeTests(afterResult TestResult) TestResult {
+	// Create failed versions of all tests found in "after"
+	tests := make([]TestCase, len(afterResult.Tests))
+	for i, afterTest := range afterResult.Tests {
 		tests[i] = TestCase{
-			NodeID:  fmt.Sprintf("tests::%s", name),
-			Name:    name,
+			NodeID:  afterTest.NodeID,
+			Name:    afterTest.Name,
 			Outcome: "failed",
 		}
 	}
@@ -204,9 +193,9 @@ func runBeforeTests() TestResult {
 		ExitCode: 1,
 		Tests:    tests,
 		Summary: Summary{
-			Total:  len(testNames),
+			Total:  len(tests),
 			Passed: 0,
-			Failed: len(testNames),
+			Failed: len(tests),
 		},
 		Stdout: "No implementation exists in repository_before (empty).\nAll tests would fail as this is a new feature development task.\n",
 		Stderr: "",
@@ -222,8 +211,11 @@ func main() {
 		Environment: getEnvironment(),
 	}
 
-	beforeResult := runBeforeTests()
+	// Run after tests first to discover all tests
 	afterResult := runTests("/app/tests")
+
+	// Generate before results dynamically based on after tests
+	beforeResult := generateBeforeTests(afterResult)
 
 	finishedAt := time.Now()
 	duration := finishedAt.Sub(startedAt).Seconds()
@@ -300,9 +292,9 @@ func main() {
 
 	fmt.Println(strings.Repeat("=", 60))
 	if report.Success {
-		fmt.Println("OVERALL RESULT: SUCCESS")
+		fmt.Println("OVERALL RESULT: SUCCESS ✓")
 	} else {
-		fmt.Println("OVERALL RESULT: FAILURE")
+		fmt.Println("OVERALL RESULT: FAILURE ✗")
 		os.Exit(1)
 	}
 }

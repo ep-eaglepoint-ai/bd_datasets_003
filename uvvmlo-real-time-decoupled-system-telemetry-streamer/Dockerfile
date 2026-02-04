@@ -6,21 +6,21 @@ WORKDIR /app
 RUN apk add --no-cache git
 
 # Copy go.mod files first for better caching
-COPY repository_after/go.mod repository_after/go.sum* ./repository_after/
+COPY repository_after/go.mod ./repository_after/
 COPY tests/go.mod ./tests/
 
-# Download dependencies
+# Download dependencies and generate go.sum
 WORKDIR /app/repository_after
-RUN go mod download 2>/dev/null || true
+RUN go mod download && go mod tidy
 
 WORKDIR /app/tests
-RUN go mod download 2>/dev/null || true
+RUN go mod download && go mod tidy
 
 # Copy all source files
 WORKDIR /app
 COPY . .
 
-# Tidy dependencies with actual source code
+# Re-tidy with actual source code to ensure go.sum is complete
 WORKDIR /app/repository_after
 RUN go mod tidy
 
