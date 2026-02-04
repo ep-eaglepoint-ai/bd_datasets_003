@@ -6,11 +6,9 @@ RUN npm install -g jest@29.7.0 jest-environment-jsdom@29.7.0
 
 COPY repository_after/backend/package*.json ./repository_after/backend/
 COPY tests/package*.json ./tests/
-COPY evaluation/package*.json ./evaluation/
 
 RUN cd repository_after/backend && npm install
 RUN cd tests && npm install
-RUN cd evaluation && npm install
 
 COPY . .
 

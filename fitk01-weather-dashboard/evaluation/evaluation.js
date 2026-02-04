@@ -1,7 +1,11 @@
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
+
+function uuidv4() {
+  return crypto.randomUUID();
+}
 
 const TASK_TITLE = 'Weather Dashboard';
 
