@@ -1,0 +1,11 @@
+{
+            "instance_id": "EUYB0B",
+            "problem_statement": "Users need a flexible calculator supporting infix, postfix, and prefix expressions without manual conversion. The application must support scientific operations, variable assignments, and maintain history while providing accurate evaluation.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/euyb0b-build-advanced-multi-notation-cli-calculator-in-python",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
