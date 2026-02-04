@@ -31,7 +31,7 @@ The biggest hurdle was the **"ModuleNotFoundError"** in the terminal. I had to r
 ### 📚 Recommended Resources
 
 **1. Watch: Flask-SQLAlchemy Database Relationships**
-* [YouTube: Flask-SQLAlchemy One-to-Many Relationships](https://www.youtube.com/watch?v=juPQ04_twtA)
+* [YouTube: Python SQLAlchemy ORM - 1 to MANY Relationships](https://youtu.be/3N9JqtpkFJI?si=5cyXDXPwCw-BAe_T)
 
 **2. Watch: Python Dictionary & JSON Handling**
 * [YouTube: Working with JSON Data in Python](https://www.youtube.com/watch?v=9N6a-VLBa2I)
