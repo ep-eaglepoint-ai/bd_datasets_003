@@ -1,0 +1,11 @@
+{
+            "instance_id": "VY2TAH",
+            "problem_statement": "A small retail store needs a simple checkout system to calculate totals for customer purchases. The store keeps its product catalog in a JSON file containing product IDs, names, prices, and available quantities. Employees add items to a cart by product ID, adjust quantities, remove items, and then checkout to see the final total. The system must validate that products exist in the catalog and that requested quantities do not exceed available stock. The previous spreadsheet-based approach was error-prone with manual price lookups and arithmetic mistakes. The team wants a clean Java solution that reads the product catalog from JSON, manages a shopping cart with standard operations, and produces an itemized receipt at checkout. They want engineers implementing this to create their own sample JSON data file to test with.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/vy2tah-checkout-system",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
