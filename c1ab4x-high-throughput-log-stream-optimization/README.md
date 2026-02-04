@@ -1,11 +1,16 @@
-# C1AB4X - High-Throughput Log Stream Optimization 
+# High-Throughput Log Stream Optimization
 
-    ## Before Test Docker Command
-    <docker before command here>
+### Run tests (before are expected failures)
+```bash
+docker compose run --rm app run_before
+```
 
-    ## After Test Docker Command
-    <docker after command here>
+### Run tests (after are expected all pass)
+```bash
+docker compose run --rm app run_after
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+### Run evaluation (compares both implementations)
+```bash
+docker compose run --rm app evaluate
+```
