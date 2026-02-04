@@ -1,13 +1,27 @@
 {
-            "instance_id": "YT60PA",
-            "problem_statement": "An order management system needs to be built using Event Sourcing and CQRS patterns. The current codebase has a basic event store that lacks versioning, allowing concurrent commands to corrupt aggregate state. There is no snapshot support, forcing the system to replay all events on every aggregate load. 
-
-Commands can be processed multiple times without idempotency protection. Projections are updated synchronously, blocking command processing. The event schema has no versioning strategy for future evolution. Core logic is in EventStore.java, Order.java, CommandHandler.java, and ProjectionHandler.java.",
-            "base_commit": "repository_before/",
-            "test_patch": "tests/",
-            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/yt60pa-java-event-sourcing-order-system-cqrs-with-snapshots-and-optimistic-locking",
-            "environment_setup": "Dockerfile",
-            "FAIL_TO_PASS": [],
-            "PASS_TO_PASS": []
-        }
-        
+  "instance_id": "YT60PA",
+  "problem_statement": "An order management system needs to be built using Event Sourcing and CQRS patterns. The current codebase has a basic event store that lacks versioning, allowing concurrent commands to corrupt aggregate state. There is no snapshot support, forcing the system to replay all events on every aggregate load. Commands can be processed multiple times without idempotency protection. Projections are updated synchronously, blocking command processing. The event schema has no versioning strategy for future evolution. Core logic is in EventStore.java, Order.java, CommandHandler.java, and ProjectionHandler.java.",
+  "base_commit": "repository_before/",
+  "test_patch": "tests/",
+  "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/yt60pa-java-event-sourcing-order-system-cqrs-with-snapshots-and-optimistic-locking",
+  "environment_setup": "Dockerfile",
+  "FAIL_TO_PASS": [
+    "test1_OptimisticLocking",
+    "test2_VersionMismatchDetection",
+    "test4_Snapshotting",
+    "test5_Idempotency",
+    "test7_RebuildProjections",
+    "test8_BusinessRuleValidation",
+    "test9_AllEventTypes",
+    "test11_AggregateVersionConsistency",
+    "test12_AsyncExecutorConfiguration",
+    "testGap1_ConcurrentCommandExecution",
+    "testGap2_SnapshotLoadingVerification",
+    "testGap3_SchemaEvolution",
+    "testGap4_ProjectionEventOrdering",
+    "testGap5_TransactionRollback",
+    "testGap6_InputValidation",
+    "testGap7_SnapshotAccuracy"
+  ],
+  "PASS_TO_PASS": []
+}

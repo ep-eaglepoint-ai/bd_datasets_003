@@ -35,6 +35,9 @@ public class Order {
         if (!"CREATED".equals(status) && !"DRAFT".equals(status)) {
             throw new IllegalStateException("Cannot add items to order in status: " + status);
         }
+        if (quantity <= 0) {
+            throw new IllegalArgumentException("Quantity must be positive, got: " + quantity);
+        }
         applyChange(new ItemAddedEvent(id, productId, quantity, price));
     }
 
