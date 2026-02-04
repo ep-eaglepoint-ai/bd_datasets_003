@@ -1,11 +1,8 @@
-# 5KS85W - thread-safe-generic-object-pool
+## Before Test Docker Command
+docker-compose up tester-before 
 
-    ## Before Test Docker Command
-    <docker before command here>
+## After Test Docker Command
+docker-compose up tester-after
 
-    ## After Test Docker Command
-    <docker after command here>
-
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## Evaluation Docker Command
+docker-compose up evaluator
