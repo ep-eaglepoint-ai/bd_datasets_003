@@ -1,0 +1,11 @@
+{
+            "instance_id": "6U0E8M",
+            "problem_statement": "Design a thread-safe resource management system in Java that coordinates access to a finite set of shared tools among concurrent workers. The system must implement a strict priority-based acquisition protocol where higher-priority tasks can preempt or force 'trades' with lower-priority tasks. The critical challenge is to implement this logic while mathematically guaranteeing freedom from deadlocks (circular waits) and livelocks, without using a single global lock that serializes all operations.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/6u0e8m-deadlock-free-resource-orchestrator",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
