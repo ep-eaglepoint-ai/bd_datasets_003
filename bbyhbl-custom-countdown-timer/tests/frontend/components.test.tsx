@@ -19,28 +19,28 @@ const TestCountdownForm = ({ onSubmit, isLoading = false }: any) => {
         });
       }}>
         <div>
-          <label>Event Title *</label>
-          <input type="text" placeholder="Event Title" />
+          <label htmlFor="event-title">Event Title *</label>
+          <input id="event-title" type="text" placeholder="Event Title" />
         </div>
         
         <div>
-          <label>Description (Optional)</label>
-          <textarea rows={3} />
+          <label htmlFor="description">Description (Optional)</label>
+          <textarea id="description" rows={3} />
         </div>
         
         <div>
-          <label>Target Date *</label>
-          <input type="date" />
+          <label htmlFor="target-date">Target Date *</label>
+          <input id="target-date" type="date" />
         </div>
         
         <div>
-          <label>Target Time *</label>
-          <input type="time" />
+          <label htmlFor="target-time">Target Time *</label>
+          <input id="target-time" type="time" />
         </div>
         
         <div>
-          <label>Timezone</label>
-          <select>
+          <label htmlFor="timezone">Timezone</label>
+          <select id="timezone">
             <option value="UTC">UTC</option>
             <option value="America/New_York">Eastern Time</option>
           </select>

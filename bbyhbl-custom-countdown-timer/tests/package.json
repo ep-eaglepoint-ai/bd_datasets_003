@@ -2,12 +2,13 @@
   "name": "countdown-timer-tests",
   "version": "1.0.0",
   "scripts": {
-    "test:backend": "jest tests/backend --config tests/jest.config.js",
-    "test:frontend": "jest tests/frontend --config tests/jest.config.js",
-    "test:integration": "jest tests/integration --config tests/jest.config.js",
-    "test:all": "jest tests/ --config tests/jest.config.js"
+    "test:backend": "jest tests/backend --config jest.backend.config.js",
+    "test:frontend": "jest tests/frontend --config jest.frontend.config.js",
+    "test:integration": "jest tests/integration --config jest.config.js",
+    "test:all": "jest tests/ --config jest.config.js"
   },
   "dependencies": {
+    "@prisma/client": "^7.3.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^7.13.0"

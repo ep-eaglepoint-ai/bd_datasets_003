@@ -1,33 +1,45 @@
+// tests/setupTests.ts
 import '@testing-library/jest-dom';
 
-const localStorageMock = {
+// TypeScript-friendly mock setup
+const createLocalStorageMock = () => ({
   getItem: jest.fn(),
   setItem: jest.fn(),
   removeItem: jest.fn(),
   clear: jest.fn(),
-};
-
-Object.defineProperty(window, 'localStorage', {
-  value: localStorageMock,
 });
 
+// Only run in jsdom environment
+if (typeof window !== 'undefined') {
+  const localStorageMock = createLocalStorageMock();
+  
+  Object.defineProperty(window, 'localStorage', {
+    value: localStorageMock,
+  });
+
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: jest.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: jest.fn(),
+      removeListener: jest.fn(),
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+      dispatchEvent: jest.fn(),
+    })),
+  });
+}
+
+// Mock fetch (works in both environments)
 global.fetch = jest.fn();
-
-Object.defineProperty(window, 'matchMedia', {
-  writable: true,
-  value: jest.fn().mockImplementation(query => ({
-    matches: false,
-    media: query,
-    onchange: null,
-    addListener: jest.fn(),
-    removeListener: jest.fn(),
-    addEventListener: jest.fn(),
-    removeEventListener: jest.fn(),
-    dispatchEvent: jest.fn(),
-  })),
-});
 
 beforeEach(() => {
   jest.clearAllMocks();
-  localStorageMock.clear();
+  
+  // Clear localStorage if it exists
+  if (typeof window !== 'undefined' && window.localStorage) {
+    window.localStorage.clear();
+  }
 });
