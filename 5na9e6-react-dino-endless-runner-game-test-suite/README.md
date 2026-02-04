@@ -1,11 +1,11 @@
-# 5NA9E6 - React Dino Endless Runner Game Test Suite
+# BEFORE
 
-    ## Before Test Docker Command
-    <docker before command here>
+docker compose run --rm test-runner sh -lc "cd /app/repository_before && npm install --no-audit --no-fund && npm test -- --watchAll=false"
 
-    ## After Test Docker Command
-    <docker after command here>
+# AFTER (META TEST)
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+docker compose up --build
+
+# EVALUATION
+
+docker compose run --rm evaluation

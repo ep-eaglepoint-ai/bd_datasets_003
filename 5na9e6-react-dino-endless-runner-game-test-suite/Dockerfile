@@ -1,8 +1,11 @@
+FROM node:18-alpine
 
-        # Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
-
-        FROM python:3.11-slim
 WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+# Copy only what's needed
+COPY tests/ ./tests/
+COPY repository_after/src/__tests__/DinoGame.test.jsx ./tests/suite.jsx
+COPY tests/resources/dino/ ./tests/resources/dino/
+
+# Run the meta test
+CMD ["node", "tests/test_dino_meta.test.js"]

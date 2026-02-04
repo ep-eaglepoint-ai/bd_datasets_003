@@ -1,9 +1,17 @@
+services:
+    test-runner:
+        build: .
+        volumes:
+            - ./tests:/app/tests
+            - ./repository_after:/app/repository_after
+        working_dir: /app/tests
+        command: node test_dino_meta.test.js
 
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
-  app:
-    build: .
-    command: pytest -q tests
-    volumes:
-      - .:/app
+    evaluation:
+        build: .
+        volumes:
+            - ./tests:/app/tests
+            - ./repository_after:/app/repository_after
+            - ./evaluation:/app/evaluation
+        working_dir: /app/tests
+        command: node ../evaluation/evaluate.js
