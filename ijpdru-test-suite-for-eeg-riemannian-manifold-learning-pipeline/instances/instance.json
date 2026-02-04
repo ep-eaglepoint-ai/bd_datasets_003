@@ -1,0 +1,11 @@
+{
+            "instance_id": "IJPDRU",
+            "problem_statement": "Create a pytest-based test suite to validate EEG covariance simulation, tangent space projection, and UMAP embedding functions, including edge cases, correctness, and reproducibility",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ijpdru-test-suite-for-eeg-riemannian-manifold-learning-pipeline",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
