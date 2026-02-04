@@ -10,56 +10,35 @@ cd "/mnt/c/Users/teshi/Desktop/Projects/Eaglepoint AI/day one/bd_datasets_003/vo
 
 ---
 
-## 1. Repository Before (Docker)
+## 1. Repository Before (Docker Compose)
 
-Run the requirement test suite against the **baseline** state (`repository_before`). Build the image from the current repo, then run tests.
-
-```bash
-docker build -t vovb0f-color-palette .
-docker run --rm vovb0f-color-palette npm test
-```
-
-One-liner:
+Run the requirement test suite against the **baseline** state (`repository_before`) using Docker Compose.
 
 ```bash
-docker build -t vovb0f-color-palette . && docker run --rm vovb0f-color-palette npm test
+docker compose run --rm -e REPO_PATH=repository_before app bash -c 'npm test || true'
 ```
 
 ---
 
-## 2. Repository After (Docker)
+## 2. Repository After (Docker Compose)
 
-Run the requirement test suite against the **solution** state (`repository_after`). Rebuild the image after you change code, then run tests.
-
-```bash
-docker build -t vovb0f-color-palette .
-docker run --rm vovb0f-color-palette npm test
-```
-
-One-liner:
+Run the requirement test suite against the **solution** state (`repository_after`) using Docker Compose.
 
 ```bash
-docker build -t vovb0f-color-palette . && docker run --rm vovb0f-color-palette npm test
+docker compose run --rm -e REPO_PATH=repository_after app npm test
 ```
 
 ---
 
-## 3. Evaluation (Docker)
+## 3. Evaluation (Docker Compose)
 
-Run the evaluation script and write `evaluation/report.json` on your machine. Use a volume so the file appears in your project folder.
-
-```bash
-docker build -t vovb0f-color-palette .
-docker run --rm -v "$(pwd)/evaluation:/app/evaluation" vovb0f-color-palette npm run evaluate
-```
-
-One-liner:
+Run the evaluation script inside the Docker Compose `app` service.
 
 ```bash
-docker build -t vovb0f-color-palette . && docker run --rm -v "$(pwd)/evaluation:/app/evaluation" vovb0f-color-palette npm run evaluate
+docker compose run --rm app node evaluation/evaluate.js
 ```
 
-After this, `evaluation/report.json` is created (or updated). It is listed in `.gitignore`.
+After this, `evaluation/report.json` is created (or updated) in the `evaluation` folder. It is listed in `.gitignore`.
 
 ---
 
