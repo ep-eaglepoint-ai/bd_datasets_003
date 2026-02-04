@@ -1,8 +1,36 @@
-# Docker Compose file for running tests. You should customize this as needed.
+version: '3.8'
 
 services:
-  app:
+  test:
     build: .
-    command: pytest -q tests
+    command: >
+      sh -c "cd repository_after && python3 -m pytest ../tests/ -v --tb=short --json-report --json-report-file=/app/test_results_after.json"
     volumes:
       - .:/app
+    working_dir: /app
+    environment:
+      - PYTHONPATH=/app/repository_after
+      - DJANGO_SETTINGS_MODULE=ecommerce.settings_test
+
+  test-before:
+    build: .
+    command: >
+      sh -c "cd repository_before && python3 -m pytest ../tests/ -v --tb=short --json-report --json-report-file=/app/test_results_before.json; exit 0"
+    volumes:
+      - .:/app
+    working_dir: /app
+    environment:
+      - PYTHONPATH=/app/repository_before
+      - DJANGO_SETTINGS_MODULE=ecommerce.settings_test
+
+  evaluate:
+    build: .
+    command: python3 /app/evaluation/evaluation.py
+    volumes:
+      - .:/app
+    working_dir: /app
+    environment:
+      - PYTHONPATH=/app
+    depends_on:
+      - test
+      - test-before

@@ -1,11 +1,16 @@
 # F0ASMT - Django ORM Performance Fix - N+1 Queries and Pagination
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Before Test Docker Command 
+```bash
+docker compose run --rm test-before
+```
 
-    ## After Test Docker Command
-    <docker after command here>
+## After Test Docker Command
+```bash
+docker compose run --rm test
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## Evaluation Docker Command
+```bash
+docker compose run --rm evaluate
+```
