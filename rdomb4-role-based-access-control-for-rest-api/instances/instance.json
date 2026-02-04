@@ -1,0 +1,11 @@
+{
+            "instance_id": "RDOMB4",
+            "problem_statement": "The .NET REST API has authorization logic hardcoded throughout controller methods, making permission changes require code deployments. Adding a new permission requires modifying multiple files and redeploying the application. Permission checks query the database on every request, causing noticeable latency on protected endpoints. When an admin role's permissions change, users with that role continue using stale permissions until their session expires. There is no audit trail of who changed permissions or when, creating compliance gaps during security reviews.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/rdomb4-role-based-access-control-for-rest-api",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
