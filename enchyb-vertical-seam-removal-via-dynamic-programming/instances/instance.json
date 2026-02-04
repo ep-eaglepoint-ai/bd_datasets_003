@@ -1,0 +1,11 @@
+{
+            "instance_id": "ENCHYB",
+            "problem_statement": "The core algorithmic challenge of Seam Carving is the implementation of global optimization via Dynamic Programming rather than a naive greedy heuristic. Mid-tier solutions frequently fail by simply selecting the lowest-energy neighbor at each step, which ignores the cumulative cost of the path and results in suboptimal seams that cut through important visual content. From a systems perspective, the manipulation of Go's image.RGBA structure presents a significant memory management trap; excising a vertical seam requires precise slice shifting within the raw Pix buffer to preserve alignment (Stride) without allocating entirely new image buffers, while simultaneously handling boundary conditions to avoid index-out-of-bounds panics during gradient calculation.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/enchyb-vertical-seam-removal-via-dynamic-programming",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
