@@ -1,0 +1,12 @@
+{
+            "instance_id": "88CYTY",
+            "problem_statement": "A computer science teacher is developing a machine learning curriculum for high school students and needs a simple implementation of the K-Nearest Neighbors algorithm that students can study and modify. Commercial libraries hide the implementation details, making it difficult for beginners to understand how classification actually works. The teacher wants code that explicitly shows distance calculations, neighbor finding, and majority voting without any complex abstractions.
+The implementation should be readable and well-documented so students can trace through the algorithm step by step. It needs to handle basic multi-class classification problems with numerical features, which covers most introductory examples like iris flower classification or simple image digit recognition with flattened pixel values.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/88cyty-knn-classifier",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
