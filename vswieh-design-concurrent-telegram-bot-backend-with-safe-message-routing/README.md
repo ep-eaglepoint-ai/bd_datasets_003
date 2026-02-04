@@ -1,11 +1,12 @@
 # VSWIEH - Design Concurrent Telegram Bot Backend with Safe Message Routing
 
-    ## Before Test Docker Command
-    <docker before command here>
+## After Test Docker Command
+```bash
+docker-compose run --rm test_after
+```
 
-    ## After Test Docker Command
-    <docker after command here>
-
-    ## Evaluation Docker Command
-    <evaluation command here>
+## Evaluation Docker Command
+```bash
+docker-compose run --rm evaluation
+```
     
