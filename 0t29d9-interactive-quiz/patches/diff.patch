@@ -1,0 +1,888 @@
+diff --git a/repository_after/.gitignore b/repository_after/.gitignore
+new file mode 100644
+index 0000000..5ef6a52
+--- /dev/null
++++ b/repository_after/.gitignore
+@@ -0,0 +1,41 @@
++# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
++
++# dependencies
++/node_modules
++/.pnp
++.pnp.*
++.yarn/*
++!.yarn/patches
++!.yarn/plugins
++!.yarn/releases
++!.yarn/versions
++
++# testing
++/coverage
++
++# next.js
++/.next/
++/out/
++
++# production
++/build
++
++# misc
++.DS_Store
++*.pem
++
++# debug
++npm-debug.log*
++yarn-debug.log*
++yarn-error.log*
++.pnpm-debug.log*
++
++# env files (can opt-in for committing if needed)
++.env*
++
++# vercel
++.vercel
++
++# typescript
++*.tsbuildinfo
++next-env.d.ts
+diff --git a/repository_before/.gitkeep b/repository_before/.gitkeep
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/repository_after/README.md b/repository_after/README.md
+new file mode 100644
+index 0000000..e215bc4
+--- /dev/null
++++ b/repository_after/README.md
+@@ -0,0 +1,36 @@
++This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
++
++## Getting Started
++
++First, run the development server:
++
++```bash
++npm run dev
++# or
++yarn dev
++# or
++pnpm dev
++# or
++bun dev
++```
++
++Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
++
++You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
++
++This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
++
++## Learn More
++
++To learn more about Next.js, take a look at the following resources:
++
++- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
++- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
++
++You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
++
++## Deploy on Vercel
++
++The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
++
++Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+diff --git a/repository_after/app/favicon.ico b/repository_after/app/favicon.ico
+new file mode 100644
+index 0000000..718d6fe
+Binary files /dev/null and b/repository_after/app/favicon.ico differ
+diff --git a/repository_after/app/globals.css b/repository_after/app/globals.css
+new file mode 100644
+index 0000000..b5c61c9
+--- /dev/null
++++ b/repository_after/app/globals.css
+@@ -0,0 +1,3 @@
++@tailwind base;
++@tailwind components;
++@tailwind utilities;
+diff --git a/repository_after/app/layout.tsx b/repository_after/app/layout.tsx
+new file mode 100644
+index 0000000..a988c1d
+--- /dev/null
++++ b/repository_after/app/layout.tsx
+@@ -0,0 +1,28 @@
++import type { Metadata } from 'next';
++import { Outfit } from 'next/font/google';
++import './globals.css';
++
++const outfit = Outfit({ subsets: ['latin'] });
++
++export const metadata: Metadata = {
++  title: 'Interactive Quiz',
++  description: 'Test your knowledge!',
++};
++
++export default function RootLayout({
++  children,
++}: {
++  children: React.ReactNode;
++}) {
++  return (
++    <html lang="en">
++      <body className={`${outfit.className} bg-slate-950 text-slate-100 antialiased selection:bg-indigo-500/30`}>
++        <div className="fixed inset-0 -z-10 h-full w-full bg-slate-950">
++           <div className="absolute top-0 z-[-2] h-screen w-screen bg-neutral-950 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(120,119,198,0.3),rgba(255,255,255,0))]"></div>
++           <div className="absolute bottom-0 left-0 right-0 top-0 bg-[linear-gradient(to_right,#4f4f4f2e_1px,transparent_1px),linear-gradient(to_bottom,#4f4f4f2e_1px,transparent_1px)] bg-[size:14px_24px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)]"></div>
++        </div>
++        {children}
++      </body>
++    </html>
++  );
++}
+diff --git a/repository_after/app/page.tsx b/repository_after/app/page.tsx
+new file mode 100644
+index 0000000..7b8601b
+--- /dev/null
++++ b/repository_after/app/page.tsx
+@@ -0,0 +1,95 @@
++'use client';
++
++import React, { useState } from 'react';
++import StartScreen from '@/components/StartScreen';
++import QuestionScreen from '@/components/QuestionScreen';
++import ResultScreen from '@/components/ResultScreen';
++import { questions } from '@/lib/questions';
++import { AnimatePresence, motion } from 'framer-motion';
++
++type QuizState = 'start' | 'playing' | 'result';
++
++export default function Home() {
++  const [gameState, setGameState] = useState<QuizState>('start');
++  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
++  const [score, setScore] = useState(0);
++
++  const startQuiz = () => {
++    setGameState('playing');
++    setCurrentQuestionIndex(0);
++    setScore(0);
++  };
++
++  const handleAnswer = (isCorrect: boolean) => {
++    if (isCorrect) {
++      setScore((prev) => prev + 1);
++    }
++
++    const nextIndex = currentQuestionIndex + 1;
++    if (nextIndex < questions.length) {
++      setCurrentQuestionIndex(nextIndex);
++    } else {
++      setGameState('result');
++    }
++  };
++
++  const restartQuiz = () => {
++    setGameState('start');
++    setCurrentQuestionIndex(0);
++    setScore(0);
++  };
++
++  return (
++    <main className="min-h-screen bg-transparent text-white font-sans overflow-hidden">
++      <AnimatePresence mode="wait">
++        {gameState === 'start' && (
++          <motion.div
++            key="start"
++            initial={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
++            animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
++            exit={{ opacity: 0, scale: 1.05, filter: 'blur(10px)' }}
++            transition={{ duration: 0.5 }}
++            className="absolute inset-0 w-full h-full"
++          >
++            <StartScreen onStart={startQuiz} />
++          </motion.div>
++        )}
++
++        {gameState === 'playing' && (
++          <motion.div
++            key="playing"
++            initial={{ opacity: 0, x: 300, rotateY: 90 }}
++            animate={{ opacity: 1, x: 0, rotateY: 0 }}
++            exit={{ opacity: 0, x: -300, rotateY: -90 }}
++            transition={{ duration: 0.6, type: "spring", bounce: 0.25 }}
++            className="absolute inset-0 w-full h-full perspective-1000"
++          >
++            <QuestionScreen
++              question={questions[currentQuestionIndex]}
++              currentQuestionIndex={currentQuestionIndex}
++              totalQuestions={questions.length}
++              onAnswer={handleAnswer}
++            />
++          </motion.div>
++        )}
++
++        {gameState === 'result' && (
++          <motion.div
++            key="result"
++            initial={{ opacity: 0, scale: 0.5, rotate: -5 }}
++            animate={{ opacity: 1, scale: 1, rotate: 0 }}
++            exit={{ opacity: 0, scale: 0.8 }}
++            transition={{ duration: 0.5, type: "spring" }}
++            className="absolute inset-0 w-full h-full"
++          >
++            <ResultScreen
++              score={score}
++              totalQuestions={questions.length}
++              onRestart={restartQuiz}
++            />
++          </motion.div>
++        )}
++      </AnimatePresence>
++    </main>
++  );
++}
+diff --git a/repository_after/components/QuestionScreen.tsx b/repository_after/components/QuestionScreen.tsx
+new file mode 100644
+index 0000000..207a100
+--- /dev/null
++++ b/repository_after/components/QuestionScreen.tsx
+@@ -0,0 +1,157 @@
++import React, { useState, useEffect } from 'react';
++import { motion, AnimatePresence } from 'framer-motion';
++import { Question } from '@/lib/questions';
++import { Check, X, Clock, HelpCircle } from 'lucide-react';
++import clsx from 'clsx';
++import { twMerge } from 'tailwind-merge';
++
++interface QuestionScreenProps {
++  question: Question;
++  currentQuestionIndex: number;
++  totalQuestions: number;
++  onAnswer: (isCorrect: boolean) => void;
++}
++
++const QuestionScreen: React.FC<QuestionScreenProps> = ({ 
++  question, 
++  currentQuestionIndex, 
++  totalQuestions, 
++  onAnswer 
++}) => {
++  const [selectedOption, setSelectedOption] = useState<number | null>(null);
++  const [isAnswered, setIsAnswered] = useState(false);
++  
++  // Progress bar calculation
++  const progress = ((currentQuestionIndex) / totalQuestions) * 100;
++
++  // Reset state when question changes
++  useEffect(() => {
++    setSelectedOption(null);
++    setIsAnswered(false);
++  }, [question]);
++
++  const handleOptionClick = (index: number) => {
++    if (isAnswered) return;
++
++    setSelectedOption(index);
++    setIsAnswered(true);
++
++    const isCorrect = index === question.correctAnswerIndex;
++    
++    // Add a delay before moving to next question
++    setTimeout(() => {
++      onAnswer(isCorrect);
++    }, 1500); 
++  };
++
++  const getButtonClass = (index: number) => {
++    const isSelected = index === selectedOption;
++    const isCorrect = index === question.correctAnswerIndex;
++    
++    const baseClass = "group relative w-full p-5 rounded-xl border-2 transition-all duration-300 font-medium text-lg flex items-center justify-between overflow-hidden backdrop-blur-md";
++    
++    if (!isAnswered) {
++      return twMerge(baseClass, "border-white/10 bg-white/5 hover:bg-white/10 hover:border-indigo-400/50 hover:shadow-lg hover:translate-x-1 active:scale-[0.99] text-slate-200");
++    }
++
++    if (isCorrect) {
++      return twMerge(baseClass, "border-emerald-500 bg-emerald-500/20 text-emerald-300 shadow-[0_0_20px_rgba(16,185,129,0.2)]");
++    }
++
++    if (isSelected) {
++      return twMerge(baseClass, "border-rose-500 bg-rose-500/20 text-rose-300");
++    }
++
++    return twMerge(baseClass, "border-white/5 bg-white/5 opacity-40 grayscale");
++  };
++
++  return (
++    <div className="flex flex-col items-center justify-center min-h-screen p-4 max-w-4xl mx-auto w-full">
++       {/* Progress Bar */}
++       <div className="w-full max-w-2xl mb-8 relative">
++           <div className="h-2 w-full bg-white/10 rounded-full overflow-hidden backdrop-blur-sm">
++             <motion.div 
++                className="h-full bg-gradient-to-r from-indigo-500 to-purple-500"
++                initial={{ width: 0 }}
++                animate={{ width: `${progress}%` }}
++                transition={{ duration: 0.5 }}
++             />
++           </div>
++           <div className="flex justify-between mt-2 text-sm text-slate-400 font-medium tracking-wide">
++             <span>Start</span>
++             <span>Question {currentQuestionIndex + 1} / {totalQuestions}</span>
++             <span>Finish</span>
++           </div>
++       </div>
++
++      <AnimatePresence mode="wait">
++        <motion.div
++           key={question.id}
++           initial={{ opacity: 0, x: 20 }}
++           animate={{ opacity: 1, x: 0 }}
++           exit={{ opacity: 0, x: -20 }}
++           transition={{ duration: 0.4 }}
++           className="w-full max-w-2xl bg-white/5 backdrop-blur-2xl border border-white/10 rounded-3xl p-8 shadow-2xl relative overflow-hidden"
++        >
++          {/* Decorative Elements */}
++          <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl -z-10 -translate-y-1/2 translate-x-1/2" />
++          
++          <div className="mb-8">
++             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 text-xs font-bold uppercase tracking-widest mb-4">
++               <HelpCircle className="w-3 h-3" /> Trivia Question
++             </div>
++             <h2 className="text-3xl font-bold text-white leading-tight">
++               {question.questionText}
++             </h2>
++          </div>
++
++          <div className="grid gap-4">
++             {question.options.map((option, index) => (
++                <button
++                  key={index}
++                  onClick={() => handleOptionClick(index)}
++                  disabled={isAnswered}
++                  className={getButtonClass(index)}
++                >
++                  <span className="relative z-10 flex items-center gap-3">
++                    <span className={clsx(
++                      "flex items-center justify-center w-8 h-8 rounded-full border text-sm font-bold transition-colors",
++                      !isAnswered ? "border-white/20 text-slate-400 group-hover:border-indigo-400 group-hover:text-indigo-400" :
++                      index === question.correctAnswerIndex ? "bg-emerald-500 border-emerald-500 text-white" :
++                      index === selectedOption ? "bg-rose-500 border-rose-500 text-white" :
++                      "border-white/10 text-slate-600"
++                    )}>
++                      {String.fromCharCode(65 + index)}
++                    </span>
++                    {option}
++                  </span>
++                  
++                  {isAnswered && index === question.correctAnswerIndex && (
++                    <motion.div
++                      initial={{ scale: 0 }}
++                      animate={{ scale: 1 }}
++                      className="p-1 rounded-full bg-emerald-500/20 text-emerald-400"
++                    >
++                      <Check className="w-5 h-5" strokeWidth={3} />
++                    </motion.div>
++                  )}
++                  
++                   {isAnswered && index === selectedOption && index !== question.correctAnswerIndex && (
++                     <motion.div
++                       initial={{ scale: 0 }}
++                       animate={{ scale: 1 }}
++                       className="p-1 rounded-full bg-rose-500/20 text-rose-400"
++                     >
++                       <X className="w-5 h-5" strokeWidth={3} />
++                     </motion.div>
++                   )}
++                </button>
++             ))}
++          </div>
++        </motion.div>
++      </AnimatePresence>
++    </div>
++  );
++};
++
++export default QuestionScreen;
+diff --git a/repository_after/components/ResultScreen.tsx b/repository_after/components/ResultScreen.tsx
+new file mode 100644
+index 0000000..4bd1c01
+--- /dev/null
++++ b/repository_after/components/ResultScreen.tsx
+@@ -0,0 +1,129 @@
++import React, { useEffect, useState } from 'react';
++import { motion } from 'framer-motion';
++import { Trophy, RefreshCcw, Star, Award, TrendingUp } from 'lucide-react';
++import clsx from 'clsx';
++
++import confetti from 'canvas-confetti';
++
++interface ResultScreenProps {
++  score: number;
++  totalQuestions: number;
++  onRestart: () => void;
++}
++
++const ResultScreen: React.FC<ResultScreenProps> = ({ score, totalQuestions, onRestart }) => {
++  const percentage = Math.round((score / totalQuestions) * 100);
++  const [animatedScore, setAnimatedScore] = useState(0);
++
++  useEffect(() => {
++    // Simple count up animation
++    let start = 0;
++    const end = score;
++    
++    // Trigger confetti if good score
++    if (percentage >= 60) {
++        const duration = 3000;
++        const animationEnd = Date.now() + duration;
++        const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 0 };
++
++        const random = (min: number, max: number) => Math.random() * (max - min) + min;
++
++        const interval: any = setInterval(function() {
++        const timeLeft = animationEnd - Date.now();
++
++        if (timeLeft <= 0) {
++            return clearInterval(interval);
++        }
++
++        const particleCount = 50 * (timeLeft / duration);
++        confetti(Object.assign({}, defaults, { particleCount, origin: { x: random(0.1, 0.3), y: Math.random() - 0.2 } }));
++        confetti(Object.assign({}, defaults, { particleCount, origin: { x: random(0.7, 0.9), y: Math.random() - 0.2 } }));
++        }, 250);
++    }
++
++    if (start === end) return;
++
++    let timer = setInterval(() => {
++      start += 1;
++      setAnimatedScore(start);
++      if (start === end) clearInterval(timer);
++    }, 100); // adjust speed
++
++    return () => clearInterval(timer);
++  }, [score, percentage]);
++
++  let feedbackMessage = '';
++  let feedbackColor = '';
++  
++  if (percentage >= 80) {
++    feedbackMessage = 'Outstanding Performance!';
++    feedbackColor = 'text-yellow-400';
++  } else if (percentage >= 60) {
++    feedbackMessage = 'Great Job!';
++    feedbackColor = 'text-emerald-400';
++  } else {
++    feedbackMessage = 'Keep Learning!';
++    feedbackColor = 'text-indigo-400';
++  }
++
++  return (
++    <div className="flex flex-col items-center justify-center min-h-screen p-4 overflow-hidden relative">
++      {/* Dynamic Background glow */}
++       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-indigo-600/10 rounded-full blur-[100px] -z-10" />
++
++      <motion.div 
++        initial={{ scale: 0.9, opacity: 0 }}
++        animate={{ scale: 1, opacity: 1 }}
++        transition={{ duration: 0.5 }}
++        className="max-w-md w-full relative z-10"
++      >
++        <div className="relative bg-white/5 backdrop-blur-2xl border border-white/10 rounded-3xl p-8 shadow-2xl text-center overflow-hidden">
++           {/* Top decoration */}
++           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500" />
++
++           <motion.div 
++             initial={{ y: -20, opacity: 0 }}
++             animate={{ y: 0, opacity: 1 }}
++             transition={{ delay: 0.3 }}
++             className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-yellow-500/10 border border-yellow-500/20 mb-6 shadow-[0_0_30px_rgba(234,179,8,0.2)]"
++           >
++              <Trophy className="w-10 h-10 text-yellow-400" />
++           </motion.div>
++
++           <h2 className="text-3xl font-bold text-white mb-2">Quiz Complete</h2>
++           <p className={clsx("text-lg font-medium mb-8", feedbackColor)}>{feedbackMessage}</p>
++
++           <div className="grid grid-cols-2 gap-4 mb-8">
++              <div className="p-4 rounded-2xl bg-white/5 border border-white/5 flex flex-col items-center justify-center">
++                 <p className="text-sm text-slate-400 uppercase tracking-wider font-bold mb-1">Score</p>
++                 <motion.div 
++                   key={animatedScore}
++                   initial={{ scale: 1.2, color: '#fff' }}
++                   animate={{ scale: 1, color: '#e2e8f0' }}
++                   className="text-4xl font-black text-slate-200"
++                 >
++                   {animatedScore} <span className="text-lg text-slate-500 font-medium">/ {totalQuestions}</span>
++                 </motion.div>
++              </div>
++              <div className="p-4 rounded-2xl bg-white/5 border border-white/5 flex flex-col items-center justify-center">
++                 <p className="text-sm text-slate-400 uppercase tracking-wider font-bold mb-1">Accuracy</p>
++                 <div className="text-4xl font-black text-slate-200">
++                   {percentage}<span className="text-2xl">%</span>
++                 </div>
++              </div>
++           </div>
++
++           <button
++             onClick={onRestart}
++             className="w-full py-4 px-6 bg-white hover:bg-slate-50 text-slate-900 font-bold rounded-xl shadow-lg transform transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2 group"
++           >
++             <RefreshCcw className="w-5 h-5 group-hover:rotate-180 transition-transform duration-500" />
++             Try Again
++           </button>
++        </div>
++      </motion.div>
++    </div>
++  );
++};
++
++export default ResultScreen;
+diff --git a/repository_after/components/StartScreen.tsx b/repository_after/components/StartScreen.tsx
+new file mode 100644
+index 0000000..ecbec47
+--- /dev/null
++++ b/repository_after/components/StartScreen.tsx
+@@ -0,0 +1,76 @@
++import React from 'react';
++import { motion } from 'framer-motion';
++import { BrainCircuit, Sparkles, Play } from 'lucide-react';
++
++interface StartScreenProps {
++  onStart: () => void;
++}
++
++const StartScreen: React.FC<StartScreenProps> = ({ onStart }) => {
++  return (
++    <div className="flex flex-col items-center justify-center min-h-screen p-4 overflow-hidden relative">
++      <div className="absolute inset-0 z-0 bg-transparent" />
++      
++      <motion.div 
++        initial={{ opacity: 0, y: 20 }}
++        animate={{ opacity: 1, y: 0 }}
++        transition={{ duration: 0.8, ease: "easeOut" }}
++        className="relative z-10 max-w-2xl w-full text-center space-y-12"
++      >
++        <div className="relative inline-block group">
++          <motion.div
++            initial={{ scale: 0 }}
++            animate={{ scale: 1 }}
++            transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
++            className="absolute -top-12 -right-8 text-yellow-500"
++          >
++            <Sparkles className="w-10 h-10 animate-pulse" strokeWidth={1.5} />
++          </motion.div>
++          
++          <h1 className="text-6xl md:text-8xl font-extrabold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-blue-300 via-purple-300 to-pink-300 drop-shadow-[0_0_30px_rgba(168,85,247,0.5)]">
++            Ultimate<br/>Trivia
++          </h1>
++          
++          <motion.div
++            initial={{ scale: 0.8, opacity: 0 }}
++            animate={{ scale: 1, opacity: 1 }}
++            transition={{ delay: 0.4 }}
++            className="flex justify-center mt-6"
++          >
++             <div className="p-4 bg-white/5 rounded-full backdrop-blur-3xl border border-white/10 shadow-2xl">
++               <BrainCircuit className="w-16 h-16 text-indigo-400" />
++             </div>
++          </motion.div>
++        </div>
++
++        <motion.p 
++          initial={{ opacity: 0 }}
++          animate={{ opacity: 1 }}
++          transition={{ delay: 0.6 }}
++          className="text-2xl text-slate-300 font-light max-w-lg mx-auto leading-relaxed"
++        >
++          Embark on a journey of knowledge. 
++          <span className="block mt-2 text-indigo-300 font-medium">10 Questions. One Champion.</span>
++        </motion.p>
++
++        <motion.div
++           initial={{ opacity: 0, y: 20 }}
++           animate={{ opacity: 1, y: 0 }}
++           transition={{ delay: 0.8 }}
++        >
++          <button
++            onClick={onStart}
++            className="group relative px-10 py-5 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl font-bold text-xl text-white shadow-[0_0_40px_rgba(99,102,241,0.5)] transition-all hover:scale-105 hover:shadow-[0_0_60px_rgba(99,102,241,0.7)] active:scale-95 overflow-hidden"
++          >
++            <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
++            <span className="relative flex items-center justify-center gap-3">
++              Start Challenge <Play className="w-5 h-5 fill-current" />
++            </span>
++          </button>
++        </motion.div>
++      </motion.div>
++    </div>
++  );
++};
++
++export default StartScreen;
+diff --git a/repository_after/eslint.config.mjs b/repository_after/eslint.config.mjs
+new file mode 100644
+index 0000000..05e726d
+--- /dev/null
++++ b/repository_after/eslint.config.mjs
+@@ -0,0 +1,18 @@
++import { defineConfig, globalIgnores } from "eslint/config";
++import nextVitals from "eslint-config-next/core-web-vitals";
++import nextTs from "eslint-config-next/typescript";
++
++const eslintConfig = defineConfig([
++  ...nextVitals,
++  ...nextTs,
++  // Override default ignores of eslint-config-next.
++  globalIgnores([
++    // Default ignores of eslint-config-next:
++    ".next/**",
++    "out/**",
++    "build/**",
++    "next-env.d.ts",
++  ]),
++]);
++
++export default eslintConfig;
+diff --git a/repository_after/jest.config.ts b/repository_after/jest.config.ts
+new file mode 100644
+index 0000000..fe83bab
+--- /dev/null
++++ b/repository_after/jest.config.ts
+@@ -0,0 +1,32 @@
++import type { Config } from 'jest'
++import nextJest from 'next/jest'
++
++const createJestConfig = nextJest({
++  // Provide the path to your Next.js app to load next.config.js and .env files in your test environment
++  dir: './',
++})
++
++// Add any custom config to be passed to Jest
++const config: Config = {
++  coverageProvider: 'v8',
++  testEnvironment: 'jsdom',
++  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
++  moduleNameMapper: {
++    // Handle module aliases
++    '^@/(.*)$': '<rootDir>/$1',
++    // Mock lucide-react if necessary or let it resolve. 
++    // Usually lucide-react is fine, but sometimes creates issues in jest environments without proper transform.
++  },
++  moduleDirectories: ['node_modules', '<rootDir>/node_modules'],
++  roots: ['<rootDir>', '<rootDir>/../tests'],
++  testMatch: [
++    '**/*.test.tsx',
++    '**/*.test.ts',
++    '**/*.spec.tsx',
++    '**/*.spec.ts',
++  ],
++  rootDir: '.',
++}
++
++// createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async
++export default createJestConfig(config)
+diff --git a/repository_after/jest.setup.ts b/repository_after/jest.setup.ts
+new file mode 100644
+index 0000000..c44951a
+--- /dev/null
++++ b/repository_after/jest.setup.ts
+@@ -0,0 +1 @@
++import '@testing-library/jest-dom'
+diff --git a/repository_after/lib/questions.ts b/repository_after/lib/questions.ts
+new file mode 100644
+index 0000000..0eca9e8
+--- /dev/null
++++ b/repository_after/lib/questions.ts
+@@ -0,0 +1,69 @@
++export interface Question {
++  id: number;
++  questionText: string;
++  options: string[];
++  correctAnswerIndex: number;
++}
++
++export const questions: Question[] = [
++  {
++    id: 1,
++    questionText: "What is the capital of France?",
++    options: ["London", "Berlin", "Paris", "Madrid"],
++    correctAnswerIndex: 2,
++  },
++  {
++    id: 2,
++    questionText: "Which planet is known as the Red Planet?",
++    options: ["Venus", "Mars", "Jupiter", "Saturn"],
++    correctAnswerIndex: 1,
++  },
++  {
++    id: 3,
++    questionText: "What is the largest mammal in the world?",
++    options: ["African Elephant", "Blue Whale", "Giraffe", "Great White Shark"],
++    correctAnswerIndex: 1,
++  },
++  {
++    id: 4,
++    questionText: "Who wrote 'Romeo and Juliet'?",
++    options: ["Charles Dickens", "William Shakespeare", "Mark Twain", "Jane Austen"],
++    correctAnswerIndex: 1,
++  },
++  {
++    id: 5,
++    questionText: "What includes the atomic symbol 'Fe'?",
++    options: ["Gold", "Silver", "Iron", "Zinc"],
++    correctAnswerIndex: 2,
++  },
++  {
++    id: 6,
++    questionText: "Which is the largest ocean on Earth?",
++    options: ["Atlantic Ocean", "Indian Ocean", "Arctic Ocean", "Pacific Ocean"],
++    correctAnswerIndex: 3,
++  },
++  {
++    id: 7,
++    questionText: "In which year did the Titanic sink?",
++    options: ["1912", "1905", "1918", "1923"],
++    correctAnswerIndex: 0,
++  },
++  {
++    id: 8,
++    questionText: "What is the chemical formula for water?",
++    options: ["CO2", "H2O", "O2", "NaCl"],
++    correctAnswerIndex: 1,
++  },
++  {
++    id: 9,
++    questionText: "Which country is home to the Kangaroo?",
++    options: ["New Zealand", "South Africa", "Australia", "Brazil"],
++    correctAnswerIndex: 2,
++  },
++  {
++    id: 10,
++    questionText: "What is the square root of 64?",
++    options: ["6", "7", "8", "9"],
++    correctAnswerIndex: 2,
++  },
++];
+diff --git a/repository_after/next-env.d.ts b/repository_after/next-env.d.ts
+new file mode 100644
+index 0000000..c4b7818
+--- /dev/null
++++ b/repository_after/next-env.d.ts
+@@ -0,0 +1,6 @@
++/// <reference types="next" />
++/// <reference types="next/image-types/global" />
++import "./.next/dev/types/routes.d.ts";
++
++// NOTE: This file should not be edited
++// see https://nextjs.org/docs/app/api-reference/config/typescript for more information.
+diff --git a/repository_after/next.config.ts b/repository_after/next.config.ts
+new file mode 100644
+index 0000000..e9ffa30
+--- /dev/null
++++ b/repository_after/next.config.ts
+@@ -0,0 +1,7 @@
++import type { NextConfig } from "next";
++
++const nextConfig: NextConfig = {
++  /* config options here */
++};
++
++export default nextConfig;
+diff --git a/repository_after/package.json b/repository_after/package.json
+new file mode 100644
+index 0000000..661734f
+--- /dev/null
++++ b/repository_after/package.json
+@@ -0,0 +1,40 @@
++{
++  "name": "repository_after",
++  "version": "0.1.0",
++  "private": true,
++  "scripts": {
++    "dev": "next dev",
++    "build": "next build",
++    "start": "next start",
++    "lint": "eslint",
++    "test": "jest"
++  },
++  "dependencies": {
++    "@fontsource/outfit": "^5.2.8",
++    "canvas-confetti": "^1.9.4",
++    "clsx": "^2.1.1",
++    "framer-motion": "^12.31.0",
++    "lucide-react": "^0.563.0",
++    "next": "16.1.6",
++    "react": "19.2.3",
++    "react-dom": "19.2.3",
++    "tailwind-merge": "^3.4.0"
++  },
++  "devDependencies": {
++    "@tailwindcss/postcss": "^4",
++    "@testing-library/dom": "^10.4.1",
++    "@testing-library/jest-dom": "^6.9.1",
++    "@testing-library/react": "^16.3.2",
++    "@types/canvas-confetti": "^1.9.0",
++    "@types/node": "^20",
++    "@types/react": "^19",
++    "@types/react-dom": "^19",
++    "eslint": "^9",
++    "eslint-config-next": "16.1.6",
++    "jest": "^30.2.0",
++    "jest-environment-jsdom": "^30.2.0",
++    "tailwindcss": "^4",
++    "ts-node": "^10.9.2",
++    "typescript": "^5"
++  }
++}
+diff --git a/repository_after/postcss.config.mjs b/repository_after/postcss.config.mjs
+new file mode 100644
+index 0000000..61e3684
+--- /dev/null
++++ b/repository_after/postcss.config.mjs
+@@ -0,0 +1,7 @@
++const config = {
++  plugins: {
++    "@tailwindcss/postcss": {},
++  },
++};
++
++export default config;
+diff --git a/repository_after/tsconfig.json b/repository_after/tsconfig.json
+new file mode 100644
+index 0000000..3a13f90
+--- /dev/null
++++ b/repository_after/tsconfig.json
+@@ -0,0 +1,34 @@
++{
++  "compilerOptions": {
++    "target": "ES2017",
++    "lib": ["dom", "dom.iterable", "esnext"],
++    "allowJs": true,
++    "skipLibCheck": true,
++    "strict": true,
++    "noEmit": true,
++    "esModuleInterop": true,
++    "module": "esnext",
++    "moduleResolution": "bundler",
++    "resolveJsonModule": true,
++    "isolatedModules": true,
++    "jsx": "react-jsx",
++    "incremental": true,
++    "plugins": [
++      {
++        "name": "next"
++      }
++    ],
++    "paths": {
++      "@/*": ["./*"]
++    }
++  },
++  "include": [
++    "next-env.d.ts",
++    "**/*.ts",
++    "**/*.tsx",
++    ".next/types/**/*.ts",
++    ".next/dev/types/**/*.ts",
++    "**/*.mts"
++  ],
++  "exclude": ["node_modules"]
++}
