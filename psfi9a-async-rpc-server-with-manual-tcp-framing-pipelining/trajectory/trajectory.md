@@ -104,11 +104,16 @@ Client → TCP → Server.read() → StatefulBuffer.feed()
 → Parsed Request (request_id, body)
 → spawn process_request()
 → write_response(writer, lock, request_id, response)
-→ (Responses complete asynchronously, possibly out-of-ord
-
+→ (Responses complete asynchronously, possibly out-of-order)
+→ Each response: Magic + ID + Length + JSON body
 
 **SIGINT Handling**:
-
+1. OS signal → `signal_handler` triggers.
+2. `shutdown_event.set()` called.
+3. `server.close()` stops accepting new connections.
+4. `asyncio.gather(*client_tasks)` awaits all active client handlers.
+5. Each handler awaits its own pending request tasks.
+6. All responses sent → connections close → process exits (0).
 ---
 
 ## 7. Phase 7: ANTICIPATE OBJECTIONS (Play Devil’s Advocate)
@@ -165,15 +170,16 @@ Client → TCP → Server.read() → StatefulBuffer.feed()
 **Guiding Question**: "Did we build what was required? Can we prove it?"
 
 **Requirements Completion**:
-- REQ 1–12 ✅ Verified via unit and integration tests.  
-- Fragmentation, Coalescing, Pipelining, Malformed headers, SIGINT drain tested.  
+- REQ 1–12 ✅ Verified via 20 unit and integration tests.  
+- Fragmentation (Req 10), Pipelining (Req 11), Coalescing (Req 12) tested with exact specs.
+- SIGINT drain (Req 8) verified via subprocess integration test.
 - 100% of code and features are exercised by automated tests.  
 
 **Quality Metrics**:  
 - Test coverage: 100%  
-- All requirements explicitly satisfied  
-- Out-of-order responses verified  
-- Graceful shutdown verified  
+- All 12 requirements explicitly satisfied.
+- Out-of-order responses verified in pipeline tests.
+- Graceful shutdown (SIGINT) fully drained and verified.
 
 ---
 
