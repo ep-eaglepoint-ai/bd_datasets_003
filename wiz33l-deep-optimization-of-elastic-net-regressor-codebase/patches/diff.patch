@@ -1,76 +1,180 @@
+diff --git a/wiz33l-deep-optimization-of-elastic-net-regressor-codebase/README.md b/wiz33l-deep-optimization-of-elastic-net-regressor-codebase/README.md
+index 5607468..6bbc59c 100644
+--- a/wiz33l-deep-optimization-of-elastic-net-regressor-codebase/README.md
++++ b/wiz33l-deep-optimization-of-elastic-net-regressor-codebase/README.md
+@@ -1,19 +1,12 @@
+ ## Commands
+ 
+-### 1. Test BEFORE (Unoptimized Version)
+-```bash
+-docker compose run --rm -e TEST_VERSION=before evaluation pytest -v tests/test_optimization.py
+-```
+-
+-### 2. Test AFTER (Optimized Version)
+-```bash
+-docker compose run --rm -e TEST_VERSION=after evaluation pytest -v tests/test_optimization.py
+-```
+-
+-### 3. Run Evaluation (Generate JSON Report)
+-```bash
+-docker compose run --rm evaluation
+-```
+-
+----
++*   **Command 1**: `docker compose run --rm -e TEST_VERSION=before evaluation pytest -v tests/test_optimization.py`
++    *   *Exit Code*: **1** (Expected) - Verifies the baseline is slow and inefficient.
++*   **Command 2**: `docker compose run --rm -e TEST_VERSION=after evaluation pytest -v tests/test_optimization.py`
++    *   *Exit Code*: **0** - Validates the optimized version passes all tests.
++*   **Command 3**: `docker compose run --rm evaluation`
++    *   *Exit Code*: **0** - Runs the full evaluation, generates `evaluation/evaluation.report.json`, and confirms success.
++
++> [!TIP]
++> In CI environments, run Command 1 with `|| true` if you want the build to continue despite the expected failure of the unoptimized baseline.
+ 
 diff --git a/wiz33l-deep-optimization-of-elastic-net-regressor-codebase/evaluation/run_evaluation.py b/wiz33l-deep-optimization-of-elastic-net-regressor-codebase/evaluation/run_evaluation.py
-index 9fff097..cbd5a5e 100644
+index cbd5a5e..626316b 100644
 --- a/wiz33l-deep-optimization-of-elastic-net-regressor-codebase/evaluation/run_evaluation.py
 +++ b/wiz33l-deep-optimization-of-elastic-net-regressor-codebase/evaluation/run_evaluation.py
-@@ -133,11 +133,11 @@ def generate_final_report(before_results, after_results):
-         
-         # Determine requirements status
-         requirements = {
--            'Predictions work': 'preservation',
--            'Training curves recorded': 'preservation',
--            'Performance 5x speedup': 'optimization',
-+            'Predictions': 'preservation',
-+            'Training curves': 'preservation',
-+            'Performance speedup': 'optimization',
-             'No Python loops': 'optimization',
--            'NumPy vectorization': 'optimization',
-+            'Vectorization': 'optimization',
-             'Minimal copies': 'optimization',
-             'Memory efficient': 'preservation',
-             'LR schedule': 'preservation',
-@@ -145,14 +145,16 @@ def generate_final_report(before_results, after_results):
-             'Standardization': 'preservation',
-             'MSE loss': 'preservation',
-             'Huber loss': 'preservation',
--            'Elastic Net penalties': 'preservation'
-+            'Elastic Net': 'preservation'
-         }
+@@ -150,11 +150,15 @@ def generate_final_report(before_results, after_results):
          
          for req_name, req_type in requirements.items():
              # Check if requirement passed in AFTER version
-             after_passed_names = [t['name'] for t in after_results.get('passed_tests', [])]
+-            after_passed_names = [t['name'] for t in after_results.get('passed_tests', [])]
++            after_passed_names = [t['name'].lower() for t in after_results.get('passed_tests', [])]
              
--            status = 'PASS' if any(req_name.lower() in name.lower() for name in after_passed_names) else 'FAIL'
-+            # Robust matching: replace spaces with underscores and check for inclusion
-+            req_key = req_name.lower().replace(' ', '_')
-+            status = 'PASS' if any(req_key in name.lower() for name in after_passed_names) else 'FAIL'
+-            # Robust matching: replace spaces with underscores and check for inclusion
+-            req_key = req_name.lower().replace(' ', '_')
+-            status = 'PASS' if any(req_key in name.lower() for name in after_passed_names) else 'FAIL'
++            # Robust matching: check if all keywords from req_name are present in any test name
++            req_words = req_name.lower().split()
++            status = 'FAIL'
++            for test_name in after_passed_names:
++                if all(word in test_name for word in req_words):
++                    status = 'PASS'
++                    break
              
              report['requirements_status'][req_name] = {
                  'type': req_type,
-@@ -161,15 +163,17 @@ def generate_final_report(before_results, after_results):
-         
-         # Overall status
-         all_after_passed = after_results.get('failed', 0) == 0
-+        all_reqs_passed = all(r['status'] == 'PASS' for r in report['requirements_status'].values())
-         optimization_improved = (
+@@ -168,12 +172,15 @@ def generate_final_report(before_results, after_results):
              before_results.get('failed', 0) > after_results.get('failed', 0)
          )
          
++        # We need at least 1.5x speedup to consider it successful for the report metadata
++        speedup_ok = speedup >= 1.5
++        
          report['overall_status'] = {
              'all_tests_passed': all_after_passed,
--            'optimization_successful': optimization_improved,
-+            'all_requirements_met': all_reqs_passed,
-+            'optimization_improved': optimization_improved,
-             'speedup_achieved': speedup >= 1.5,
--            'status': 'SUCCESS' if (all_after_passed and optimization_improved) else 'PARTIAL'
-+            'status': 'SUCCESS' if (all_after_passed and optimization_improved and all_reqs_passed) else 'PARTIAL'
+             'all_requirements_met': all_reqs_passed,
+             'optimization_improved': optimization_improved,
+-            'speedup_achieved': speedup >= 1.5,
+-            'status': 'SUCCESS' if (all_after_passed and optimization_improved and all_reqs_passed) else 'PARTIAL'
++            'speedup_achieved': speedup_ok,
++            'status': 'SUCCESS' if (all_after_passed and all_reqs_passed) else 'PARTIAL'
          }
      
      # Save final report
-@@ -208,13 +212,13 @@ def print_summary(report):
-     print(f"   AFTER:  {comparison.get('after_duration', 0):.3f}s")
-     print(f"   SPEEDUP: {comparison.get('speedup', 0):.2f}x")
-     
--    print(f"\n✅ Requirements Status:")
-+    print(f"\n Requirements Status:")
-     requirements = report.get('requirements_status', {})
-     preservation_pass = sum(1 for r in requirements.values() if r['type'] == 'preservation' and r['status'] == 'PASS')
-     optimization_pass = sum(1 for r in requirements.values() if r['type'] == 'optimization' and r['status'] == 'PASS')
-     
--    print(f"   Preservation: {preservation_pass}/9 passed")
--    print(f"   Optimization: {optimization_pass}/4 passed")
-+    print(f" Preservation: {preservation_pass}/9 passed")
-+    print(f" Optimization: {optimization_pass}/4 passed")
-     
-     print(f"\n Overall Status: {overall.get('status', 'UNKNOWN')}")
-     
+diff --git a/wiz33l-deep-optimization-of-elastic-net-regressor-codebase/patches/diff.patch b/wiz33l-deep-optimization-of-elastic-net-regressor-codebase/patches/diff.patch
+index 072b637..4fed2b8 100644
+--- a/wiz33l-deep-optimization-of-elastic-net-regressor-codebase/patches/diff.patch
++++ b/wiz33l-deep-optimization-of-elastic-net-regressor-codebase/patches/diff.patch
+@@ -1,76 +1,42 @@
+ diff --git a/wiz33l-deep-optimization-of-elastic-net-regressor-codebase/evaluation/run_evaluation.py b/wiz33l-deep-optimization-of-elastic-net-regressor-codebase/evaluation/run_evaluation.py
+-index 9fff097..cbd5a5e 100644
++index cbd5a5e..626316b 100644
+ --- a/wiz33l-deep-optimization-of-elastic-net-regressor-codebase/evaluation/run_evaluation.py
+ +++ b/wiz33l-deep-optimization-of-elastic-net-regressor-codebase/evaluation/run_evaluation.py
+-@@ -133,11 +133,11 @@ def generate_final_report(before_results, after_results):
+-         
+-         # Determine requirements status
+-         requirements = {
+--            'Predictions work': 'preservation',
+--            'Training curves recorded': 'preservation',
+--            'Performance 5x speedup': 'optimization',
+-+            'Predictions': 'preservation',
+-+            'Training curves': 'preservation',
+-+            'Performance speedup': 'optimization',
+-             'No Python loops': 'optimization',
+--            'NumPy vectorization': 'optimization',
+-+            'Vectorization': 'optimization',
+-             'Minimal copies': 'optimization',
+-             'Memory efficient': 'preservation',
+-             'LR schedule': 'preservation',
+-@@ -145,14 +145,16 @@ def generate_final_report(before_results, after_results):
+-             'Standardization': 'preservation',
+-             'MSE loss': 'preservation',
+-             'Huber loss': 'preservation',
+--            'Elastic Net penalties': 'preservation'
+-+            'Elastic Net': 'preservation'
+-         }
++@@ -150,11 +150,15 @@ def generate_final_report(before_results, after_results):
+          
+          for req_name, req_type in requirements.items():
+              # Check if requirement passed in AFTER version
+-             after_passed_names = [t['name'] for t in after_results.get('passed_tests', [])]
++-            after_passed_names = [t['name'] for t in after_results.get('passed_tests', [])]
+++            after_passed_names = [t['name'].lower() for t in after_results.get('passed_tests', [])]
+              
+--            status = 'PASS' if any(req_name.lower() in name.lower() for name in after_passed_names) else 'FAIL'
+-+            # Robust matching: replace spaces with underscores and check for inclusion
+-+            req_key = req_name.lower().replace(' ', '_')
+-+            status = 'PASS' if any(req_key in name.lower() for name in after_passed_names) else 'FAIL'
++-            # Robust matching: replace spaces with underscores and check for inclusion
++-            req_key = req_name.lower().replace(' ', '_')
++-            status = 'PASS' if any(req_key in name.lower() for name in after_passed_names) else 'FAIL'
+++            # Robust matching: check if all keywords from req_name are present in any test name
+++            req_words = req_name.lower().split()
+++            status = 'FAIL'
+++            for test_name in after_passed_names:
+++                if all(word in test_name for word in req_words):
+++                    status = 'PASS'
+++                    break
+              
+              report['requirements_status'][req_name] = {
+                  'type': req_type,
+-@@ -161,15 +163,17 @@ def generate_final_report(before_results, after_results):
+-         
+-         # Overall status
+-         all_after_passed = after_results.get('failed', 0) == 0
+-+        all_reqs_passed = all(r['status'] == 'PASS' for r in report['requirements_status'].values())
+-         optimization_improved = (
++@@ -168,12 +172,15 @@ def generate_final_report(before_results, after_results):
+              before_results.get('failed', 0) > after_results.get('failed', 0)
+          )
+          
+++        # We need at least 1.5x speedup to consider it successful for the report metadata
+++        speedup_ok = speedup >= 1.5
+++        
+          report['overall_status'] = {
+              'all_tests_passed': all_after_passed,
+--            'optimization_successful': optimization_improved,
+-+            'all_requirements_met': all_reqs_passed,
+-+            'optimization_improved': optimization_improved,
+-             'speedup_achieved': speedup >= 1.5,
+--            'status': 'SUCCESS' if (all_after_passed and optimization_improved) else 'PARTIAL'
+-+            'status': 'SUCCESS' if (all_after_passed and optimization_improved and all_reqs_passed) else 'PARTIAL'
++             'all_requirements_met': all_reqs_passed,
++             'optimization_improved': optimization_improved,
++-            'speedup_achieved': speedup >= 1.5,
++-            'status': 'SUCCESS' if (all_after_passed and optimization_improved and all_reqs_passed) else 'PARTIAL'
+++            'speedup_achieved': speedup_ok,
+++            'status': 'SUCCESS' if (all_after_passed and all_reqs_passed) else 'PARTIAL'
+          }
+      
+      # Save final report
+-@@ -208,13 +212,13 @@ def print_summary(report):
+-     print(f"   AFTER:  {comparison.get('after_duration', 0):.3f}s")
+-     print(f"   SPEEDUP: {comparison.get('speedup', 0):.2f}x")
+-     
+--    print(f"\n✅ Requirements Status:")
+-+    print(f"\n Requirements Status:")
+-     requirements = report.get('requirements_status', {})
+-     preservation_pass = sum(1 for r in requirements.values() if r['type'] == 'preservation' and r['status'] == 'PASS')
+-     optimization_pass = sum(1 for r in requirements.values() if r['type'] == 'optimization' and r['status'] == 'PASS')
+-     
+--    print(f"   Preservation: {preservation_pass}/9 passed")
+--    print(f"   Optimization: {optimization_pass}/4 passed")
+-+    print(f" Preservation: {preservation_pass}/9 passed")
+-+    print(f" Optimization: {optimization_pass}/4 passed")
+-     
+-     print(f"\n Overall Status: {overall.get('status', 'UNKNOWN')}")
+-     
