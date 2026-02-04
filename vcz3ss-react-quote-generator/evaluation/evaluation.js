@@ -2,45 +2,16 @@ const { execSync, spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const crypto = require("crypto");
 
 function generateRunId() {
-  return Math.random().toString(16).substring(2, 10);
-}
-
-function getGitInfo() {
-  const gitInfo = { git_commit: "unknown", git_branch: "unknown" };
-
-  try {
-    const commit = execSync("git rev-parse HEAD", {
-      encoding: "utf-8",
-      timeout: 5000,
-    }).trim();
-    gitInfo.git_commit = commit.substring(0, 8);
-  } catch (e) {}
-
-  try {
-    const branch = execSync("git rev-parse --abbrev-ref HEAD", {
-      encoding: "utf-8",
-      timeout: 5000,
-    }).trim();
-    gitInfo.git_branch = branch;
-  } catch (e) {}
-
-  return gitInfo;
+  return crypto.randomUUID();
 }
 
 function getEnvironmentInfo() {
-  const gitInfo = getGitInfo();
-
   return {
     node_version: process.version,
-    platform: os.platform(),
-    os: os.type(),
-    os_release: os.release(),
-    architecture: os.arch(),
-    hostname: os.hostname(),
-    git_commit: gitInfo.git_commit,
-    git_branch: gitInfo.git_branch,
+    platform: `${os.type()}-${os.release()}-${os.arch()}`,
   };
 }
 
@@ -56,13 +27,7 @@ function runJestWithRepoPath(repoPath, testsDir, label) {
   try {
     const result = spawnSync(
       "npx",
-      [
-        "jest",
-        "--testPathPattern=tests/",
-        "--json",
-        "--testLocationInResults",
-        "--forceExit",
-      ],
+      ["jest", "--testPathPattern=tests/", "--forceExit"],
       {
         cwd: path.dirname(testsDir),
         env,
@@ -71,124 +36,30 @@ function runJestWithRepoPath(repoPath, testsDir, label) {
       },
     );
 
-    let jsonOutput;
-    try {
-      jsonOutput = JSON.parse(result.stdout);
-    } catch (e) {
-      console.log("Raw stdout:", result.stdout);
-      console.log("Raw stderr:", result.stderr);
+    const output = ((result.stdout || "") + (result.stderr || "")).slice(-8000);
+    const passed = result.status === 0;
 
-      const tests = parseJestTextOutput(result.stdout + result.stderr);
-      const passed = tests.filter((t) => t.outcome === "passed").length;
-      const failed = tests.filter((t) => t.outcome === "failed").length;
-
-      return {
-        success: result.status === 0,
-        exit_code: result.status,
-        tests,
-        summary: {
-          total: tests.length,
-          passed,
-          failed,
-          errors: 0,
-          skipped: 0,
-        },
-        stdout: (result.stdout || "").slice(-3000),
-        stderr: (result.stderr || "").slice(-1000),
-      };
-    }
-
-    const tests = [];
-    if (jsonOutput.testResults) {
-      for (const testFile of jsonOutput.testResults) {
-        for (const assertionResult of testFile.assertionResults || []) {
-          tests.push({
-            nodeid: `${path.basename(testFile.name)}::${assertionResult.ancestorTitles.join("::")}::${assertionResult.title}`,
-            name: assertionResult.title,
-            outcome:
-              assertionResult.status === "passed"
-                ? "passed"
-                : assertionResult.status === "failed"
-                  ? "failed"
-                  : assertionResult.status === "skipped"
-                    ? "skipped"
-                    : "error",
-          });
-        }
-      }
-    }
-
-    const passed = tests.filter((t) => t.outcome === "passed").length;
-    const failed = tests.filter((t) => t.outcome === "failed").length;
-    const skipped = tests.filter((t) => t.outcome === "skipped").length;
-    const errors = tests.filter((t) => t.outcome === "error").length;
-
-    console.log(
-      `\nResults: ${passed} passed, ${failed} failed, ${errors} errors, ${skipped} skipped (total: ${tests.length})`,
-    );
-
-    for (const test of tests) {
-      const icon =
-        {
-          passed: "[PASS]",
-          failed: "[FAIL]",
-          error: "[ERR]",
-          skipped: "[SKIP]",
-        }[test.outcome] || "[?]";
-      console.log(`  ${icon} ${test.nodeid}: ${test.outcome}`);
-    }
+    console.log(`\nResults: ${passed ? "PASSED" : "FAILED"}`);
 
     return {
-      success: jsonOutput.success,
-      exit_code: result.status,
-      tests,
-      summary: {
-        total: tests.length,
+      tests: {
         passed,
-        failed,
-        errors,
-        skipped,
+        return_code: result.status,
+        output,
       },
-      stdout: (result.stdout || "").slice(-3000),
-      stderr: (result.stderr || "").slice(-1000),
+      metrics: {},
     };
   } catch (e) {
     console.log(`[FAIL] Error running tests: ${e.message}`);
     return {
-      success: false,
-      exit_code: -1,
-      tests: [],
-      summary: { error: e.message },
-      stdout: "",
-      stderr: "",
+      tests: {
+        passed: false,
+        return_code: -1,
+        output: e.message,
+      },
+      metrics: {},
     };
   }
-}
-
-function parseJestTextOutput(output) {
-  const tests = [];
-  const lines = output.split("\n");
-
-  for (const line of lines) {
-    const passMatch = line.match(/✓\s+(.+?)(?:\s+\(\d+\s*ms\))?$/);
-    const failMatch = line.match(/✕\s+(.+?)(?:\s+\(\d+\s*ms\))?$/);
-
-    if (passMatch) {
-      tests.push({
-        nodeid: passMatch[1].trim(),
-        name: passMatch[1].trim(),
-        outcome: "passed",
-      });
-    } else if (failMatch) {
-      tests.push({
-        nodeid: failMatch[1].trim(),
-        name: failMatch[1].trim(),
-        outcome: "failed",
-      });
-    }
-  }
-
-  return tests;
 }
 
 function runEvaluation() {
@@ -213,38 +84,32 @@ function runEvaluation() {
     "after (repository_after)",
   );
 
-  const comparison = {
-    before_tests_passed: beforeResults.success,
-    after_tests_passed: afterResults.success,
-    before_total: beforeResults.summary.total || 0,
-    before_passed: beforeResults.summary.passed || 0,
-    before_failed: beforeResults.summary.failed || 0,
-    after_total: afterResults.summary.total || 0,
-    after_passed: afterResults.summary.passed || 0,
-    after_failed: afterResults.summary.failed || 0,
-  };
+  const passedGate = afterResults.tests.passed;
+  let improvementSummary;
+  if (passedGate && !beforeResults.tests.passed) {
+    improvementSummary =
+      "Repository after passes all correctness tests while repository before fails as expected.";
+  } else if (passedGate) {
+    improvementSummary = "Repository after passes all correctness tests.";
+  } else {
+    improvementSummary = "Repository after failed correctness tests.";
+  }
 
   console.log("\n" + "=".repeat(60));
   console.log("EVALUATION SUMMARY");
   console.log("=".repeat(60));
 
   console.log("\nBefore Implementation (repository_before):");
-  console.log(`  Overall: ${beforeResults.success ? "PASSED" : "FAILED"}`);
-  console.log(
-    `  Tests: ${comparison.before_passed}/${comparison.before_total} passed`,
-  );
+  console.log(`  Overall: ${beforeResults.tests.passed ? "PASSED" : "FAILED"}`);
 
   console.log("\nAfter Implementation (repository_after):");
-  console.log(`  Overall: ${afterResults.success ? "PASSED" : "FAILED"}`);
-  console.log(
-    `  Tests: ${comparison.after_passed}/${comparison.after_total} passed`,
-  );
+  console.log(`  Overall: ${afterResults.tests.passed ? "PASSED" : "FAILED"}`);
 
   console.log("\n" + "=".repeat(60));
   console.log("EXPECTED BEHAVIOR CHECK");
   console.log("=".repeat(60));
 
-  if (afterResults.success) {
+  if (afterResults.tests.passed) {
     console.log("[PASS] After implementation: All tests passed (expected)");
   } else {
     console.log(
@@ -255,7 +120,10 @@ function runEvaluation() {
   return {
     before: beforeResults,
     after: afterResults,
-    comparison,
+    comparison: {
+      passed_gate: passedGate,
+      improvement_summary: improvementSummary,
+    },
   };
 }
 
@@ -292,8 +160,8 @@ function main() {
 
   try {
     results = runEvaluation();
-    success = results.after.success;
-    errorMessage = success ? null : "After implementation tests failed";
+    success = results.comparison.passed_gate;
+    errorMessage = null;
   } catch (e) {
     console.log(`\nERROR: ${e.message}`);
     console.log(e.stack);
@@ -307,15 +175,32 @@ function main() {
 
   const environment = getEnvironmentInfo();
 
+  const formatTimestamp = (date) =>
+    date.toISOString().replace(/(\.\d{3})Z$/, "$1000Z");
+
   const report = {
     run_id: runId,
-    started_at: startedAt.toISOString(),
-    finished_at: finishedAt.toISOString(),
+    started_at: formatTimestamp(startedAt),
+    finished_at: formatTimestamp(finishedAt),
     duration_seconds: Math.round(duration * 1000000) / 1000000,
+    environment,
+    before: results
+      ? results.before
+      : {
+          tests: { passed: false, return_code: -1, output: errorMessage },
+          metrics: {},
+        },
+    after: results
+      ? results.after
+      : {
+          tests: { passed: false, return_code: -1, output: errorMessage },
+          metrics: {},
+        },
+    comparison: results
+      ? results.comparison
+      : { passed_gate: false, improvement_summary: errorMessage },
     success,
     error: errorMessage,
-    environment,
-    results,
   };
 
   if (!outputPath) {
