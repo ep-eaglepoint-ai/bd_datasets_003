@@ -1,11 +1,11 @@
-# FITK01 - Weather dashboard
+# Weather Dashboard
 
-    ## Before Test Docker Command
-    <docker before command here>
+## After Test Docker Command
+```bash
+docker compose run --rm app npx jest --verbose
+```
 
-    ## After Test Docker Command
-    <docker after command here>
-
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## Evaluation Docker Command
+```bash
+docker compose run --rm app node evaluation/evaluation.js
+```

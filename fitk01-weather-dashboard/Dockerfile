@@ -1,8 +1,20 @@
+FROM node:18-alpine
 
-        # Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
-
-        FROM python:3.11-slim
 WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+RUN npm install -g jest@29.7.0 jest-environment-jsdom@29.7.0
+
+COPY repository_after/backend/package*.json ./repository_after/backend/
+COPY tests/package*.json ./tests/
+COPY evaluation/package*.json ./evaluation/
+
+RUN cd repository_after/backend && npm install
+RUN cd tests && npm install
+RUN cd evaluation && npm install
+
+COPY . .
+
+ENV USE_MOCK=true
+ENV NODE_ENV=test
+
+CMD ["node", "evaluation/evaluation.js"]

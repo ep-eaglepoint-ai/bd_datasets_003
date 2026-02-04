@@ -1,0 +1,10 @@
+{
+  "name": "weather-dashboard-evaluation",
+  "version": "1.0.0",
+  "scripts": {
+    "evaluate": "node evaluation.js"
+  },
+  "dependencies": {
+    "uuid": "^9.0.0"
+  }
+}
