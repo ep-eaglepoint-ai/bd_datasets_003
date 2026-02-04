@@ -1,11 +1,19 @@
 # GTJMTZ - pomodoro timer
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Before Test Docker Command
 
-    ## After Test Docker Command
-    <docker after command here>
+```bash
+No repository before
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## After Test Docker Command
+
+```bash
+docker compose run --rm app
+```
+
+## Evaluation Docker Command
+
+```bash
+docker compose run --rm eval
+```
