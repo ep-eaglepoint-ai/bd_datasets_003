@@ -1,8 +1,5 @@
-# Python
-__pycache__/
-*.pyc
-.venv/
-.env
+# Task Specific
+reports/
 
 # Node
 node_modules/
