@@ -7,7 +7,7 @@
     "test": "tests"
   },
   "scripts": {
-    "test": "ts-node -P tsconfig.json \"tests/**/*.ts\""
+    "test": "ts-node -P tsconfig.json tests/localizationResolver.test.ts"
   },
   "keywords": [],
   "author": "",

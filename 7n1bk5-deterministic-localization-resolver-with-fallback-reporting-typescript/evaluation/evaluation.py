@@ -35,7 +35,7 @@ def run_tests(is_before: bool = False):
 
     try:
         # Run tests against 'after' implementation
-        cmd = ["npx", "-y", "ts-node", "--project", "tsconfig.json", "tests/localizationResolver.test.ts"]
+        cmd = ["npm", "test"]
         
         proc = subprocess.run(
             cmd,

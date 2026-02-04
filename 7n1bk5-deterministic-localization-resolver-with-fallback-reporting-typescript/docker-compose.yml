@@ -1,13 +1,14 @@
-after:
-  build: .
-  command: npm test
-  volumes:
-    - .:/app
-    - /app/node_modules
+services:
+  after:
+    build: .
+    command: npm test
+    volumes:
+      - .:/app
+      - /app/node_modules
 
-evaluation:
-  build: .
-  command: python3 evaluation/evaluation.py
-  volumes:
-    - .:/app
-    - /app/node_modules
+  evaluation:
+    build: .
+    command: python3 evaluation/evaluation.py
+    volumes:
+      - .:/app
+      - /app/node_modules
