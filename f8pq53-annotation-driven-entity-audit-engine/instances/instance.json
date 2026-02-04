@@ -1,0 +1,11 @@
+{
+            "instance_id": "F8PQ53",
+            "problem_statement": "Design and implement a reusable Java-based auditing library that utilizes custom annotations and Reflection/AOP to automatically track and log state changes in sensitive domain entities. The engine must identify which specific fields changed during a persistence event and generate a detailed audit log for regulatory compliance.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/f8pq53-annotation-driven-entity-audit-engine",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
