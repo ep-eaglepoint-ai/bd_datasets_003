@@ -22,6 +22,7 @@ services:
     environment:
       - PYTHONPATH=/app/repository_before
       - DJANGO_SETTINGS_MODULE=ecommerce.settings_test
+      - EXPECT_FAILURES=1
 
   evaluate:
     build: .

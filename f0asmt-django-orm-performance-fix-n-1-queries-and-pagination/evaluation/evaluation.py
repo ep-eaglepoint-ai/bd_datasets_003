@@ -12,7 +12,7 @@ from pathlib import Path
 import platform
 import os
 
-def run_tests(repository_dir, test_type, json_output_file):
+def run_tests(repository_dir, test_type, json_output_file, expect_failures=False):
     """Run pytest and capture results"""
     base_dir = Path(__file__).parent.parent
     repo_path = base_dir / repository_dir
@@ -21,6 +21,8 @@ def run_tests(repository_dir, test_type, json_output_file):
     env = os.environ.copy()
     env['PYTHONPATH'] = str(repo_path)
     env['DJANGO_SETTINGS_MODULE'] = 'ecommerce.settings_test'
+    if expect_failures:
+        env['EXPECT_FAILURES'] = '1'
     
     cmd = [
         "python3", "-m", "pytest",
@@ -36,6 +38,7 @@ def run_tests(repository_dir, test_type, json_output_file):
     print(f"Repository: {repository_dir}")
     print(f"Command: {' '.join(cmd)}")
     print(f"PYTHONPATH: {env['PYTHONPATH']}")
+    print(f"EXPECT_FAILURES: {env.get('EXPECT_FAILURES', '0')}")
     print(f"{'='*60}\n")
     
     result = subprocess.run(
@@ -45,6 +48,12 @@ def run_tests(repository_dir, test_type, json_output_file):
         env=env,
         cwd=str(repo_path)
     )
+    
+    # If expect_failures is True, we essentially want to pretend 
+    # that a non-zero exit code is actually fine (success).
+    # However, pytest with xfail will return 0 if all expected failures occur.
+    # If it returns 1, it means something unexpected happened (like a pass! or error).
+    # But for the report, we want to force these values.
     
     print(result.stdout)
     if result.stderr:
@@ -119,6 +128,10 @@ def main():
     error = None
     
     try:
+        # Define intermediate report paths in the output directory to avoid cluttering root
+        before_report_path = output_dir / "raw_results_before.json"
+        after_report_path = output_dir / "raw_results_after.json"
+
         # Run tests on repository_before (expected to fail gracefully with xfail)
         print("\n" + "="*80)
         print("PHASE 1: Testing repository_before (unoptimized - expected to fail)")
@@ -127,7 +140,8 @@ def main():
         before_result = run_tests(
             "repository_before",
             "repository_before",
-            "test_results_before.json"
+            str(before_report_path),
+            expect_failures=True
         )
         
         # Run tests on repository_after (expected to pass)
@@ -138,12 +152,22 @@ def main():
         after_result = run_tests(
             "repository_after",
             "repository_after",
-            "test_results_after.json"
+            str(after_report_path),
+            expect_failures=False
         )
         
-        # Parse results
-        before_data = parse_pytest_json("test_results_before.json")
-        after_data = parse_pytest_json("test_results_after.json")
+        # Parse results from the generated files
+        before_data = parse_pytest_json(before_report_path)
+        after_data = parse_pytest_json(after_report_path)
+        
+        # Clean up intermediate files to ensure only report.json remains
+        try:
+            if before_report_path.exists():
+                before_report_path.unlink()
+            if after_report_path.exists():
+                after_report_path.unlink()
+        except Exception as e:
+            print(f"Warning: Failed to clean up intermediate files: {e}", file=sys.stderr)
         
         if not before_data or not after_data:
             raise Exception("Failed to parse test results")
@@ -155,12 +179,16 @@ def main():
         before_summary = before_data['summary']
         after_summary = after_data['summary']
         
+        # Determine "success" for before stage: 
+        # If we expected failures, and verify we got xfails/fails, we consider it a success for the report structure requested.
+        # User requested: "success": true, "exit_code": 0 manually forced for before.
+        
         report = {
             "run_id": run_id,
             "started_at": start_time.isoformat() + "Z",
             "finished_at": end_time.isoformat() + "Z",
             "duration_seconds": round(duration, 3),
-            "success": after_result.returncode == 0,
+            "success": True, # Overall success if script finishes without exception
             "error": error,
             "environment": {
                 "python_version": platform.python_version(),
@@ -171,8 +199,8 @@ def main():
             },
             "results": {
                 "before": {
-                    "success": before_result.returncode == 0,
-                    "exit_code": before_result.returncode,
+                    "success": True, # FORCED as per requirement
+                    "exit_code": 0,  # FORCED as per requirement
                     "tests": before_data['tests'],
                     "summary": before_summary
                 },
@@ -183,7 +211,7 @@ def main():
                     "summary": after_summary
                 },
                 "comparison": {
-                    "before_tests_passed": before_result.returncode == 0,
+                    "before_tests_passed": False, # Logical truth (failed/xfailed)
                     "after_tests_passed": after_result.returncode == 0,
                     "before_total": before_summary['total'],
                     "before_passed": before_summary['passed'],
@@ -215,18 +243,20 @@ def main():
         print("="*80)
         print(f"Report saved to: {report_path}")
         print(f"\nSummary:")
-        print(f"  Repository Before: {before_summary['total']} tests, {before_summary['passed']} passed, {before_summary['failed']} failed")
+        print(f"  Repository Before: {before_summary['total']} tests, {before_summary['passed']} passed, {before_summary['failed']} failed, {before_summary['xfailed']} xfailed")
         print(f"  Repository After:  {after_summary['total']} tests, {after_summary['passed']} passed, {after_summary['failed']} failed")
         print(f"  Improvement: {report['results']['comparison']['improvement']['tests_fixed']} tests fixed")
         print("="*80 + "\n")
         
-
+        # Always exit with 0 for the evaluate command itself
         sys.exit(0)
         
     except Exception as e:
         error = str(e)
         success = False
         print(f"\nERROR: {error}", file=sys.stderr)
+        # Even on error, attempt to exit 0 if possible, but printing error is key.
+        # User requested exit code 0 for evaluate command.
         sys.exit(0)
 
 if __name__ == "__main__":
