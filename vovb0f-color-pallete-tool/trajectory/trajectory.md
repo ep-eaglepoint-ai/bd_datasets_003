@@ -121,7 +121,6 @@ Create a **Color Picker Palette tool**:
 - **Accessibility-aware**: Contrast ratio calculations are built-in, helping users pick accessible color combinations.
 - **Extensible**: This component can later be connected to save palettes, organize collections, or export formats.
 
----
 
 ## Requirement 4 – Save Palettes, Collections, Tags & Descriptions
 
@@ -172,7 +171,6 @@ Implement **MongoDB/Mongoose** persistence so logged-in users can save palettes 
 - **Save modal** keeps the save flow in one place; default values support “save from gallery” without re-typing.
 - **Share to gallery** in Library lets users explicitly choose which palettes are public, matching the requirement that the gallery shows “palettes that users have chosen to share publicly”.
 
----
 
 ## Requirement 5 – Multiple Export Formats
 
@@ -205,8 +203,6 @@ Implement an **Export** control that supports five formats. For PNG, generate a 
 - **Five formats** match the requirement exactly; CSS/SCSS/JSON/Tailwind are text-based and easy to generate; PNG is generated with Canvas so hex codes are clearly visible on the image.
 - **Canvas instead of html2canvas** avoids build/resolution issues and keeps the bundle small while still delivering a “downloadable PNG swatch image with hex codes displayed”.
 - **Single ExportButton** reused across tools keeps behavior consistent and avoids duplication.
-
----
 
 ## Requirement 6 – Public Gallery (Filter, Copy, Save)
 

@@ -1,11 +1,8 @@
-version: "3.9"
-
 # Docker Compose file for running tests and evaluation.
+# No volume mount: use image's node_modules (built for linux-musl) so Rollup optional deps work.
 
 services:
   app:
     build: .
     working_dir: /app
-    volumes:
-      - .:/app
     command: npm test
