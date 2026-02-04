@@ -133,11 +133,11 @@ def generate_final_report(before_results, after_results):
         
         # Determine requirements status
         requirements = {
-            'Predictions work': 'preservation',
-            'Training curves recorded': 'preservation',
-            'Performance 5x speedup': 'optimization',
+            'Predictions': 'preservation',
+            'Training curves': 'preservation',
+            'Performance speedup': 'optimization',
             'No Python loops': 'optimization',
-            'NumPy vectorization': 'optimization',
+            'Vectorization': 'optimization',
             'Minimal copies': 'optimization',
             'Memory efficient': 'preservation',
             'LR schedule': 'preservation',
@@ -145,14 +145,16 @@ def generate_final_report(before_results, after_results):
             'Standardization': 'preservation',
             'MSE loss': 'preservation',
             'Huber loss': 'preservation',
-            'Elastic Net penalties': 'preservation'
+            'Elastic Net': 'preservation'
         }
         
         for req_name, req_type in requirements.items():
             # Check if requirement passed in AFTER version
             after_passed_names = [t['name'] for t in after_results.get('passed_tests', [])]
             
-            status = 'PASS' if any(req_name.lower() in name.lower() for name in after_passed_names) else 'FAIL'
+            # Robust matching: replace spaces with underscores and check for inclusion
+            req_key = req_name.lower().replace(' ', '_')
+            status = 'PASS' if any(req_key in name.lower() for name in after_passed_names) else 'FAIL'
             
             report['requirements_status'][req_name] = {
                 'type': req_type,
@@ -161,15 +163,17 @@ def generate_final_report(before_results, after_results):
         
         # Overall status
         all_after_passed = after_results.get('failed', 0) == 0
+        all_reqs_passed = all(r['status'] == 'PASS' for r in report['requirements_status'].values())
         optimization_improved = (
             before_results.get('failed', 0) > after_results.get('failed', 0)
         )
         
         report['overall_status'] = {
             'all_tests_passed': all_after_passed,
-            'optimization_successful': optimization_improved,
+            'all_requirements_met': all_reqs_passed,
+            'optimization_improved': optimization_improved,
             'speedup_achieved': speedup >= 1.5,
-            'status': 'SUCCESS' if (all_after_passed and optimization_improved) else 'PARTIAL'
+            'status': 'SUCCESS' if (all_after_passed and optimization_improved and all_reqs_passed) else 'PARTIAL'
         }
     
     # Save final report
@@ -208,13 +212,13 @@ def print_summary(report):
     print(f"   AFTER:  {comparison.get('after_duration', 0):.3f}s")
     print(f"   SPEEDUP: {comparison.get('speedup', 0):.2f}x")
     
-    print(f"\n✅ Requirements Status:")
+    print(f"\n Requirements Status:")
     requirements = report.get('requirements_status', {})
     preservation_pass = sum(1 for r in requirements.values() if r['type'] == 'preservation' and r['status'] == 'PASS')
     optimization_pass = sum(1 for r in requirements.values() if r['type'] == 'optimization' and r['status'] == 'PASS')
     
-    print(f"   Preservation: {preservation_pass}/9 passed")
-    print(f"   Optimization: {optimization_pass}/4 passed")
+    print(f" Preservation: {preservation_pass}/9 passed")
+    print(f" Optimization: {optimization_pass}/4 passed")
     
     print(f"\n Overall Status: {overall.get('status', 'UNKNOWN')}")
     
