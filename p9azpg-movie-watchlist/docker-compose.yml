@@ -1,11 +1,10 @@
 services:
   app:
     build:
-      context: ./repository_after
+      context: .
       # Assuming Dockerfile is in the root (same level as docker-compose.yml)
-      dockerfile: ./Dockerfile
+      dockerfile: Dockerfile
     volumes:
-      # FIX: Mount the specific source folder, not the root
       - ./repository_after:/app
       - ./evaluation:/app/evaluation
       - /app/node_modules

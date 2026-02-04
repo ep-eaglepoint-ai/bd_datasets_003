@@ -4,7 +4,7 @@ FROM node:22-bookworm
 # Set working directory
 WORKDIR /app
 
-COPY . .
+COPY repository_after/ .
 
 RUN rm -rf node_modules
 
