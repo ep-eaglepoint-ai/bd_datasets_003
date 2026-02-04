@@ -1,0 +1,13 @@
+{
+            "instance_id": "AGJ03V",
+            "problem_statement": "The custom memory pool allocator crashes after 4-6 hours of continuous operation in production. Core dumps show free list corruption with blocks appearing multiple times in the list. Memory profiling reveals the pool's available space shrinks over time even though all allocations are freed. 
+
+QA reproduced a case where pool_alloc() returned the same address to two concurrent callers. On ARM targets, some allocations trigger bus errors due to misaligned pointers. The allocator implementation is in pool.c with free list helpers in freelist.c.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/agj03v-c-memory-pool-allocator-free-list-corruption-and-memory-leak-fix",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
