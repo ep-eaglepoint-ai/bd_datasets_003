@@ -1,0 +1,11 @@
+{
+            "instance_id": "6HXZD4",
+            "problem_statement": "Develop pytest tests to verify functional correctness, numerical stability, gradient flow, refinement behavior, and edge cases for Spline1D, KANLayer, and KAN.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/6hxzd4-comprehensive-pytorch-test-suite-for-kan-and-spline1d",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
