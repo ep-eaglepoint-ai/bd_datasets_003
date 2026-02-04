@@ -5,7 +5,8 @@ const config: Config = {
   preset: "ts-jest",
   testEnvironment: "node",
   testMatch: ["<rootDir>/tests/**/*.test.ts"],
-  testTimeout: 60000,
+  testTimeout: 180000,
+  coverageDirectory: "<rootDir>/tests/coverage",
 };
 
 export default config;

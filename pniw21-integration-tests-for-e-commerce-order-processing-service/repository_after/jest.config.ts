@@ -13,7 +13,18 @@ const config: Config = {
     "^@sut/(.*)$": "<rootDir>/repository_before/services/$1",
   },
   testTimeout: 15000,
-  collectCoverage: false,
+  collectCoverage: true,
+  coverageProvider: "v8",
+  collectCoverageFrom: ["<rootDir>/repository_before/services/**/*.ts"],
+  coverageDirectory: "<rootDir>/repository_after/coverage",
+  coverageThreshold: {
+    global: {
+      statements: 85,
+      branches: 85,
+      functions: 85,
+      lines: 85,
+    },
+  },
 };
 
 export default config;

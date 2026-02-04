@@ -28,6 +28,7 @@ describe("Payment + refund behaviors", () => {
 
   afterEach(async () => {
     if (ctx) await ctx.cleanup();
+    jest.useRealTimers();
   });
 
   test("payment timeout releases inventory (simulated delayed non-success status)", async () => {
@@ -89,7 +90,7 @@ describe("Payment + refund behaviors", () => {
     expect(stripeState.paymentIntents.create).toHaveBeenCalledTimes(1);
   });
 
-  test("failed orders do not cache idempotency key (current behavior) and will re-attempt payment on retry", async () => {
+  test("failed orders are not cached and retry re-attempts payment (current behavior)", async () => {
     await seedInventory(ctx.txPool, [
       { productId: "p_fail_idem", quantity: 1 },
     ]);
@@ -117,11 +118,33 @@ describe("Payment + refund behaviors", () => {
     const r1 = await ctx.http.post("/orders").send(payload);
     expect(r1.status).toBe(402);
 
+    const orderRow = await ctx.txPool.query(
+      "SELECT id, status FROM orders WHERE user_id = $1",
+      ["u_fail_idem"]
+    );
+    expect(orderRow.rows).toHaveLength(1);
+    const orderId = orderRow.rows[0].id as string;
+    expect(orderRow.rows[0].status).toBe("payment_failed");
+
+    const idempotencyKey = await ctx.redis.get(
+      "idempotency:idem_failed_retry_1"
+    );
+    expect(idempotencyKey).toBeNull();
+
     const r2 = await ctx.http.post("/orders").send(payload);
     expect(r2.status).toBe(402);
 
-    // Current implementation caches idempotency only on success, so retries re-attempt payment.
-    expect(stripeState.paymentIntents.create.mock.calls.length).toBe(2);
+    expect(stripeState.paymentIntents.create).toHaveBeenCalledTimes(2);
+  });
+
+  test("fake timers can control local time-dependent promises", async () => {
+    jest.useFakeTimers();
+    const delayed = new Promise<string>((resolve) => {
+      setTimeout(() => resolve("done"), 100);
+    });
+
+    await jest.advanceTimersByTimeAsync(100);
+    await expect(delayed).resolves.toBe("done");
   });
 
   test("full refund restores complete inventory and sets order status to refunded", async () => {

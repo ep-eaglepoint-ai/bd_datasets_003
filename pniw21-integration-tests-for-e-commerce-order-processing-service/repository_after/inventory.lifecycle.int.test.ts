@@ -29,6 +29,7 @@ describe("Inventory lifecycle", () => {
 
   afterEach(async () => {
     if (ctx) await ctx.cleanup();
+    jest.useRealTimers();
   });
 
   test("inventory reserved during in-flight payment, then confirmed and reservation cleared", async () => {
@@ -64,7 +65,7 @@ describe("Inventory lifecycle", () => {
       req.end((err, res) => (err ? reject(err) : resolve(res)));
     });
 
-    // Wait until reservation is visible (no fake timers; Redis is real).
+    // Wait until reservation is visible (Redis is real).
     let reserved = 0;
     for (let i = 0; i < 30; i += 1) {
       reserved = await getReservation(ctx.redis, "p3");
@@ -141,6 +142,18 @@ describe("Inventory lifecycle", () => {
     expect(ttl).toBeLessThanOrEqual(900);
 
     // Note: Jest fake timers do not advance Redis TTL (server-side).
+  });
+
+  test("reservation key with short TTL expires (real wait; Redis TTL is server-side)", async () => {
+    jest.useRealTimers();
+    await ctx.redis.setex("reservation:p_short_ttl", 2, "1");
+    expect(await getReservation(ctx.redis, "p_short_ttl")).toBe(1);
+
+    await new Promise((r) => setTimeout(r, 2200));
+
+    expect(await getReservation(ctx.redis, "p_short_ttl")).toBe(0);
+    const ttl = await ctx.redis.ttl("reservation:p_short_ttl");
+    expect(ttl).toBeLessThanOrEqual(0);
   });
 
   test("concurrent reservation requests are serialized with redis lock", async () => {

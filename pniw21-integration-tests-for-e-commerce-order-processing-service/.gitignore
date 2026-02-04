@@ -6,6 +6,8 @@ __pycache__/
 
 # Node
 node_modules/
+repository_after/coverage/
+tests/coverage/
 
 # OS
 .DS_Store

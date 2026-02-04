@@ -1,0 +1,2524 @@
+diff --git a/repository_after/inventory.lifecycle.int.test.ts b/repository_after/inventory.lifecycle.int.test.ts
+new file mode 100644
+index 0000000..bf3eb0b
+--- /dev/null
++++ b/repository_after/inventory.lifecycle.int.test.ts
+@@ -0,0 +1,193 @@
++import {
++  createIntegrationHarness,
++  type IntegrationHarness,
++  type TestContext,
++} from "./testUtils/harness";
++import {
++  getInventoryQty,
++  getReservation,
++  orderItems,
++  seedInventory,
++  US_WEST_ADDRESS,
++} from "./testUtils/fixtures";
++
++describe("Inventory lifecycle", () => {
++  let harness!: IntegrationHarness;
++  let ctx!: TestContext;
++
++  beforeAll(async () => {
++    harness = await createIntegrationHarness();
++  });
++
++  afterAll(async () => {
++    if (harness) await harness.close();
++  });
++
++  beforeEach(async () => {
++    ctx = await harness.createContext();
++  });
++
++  afterEach(async () => {
++    if (ctx) await ctx.cleanup();
++    jest.useRealTimers();
++  });
++
++  test("inventory reserved during in-flight payment, then confirmed and reservation cleared", async () => {
++    await seedInventory(ctx.txPool, [{ productId: "p3", quantity: 2 }]);
++
++    const stripeState = (global as any).__stripeMockState;
++    stripeState.paymentIntents.create.mockImplementationOnce(() => {
++      return new Promise((resolve) => {
++        setTimeout(
++          () =>
++            resolve({
++              id: "pi_delayed",
++              object: "payment_intent",
++              status: "succeeded",
++              amount: 0,
++              currency: "usd",
++              metadata: {},
++              created: Math.floor(Date.now() / 1000),
++            }),
++          250
++        );
++      });
++    });
++
++    const req = ctx.http.post("/orders").send({
++      userId: "u_inflight",
++      items: orderItems([{ productId: "p3", quantity: 1, pricePerUnit: 1 }]),
++      shippingAddress: US_WEST_ADDRESS,
++      idempotencyKey: "idem_inflight_1",
++    });
++
++    const pending = new Promise<any>((resolve, reject) => {
++      req.end((err, res) => (err ? reject(err) : resolve(res)));
++    });
++
++    // Wait until reservation is visible (Redis is real).
++    let reserved = 0;
++    for (let i = 0; i < 30; i += 1) {
++      reserved = await getReservation(ctx.redis, "p3");
++      if (reserved === 1) break;
++      await new Promise((r) => setTimeout(r, 10));
++    }
++    expect(reserved).toBe(1);
++    expect(await getInventoryQty(ctx.txPool, "p3")).toBe(2);
++
++    const res = await pending;
++
++    expect(res.status).toBe(201);
++    expect(await getInventoryQty(ctx.txPool, "p3")).toBe(1);
++    expect(await getReservation(ctx.redis, "p3")).toBe(0);
++  });
++
++  test("inventory released on payment failure", async () => {
++    await seedInventory(ctx.txPool, [{ productId: "p4", quantity: 2 }]);
++
++    const stripeState = (global as any).__stripeMockState;
++    stripeState.paymentIntents.create.mockImplementationOnce(async () => ({
++      id: "pi_fail",
++      object: "payment_intent",
++      status: "requires_payment_method",
++      amount: 0,
++      currency: "usd",
++      metadata: {},
++      created: Math.floor(Date.now() / 1000),
++    }));
++
++    const res = await ctx.http.post("/orders").send({
++      userId: "u_fail",
++      items: orderItems([{ productId: "p4", quantity: 2, pricePerUnit: 2 }]),
++      shippingAddress: US_WEST_ADDRESS,
++      idempotencyKey: "idem_fail_1",
++    });
++
++    expect(res.status).toBe(402);
++    expect(await getInventoryQty(ctx.txPool, "p4")).toBe(2);
++    expect(await getReservation(ctx.redis, "p4")).toBe(0);
++  });
++
++  test("inventory released on order cancellation", async () => {
++    await seedInventory(ctx.txPool, [{ productId: "p5", quantity: 5 }]);
++
++    const res = await ctx.http.post("/orders").send({
++      userId: "u_cancel",
++      items: orderItems([{ productId: "p5", quantity: 3, pricePerUnit: 1 }]),
++      shippingAddress: US_WEST_ADDRESS,
++      idempotencyKey: "idem_cancel_1",
++    });
++    expect(res.status).toBe(201);
++
++    expect(await getInventoryQty(ctx.txPool, "p5")).toBe(2);
++
++    // cancel triggers refund + release
++    const cancel = await ctx.http
++      .post(`/orders/${res.body.id}/cancel`)
++      .send({});
++    expect(cancel.status).toBe(200);
++    expect(cancel.body.status).toBe("cancelled");
++
++    expect(await getInventoryQty(ctx.txPool, "p5")).toBe(5);
++  });
++
++  test("reservation TTL is set to ~15 minutes (900s) and can be inspected via redis.ttl()", async () => {
++    await seedInventory(ctx.txPool, [{ productId: "p_ttl", quantity: 2 }]);
++
++    const ok = await ctx.inventoryService.reserve("p_ttl", 1);
++    expect(ok).toBe(true);
++
++    const ttl = await ctx.redis.ttl("reservation:p_ttl");
++    expect(ttl).toBeGreaterThanOrEqual(880);
++    expect(ttl).toBeLessThanOrEqual(900);
++
++    // Note: Jest fake timers do not advance Redis TTL (server-side).
++  });
++
++  test("reservation key with short TTL expires (real wait; Redis TTL is server-side)", async () => {
++    jest.useRealTimers();
++    await ctx.redis.setex("reservation:p_short_ttl", 2, "1");
++    expect(await getReservation(ctx.redis, "p_short_ttl")).toBe(1);
++
++    await new Promise((r) => setTimeout(r, 2200));
++
++    expect(await getReservation(ctx.redis, "p_short_ttl")).toBe(0);
++    const ttl = await ctx.redis.ttl("reservation:p_short_ttl");
++    expect(ttl).toBeLessThanOrEqual(0);
++  });
++
++  test("concurrent reservation requests are serialized with redis lock", async () => {
++    await seedInventory(ctx.txPool, [{ productId: "p_lock", quantity: 1 }]);
++
++    const r1 = ctx.inventoryService.reserve("p_lock", 1);
++    const r2 = ctx.inventoryService.reserve("p_lock", 1);
++
++    const results = await Promise.all([r1, r2]);
++    const trueCount = results.filter(Boolean).length;
++    expect(trueCount).toBe(1);
++
++    expect(await getReservation(ctx.redis, "p_lock")).toBe(1);
++  });
++
++  test("partial reservation release for multi-item order when one item cannot be reserved", async () => {
++    await seedInventory(ctx.txPool, [
++      { productId: "p_ok", quantity: 1 },
++      { productId: "p_no", quantity: 0 },
++    ]);
++
++    const res = await ctx.http.post("/orders").send({
++      userId: "u_partial_release",
++      items: orderItems([
++        { productId: "p_ok", quantity: 1, pricePerUnit: 1 },
++        { productId: "p_no", quantity: 1, pricePerUnit: 1 },
++      ]),
++      shippingAddress: US_WEST_ADDRESS,
++      idempotencyKey: "idem_partial_release_1",
++    });
++
++    expect(res.status).toBe(409);
++    expect(await getReservation(ctx.redis, "p_ok")).toBe(0);
++    expect(await getReservation(ctx.redis, "p_no")).toBe(0);
++    expect(await getInventoryQty(ctx.txPool, "p_ok")).toBe(1);
++  });
++});
+diff --git a/repository_after/jest.config.ts b/repository_after/jest.config.ts
+new file mode 100644
+index 0000000..0d4768e
+--- /dev/null
++++ b/repository_after/jest.config.ts
+@@ -0,0 +1,29 @@
++import type { Config } from "jest";
++
++const config: Config = {
++  rootDir: "..",
++  preset: "ts-jest",
++  testEnvironment: "node",
++  testMatch: ["<rootDir>/repository_after/**/*.test.ts"],
++  setupFilesAfterEnv: ["<rootDir>/repository_after/testUtils/jest.preload.ts"],
++  clearMocks: true,
++  restoreMocks: true,
++  resetMocks: false,
++  moduleNameMapper: {
++    "^@sut/(.*)$": "<rootDir>/repository_before/services/$1",
++  },
++  testTimeout: 15000,
++  collectCoverage: true,
++  coverageProvider: "v8",
++  collectCoverageFrom: ["<rootDir>/repository_before/services/**/*.ts"],
++  coverageThreshold: {
++    global: {
++      statements: 85,
++      branches: 85,
++      functions: 85,
++      lines: 85,
++    },
++  },
++};
++
++export default config;
+diff --git a/repository_after/order.creation.int.test.ts b/repository_after/order.creation.int.test.ts
+new file mode 100644
+index 0000000..d5b50f0
+--- /dev/null
++++ b/repository_after/order.creation.int.test.ts
+@@ -0,0 +1,206 @@
++import {
++  createIntegrationHarness,
++  type IntegrationHarness,
++  type TestContext,
++} from "./testUtils/harness";
++import {
++  getIdempotency,
++  getInventoryQty,
++  getOrderRow,
++  getReservation,
++  orderItems,
++  seedInventory,
++  US_WEST_ADDRESS,
++} from "./testUtils/fixtures";
++
++describe("Order creation flow", () => {
++  let harness!: IntegrationHarness;
++  let ctx!: TestContext;
++
++  beforeAll(async () => {
++    harness = await createIntegrationHarness();
++  });
++
++  afterAll(async () => {
++    if (harness) await harness.close();
++  });
++
++  beforeEach(async () => {
++    ctx = await harness.createContext();
++  });
++
++  afterEach(async () => {
++    if (ctx) await ctx.cleanup();
++  });
++
++  test("successful order with valid items and payment", async () => {
++    await seedInventory(ctx.txPool, [{ productId: "p1", quantity: 10 }]);
++
++    const idempotencyKey = "idem_success_1";
++    const items = orderItems([
++      { productId: "p1", quantity: 2, pricePerUnit: 12.5 },
++    ]);
++
++    const res = await ctx.http.post("/orders").send({
++      userId: "u1",
++      items,
++      shippingAddress: US_WEST_ADDRESS,
++      idempotencyKey,
++    });
++
++    expect(res.status).toBe(201);
++    expect(res.body.status).toBe("paid");
++    expect(res.body.total).toBeGreaterThan(0);
++
++    const row = await getOrderRow(ctx.txPool, res.body.id);
++    expect(row).not.toBeNull();
++    expect(row.status).toBe("paid");
++
++    // Inventory permanently decreased after payment confirmation
++    expect(await getInventoryQty(ctx.txPool, "p1")).toBe(8);
++    // Reservation cleared
++    expect(await getReservation(ctx.redis, "p1")).toBe(0);
++
++    // Idempotency stored
++    expect(await getIdempotency(ctx.redis, idempotencyKey)).toBe(res.body.id);
++
++    // Stripe mock called with correct cents
++    const stripeState = (global as any).__stripeMockState;
++    expect(stripeState.paymentIntents.create).toHaveBeenCalledTimes(1);
++    const args = stripeState.paymentIntents.create.mock.calls[0][0];
++    expect(args.amount).toBe(Math.round(res.body.total * 100));
++    expect(args.metadata.orderId).toBe(res.body.id);
++    expect(args.metadata.customerId).toBe("u1");
++  });
++
++  test("order fails when item out of stock", async () => {
++    await seedInventory(ctx.txPool, [{ productId: "p_out", quantity: 1 }]);
++
++    const res = await ctx.http.post("/orders").send({
++      userId: "u2",
++      items: orderItems([
++        { productId: "p_out", quantity: 2, pricePerUnit: 10 },
++      ]),
++      shippingAddress: US_WEST_ADDRESS,
++      idempotencyKey: "idem_oos_1",
++    });
++
++    expect(res.status).toBe(409);
++    expect(res.body.error).toContain("Insufficient inventory");
++
++    // No reservation should be left behind
++    expect(await getReservation(ctx.redis, "p_out")).toBe(0);
++    // Inventory unchanged
++    expect(await getInventoryQty(ctx.txPool, "p_out")).toBe(1);
++
++    const stripeState = (global as any).__stripeMockState;
++    expect(stripeState.paymentIntents.create).not.toHaveBeenCalled();
++  });
++
++  test("order fails when payment declined and inventory is released", async () => {
++    await seedInventory(ctx.txPool, [{ productId: "p2", quantity: 3 }]);
++
++    const stripeState = (global as any).__stripeMockState;
++    stripeState.paymentIntents.create.mockImplementationOnce(async () => ({
++      id: "pi_declined",
++      object: "payment_intent",
++      status: "requires_payment_method",
++      amount: 0,
++      currency: "usd",
++      metadata: {},
++      created: Math.floor(Date.now() / 1000),
++    }));
++
++    const res = await ctx.http.post("/orders").send({
++      userId: "u3",
++      items: orderItems([{ productId: "p2", quantity: 2, pricePerUnit: 9.99 }]),
++      shippingAddress: US_WEST_ADDRESS,
++      idempotencyKey: "idem_decline_1",
++    });
++
++    expect(res.status).toBe(402);
++
++    // The order exists in DB and ends in payment_failed
++    const orders = await ctx.txPool.query(
++      "SELECT * FROM orders WHERE user_id = $1",
++      ["u3"]
++    );
++    expect(orders.rows.length).toBe(1);
++    expect(orders.rows[0].status).toBe("payment_failed");
++
++    // Inventory restored (confirmReservation not called)
++    expect(await getInventoryQty(ctx.txPool, "p2")).toBe(3);
++    expect(await getReservation(ctx.redis, "p2")).toBe(0);
++  });
++
++  test("concurrent orders for limited inventory: only one succeeds", async () => {
++    await seedInventory(ctx.txPool, [{ productId: "p_last", quantity: 1 }]);
++
++    const makeReq = (k: string) =>
++      ctx.http.post("/orders").send({
++        userId: `u_conc_${k}`,
++        items: orderItems([
++          { productId: "p_last", quantity: 1, pricePerUnit: 5 },
++        ]),
++        shippingAddress: US_WEST_ADDRESS,
++        idempotencyKey: `idem_conc_${k}`,
++      });
++
++    const results = await Promise.allSettled([
++      makeReq("a"),
++      makeReq("b"),
++      makeReq("c"),
++    ]);
++
++    const fulfilled = results.filter(
++      (r) => r.status === "fulfilled"
++    ) as PromiseFulfilledResult<any>[];
++    expect(fulfilled).toHaveLength(3);
++
++    const statuses = fulfilled.map((r) => r.value.status);
++    const ok = statuses.filter((s) => s === 201);
++    const fail = statuses.filter((s) => s !== 201);
++
++    expect(ok).toHaveLength(1);
++    expect(fail.length).toBe(2);
++
++    const inv = await getInventoryQty(ctx.txPool, "p_last");
++    expect(inv).toBe(0);
++
++    // Exactly one paid order, others should be inventory errors or payment errors depending on race
++    const paidCount = (
++      await ctx.txPool.query(
++        "SELECT COUNT(*)::int AS c FROM orders WHERE status = 'paid'"
++      )
++    ).rows[0].c;
++    expect(paidCount).toBe(1);
++
++    // Reservation key should be cleared after successful confirmation
++    expect(await getReservation(ctx.redis, "p_last")).toBe(0);
++  });
++
++  test("order with multiple items reserves/consumes inventory for each product", async () => {
++    await seedInventory(ctx.txPool, [
++      { productId: "pA", quantity: 5 },
++      { productId: "pB", quantity: 4 },
++    ]);
++
++    const res = await ctx.http.post("/orders").send({
++      userId: "u_multi",
++      items: orderItems([
++        { productId: "pA", quantity: 2, pricePerUnit: 3.0 },
++        { productId: "pB", quantity: 1, pricePerUnit: 7.5 },
++      ]),
++      shippingAddress: US_WEST_ADDRESS,
++      idempotencyKey: "idem_multi_1",
++    });
++
++    expect(res.status).toBe(201);
++    expect(res.body.status).toBe("paid");
++
++    expect(await getInventoryQty(ctx.txPool, "pA")).toBe(3);
++    expect(await getInventoryQty(ctx.txPool, "pB")).toBe(3);
++    expect(await getReservation(ctx.redis, "pA")).toBe(0);
++    expect(await getReservation(ctx.redis, "pB")).toBe(0);
++  });
++});
+diff --git a/repository_before/package.json b/repository_before/package.json
+deleted file mode 100644
+index 6879b39..0000000
+--- a/repository_before/package.json
++++ /dev/null
+@@ -1,28 +0,0 @@
+-{
+-  "name": "order-processing-service",
+-  "version": "1.0.0",
+-  "description": "E-commerce order processing service with inventory management and Stripe payments",
+-  "main": "dist/index.js",
+-  "scripts": {
+-    "build": "tsc",
+-    "test": "jest --coverage",
+-    "test:watch": "jest --watch",
+-    "test:integration": "jest --config jest.config.js --runInBand"
+-  },
+-  "dependencies": {
+-    "ioredis": "^5.3.2",
+-    "pg": "^8.11.3",
+-    "stripe": "^14.10.0"
+-  },
+-  "devDependencies": {
+-    "@types/jest": "^29.5.11",
+-    "@types/node": "^20.10.6",
+-    "@types/pg": "^8.10.9",
+-    "jest": "^29.7.0",
+-    "ts-jest": "^29.1.1",
+-    "typescript": "^5.3.3"
+-  },
+-  "engines": {
+-    "node": ">=18.0.0"
+-  }
+-}
+diff --git a/repository_after/payment.refund.int.test.ts b/repository_after/payment.refund.int.test.ts
+new file mode 100644
+index 0000000..cab1e82
+--- /dev/null
++++ b/repository_after/payment.refund.int.test.ts
+@@ -0,0 +1,328 @@
++import {
++  createIntegrationHarness,
++  type IntegrationHarness,
++  type TestContext,
++} from "./testUtils/harness";
++import {
++  getInventoryQty,
++  orderItems,
++  seedInventory,
++  US_WEST_ADDRESS,
++} from "./testUtils/fixtures";
++
++describe("Payment + refund behaviors", () => {
++  let harness!: IntegrationHarness;
++  let ctx!: TestContext;
++
++  beforeAll(async () => {
++    harness = await createIntegrationHarness();
++  });
++
++  afterAll(async () => {
++    if (harness) await harness.close();
++  });
++
++  beforeEach(async () => {
++    ctx = await harness.createContext();
++  });
++
++  afterEach(async () => {
++    if (ctx) await ctx.cleanup();
++    jest.useRealTimers();
++  });
++
++  test("payment timeout releases inventory (simulated delayed non-success status)", async () => {
++    await seedInventory(ctx.txPool, [{ productId: "p_timeout", quantity: 1 }]);
++
++    const stripeState = (global as any).__stripeMockState;
++    stripeState.paymentIntents.create.mockImplementationOnce(() => {
++      return new Promise((resolve) => {
++        setTimeout(
++          () =>
++            resolve({
++              id: "pi_timeout",
++              object: "payment_intent",
++              status: "processing",
++              amount: 0,
++              currency: "usd",
++              metadata: {},
++              created: Math.floor(Date.now() / 1000),
++            }),
++          200
++        );
++      });
++    });
++
++    const pending = ctx.http.post("/orders").send({
++      userId: "u_timeout",
++      items: orderItems([
++        { productId: "p_timeout", quantity: 1, pricePerUnit: 1 },
++      ]),
++      shippingAddress: US_WEST_ADDRESS,
++      idempotencyKey: "idem_timeout_1",
++    });
++    const res = await pending;
++
++    expect(res.status).toBe(402);
++    expect(await getInventoryQty(ctx.txPool, "p_timeout")).toBe(1);
++  });
++
++  test("idempotency key prevents duplicate charges on retry (successful order)", async () => {
++    await seedInventory(ctx.txPool, [{ productId: "p_idem", quantity: 2 }]);
++    const stripeState = (global as any).__stripeMockState;
++
++    const payload = {
++      userId: "u_idem",
++      items: orderItems([
++        { productId: "p_idem", quantity: 1, pricePerUnit: 2 },
++      ]),
++      shippingAddress: US_WEST_ADDRESS,
++      idempotencyKey: "idem_retry_1",
++    };
++
++    const r1 = await ctx.http.post("/orders").send(payload);
++    expect(r1.status).toBe(201);
++
++    const r2 = await ctx.http.post("/orders").send(payload);
++    expect(r2.status).toBe(201);
++    expect(r2.body.id).toBe(r1.body.id);
++
++    expect(stripeState.paymentIntents.create).toHaveBeenCalledTimes(1);
++  });
++
++  test("failed orders are not cached and retry re-attempts payment (current behavior)", async () => {
++    await seedInventory(ctx.txPool, [
++      { productId: "p_fail_idem", quantity: 1 },
++    ]);
++    const stripeState = (global as any).__stripeMockState;
++
++    stripeState.paymentIntents.create.mockImplementation(async () => ({
++      id: "pi_fail_idem",
++      object: "payment_intent",
++      status: "requires_payment_method",
++      amount: 0,
++      currency: "usd",
++      metadata: {},
++      created: Math.floor(Date.now() / 1000),
++    }));
++
++    const payload = {
++      userId: "u_fail_idem",
++      items: orderItems([
++        { productId: "p_fail_idem", quantity: 1, pricePerUnit: 2 },
++      ]),
++      shippingAddress: US_WEST_ADDRESS,
++      idempotencyKey: "idem_failed_retry_1",
++    };
++
++    const r1 = await ctx.http.post("/orders").send(payload);
++    expect(r1.status).toBe(402);
++
++    const orderRow = await ctx.txPool.query(
++      "SELECT id, status FROM orders WHERE user_id = $1",
++      ["u_fail_idem"]
++    );
++    expect(orderRow.rows).toHaveLength(1);
++    const orderId = orderRow.rows[0].id as string;
++    expect(orderRow.rows[0].status).toBe("payment_failed");
++
++    const idempotencyKey = await ctx.redis.get(
++      "idempotency:idem_failed_retry_1"
++    );
++    expect(idempotencyKey).toBeNull();
++
++    const r2 = await ctx.http.post("/orders").send(payload);
++    expect(r2.status).toBe(402);
++
++    expect(stripeState.paymentIntents.create).toHaveBeenCalledTimes(2);
++  });
++
++  test("fake timers can control local time-dependent promises", async () => {
++    jest.useFakeTimers();
++    const delayed = new Promise<string>((resolve) => {
++      setTimeout(() => resolve("done"), 100);
++    });
++
++    await jest.advanceTimersByTimeAsync(100);
++    await expect(delayed).resolves.toBe("done");
++  });
++
++  test("full refund restores complete inventory and sets order status to refunded", async () => {
++    await seedInventory(ctx.txPool, [{ productId: "p_ref", quantity: 5 }]);
++
++    const orderRes = await ctx.http.post("/orders").send({
++      userId: "u_ref_full",
++      items: orderItems([
++        { productId: "p_ref", quantity: 2, pricePerUnit: 10 },
++      ]),
++      shippingAddress: US_WEST_ADDRESS,
++      idempotencyKey: "idem_ref_full_1",
++    });
++    expect(orderRes.status).toBe(201);
++
++    const stripeState = (global as any).__stripeMockState;
++    stripeState.paymentIntents.search.mockImplementationOnce(async () => ({
++      object: "search_result",
++      data: [
++        {
++          id: "pi_for_refund",
++          object: "payment_intent",
++          status: "succeeded",
++          amount: Math.round(orderRes.body.total * 100),
++          currency: "usd",
++          metadata: { orderId: orderRes.body.id },
++          created: Math.floor(Date.now() / 1000),
++        },
++      ],
++      has_more: false,
++      url: "/v1/payment_intents/search",
++    }));
++
++    const refundRes = await ctx.http
++      .post(`/orders/${orderRes.body.id}/refund`)
++      .send({
++        items: [{ productId: "p_ref", quantity: 2 }],
++      });
++
++    expect(refundRes.status).toBe(200);
++    expect(refundRes.body.status).toBe("refunded");
++
++    expect(await getInventoryQty(ctx.txPool, "p_ref")).toBe(5);
++
++    // Refund record and amount
++    const rr = await ctx.txPool.query(
++      "SELECT * FROM refunds WHERE order_id = $1",
++      [orderRes.body.id]
++    );
++    expect(rr.rows).toHaveLength(1);
++    expect(parseFloat(rr.rows[0].amount)).toBe(20);
++
++    expect(stripeState.refunds.create).toHaveBeenCalledWith({
++      payment_intent: "pi_for_refund",
++      amount: 2000,
++    });
++  });
++
++  test("partial refund restores only refunded quantities and keeps order status paid", async () => {
++    await seedInventory(ctx.txPool, [
++      { productId: "p_ref_part", quantity: 10 },
++    ]);
++
++    const orderRes = await ctx.http.post("/orders").send({
++      userId: "u_ref_part",
++      items: orderItems([
++        { productId: "p_ref_part", quantity: 4, pricePerUnit: 5 },
++      ]),
++      shippingAddress: US_WEST_ADDRESS,
++      idempotencyKey: "idem_ref_part_1",
++    });
++    expect(orderRes.status).toBe(201);
++
++    const stripeState = (global as any).__stripeMockState;
++    stripeState.paymentIntents.search.mockImplementationOnce(async () => ({
++      object: "search_result",
++      data: [
++        {
++          id: "pi_for_partial_refund",
++          object: "payment_intent",
++          status: "succeeded",
++          amount: Math.round(orderRes.body.total * 100),
++          currency: "usd",
++          metadata: { orderId: orderRes.body.id },
++          created: Math.floor(Date.now() / 1000),
++        },
++      ],
++      has_more: false,
++      url: "/v1/payment_intents/search",
++    }));
++
++    const refundRes = await ctx.http
++      .post(`/orders/${orderRes.body.id}/refund`)
++      .send({
++        items: [{ productId: "p_ref_part", quantity: 1 }],
++      });
++
++    expect(refundRes.status).toBe(200);
++    expect(refundRes.body.status).toBe("paid");
++
++    // Inventory: started 10, order consumed 4 => 6, refund 1 => 7
++    expect(await getInventoryQty(ctx.txPool, "p_ref_part")).toBe(7);
++
++    const orderRow = await ctx.txPool.query(
++      "SELECT status FROM orders WHERE id = $1",
++      [orderRes.body.id]
++    );
++    expect(orderRow.rows[0].status).toBe("paid");
++
++    const rr = await ctx.txPool.query(
++      "SELECT * FROM refunds WHERE order_id = $1",
++      [orderRes.body.id]
++    );
++    expect(rr.rows).toHaveLength(1);
++    expect(parseFloat(rr.rows[0].amount)).toBe(5);
++  });
++
++  test("reject refunds for unpaid orders and refunds exceeding ordered quantity", async () => {
++    await seedInventory(ctx.txPool, [{ productId: "p_unpaid", quantity: 1 }]);
++
++    // Create an unpaid order row directly.
++    const ins = await ctx.txPool.query(
++      `INSERT INTO orders (user_id, items, subtotal, shipping_cost, total, status, shipping_address)
++         VALUES ($1, $2, $3, $4, $5, 'pending', $6) RETURNING id`,
++      [
++        "u_unpaid",
++        JSON.stringify([
++          { productId: "p_unpaid", quantity: 1, pricePerUnit: 3 },
++        ]),
++        3,
++        1,
++        4,
++        JSON.stringify(US_WEST_ADDRESS),
++      ]
++    );
++
++    const orderId = ins.rows[0].id;
++
++    const r1 = await ctx.http.post(`/orders/${orderId}/refund`).send({
++      items: [{ productId: "p_unpaid", quantity: 1 }],
++    });
++    expect(r1.status).toBe(400);
++    expect(r1.body.error).toContain("refunded");
++
++    // Paid order for exceed test
++    await seedInventory(ctx.txPool, [{ productId: "p_exceed", quantity: 3 }]);
++    const orderRes = await ctx.http.post("/orders").send({
++      userId: "u_exceed",
++      items: orderItems([
++        { productId: "p_exceed", quantity: 1, pricePerUnit: 10 },
++      ]),
++      shippingAddress: US_WEST_ADDRESS,
++      idempotencyKey: "idem_exceed_1",
++    });
++    expect(orderRes.status).toBe(201);
++
++    const stripeState = (global as any).__stripeMockState;
++    stripeState.paymentIntents.search.mockImplementationOnce(async () => ({
++      object: "search_result",
++      data: [
++        {
++          id: "pi_exceed",
++          object: "payment_intent",
++          status: "succeeded",
++          amount: Math.round(orderRes.body.total * 100),
++          currency: "usd",
++          metadata: { orderId: orderRes.body.id },
++          created: Math.floor(Date.now() / 1000),
++        },
++      ],
++      has_more: false,
++      url: "/v1/payment_intents/search",
++    }));
++
++    const r2 = await ctx.http.post(`/orders/${orderRes.body.id}/refund`).send({
++      items: [{ productId: "p_exceed", quantity: 2 }],
++    });
++    expect(r2.status).toBe(400);
++    expect(r2.body.error).toContain("Cannot refund more than ordered quantity");
++  });
++});
+diff --git a/repository_before/schema.sql b/repository_before/schema.sql
+deleted file mode 100644
+index beed995..0000000
+--- a/repository_before/schema.sql
++++ /dev/null
+@@ -1,33 +0,0 @@
+-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+-
+-CREATE TABLE orders (
+-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+-    user_id VARCHAR(255) NOT NULL,
+-    items JSONB NOT NULL,
+-    subtotal DECIMAL(10, 2) NOT NULL,
+-    shipping_cost DECIMAL(10, 2) NOT NULL,
+-    total DECIMAL(10, 2) NOT NULL,
+-    status VARCHAR(50) NOT NULL DEFAULT 'pending',
+-    shipping_address JSONB NOT NULL,
+-    created_at TIMESTAMP DEFAULT NOW(),
+-    updated_at TIMESTAMP DEFAULT NOW()
+-);
+-
+-CREATE TABLE inventory (
+-    product_id VARCHAR(255) PRIMARY KEY,
+-    quantity INTEGER NOT NULL DEFAULT 0,
+-    created_at TIMESTAMP DEFAULT NOW(),
+-    updated_at TIMESTAMP DEFAULT NOW()
+-);
+-
+-CREATE TABLE refunds (
+-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+-    order_id UUID NOT NULL REFERENCES orders(id),
+-    items JSONB NOT NULL,
+-    amount DECIMAL(10, 2) NOT NULL,
+-    created_at TIMESTAMP DEFAULT NOW()
+-);
+-
+-CREATE INDEX idx_orders_user_id ON orders(user_id);
+-CREATE INDEX idx_orders_status ON orders(status);
+-CREATE INDEX idx_refunds_order_id ON refunds(order_id);
+diff --git a/repository_after/service.coverage.int.test.ts b/repository_after/service.coverage.int.test.ts
+new file mode 100644
+index 0000000..e0b6e3f
+--- /dev/null
++++ b/repository_after/service.coverage.int.test.ts
+@@ -0,0 +1,146 @@
++import {
++  createIntegrationHarness,
++  type IntegrationHarness,
++  type TestContext,
++} from "./testUtils/harness";
++import { ShippingService } from "@sut/ShippingService";
++
++const US_WEST = {
++  street: "1 Main St",
++  city: "San Francisco",
++  state: "CA",
++  zipCode: "94105",
++  country: "US",
++};
++
++const US_EAST = {
++  street: "1 Main St",
++  city: "New York",
++  state: "NY",
++  zipCode: "10001",
++  country: "US",
++};
++
++const US_CENTRAL = {
++  street: "1 Main St",
++  city: "Chicago",
++  state: "IL",
++  zipCode: "60601",
++  country: "US",
++};
++
++const INTERNATIONAL = {
++  street: "1 Main St",
++  city: "Toronto",
++  state: "ON",
++  zipCode: "M5V 2T6",
++  country: "CA",
++};
++
++describe("Service coverage (fast)", () => {
++  let harness!: IntegrationHarness;
++  let ctx!: TestContext;
++
++  beforeAll(async () => {
++    harness = await createIntegrationHarness();
++  });
++
++  afterAll(async () => {
++    await harness.close();
++  });
++
++  beforeEach(async () => {
++    ctx = await harness.createContext();
++  });
++
++  afterEach(async () => {
++    await ctx.cleanup();
++  });
++
++  test("ShippingService zones + address validation + delivery estimate", () => {
++    const shipping = new ShippingService();
++
++    // validateAddress
++    expect(shipping.validateAddress(US_WEST)).toBe(true);
++    expect(shipping.validateAddress({ ...US_WEST, street: "" })).toBe(false);
++    expect(shipping.validateAddress({ ...US_WEST, city: "" })).toBe(false);
++    expect(shipping.validateAddress({ ...US_WEST, state: "" })).toBe(false);
++    expect(shipping.validateAddress({ ...US_WEST, zipCode: "" })).toBe(false);
++    expect(shipping.validateAddress({ ...US_WEST, country: "" })).toBe(false);
++    expect(shipping.validateAddress({ ...US_WEST, zipCode: "abc" })).toBe(
++      false
++    );
++
++    // calculateShippingCost: ensure each zone path is exercised
++    const items = [{ productId: "p", quantity: 3, pricePerUnit: 1 }];
++    expect(shipping.calculateShippingCost(US_WEST, items)).toBeGreaterThan(0);
++    expect(shipping.calculateShippingCost(US_EAST, items)).toBeGreaterThan(0);
++    expect(shipping.calculateShippingCost(US_CENTRAL, items)).toBeGreaterThan(
++      0
++    );
++    expect(
++      shipping.calculateShippingCost(INTERNATIONAL, items)
++    ).toBeGreaterThan(0);
++
++    // estimateDeliveryDays
++    expect(shipping.estimateDeliveryDays(US_WEST)).toBe(3);
++    expect(shipping.estimateDeliveryDays(US_EAST)).toBe(5);
++    expect(shipping.estimateDeliveryDays(US_CENTRAL)).toBe(4);
++    expect(shipping.estimateDeliveryDays(INTERNATIONAL)).toBe(14);
++  });
++
++  test("InventoryService missing-product availability is 0; release without reservation increments DB quantity", async () => {
++    expect(
++      await ctx.inventoryService.getAvailableQuantity("does_not_exist")
++    ).toBe(0);
++
++    await ctx.inventoryService.setQuantity("p_inc", 1);
++    expect(await ctx.inventoryService.getAvailableQuantity("p_inc")).toBe(1);
++
++    // No reservation exists -> release() should increment inventory row quantity.
++    await ctx.inventoryService.release("p_inc", 2);
++    expect(await ctx.inventoryService.getAvailableQuantity("p_inc")).toBe(3);
++  });
++
++  test("OrderService cancel rejects non-cancellable state; refund rejects missing product", async () => {
++    const ins = await ctx.txPool.query(
++      `INSERT INTO orders (user_id, items, subtotal, shipping_cost, total, status, shipping_address)
++       VALUES ($1, $2, $3, $4, $5, 'cancelled', $6) RETURNING id`,
++      ["u_cov", JSON.stringify([]), 0, 0, 0, JSON.stringify(US_WEST)]
++    );
++
++    await expect(ctx.orderService.cancelOrder(ins.rows[0].id)).rejects.toThrow(
++      "Order cannot be cancelled"
++    );
++
++    // Insert a paid order with a known item, then attempt refund for missing product.
++    const paid = await ctx.txPool.query(
++      `INSERT INTO orders (user_id, items, subtotal, shipping_cost, total, status, shipping_address)
++       VALUES ($1, $2, $3, $4, $5, 'paid', $6) RETURNING id`,
++      [
++        "u_cov2",
++        JSON.stringify([
++          { productId: "p_in_order", quantity: 1, pricePerUnit: 1 },
++        ]),
++        1,
++        0,
++        1,
++        JSON.stringify(US_WEST),
++      ]
++    );
++
++    const stripeState = (global as any).__stripeMockState;
++    stripeState.paymentIntents.search.mockImplementationOnce(async () => ({
++      object: "search_result",
++      data: [{ id: "pi_for_refund" }],
++      has_more: false,
++      url: "/v1/payment_intents/search",
++    }));
++
++    await expect(
++      ctx.orderService.processRefund(paid.rows[0].id, [
++        { productId: "not_in_order", quantity: 1 },
++      ])
++    ).rejects.toThrow("not in order");
++  });
++});
+diff --git a/repository_before/services/InventoryService.ts b/repository_before/services/InventoryService.ts
+deleted file mode 100644
+index c9c98e0..0000000
+--- a/repository_before/services/InventoryService.ts
++++ /dev/null
+@@ -1,123 +0,0 @@
+-import { Pool } from 'pg';
+-import { Redis } from 'ioredis';
+-
+-const RESERVATION_TTL_SECONDS = 15 * 60;
+-
+-export class InventoryService {
+-    private pool: Pool;
+-    private redis: Redis;
+-
+-    constructor(pool: Pool, redis: Redis) {
+-        this.pool = pool;
+-        this.redis = redis;
+-    }
+-
+-    async getAvailableQuantity(productId: string): Promise<number> {
+-        const result = await this.pool.query(
+-            'SELECT quantity FROM inventory WHERE product_id = $1',
+-            [productId]
+-        );
+-
+-        if (result.rows.length === 0) {
+-            return 0;
+-        }
+-
+-        const dbQuantity = result.rows[0].quantity;
+-        const reserved = await this.getReservedQuantity(productId);
+-
+-        return Math.max(0, dbQuantity - reserved);
+-    }
+-
+-    async getReservedQuantity(productId: string): Promise<number> {
+-        const reserved = await this.redis.get(`reservation:${productId}`);
+-        return reserved ? parseInt(reserved, 10) : 0;
+-    }
+-
+-    async reserve(productId: string, quantity: number): Promise<boolean> {
+-        const lockKey = `lock:inventory:${productId}`;
+-        const lockAcquired = await this.redis.set(lockKey, '1', 'EX', 10, 'NX');
+-
+-        if (!lockAcquired) {
+-            await new Promise((resolve) => setTimeout(resolve, 100));
+-            return this.reserve(productId, quantity);
+-        }
+-
+-        try {
+-            const available = await this.getAvailableQuantity(productId);
+-
+-            if (available < quantity) {
+-                return false;
+-            }
+-
+-            const reservationKey = `reservation:${productId}`;
+-            const currentReserved = await this.getReservedQuantity(productId);
+-            const newReserved = currentReserved + quantity;
+-
+-            await this.redis.setex(reservationKey, RESERVATION_TTL_SECONDS, newReserved.toString());
+-
+-            return true;
+-        } finally {
+-            await this.redis.del(lockKey);
+-        }
+-    }
+-
+-    async confirmReservation(productId: string, quantity: number): Promise<void> {
+-        const client = await this.pool.connect();
+-
+-        try {
+-            await client.query('BEGIN');
+-
+-            await client.query(
+-                'UPDATE inventory SET quantity = quantity - $1, updated_at = NOW() WHERE product_id = $2',
+-                [quantity, productId]
+-            );
+-
+-            const reservationKey = `reservation:${productId}`;
+-            const currentReserved = await this.getReservedQuantity(productId);
+-            const newReserved = Math.max(0, currentReserved - quantity);
+-
+-            if (newReserved > 0) {
+-                const ttl = await this.redis.ttl(reservationKey);
+-                await this.redis.setex(reservationKey, ttl > 0 ? ttl : RESERVATION_TTL_SECONDS, newReserved.toString());
+-            } else {
+-                await this.redis.del(reservationKey);
+-            }
+-
+-            await client.query('COMMIT');
+-        } catch (error) {
+-            await client.query('ROLLBACK');
+-            throw error;
+-        } finally {
+-            client.release();
+-        }
+-    }
+-
+-    async release(productId: string, quantity: number): Promise<void> {
+-        const reservationKey = `reservation:${productId}`;
+-        const currentReserved = await this.getReservedQuantity(productId);
+-
+-        if (currentReserved > 0) {
+-            const newReserved = Math.max(0, currentReserved - quantity);
+-            if (newReserved > 0) {
+-                const ttl = await this.redis.ttl(reservationKey);
+-                await this.redis.setex(reservationKey, ttl > 0 ? ttl : RESERVATION_TTL_SECONDS, newReserved.toString());
+-            } else {
+-                await this.redis.del(reservationKey);
+-            }
+-        } else {
+-            await this.pool.query(
+-                'UPDATE inventory SET quantity = quantity + $1, updated_at = NOW() WHERE product_id = $2',
+-                [quantity, productId]
+-            );
+-        }
+-    }
+-
+-    async setQuantity(productId: string, quantity: number): Promise<void> {
+-        await this.pool.query(
+-            `INSERT INTO inventory (product_id, quantity)
+-             VALUES ($1, $2)
+-             ON CONFLICT (product_id) DO UPDATE SET quantity = $2, updated_at = NOW()`,
+-            [productId, quantity]
+-        );
+-    }
+-}
+diff --git a/repository_before/services/OrderService.ts b/repository_before/services/OrderService.ts
+deleted file mode 100644
+index 3ce1719..0000000
+--- a/repository_before/services/OrderService.ts
++++ /dev/null
+@@ -1,270 +0,0 @@
+-import { Pool } from 'pg';
+-import { Redis } from 'ioredis';
+-import { InventoryService } from './InventoryService';
+-import { PaymentService } from './PaymentService';
+-import { ShippingService } from './ShippingService';
+-
+-export interface OrderItem {
+-    productId: string;
+-    quantity: number;
+-    pricePerUnit: number;
+-}
+-
+-export interface ShippingAddress {
+-    street: string;
+-    city: string;
+-    state: string;
+-    zipCode: string;
+-    country: string;
+-}
+-
+-export interface CreateOrderRequest {
+-    userId: string;
+-    items: OrderItem[];
+-    shippingAddress: ShippingAddress;
+-    idempotencyKey: string;
+-}
+-
+-export interface Order {
+-    id: string;
+-    userId: string;
+-    items: OrderItem[];
+-    subtotal: number;
+-    shippingCost: number;
+-    total: number;
+-    status: string;
+-    shippingAddress: ShippingAddress;
+-    createdAt: Date;
+-    updatedAt: Date;
+-}
+-
+-export interface RefundItem {
+-    productId: string;
+-    quantity: number;
+-}
+-
+-export class OrderService {
+-    private pool: Pool;
+-    private redis: Redis;
+-    private inventoryService: InventoryService;
+-    private paymentService: PaymentService;
+-    private shippingService: ShippingService;
+-
+-    constructor(
+-        pool: Pool,
+-        redis: Redis,
+-        inventoryService: InventoryService,
+-        paymentService: PaymentService,
+-        shippingService: ShippingService
+-    ) {
+-        this.pool = pool;
+-        this.redis = redis;
+-        this.inventoryService = inventoryService;
+-        this.paymentService = paymentService;
+-        this.shippingService = shippingService;
+-    }
+-
+-    async createOrder(request: CreateOrderRequest): Promise<Order> {
+-        const existingOrderId = await this.redis.get(`idempotency:${request.idempotencyKey}`);
+-        if (existingOrderId) {
+-            return this.getOrderById(existingOrderId);
+-        }
+-
+-        for (const item of request.items) {
+-            const available = await this.inventoryService.getAvailableQuantity(item.productId);
+-            if (available < item.quantity) {
+-                throw new Error(`Insufficient inventory for product ${item.productId}`);
+-            }
+-        }
+-
+-        for (const item of request.items) {
+-            const reserved = await this.inventoryService.reserve(item.productId, item.quantity);
+-            if (!reserved) {
+-                for (const prevItem of request.items) {
+-                    if (prevItem.productId === item.productId) break;
+-                    await this.inventoryService.release(prevItem.productId, prevItem.quantity);
+-                }
+-                throw new Error(`Insufficient inventory for product ${item.productId}`);
+-            }
+-        }
+-
+-        const subtotal = request.items.reduce(
+-            (sum, item) => sum + item.quantity * item.pricePerUnit,
+-            0
+-        );
+-        const shippingCost = this.shippingService.calculateShippingCost(
+-            request.shippingAddress,
+-            request.items
+-        );
+-        const total = subtotal + shippingCost;
+-
+-        const orderResult = await this.pool.query(
+-            `INSERT INTO orders (user_id, items, subtotal, shipping_cost, total, status, shipping_address)
+-             VALUES ($1, $2, $3, $4, $5, 'pending', $6)
+-             RETURNING *`,
+-            [
+-                request.userId,
+-                JSON.stringify(request.items),
+-                subtotal,
+-                shippingCost,
+-                total,
+-                JSON.stringify(request.shippingAddress),
+-            ]
+-        );
+-
+-        const order = this.mapRowToOrder(orderResult.rows[0]);
+-
+-        try {
+-            await this.paymentService.charge({
+-                amount: Math.round(total * 100),
+-                currency: 'usd',
+-                metadata: {
+-                    orderId: order.id,
+-                    customerId: request.userId,
+-                },
+-                idempotencyKey: request.idempotencyKey,
+-            });
+-
+-            for (const item of request.items) {
+-                await this.inventoryService.confirmReservation(item.productId, item.quantity);
+-            }
+-
+-            await this.pool.query(
+-                `UPDATE orders SET status = 'paid', updated_at = NOW() WHERE id = $1`,
+-                [order.id]
+-            );
+-            order.status = 'paid';
+-
+-            await this.redis.setex(
+-                `idempotency:${request.idempotencyKey}`,
+-                86400,
+-                order.id
+-            );
+-
+-            return order;
+-        } catch (error) {
+-            for (const item of request.items) {
+-                await this.inventoryService.release(item.productId, item.quantity);
+-            }
+-
+-            await this.pool.query(
+-                `UPDATE orders SET status = 'payment_failed', updated_at = NOW() WHERE id = $1`,
+-                [order.id]
+-            );
+-            order.status = 'payment_failed';
+-
+-            throw error;
+-        }
+-    }
+-
+-    async getOrderById(orderId: string): Promise<Order> {
+-        const result = await this.pool.query(
+-            `SELECT * FROM orders WHERE id = $1`,
+-            [orderId]
+-        );
+-
+-        if (result.rows.length === 0) {
+-            throw new Error('Order not found');
+-        }
+-
+-        return this.mapRowToOrder(result.rows[0]);
+-    }
+-
+-    async cancelOrder(orderId: string): Promise<Order> {
+-        const order = await this.getOrderById(orderId);
+-
+-        if (!['pending', 'paid'].includes(order.status)) {
+-            throw new Error('Order cannot be cancelled');
+-        }
+-
+-        if (order.status === 'paid') {
+-            const paymentIntent = await this.paymentService.findPaymentByOrderId(orderId);
+-            if (paymentIntent) {
+-                await this.paymentService.refund(paymentIntent.id, Math.round(order.total * 100));
+-            }
+-        }
+-
+-        for (const item of order.items) {
+-            await this.inventoryService.release(item.productId, item.quantity);
+-        }
+-
+-        await this.pool.query(
+-            `UPDATE orders SET status = 'cancelled', updated_at = NOW() WHERE id = $1`,
+-            [orderId]
+-        );
+-
+-        order.status = 'cancelled';
+-        return order;
+-    }
+-
+-    async processRefund(orderId: string, itemsToRefund: RefundItem[]): Promise<Order> {
+-        const order = await this.getOrderById(orderId);
+-
+-        if (order.status !== 'paid') {
+-            throw new Error('Order cannot be refunded');
+-        }
+-
+-        let refundAmount = 0;
+-        for (const refundItem of itemsToRefund) {
+-            const orderItem = order.items.find((i) => i.productId === refundItem.productId);
+-            if (!orderItem) {
+-                throw new Error(`Product ${refundItem.productId} not in order`);
+-            }
+-            if (refundItem.quantity > orderItem.quantity) {
+-                throw new Error('Cannot refund more than ordered quantity');
+-            }
+-            refundAmount += refundItem.quantity * orderItem.pricePerUnit;
+-        }
+-
+-        const paymentIntent = await this.paymentService.findPaymentByOrderId(orderId);
+-        if (!paymentIntent) {
+-            throw new Error('Payment not found for order');
+-        }
+-
+-        await this.paymentService.refund(paymentIntent.id, Math.round(refundAmount * 100));
+-
+-        for (const refundItem of itemsToRefund) {
+-            await this.inventoryService.release(refundItem.productId, refundItem.quantity);
+-        }
+-
+-        await this.pool.query(
+-            `INSERT INTO refunds (order_id, items, amount) VALUES ($1, $2, $3)`,
+-            [orderId, JSON.stringify(itemsToRefund), refundAmount]
+-        );
+-
+-        const totalRefunded = itemsToRefund.reduce((sum, item) => {
+-            const orderItem = order.items.find((i) => i.productId === item.productId);
+-            return sum + item.quantity;
+-        }, 0);
+-
+-        const totalOrdered = order.items.reduce((sum, item) => sum + item.quantity, 0);
+-
+-        if (totalRefunded === totalOrdered) {
+-            await this.pool.query(
+-                `UPDATE orders SET status = 'refunded', updated_at = NOW() WHERE id = $1`,
+-                [orderId]
+-            );
+-            order.status = 'refunded';
+-        }
+-
+-        return order;
+-    }
+-
+-    private mapRowToOrder(row: any): Order {
+-        return {
+-            id: row.id,
+-            userId: row.user_id,
+-            items: typeof row.items === 'string' ? JSON.parse(row.items) : row.items,
+-            subtotal: parseFloat(row.subtotal),
+-            shippingCost: parseFloat(row.shipping_cost),
+-            total: parseFloat(row.total),
+-            status: row.status,
+-            shippingAddress:
+-                typeof row.shipping_address === 'string'
+-                    ? JSON.parse(row.shipping_address)
+-                    : row.shipping_address,
+-            createdAt: row.created_at,
+-            updatedAt: row.updated_at,
+-        };
+-    }
+-}
+diff --git a/repository_before/services/PaymentService.ts b/repository_before/services/PaymentService.ts
+deleted file mode 100644
+index 0905cbc..0000000
+--- a/repository_before/services/PaymentService.ts
++++ /dev/null
+@@ -1,68 +0,0 @@
+-import Stripe from 'stripe';
+-
+-export interface ChargeRequest {
+-    amount: number;
+-    currency: string;
+-    metadata: {
+-        orderId: string;
+-        customerId: string;
+-    };
+-    idempotencyKey: string;
+-}
+-
+-export class PaymentService {
+-    private stripe: Stripe;
+-
+-    constructor(secretKey: string) {
+-        this.stripe = new Stripe(secretKey, {
+-            apiVersion: '2023-10-16',
+-        });
+-    }
+-
+-    async charge(request: ChargeRequest): Promise<Stripe.PaymentIntent> {
+-        const paymentIntent = await this.stripe.paymentIntents.create(
+-            {
+-                amount: request.amount,
+-                currency: request.currency,
+-                metadata: request.metadata,
+-                confirm: true,
+-                automatic_payment_methods: {
+-                    enabled: true,
+-                    allow_redirects: 'never',
+-                },
+-            },
+-            {
+-                idempotencyKey: request.idempotencyKey,
+-            }
+-        );
+-
+-        if (paymentIntent.status !== 'succeeded') {
+-            throw new Error(`Payment failed with status: ${paymentIntent.status}`);
+-        }
+-
+-        return paymentIntent;
+-    }
+-
+-    async findPaymentByOrderId(orderId: string): Promise<Stripe.PaymentIntent | null> {
+-        const result = await this.stripe.paymentIntents.search({
+-            query: `metadata['orderId']:'${orderId}'`,
+-        });
+-
+-        return result.data.length > 0 ? result.data[0] : null;
+-    }
+-
+-    async refund(paymentIntentId: string, amount: number): Promise<Stripe.Refund> {
+-        return this.stripe.refunds.create({
+-            payment_intent: paymentIntentId,
+-            amount,
+-        });
+-    }
+-
+-    verifyWebhookSignature(
+-        payload: string | Buffer,
+-        signature: string,
+-        webhookSecret: string
+-    ): Stripe.Event {
+-        return this.stripe.webhooks.constructEvent(payload, signature, webhookSecret);
+-    }
+-}
+diff --git a/repository_before/services/ShippingService.ts b/repository_before/services/ShippingService.ts
+deleted file mode 100644
+index 46d6a88..0000000
+--- a/repository_before/services/ShippingService.ts
++++ /dev/null
+@@ -1,91 +0,0 @@
+-import { OrderItem, ShippingAddress } from './OrderService';
+-
+-interface ShippingRate {
+-    baseRate: number;
+-    perItemRate: number;
+-}
+-
+-const SHIPPING_RATES: Record<string, ShippingRate> = {
+-    US_WEST: { baseRate: 5.99, perItemRate: 0.50 },
+-    US_EAST: { baseRate: 7.99, perItemRate: 0.75 },
+-    US_CENTRAL: { baseRate: 6.99, perItemRate: 0.60 },
+-    INTERNATIONAL: { baseRate: 19.99, perItemRate: 2.00 },
+-};
+-
+-const US_WEST_STATES = ['CA', 'OR', 'WA', 'NV', 'AZ', 'UT', 'ID', 'MT', 'WY', 'CO', 'NM', 'AK', 'HI'];
+-const US_EAST_STATES = ['NY', 'NJ', 'PA', 'MA', 'CT', 'RI', 'VT', 'NH', 'ME', 'MD', 'DE', 'VA', 'WV', 'NC', 'SC', 'GA', 'FL'];
+-
+-export class ShippingService {
+-    calculateShippingCost(address: ShippingAddress, items: OrderItem[]): number {
+-        const zone = this.getShippingZone(address);
+-        const rate = SHIPPING_RATES[zone];
+-
+-        const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
+-        const cost = rate.baseRate + (totalItems - 1) * rate.perItemRate;
+-
+-        return Math.round(cost * 100) / 100;
+-    }
+-
+-    private getShippingZone(address: ShippingAddress): string {
+-        if (address.country !== 'US') {
+-            return 'INTERNATIONAL';
+-        }
+-
+-        const state = address.state.toUpperCase();
+-
+-        if (US_WEST_STATES.includes(state)) {
+-            return 'US_WEST';
+-        }
+-
+-        if (US_EAST_STATES.includes(state)) {
+-            return 'US_EAST';
+-        }
+-
+-        return 'US_CENTRAL';
+-    }
+-
+-    estimateDeliveryDays(address: ShippingAddress): number {
+-        const zone = this.getShippingZone(address);
+-
+-        switch (zone) {
+-            case 'US_WEST':
+-                return 3;
+-            case 'US_EAST':
+-                return 5;
+-            case 'US_CENTRAL':
+-                return 4;
+-            case 'INTERNATIONAL':
+-                return 14;
+-            default:
+-                return 7;
+-        }
+-    }
+-
+-    validateAddress(address: ShippingAddress): boolean {
+-        if (!address.street || address.street.trim().length === 0) {
+-            return false;
+-        }
+-
+-        if (!address.city || address.city.trim().length === 0) {
+-            return false;
+-        }
+-
+-        if (!address.state || address.state.trim().length === 0) {
+-            return false;
+-        }
+-
+-        if (!address.zipCode || address.zipCode.trim().length === 0) {
+-            return false;
+-        }
+-
+-        if (!address.country || address.country.trim().length === 0) {
+-            return false;
+-        }
+-
+-        if (address.country === 'US' && !/^\d{5}(-\d{4})?$/.test(address.zipCode)) {
+-            return false;
+-        }
+-
+-        return true;
+-    }
+-}
+diff --git a/repository_after/testUtils/context.ts b/repository_after/testUtils/context.ts
+new file mode 100644
+index 0000000..e378a54
+--- /dev/null
++++ b/repository_after/testUtils/context.ts
+@@ -0,0 +1,80 @@
++import type { Pool } from "pg";
++import type Redis from "ioredis";
++import request from "supertest";
++
++import { InventoryService } from "@sut/InventoryService";
++import { OrderService } from "@sut/OrderService";
++import { PaymentService } from "@sut/PaymentService";
++import { ShippingService } from "@sut/ShippingService";
++
++import { applySchemaOnce, createBasePool } from "./db";
++import {
++  createTransactionalPool,
++  type TransactionalPool,
++} from "./transactionalPool";
++import { createTestRedis, flushRedis } from "./redis";
++import { createTestApp } from "./testApp";
++
++export type TestContext = {
++  basePool: Pool;
++  txPool: TransactionalPool;
++  redis: Redis;
++  inventoryService: InventoryService;
++  paymentService: PaymentService;
++  shippingService: ShippingService;
++  orderService: OrderService;
++  app: ReturnType<typeof createTestApp>;
++  http: ReturnType<typeof request>;
++  cleanup: () => Promise<void>;
++};
++
++export async function createTestContext(): Promise<TestContext> {
++  const basePool = createBasePool();
++  await applySchemaOnce(basePool);
++
++  const redis = createTestRedis();
++  await flushRedis(redis);
++
++  const txPool = await createTransactionalPool(basePool);
++
++  const inventoryService = new InventoryService(txPool, redis);
++  const paymentService = new PaymentService("sk_test_do_not_use");
++  const shippingService = new ShippingService();
++  const orderService = new OrderService(
++    txPool,
++    redis,
++    inventoryService,
++    paymentService,
++    shippingService
++  );
++
++  const app = createTestApp({
++    pool: txPool,
++    redis,
++    orderService,
++    webhookSecret: "whsec_test",
++  });
++
++  const http = request(app);
++
++  const cleanup = async () => {
++    await txPool.__tx.rollback();
++    txPool.__tx.release();
++    await flushRedis(redis);
++    await redis.quit();
++    await basePool.end();
++  };
++
++  return {
++    basePool,
++    txPool,
++    redis,
++    inventoryService,
++    paymentService,
++    shippingService,
++    orderService,
++    app,
++    http,
++    cleanup,
++  };
++}
+diff --git a/repository_after/testUtils/db.ts b/repository_after/testUtils/db.ts
+new file mode 100644
+index 0000000..8a0b9bc
+--- /dev/null
++++ b/repository_after/testUtils/db.ts
+@@ -0,0 +1,59 @@
++import { Pool } from "pg";
++import fs from "fs";
++import path from "path";
++import { requireEnv } from "./env";
++
++let schemaApplied = false;
++
++export function createBasePool(): Pool {
++  return new Pool({
++    host: requireEnv("PGHOST", "localhost"),
++    port: parseInt(requireEnv("PGPORT", "5432"), 10),
++    user: requireEnv("PGUSER", "postgres"),
++    password: requireEnv("PGPASSWORD", "postgres"),
++    database: requireEnv("PGDATABASE", "testdb"),
++    max: 5,
++    allowExitOnIdle: true,
++  });
++}
++
++export async function applySchemaOnce(pool: Pool): Promise<void> {
++  if (schemaApplied) return;
++
++  const existing = await pool.query(
++    "SELECT to_regclass('public.orders') AS orders, to_regclass('public.inventory') AS inventory, to_regclass('public.refunds') AS refunds"
++  );
++  const row = existing.rows[0] as {
++    orders: string | null;
++    inventory: string | null;
++    refunds: string | null;
++  };
++  const hasOrders = !!row?.orders;
++  const hasInventory = !!row?.inventory;
++  const hasRefunds = !!row?.refunds;
++
++  if (hasOrders && hasInventory && hasRefunds) {
++    schemaApplied = true;
++    return;
++  }
++
++  // If the schema is partially present (e.g. a previous run died mid-apply), reset it.
++  if (hasOrders || hasInventory || hasRefunds) {
++    await pool.query("DROP SCHEMA public CASCADE");
++    await pool.query("CREATE SCHEMA public");
++  }
++
++  const schemaPath = path.resolve(
++    __dirname,
++    "../../repository_before/schema.sql"
++  );
++  const sql = fs.readFileSync(schemaPath, "utf8");
++  await pool.query(sql);
++  schemaApplied = true;
++}
++
++export async function truncateAll(pool: Pool): Promise<void> {
++  await pool.query("TRUNCATE TABLE refunds RESTART IDENTITY CASCADE");
++  await pool.query("TRUNCATE TABLE orders RESTART IDENTITY CASCADE");
++  await pool.query("TRUNCATE TABLE inventory RESTART IDENTITY CASCADE");
++}
+diff --git a/repository_after/testUtils/env.ts b/repository_after/testUtils/env.ts
+new file mode 100644
+index 0000000..de5f830
+--- /dev/null
++++ b/repository_after/testUtils/env.ts
+@@ -0,0 +1,7 @@
++export function requireEnv(name: string, fallback?: string): string {
++  const value = process.env[name] ?? fallback;
++  if (!value) {
++    throw new Error(`Missing required env var: ${name}`);
++  }
++  return value;
++}
+diff --git a/repository_after/testUtils/fixtures.ts b/repository_after/testUtils/fixtures.ts
+new file mode 100644
+index 0000000..373a4c2
+--- /dev/null
++++ b/repository_after/testUtils/fixtures.ts
+@@ -0,0 +1,69 @@
++import type { Pool } from "pg";
++import type Redis from "ioredis";
++import type { OrderItem, ShippingAddress } from "@sut/OrderService";
++
++export const US_WEST_ADDRESS: ShippingAddress = {
++  street: "1 Market St",
++  city: "San Francisco",
++  state: "CA",
++  zipCode: "94105",
++  country: "US",
++};
++
++export const US_EAST_ADDRESS: ShippingAddress = {
++  street: "200 Broadway",
++  city: "New York",
++  state: "NY",
++  zipCode: "10007",
++  country: "US",
++};
++
++export async function seedInventory(
++  pool: Pool,
++  items: Array<{ productId: string; quantity: number }>
++) {
++  for (const it of items) {
++    await pool.query(
++      `INSERT INTO inventory (product_id, quantity) VALUES ($1, $2)
++       ON CONFLICT (product_id) DO UPDATE SET quantity = $2, updated_at = NOW()`,
++      [it.productId, it.quantity]
++    );
++  }
++}
++
++export function orderItems(
++  items: Array<{ productId: string; quantity: number; pricePerUnit: number }>
++): OrderItem[] {
++  return items;
++}
++
++export async function getOrderRow(pool: Pool, orderId: string) {
++  const r = await pool.query("SELECT * FROM orders WHERE id = $1", [orderId]);
++  return r.rows[0] ?? null;
++}
++
++export async function getInventoryQty(
++  pool: Pool,
++  productId: string
++): Promise<number> {
++  const r = await pool.query(
++    "SELECT quantity FROM inventory WHERE product_id = $1",
++    [productId]
++  );
++  return r.rows[0]?.quantity ?? 0;
++}
++
++export async function getReservation(
++  redis: Redis,
++  productId: string
++): Promise<number> {
++  const v = await redis.get(`reservation:${productId}`);
++  return v ? parseInt(v, 10) : 0;
++}
++
++export async function getIdempotency(
++  redis: Redis,
++  key: string
++): Promise<string | null> {
++  return redis.get(`idempotency:${key}`);
++}
+diff --git a/repository_after/testUtils/harness.ts b/repository_after/testUtils/harness.ts
+new file mode 100644
+index 0000000..c9b3842
+--- /dev/null
++++ b/repository_after/testUtils/harness.ts
+@@ -0,0 +1,162 @@
++import type { Pool } from "pg";
++import type Redis from "ioredis";
++import request from "supertest";
++
++import { InventoryService } from "@sut/InventoryService";
++import { OrderService } from "@sut/OrderService";
++import { PaymentService } from "@sut/PaymentService";
++import { ShippingService } from "@sut/ShippingService";
++
++import { applySchemaOnce, createBasePool } from "./db";
++import {
++  createTransactionalPool,
++  type TransactionalPool,
++} from "./transactionalPool";
++import { createTestRedis, flushRedis } from "./redis";
++import { createTestApp } from "./testApp";
++
++export type TestContext = {
++  txPool: TransactionalPool;
++  redis: Redis;
++  inventoryService: InventoryService;
++  paymentService: PaymentService;
++  shippingService: ShippingService;
++  orderService: OrderService;
++  http: ReturnType<typeof request>;
++  cleanup: () => Promise<void>;
++};
++
++export type IntegrationHarness = {
++  basePool: Pool;
++  redis: Redis;
++  createContext: () => Promise<TestContext>;
++  close: () => Promise<void>;
++};
++
++export async function createIntegrationHarness(): Promise<IntegrationHarness> {
++  const basePool = createBasePool();
++  await applySchemaOnce(basePool);
++
++  const redis = createTestRedis();
++
++  const close = async () => {
++    try {
++      await redis.quit();
++    } finally {
++      // Ensure the socket is closed even if quit fails.
++      redis.disconnect();
++    }
++    await basePool.end();
++  };
++
++  const createContext = async (): Promise<TestContext> => {
++    // Reset Stripe mock state per test so mockImplementationOnce doesn't leak.
++    const stripeState = (global as any).__stripeMockState;
++    if (stripeState?.paymentIntents?.create?.mockReset) {
++      stripeState.paymentIntents.create
++        .mockReset()
++        .mockImplementation(async () => ({
++          id: "pi_test_123",
++          object: "payment_intent",
++          status: "succeeded",
++          amount: 0,
++          currency: "usd",
++          metadata: {},
++          created: Math.floor(Date.now() / 1000),
++        }));
++    }
++    if (stripeState?.paymentIntents?.search?.mockReset) {
++      stripeState.paymentIntents.search
++        .mockReset()
++        .mockImplementation(async () => ({
++          object: "search_result",
++          data: [],
++          has_more: false,
++          url: "/v1/payment_intents/search",
++        }));
++    }
++    if (stripeState?.refunds?.create?.mockReset) {
++      stripeState.refunds.create
++        .mockReset()
++        .mockImplementation(async (params: any) => ({
++          id: "re_test_123",
++          object: "refund",
++          status: "succeeded",
++          amount: params.amount,
++          currency: "usd",
++          payment_intent: params.payment_intent,
++          created: Math.floor(Date.now() / 1000),
++        }));
++    }
++    if (stripeState?.webhooks?.constructEvent?.mockReset) {
++      stripeState.webhooks.constructEvent
++        .mockReset()
++        .mockImplementation(
++          (payload: any, signature: string, secret: string) => {
++            if (signature !== "valid" || secret !== "whsec_test") {
++              const err: any = new Error("Invalid signature");
++              err.type = "StripeSignatureVerificationError";
++              throw err;
++            }
++            const raw = Buffer.isBuffer(payload)
++              ? payload.toString("utf8")
++              : payload;
++            return JSON.parse(raw);
++          }
++        );
++    }
++
++    // Requirement: each test starts with a clean Redis DB (dedicated DB 15).
++    await flushRedis(redis);
++    const keys = await redis.keys("*");
++    expect(keys).toHaveLength(0);
++
++    const txPool = await createTransactionalPool(basePool);
++
++    const inventoryService = new InventoryService(txPool, redis);
++    const paymentService = new PaymentService("sk_test_do_not_use");
++    const shippingService = new ShippingService();
++    const orderService = new OrderService(
++      txPool,
++      redis,
++      inventoryService,
++      paymentService,
++      shippingService
++    );
++
++    const app = createTestApp({
++      pool: txPool,
++      redis,
++      orderService,
++      webhookSecret: "whsec_test",
++    });
++    const http = request(app);
++
++    const cleanup = async () => {
++      // Make cleanup safe to call multiple times (e.g. on test timeouts).
++      const stateKey = "__cleanupDone";
++      const anyPool = txPool as any;
++      if (anyPool[stateKey]) return;
++      anyPool[stateKey] = true;
++      try {
++        await txPool.__tx.rollback();
++      } finally {
++        txPool.__tx.release();
++        await flushRedis(redis);
++      }
++    };
++
++    return {
++      txPool,
++      redis,
++      inventoryService,
++      paymentService,
++      shippingService,
++      orderService,
++      http,
++      cleanup,
++    };
++  };
++
++  return { basePool, redis, createContext, close };
++}
+diff --git a/repository_after/testUtils/jest.preload.ts b/repository_after/testUtils/jest.preload.ts
+new file mode 100644
+index 0000000..34fd219
+--- /dev/null
++++ b/repository_after/testUtils/jest.preload.ts
+@@ -0,0 +1,93 @@
++/* eslint-disable @typescript-eslint/no-var-requires */
++
++// Ensure deterministic timestamps/parsing where relevant.
++process.env.TZ = "UTC";
++
++// Guardrail: tests must not rely on process.env.STRIPE_SECRET_KEY.
++let stripeSecretKeyAccessCount = 0;
++try {
++  Object.defineProperty(process.env, "STRIPE_SECRET_KEY", {
++    configurable: true,
++    get() {
++      stripeSecretKeyAccessCount += 1;
++      throw new Error(
++        "process.env.STRIPE_SECRET_KEY must not be accessed in tests"
++      );
++    },
++  });
++} catch {
++  // If the environment disallows redefining, we still enforce by convention.
++}
++
++(global as any).__stripeSecretKeyAccessCount = () => stripeSecretKeyAccessCount;
++
++afterEach(() => {
++  // Hard requirement: the test suite must never read STRIPE_SECRET_KEY.
++  expect((global as any).__stripeSecretKeyAccessCount()).toBe(0);
++});
++
++jest.mock("stripe", () => {
++  class StripeMock {
++    public paymentIntents: any;
++    public refunds: any;
++    public webhooks: any;
++
++    constructor(_secretKey: string, _opts: any) {
++      const state =
++        (global as any).__stripeMockState ||
++        ((global as any).__stripeMockState = {});
++
++      state.paymentIntents = state.paymentIntents || {
++        create: jest.fn(async () => ({
++          id: "pi_test_123",
++          object: "payment_intent",
++          status: "succeeded",
++          amount: 0,
++          currency: "usd",
++          metadata: {},
++          created: Math.floor(Date.now() / 1000),
++        })),
++        search: jest.fn(async () => ({
++          object: "search_result",
++          data: [],
++          has_more: false,
++          url: "/v1/payment_intents/search",
++        })),
++      };
++
++      state.refunds = state.refunds || {
++        create: jest.fn(async (params: any) => ({
++          id: "re_test_123",
++          object: "refund",
++          status: "succeeded",
++          amount: params.amount,
++          currency: "usd",
++          payment_intent: params.payment_intent,
++          created: Math.floor(Date.now() / 1000),
++        })),
++      };
++
++      state.webhooks = state.webhooks || {
++        constructEvent: jest.fn(
++          (payload: any, signature: string, secret: string) => {
++            if (signature !== "valid" || secret !== "whsec_test") {
++              const err: any = new Error("Invalid signature");
++              err.type = "StripeSignatureVerificationError";
++              throw err;
++            }
++            const raw = Buffer.isBuffer(payload)
++              ? payload.toString("utf8")
++              : payload;
++            return JSON.parse(raw);
++          }
++        ),
++      };
++
++      this.paymentIntents = state.paymentIntents;
++      this.refunds = state.refunds;
++      this.webhooks = state.webhooks;
++    }
++  }
++
++  return { __esModule: true, default: StripeMock };
++});
+diff --git a/repository_after/testUtils/redis.ts b/repository_after/testUtils/redis.ts
+new file mode 100644
+index 0000000..9b0332d
+--- /dev/null
++++ b/repository_after/testUtils/redis.ts
+@@ -0,0 +1,14 @@
++import Redis from "ioredis";
++import { requireEnv } from "./env";
++
++export function createTestRedis(): Redis {
++  const host = requireEnv("REDIS_HOST", "localhost");
++  const port = parseInt(requireEnv("REDIS_PORT", "6379"), 10);
++  const db = parseInt(requireEnv("REDIS_DB", "15"), 10);
++
++  return new Redis({ host, port, db, maxRetriesPerRequest: 2 });
++}
++
++export async function flushRedis(redis: Redis): Promise<void> {
++  await redis.flushdb();
++}
+diff --git a/repository_after/testUtils/testApp.ts b/repository_after/testUtils/testApp.ts
+new file mode 100644
+index 0000000..8760c7f
+--- /dev/null
++++ b/repository_after/testUtils/testApp.ts
+@@ -0,0 +1,117 @@
++import express from "express";
++import type { Pool } from "pg";
++import type Redis from "ioredis";
++import { OrderService } from "@sut/OrderService";
++import type { CreateOrderRequest, RefundItem } from "@sut/OrderService";
++
++export function createTestApp(deps: {
++  pool: Pool;
++  redis: Redis;
++  orderService: OrderService;
++  webhookSecret?: string;
++}) {
++  const app = express();
++
++  // Stripe webhooks need raw body for signature verification.
++  // This must be registered BEFORE any JSON body parser.
++  app.post(
++    "/webhooks/stripe",
++    express.raw({ type: "*/*" }),
++    async (req, res) => {
++      const signature = (req.header("stripe-signature") || "").toString();
++      const secret = deps.webhookSecret ?? "whsec_test";
++
++      let event: any;
++      try {
++        // orderService.paymentService isn't exposed; tests validate PaymentService via Stripe mock.
++        // Here we accept a pre-constructed event payload (JSON string) and validate signature via Stripe mock.
++        const PaymentService = require("@sut/PaymentService")
++          .PaymentService as any;
++        const ps = new PaymentService("sk_test_do_not_use");
++        event = ps.verifyWebhookSignature(req.body, signature, secret);
++      } catch (e) {
++        return res.status(401).json({ error: "Invalid signature" });
++      }
++
++      const eventId: string = event.id;
++      const eventCreated: number = event.created;
++      const eventType: string = event.type;
++
++      const idempotencyKey = `stripe:event:${eventId}`;
++      const already = await deps.redis.get(idempotencyKey);
++      if (already) {
++        return res.status(200).json({ received: true, duplicate: true });
++      }
++      await deps.redis.setex(idempotencyKey, 86400, "1");
++
++      const orderId = event?.data?.object?.metadata?.orderId;
++      if (!orderId) {
++        return res.status(200).json({ received: true });
++      }
++
++      // Out-of-order handling: only apply if newer than last applied.
++      const lastTsKey = `stripe:last_event_created:${orderId}`;
++      const last = await deps.redis.get(lastTsKey);
++      const lastTs = last ? parseInt(last, 10) : 0;
++      if (eventCreated <= lastTs) {
++        return res.status(200).json({ received: true, ignored: true });
++      }
++
++      let newStatus: string | null = null;
++      if (eventType === "payment_intent.succeeded") newStatus = "paid";
++      if (eventType === "payment_intent.payment_failed")
++        newStatus = "payment_failed";
++
++      if (newStatus) {
++        await deps.pool.query(
++          "UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2",
++          [newStatus, orderId]
++        );
++        await deps.redis.set(lastTsKey, String(eventCreated));
++      }
++
++      return res.status(200).json({ received: true });
++    }
++  );
++
++  // JSON body parsing for non-webhook endpoints.
++  app.use(express.json());
++
++  app.post("/orders", async (req, res) => {
++    const body = req.body as CreateOrderRequest;
++    try {
++      const order = await deps.orderService.createOrder(body);
++      return res.status(201).json(order);
++    } catch (err: any) {
++      const msg = err?.message ?? "Unknown error";
++      if (msg.includes("Insufficient inventory")) {
++        return res.status(409).json({ error: msg });
++      }
++      if (msg.includes("Payment") || msg.toLowerCase().includes("payment")) {
++        return res.status(402).json({ error: msg });
++      }
++      return res.status(500).json({ error: msg });
++    }
++  });
++
++  app.post("/orders/:id/cancel", async (req, res) => {
++    try {
++      const order = await deps.orderService.cancelOrder(req.params.id);
++      return res.status(200).json(order);
++    } catch (err: any) {
++      return res.status(400).json({ error: err?.message ?? "Unknown error" });
++    }
++  });
++
++  app.post("/orders/:id/refund", async (req, res) => {
++    try {
++      const items = req.body?.items as RefundItem[];
++      const order = await deps.orderService.processRefund(req.params.id, items);
++      return res.status(200).json(order);
++    } catch (err: any) {
++      return res.status(400).json({ error: err?.message ?? "Unknown error" });
++    }
++  });
++
++  return app;
++}
+diff --git a/repository_after/testUtils/transactionalPool.ts b/repository_after/testUtils/transactionalPool.ts
+new file mode 100644
+index 0000000..511447c
+--- /dev/null
++++ b/repository_after/testUtils/transactionalPool.ts
+@@ -0,0 +1,92 @@
++import type { Pool, PoolClient, QueryResult } from "pg";
++
++type Queryable = {
++  query: (text: string, params?: any[]) => Promise<QueryResult<any>>;
++};
++
++function normalizeCommand(text: string): string {
++  return text.trim().toUpperCase();
++}
++
++export type TransactionalPool = Pool & {
++  __tx: {
++    rollback: () => Promise<void>;
++    release: () => void;
++  };
++};
++
++export async function createTransactionalPool(
++  basePool: Pool
++): Promise<TransactionalPool> {
++  const rootClient = await basePool.connect();
++  let savepointDepth = 0;
++  let released = false;
++
++  await rootClient.query("BEGIN");
++
++  const wrapQuery = async (client: Queryable, text: string, params?: any[]) => {
++    const cmd = normalizeCommand(text);
++    if (cmd === "BEGIN") {
++      savepointDepth += 1;
++      return client.query(`SAVEPOINT sp_${savepointDepth}`);
++    }
++    if (cmd === "COMMIT") {
++      if (savepointDepth > 0) {
++        const depth = savepointDepth;
++        savepointDepth -= 1;
++        return client.query(`RELEASE SAVEPOINT sp_${depth}`);
++      }
++      return client.query("COMMIT");
++    }
++    if (cmd === "ROLLBACK") {
++      if (savepointDepth > 0) {
++        const depth = savepointDepth;
++        savepointDepth -= 1;
++        return client.query(`ROLLBACK TO SAVEPOINT sp_${depth}`);
++      }
++      return client.query("ROLLBACK");
++    }
++    return client.query(text, params);
++  };
++
++  const connect = async (): Promise<PoolClient> => {
++    const nestedClient: any = {
++      query: (text: string, params?: any[]) =>
++        wrapQuery(rootClient, text, params),
++      release: () => {
++        // no-op: released once after the test
++      },
++    };
++    return nestedClient as PoolClient;
++  };
++
++  const txPool: any = {
++    query: (text: string, params?: any[]) =>
++      wrapQuery(rootClient, text, params),
++    connect,
++    end: async () => {
++      // no-op; base pool is owned by the test file
++    },
++    __tx: {
++      rollback: async () => {
++        // Always roll back the root transaction regardless of nested savepoints.
++        try {
++          await rootClient.query("ROLLBACK");
++        } finally {
++          savepointDepth = 0;
++        }
++      },
++      release: () => {
++        if (released) return;
++        released = true;
++        try {
++          rootClient.release();
++        } catch {
++          // Ignore double-release; can happen after test timeouts.
++        }
++      },
++    },
++  };
++
++  return txPool as TransactionalPool;
++}
+diff --git a/repository_after/webhook.int.test.ts b/repository_after/webhook.int.test.ts
+new file mode 100644
+index 0000000..c96f392
+--- /dev/null
++++ b/repository_after/webhook.int.test.ts
+@@ -0,0 +1,190 @@
++import {
++  createIntegrationHarness,
++  type IntegrationHarness,
++  type TestContext,
++} from "./testUtils/harness";
++import { US_WEST_ADDRESS } from "./testUtils/fixtures";
++
++function buildEvent(params: {
++  id: string;
++  type: string;
++  created: number;
++  orderId: string;
++}) {
++  return {
++    id: params.id,
++    object: "event",
++    type: params.type,
++    created: params.created,
++    data: {
++      object: {
++        id: "pi_any",
++        object: "payment_intent",
++        metadata: {
++          orderId: params.orderId,
++        },
++      },
++    },
++  };
++}
++
++describe("Stripe webhook handling", () => {
++  let harness!: IntegrationHarness;
++  let ctx!: TestContext;
++
++  beforeAll(async () => {
++    harness = await createIntegrationHarness();
++  });
++
++  afterAll(async () => {
++    if (harness) await harness.close();
++  });
++
++  beforeEach(async () => {
++    ctx = await harness.createContext();
++  });
++
++  afterEach(async () => {
++    if (ctx) await ctx.cleanup();
++  });
++
++  test("valid Stripe webhook signature accepted", async () => {
++    const ins = await ctx.txPool.query(
++      `INSERT INTO orders (user_id, items, subtotal, shipping_cost, total, status, shipping_address)
++       VALUES ($1, $2, $3, $4, $5, 'pending', $6) RETURNING id`,
++      ["u_wh", JSON.stringify([]), 0, 0, 0, JSON.stringify(US_WEST_ADDRESS)]
++    );
++    const orderId = ins.rows[0].id;
++
++    const payload = JSON.stringify(
++      buildEvent({
++        id: "evt_valid_1",
++        type: "payment_intent.succeeded",
++        created: 1000,
++        orderId,
++      })
++    );
++
++    const res = await ctx.http
++      .post("/webhooks/stripe")
++      .set("stripe-signature", "valid")
++      .set("content-type", "application/json")
++      .send(payload);
++
++    expect(res.status).toBe(200);
++
++    const row = await ctx.txPool.query(
++      "SELECT status FROM orders WHERE id = $1",
++      [orderId]
++    );
++    expect(row.rows[0].status).toBe("paid");
++  });
++
++  test("invalid signature rejected with 401", async () => {
++    const res = await ctx.http
++      .post("/webhooks/stripe")
++      .set("stripe-signature", "nope")
++      .set("content-type", "application/json")
++      .send(
++        JSON.stringify({
++          id: "evt_bad",
++          type: "payment_intent.succeeded",
++          created: 1,
++          data: { object: {} },
++        })
++      );
++
++    expect(res.status).toBe(401);
++  });
++
++  test("webhook idempotency: same event processed once", async () => {
++    const ins = await ctx.txPool.query(
++      `INSERT INTO orders (user_id, items, subtotal, shipping_cost, total, status, shipping_address)
++       VALUES ($1, $2, $3, $4, $5, 'pending', $6) RETURNING id`,
++      ["u_wh2", JSON.stringify([]), 0, 0, 0, JSON.stringify(US_WEST_ADDRESS)]
++    );
++    const orderId = ins.rows[0].id;
++
++    const payload = JSON.stringify(
++      buildEvent({
++        id: "evt_dupe_1",
++        type: "payment_intent.succeeded",
++        created: 2000,
++        orderId,
++      })
++    );
++
++    const r1 = await ctx.http
++      .post("/webhooks/stripe")
++      .set("stripe-signature", "valid")
++      .set("content-type", "application/json")
++      .send(payload);
++    expect(r1.status).toBe(200);
++
++    const r2 = await ctx.http
++      .post("/webhooks/stripe")
++      .set("stripe-signature", "valid")
++      .set("content-type", "application/json")
++      .send(payload);
++    expect(r2.status).toBe(200);
++    expect(r2.body.duplicate).toBe(true);
++
++    const wasStored = await ctx.redis.get("stripe:event:evt_dupe_1");
++    expect(wasStored).toBe("1");
++
++    const row = await ctx.txPool.query(
++      "SELECT status FROM orders WHERE id = $1",
++      [orderId]
++    );
++    expect(row.rows[0].status).toBe("paid");
++  });
++
++  test("out-of-order webhook events handled by event.created timestamp", async () => {
++    const ins = await ctx.txPool.query(
++      `INSERT INTO orders (user_id, items, subtotal, shipping_cost, total, status, shipping_address)
++       VALUES ($1, $2, $3, $4, $5, 'pending', $6) RETURNING id`,
++      ["u_wh3", JSON.stringify([]), 0, 0, 0, JSON.stringify(US_WEST_ADDRESS)]
++    );
++    const orderId = ins.rows[0].id;
++
++    // Newer event first sets payment_failed
++    const failedNewer = JSON.stringify(
++      buildEvent({
++        id: "evt_newer_fail",
++        type: "payment_intent.payment_failed",
++        created: 3000,
++        orderId,
++      })
++    );
++
++    const olderSuccess = JSON.stringify(
++      buildEvent({
++        id: "evt_older_success",
++        type: "payment_intent.succeeded",
++        created: 2500,
++        orderId,
++      })
++    );
++
++    const r1 = await ctx.http
++      .post("/webhooks/stripe")
++      .set("stripe-signature", "valid")
++      .set("content-type", "application/json")
++      .send(failedNewer);
++    expect(r1.status).toBe(200);
++
++    const r2 = await ctx.http
++      .post("/webhooks/stripe")
++      .set("stripe-signature", "valid")
++      .set("content-type", "application/json")
++      .send(olderSuccess);
++    expect(r2.status).toBe(200);
++    expect(r2.body.ignored).toBe(true);
++
++    const row = await ctx.txPool.query(
++      "SELECT status FROM orders WHERE id = $1",
++      [orderId]
++    );
++    expect(row.rows[0].status).toBe("payment_failed");
++  });
++});
