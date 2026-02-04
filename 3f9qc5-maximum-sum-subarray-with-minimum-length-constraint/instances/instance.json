@@ -1,0 +1,11 @@
+{
+            "instance_id": "3F9QC5",
+            "problem_statement": "Given an array of integers that may contain both positive and negative values, determine the contiguous subarray whose length is at least k and whose elements produce the maximum possible sum. Along with the maximum sum, return the starting and ending indices (0-based) of the selected subarray. If multiple subarrays produce the same maximum sum, choose the one with the smallest starting index. If still tied, choose the shorter subarray.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/3f9qc5-maximum-sum-subarray-with-minimum-length-constraint",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
