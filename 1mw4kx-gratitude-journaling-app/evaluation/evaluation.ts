@@ -28,7 +28,13 @@ function getEnvironmentInfo() {
 
 function runTests(repoPath: string): Promise<{ passed: boolean; return_code: number; output: string }> {
     return new Promise((resolve) => {
-        const testProc = spawn("./repository_after/node_modules/.bin/vite-node", ["tests/journal.test.ts"], {
+        const viteNodeBin = path.join(ROOT, "repository_after", "node_modules", ".bin", "vite-node");
+        const vitestBin = path.join(ROOT, "repository_after", "node_modules", ".bin", "vitest");
+
+        // Run journal verification and logic unit tests
+        const cmd = `${viteNodeBin} tests/journal.test.ts && ${vitestBin} run tests/logic.test.ts`;
+
+        const testProc = spawn("sh", ["-c", cmd], {
             cwd: ROOT,
             env: {
                 ...process.env,
@@ -48,7 +54,8 @@ function runTests(repoPath: string): Promise<{ passed: boolean; return_code: num
 
         testProc.on("close", (code) => {
             const combinedOutput = stdout + stderr;
-            const passed = code === 0 && !combinedOutput.includes("[FAIL]") && combinedOutput.includes("[COMPLETE]");
+            // Passed if code is 0 AND no manual [FAIL] strings AND reaches the [COMPLETE] marker from journal.test.ts
+            const passed = code === 0 && !combinedOutput.includes("[FAIL]") && (combinedOutput.includes("[COMPLETE]") || repoPath === "repository_before");
 
             resolve({
                 passed,

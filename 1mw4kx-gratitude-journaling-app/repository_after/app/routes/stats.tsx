@@ -22,35 +22,47 @@ export async function loader({ request }: LoaderFunctionArgs) {
     let totalItems = 0;
 
     if (allEntries.length > 0) {
+        // Convert dates and sort ascending
+        const entries = allEntries
+            .map((e: any) => ({ ...e, date: new Date(e.date) }))
+            .sort((a: any, b: any) => a.date.getTime() - b.date.getTime());
+
+        let tempStreak = 1;
+
+        for (let i = 1; i < entries.length; i++) {
+            const prev = new Date(entries[i - 1].date);
+            prev.setHours(0, 0, 0, 0);
+            const curr = new Date(entries[i].date);
+            curr.setHours(0, 0, 0, 0);
+
+            const diff = Math.floor((curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24));
+
+            if (diff === 1) {
+                tempStreak++;
+            } else if (diff > 1) {
+                longestStreak = Math.max(longestStreak, tempStreak);
+                tempStreak = 1;
+            }
+        }
+
+        longestStreak = Math.max(longestStreak, tempStreak);
+
+        // Current streak: check last entry relative to today
+        const lastEntryDate = new Date(entries[entries.length - 1].date);
+        lastEntryDate.setHours(0, 0, 0, 0);
+
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        let lastDate = new Date(allEntries[0].date);
-        lastDate.setHours(0, 0, 0, 0);
+        const diffToToday = Math.floor((today.getTime() - lastEntryDate.getTime()) / (1000 * 60 * 60 * 24));
+        currentStreak = diffToToday <= 1 ? tempStreak : 0;
 
-        const diffToToday = Math.floor((today.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
-
-        if (diffToToday <= 1) {
-            let tempStreak = 1;
-            for (let i = 1; i < allEntries.length; i++) {
-                const d1 = new Date(allEntries[i - 1].date);
-                d1.setHours(0, 0, 0, 0);
-                const d2 = new Date(allEntries[i].date);
-                d2.setHours(0, 0, 0, 0);
-
-                const diff = Math.floor((d1.getTime() - d2.getTime()) / (1000 * 60 * 60 * 24));
-                if (diff === 1) {
-                    tempStreak++;
-                } else if (diff > 1) {
-                    longestStreak = Math.max(longestStreak, tempStreak);
-                    tempStreak = 1;
-                }
-            }
-            longestStreak = Math.max(longestStreak, tempStreak);
-            currentStreak = diffToToday === 0 || diffToToday === 1 ? tempStreak : 0;
-        }
-
-        totalItems = allEntries.reduce((acc: number, curr: any) => acc + (curr.item1 ? 1 : 0) + (curr.item2 ? 1 : 0) + (curr.item3 ? 1 : 0), 0);
+        // Total items
+        totalItems = entries.reduce(
+            (acc: number, curr: any) =>
+                acc + (curr.item1 ? 1 : 0) + (curr.item2 ? 1 : 0) + (curr.item3 ? 1 : 0),
+            0
+        );
     }
 
     // Word Frequencies and Map

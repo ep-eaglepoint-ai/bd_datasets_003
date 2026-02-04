@@ -29,7 +29,7 @@ services:
     volumes:
       - .:/app
       - /app/repository_after/node_modules
-    command: ["sh", "-c", "./repository_after/node_modules/.bin/vite-node tests/journal.test.ts"]
+    command: ["sh", "-c", "./repository_after/node_modules/.bin/vite-node tests/journal.test.ts && ./repository_after/node_modules/.bin/vitest run tests/logic.test.ts"]
 
   evaluator:
     build:
@@ -43,4 +43,4 @@ services:
     volumes:
       - .:/app
       - /app/repository_after/node_modules
-    command: ["sh", "-c", "./repository_after/node_modules/.bin/vite-node evaluation/evaluation.ts"]
+    command: ["./repository_after/node_modules/.bin/vite-node", "evaluation/evaluation.ts"]
