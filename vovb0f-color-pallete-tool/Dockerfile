@@ -1,8 +1,16 @@
+# VOVB0F - Color palette tool: run tests and evaluation
+FROM node:20-alpine
 
-        # Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
-
-        FROM python:3.11-slim
 WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+COPY package.json package-lock.json* ./
+COPY vitest.config.ts tsconfig.tests.json* ./
+COPY tests ./tests
+COPY evaluation ./evaluation
+COPY repository_after ./repository_after
+COPY repository_before ./repository_before
+
+RUN npm ci 2>/dev/null || npm install
+
+# Default: run requirement tests
+CMD ["npm", "test"]
