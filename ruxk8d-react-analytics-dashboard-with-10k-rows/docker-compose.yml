@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  test-before:
+    build: .
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      - PROJECT_PATH=./repository_before
+    command: sh -c "npx vitest run -c tests/vitest.config.ts tests/performance.test.tsx || true"
+
+  test-after:
+    build: .
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      - PROJECT_PATH=./repository_after
+    command: sh -c "npx vitest run -c tests/vitest.config.ts tests/performance.test.tsx || true"
+
+  evaluation:
+    build: .
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: node evaluation/evaluation.js

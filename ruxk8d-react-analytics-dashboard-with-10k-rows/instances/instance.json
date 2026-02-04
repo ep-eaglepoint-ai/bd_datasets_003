@@ -1,0 +1,11 @@
+{
+            "instance_id": "RUXK8D",
+            "problem_statement": "The analytics dashboard freezes for 2-3 seconds when users change filters, scrolling through the transaction table is janky and stutters, and the browser tab crashes after approximately one hour of use. React DevTools shows that all 10,000+ rows re-render on every state change, even when only a single filter checkbox is toggled. Memory usage in the browser grows from 200MB to over 1GB during a typical work session. The dashboard must display real-time transaction data with 5-10 WebSocket updates per second, but each update causes the entire UI to freeze momentarily.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ruxk8d-react-analytics-dashboard-with-10k-rows",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        

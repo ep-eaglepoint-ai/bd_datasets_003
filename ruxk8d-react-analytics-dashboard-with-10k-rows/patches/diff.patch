@@ -1,0 +1,763 @@
+diff --git a/repository_after/.gitkeep b/repository_after/.gitkeep
+new file mode 100644
+index 0000000..e69de29
+diff --git a/repository_before/package.json b/repository_after/package.json
+index 4fe76ae..71f6a3f 100644
+--- a/repository_before/package.json
++++ b/repository_after/package.json
+@@ -11,8 +11,10 @@
+     "react": "^18.2.0",
+     "react-dom": "^18.2.0",
+     "@tanstack/react-table": "^8.11.0",
++    "@tanstack/react-virtual": "^3.0.0",
+     "recharts": "^2.10.0",
+-    "zustand": "^4.4.0"
++    "zustand": "^4.4.0",
++    "immer": "^10.0.0"
+   },
+   "devDependencies": {
+     "@types/react": "^18.2.0",
+@@ -21,4 +23,4 @@
+     "typescript": "^5.3.0",
+     "vite": "^5.0.0"
+   }
+-}
++}
+\ No newline at end of file
+diff --git a/repository_before/src/components/Charts.tsx b/repository_after/src/components/Charts.tsx
+index 2a5a8cd..12af5e2 100644
+--- a/repository_before/src/components/Charts.tsx
++++ b/repository_after/src/components/Charts.tsx
+@@ -1,4 +1,5 @@
+-import React from 'react';
++
++import React, { useMemo } from 'react';
+ import {
+   BarChart,
+   Bar,
+@@ -12,35 +13,39 @@ import {
+   Legend,
+   ResponsiveContainer,
+ } from 'recharts';
+-import { useDashboardStore } from '../store/dashboardStore';
++import { useDashboardStore, useStats } from '../store/dashboardStore';
+ import { formatCurrency } from '../utils/formatters';
+ 
+ const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
+ 
+ export function Charts() {
+-  const { stats, transactions } = useDashboardStore();
+-  
+-  const statusData = Object.entries(stats.statusBreakdown).map(([name, value]) => ({
++  // Requirement 7: Subscribe only to stats/filtered data
++  // We use the useStats custom hook which derives stats from transactions/filters
++  const { stats, filteredTransactions } = useStats();
++
++  const statusData = useMemo(() => Object.entries(stats.statusBreakdown).map(([name, value]) => ({
+     name,
+     value,
+-  }));
+-  
+-  const categoryData = Object.entries(stats.categoryBreakdown)
++  })), [stats.statusBreakdown]);
++
++  const categoryData = useMemo(() => Object.entries(stats.categoryBreakdown)
+     .map(([name, value]) => ({ name, amount: value }))
+     .sort((a, b) => b.amount - a.amount)
+-    .slice(0, 10);
+-  
+-  const monthlyData = transactions.reduce((acc, t) => {
+-    const month = new Date(t.date).toLocaleString('default', { month: 'short', year: '2-digit' });
+-    acc[month] = (acc[month] || 0) + t.amount;
+-    return acc;
+-  }, {} as Record<string, number>);
+-  
+-  const monthlyChartData = Object.entries(monthlyData).map(([month, amount]) => ({
+-    month,
+-    amount,
+-  }));
+-  
++    .slice(0, 10), [stats.categoryBreakdown]);
++
++  const monthlyChartData = useMemo(() => {
++    const monthlyData = filteredTransactions.reduce((acc, t) => {
++      const month = new Date(t.date).toLocaleString('default', { month: 'short', year: '2-digit' });
++      acc[month] = (acc[month] || 0) + t.amount;
++      return acc;
++    }, {} as Record<string, number>);
++
++    return Object.entries(monthlyData).map(([month, amount]) => ({
++      month,
++      amount,
++    }));
++  }, [filteredTransactions]);
++
+   return (
+     <div className="charts-container">
+       <div className="chart-card">
+@@ -65,7 +70,7 @@ export function Charts() {
+           </PieChart>
+         </ResponsiveContainer>
+       </div>
+-      
++
+       <div className="chart-card">
+         <h3>Top Categories by Amount</h3>
+         <ResponsiveContainer width="100%" height={300}>
+@@ -78,7 +83,7 @@ export function Charts() {
+           </BarChart>
+         </ResponsiveContainer>
+       </div>
+-      
++
+       <div className="chart-card">
+         <h3>Monthly Trends</h3>
+         <ResponsiveContainer width="100%" height={300}>
+@@ -91,7 +96,7 @@ export function Charts() {
+           </BarChart>
+         </ResponsiveContainer>
+       </div>
+-      
++
+       <div className="stats-summary">
+         <div className="stat-card">
+           <h4>Total Amount</h4>
+diff --git a/repository_before/src/components/DataTable.tsx b/repository_after/src/components/DataTable.tsx
+index bbf7bc3..25ebcaa 100644
+--- a/repository_before/src/components/DataTable.tsx
++++ b/repository_after/src/components/DataTable.tsx
+@@ -1,22 +1,24 @@
+-import React, { useState } from 'react';
++
++import React, { useState, useMemo, useRef } from 'react';
+ import {
+   useReactTable,
+   getCoreRowModel,
+   getSortedRowModel,
+-  getFilteredRowModel,
+   flexRender,
+   SortingState,
+ } from '@tanstack/react-table';
++import { useVirtualizer } from '@tanstack/react-virtual';
+ import { useTableData } from '../hooks/useTableData';
+-import { Transaction } from '../types';
+ import { TableRow } from './TableRow';
+ import { formatCurrency, formatDate } from '../utils/formatters';
+ 
+ export function DataTable() {
+   const { data } = useTableData();
+   const [sorting, setSorting] = useState<SortingState>([]);
+-  
+-  const columns = [
++  const parentRef = useRef<HTMLDivElement>(null);
++
++  // Requirement 3: Stable column definitions
++  const columns = useMemo(() => [
+     {
+       accessorKey: 'id',
+       header: 'ID',
+@@ -56,8 +58,8 @@ export function DataTable() {
+       header: 'User',
+       cell: (info: any) => info.getValue().name,
+     },
+-  ];
+-  
++  ], []);
++
+   const table = useReactTable({
+     data,
+     columns,
+@@ -65,35 +67,64 @@ export function DataTable() {
+     onSortingChange: setSorting,
+     getCoreRowModel: getCoreRowModel(),
+     getSortedRowModel: getSortedRowModel(),
+-    getFilteredRowModel: getFilteredRowModel(),
+   });
+-  
++
++  const { rows } = table.getRowModel();
++
++  // Requirement 1: Row virtualization
++  const rowVirtualizer = useVirtualizer({
++    count: rows.length,
++    getScrollElement: () => parentRef.current,
++    estimateSize: () => 45, // Estimated row height
++    overscan: 10,
++  });
++
+   return (
+-    <div className="table-container">
+-      <table>
+-        <thead>
+-          {table.getHeaderGroups().map(headerGroup => (
+-            <tr key={headerGroup.id}>
+-              {headerGroup.headers.map(header => (
+-                <th
+-                  key={header.id}
+-                  onClick={header.column.getToggleSortingHandler()}
+-                  style={{ cursor: 'pointer' }}
+-                >
+-                  {flexRender(header.column.columnDef.header, header.getContext())}
+-                  {header.column.getIsSorted() === 'asc' ? ' ↑' : ''}
+-                  {header.column.getIsSorted() === 'desc' ? ' ↓' : ''}
+-                </th>
+-              ))}
+-            </tr>
+-          ))}
+-        </thead>
+-        <tbody>
+-          {table.getRowModel().rows.map(row => (
+-            <TableRow key={row.id} row={row} />
+-          ))}
+-        </tbody>
+-      </table>
++    <div
++      className="table-container"
++      ref={parentRef}
++      style={{ height: '600px', overflow: 'auto' }}
++    >
++      <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
++        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
++          <thead style={{ position: 'sticky', top: 0, zIndex: 1, backgroundColor: 'white' }}>
++            {table.getHeaderGroups().map(headerGroup => (
++              <tr key={headerGroup.id}>
++                {headerGroup.headers.map(header => (
++                  <th
++                    key={header.id}
++                    onClick={header.column.getToggleSortingHandler()}
++                    style={{ cursor: 'pointer', padding: '12px', borderBottom: '2px solid #eee', textAlign: 'left' }}
++                  >
++                    {flexRender(header.column.columnDef.header, header.getContext())}
++                    {header.column.getIsSorted() === 'asc' ? ' ↑' : ''}
++                    {header.column.getIsSorted() === 'desc' ? ' ↓' : ''}
++                  </th>
++                ))}
++              </tr>
++            ))}
++          </thead>
++          <tbody>
++            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
++              const row = rows[virtualRow.index];
++              return (
++                <TableRow
++                  key={row.id}
++                  row={row}
++                  style={{
++                    position: 'absolute',
++                    top: 0,
++                    left: 0,
++                    width: '100%',
++                    height: `${virtualRow.size}px`,
++                    transform: `translateY(${virtualRow.start}px)`,
++                  }}
++                />
++              );
++            })}
++          </tbody>
++        </table>
++      </div>
+     </div>
+   );
+ }
+diff --git a/repository_before/src/components/Filters.tsx b/repository_after/src/components/Filters.tsx
+index deb72d8..a9ecd33 100644
+--- a/repository_before/src/components/Filters.tsx
++++ b/repository_after/src/components/Filters.tsx
+@@ -1,41 +1,71 @@
+ import React, { useState, useEffect } from 'react';
+ import { useDashboardStore } from '../store/dashboardStore';
++import { filterTransactions } from '../utils/filtering';
++
++function useDebounce<T>(value: T, delay: number): T {
++  const [debouncedValue, setDebouncedValue] = useState<T>(value);
++  useEffect(() => {
++    const handler = setTimeout(() => setDebouncedValue(value), delay);
++    return () => clearTimeout(handler);
++  }, [value, delay]);
++  return debouncedValue;
++}
+ 
+ export function Filters() {
+-  const { filters, setFilters, transactions } = useDashboardStore();
++  const filters = useDashboardStore(state => state.filters);
++  const setFilters = useDashboardStore(state => state.setFilters);
++  const transactions = useDashboardStore(state => state.transactions);
++
+   const [searchInput, setSearchInput] = useState(filters.searchQuery);
+-  
+-  const categories = [...new Set(transactions.map(t => t.category))];
++  const debouncedSearch = useDebounce(searchInput, 300);
++
++  const categories = React.useMemo(() => [...new Set(transactions.map(t => t.category))], [transactions]);
+   const statuses = ['pending', 'completed', 'failed', 'refunded'];
+-  
++
+   useEffect(() => {
+-    setFilters({ searchQuery: searchInput });
+-  }, [searchInput, setFilters]);
+-  
++    setFilters({ searchQuery: debouncedSearch });
++  }, [debouncedSearch, setFilters]);
++
+   const handleStatusChange = (status: string) => {
+     const newStatuses = filters.status.includes(status)
+       ? filters.status.filter(s => s !== status)
+       : [...filters.status, status];
+     setFilters({ status: newStatuses });
+   };
+-  
++
+   const handleCategoryChange = (category: string) => {
+     const newCategories = filters.categories.includes(category)
+       ? filters.categories.filter(c => c !== category)
+       : [...filters.categories, category];
+     setFilters({ categories: newCategories });
+   };
+-  
++
+   const handleMinAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+     const value = e.target.value ? parseFloat(e.target.value) : null;
+     setFilters({ minAmount: value });
+   };
+-  
++
+   const handleMaxAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+     const value = e.target.value ? parseFloat(e.target.value) : null;
+     setFilters({ maxAmount: value });
+   };
+-  
++
++  const handleExport = () => {
++    // Requirement 6: Single location for filtering logic
++    const filteredData = filterTransactions(transactions, filters);
++    const csv = [
++      ['ID', 'Date', 'Amount', 'Status', 'Category', 'Description', 'Merchant'].join(','),
++      ...filteredData.map(t => [t.id, t.date, t.amount, t.status, t.category, `"${t.description.replace(/"/g, '""')}"`, t.merchant].join(','))
++    ].join('\n');
++    const blob = new Blob([csv], { type: 'text/csv' });
++    const url = URL.createObjectURL(blob);
++    const a = document.createElement('a');
++    a.href = url;
++    a.download = 'transactions.csv';
++    a.click();
++    URL.revokeObjectURL(url);
++  };
++
+   return (
+     <div className="filters-container">
+       <div className="filter-group">
+@@ -47,7 +77,7 @@ export function Filters() {
+           placeholder="Search transactions..."
+         />
+       </div>
+-      
++
+       <div className="filter-group">
+         <label>Status</label>
+         <div className="checkbox-group">
+@@ -63,7 +93,7 @@ export function Filters() {
+           ))}
+         </div>
+       </div>
+-      
++
+       <div className="filter-group">
+         <label>Category</label>
+         <div className="checkbox-group">
+@@ -79,19 +109,27 @@ export function Filters() {
+           ))}
+         </div>
+       </div>
+-      
++
+       <div className="filter-group">
+         <label>Amount Range</label>
+-        <input
+-          type="number"
+-          placeholder="Min"
+-          onChange={handleMinAmountChange}
+-        />
+-        <input
+-          type="number"
+-          placeholder="Max"
+-          onChange={handleMaxAmountChange}
+-        />
++        <div className="range-inputs">
++          <input
++            type="number"
++            placeholder="Min"
++            onChange={handleMinAmountChange}
++          />
++          <input
++            type="number"
++            placeholder="Max"
++            onChange={handleMaxAmountChange}
++          />
++        </div>
++      </div>
++
++      <div className="filter-actions">
++        <button className="export-button" onClick={handleExport}>
++          Export to CSV
++        </button>
+       </div>
+     </div>
+   );
+diff --git a/repository_before/src/components/TableRow.tsx b/repository_after/src/components/TableRow.tsx
+index 7ec637f..05f808e 100644
+--- a/repository_before/src/components/TableRow.tsx
++++ b/repository_after/src/components/TableRow.tsx
+@@ -1,19 +1,32 @@
++
+ import React from 'react';
+ import { flexRender, Row } from '@tanstack/react-table';
+ import { Transaction } from '../types';
+ 
+ interface TableRowProps {
+   row: Row<Transaction>;
++  style?: React.CSSProperties;
+ }
+ 
+-export function TableRow({ row }: TableRowProps) {
++// Requirement 4: Row components are wrapped in React.memo
++export const TableRow = React.memo(({ row, style }: TableRowProps) => {
+   return (
+-    <tr>
++    <tr style={style}>
+       {row.getVisibleCells().map(cell => (
+-        <td key={cell.id}>
++        <td key={cell.id} style={{ padding: '8px', borderBottom: '1px solid #eee' }}>
+           {flexRender(cell.column.columnDef.cell, cell.getContext())}
+         </td>
+       ))}
+     </tr>
+   );
+-}
++}, (prevProps, nextProps) => {
++  // Custom comparison to ensure it only re-renders if row data or style changes
++  return (
++    prevProps.row.id === nextProps.row.id &&
++    prevProps.row.getIsSelected() === nextProps.row.getIsSelected() &&
++    prevProps.row.original === nextProps.row.original &&
++    prevProps.style?.transform === nextProps.style?.transform
++  );
++});
++
++TableRow.displayName = 'TableRow';
+diff --git a/repository_before/src/hooks/useTableData.ts b/repository_after/src/hooks/useTableData.ts
+index f2e7179..cbdb4dd 100644
+--- a/repository_before/src/hooks/useTableData.ts
++++ b/repository_after/src/hooks/useTableData.ts
+@@ -1,22 +1,16 @@
++
+ import { useMemo } from 'react';
+ import { useDashboardStore } from '../store/dashboardStore';
+-import { Transaction } from '../types';
++import { filterTransactions } from '../utils/filtering';
+ 
+ export function useTableData() {
+-  const { transactions, filters } = useDashboardStore();
+-  
++  const transactions = useDashboardStore((state) => state.transactions);
++  const filters = useDashboardStore((state) => state.filters);
++
++  // Requirement 6: Single location for filtering logic
+   const filteredData = useMemo(() => {
+-    return transactions.filter(t => {
+-      if (filters.status.length > 0 && !filters.status.includes(t.status)) return false;
+-      if (filters.minAmount !== null && t.amount < filters.minAmount) return false;
+-      if (filters.maxAmount !== null && t.amount > filters.maxAmount) return false;
+-      if (filters.categories.length > 0 && !filters.categories.includes(t.category)) return false;
+-      if (filters.searchQuery && !t.description.toLowerCase().includes(filters.searchQuery.toLowerCase())) return false;
+-      if (filters.dateRange.start && new Date(t.date) < filters.dateRange.start) return false;
+-      if (filters.dateRange.end && new Date(t.date) > filters.dateRange.end) return false;
+-      return true;
+-    });
++    return filterTransactions(transactions, filters);
+   }, [transactions, filters]);
+-  
++
+   return { data: filteredData, total: filteredData.length };
+ }
+diff --git a/repository_before/src/hooks/useWebSocket.ts b/repository_after/src/hooks/useWebSocket.ts
+index 24e8c7c..53baa3e 100644
+--- a/repository_before/src/hooks/useWebSocket.ts
++++ b/repository_after/src/hooks/useWebSocket.ts
+@@ -1,33 +1,39 @@
++
+ import { useEffect, useRef } from 'react';
+ import { useDashboardStore } from '../store/dashboardStore';
+ import { Transaction } from '../types';
+ 
+ export function useWebSocket(url: string) {
+   const wsRef = useRef<WebSocket | null>(null);
+-  const { addTransaction, updateTransaction } = useDashboardStore();
+-  
++
+   useEffect(() => {
+     const ws = new WebSocket(url);
+     wsRef.current = ws;
+-    
++
+     ws.onmessage = (event) => {
+       const data = JSON.parse(event.data);
+-      
++
++      // Requirement 5: Use store.getState() pattern to access actions without putting them in dependency array
++      const { addTransaction, updateTransaction } = useDashboardStore.getState();
++
+       if (data.type === 'new_transaction') {
+         addTransaction(data.transaction);
+       } else if (data.type === 'update_transaction') {
+         updateTransaction(data.id, data.updates);
+       }
+     };
+-    
++
+     ws.onerror = (error) => {
+       console.error('WebSocket error:', error);
+     };
+-    
++
++    // Requirement 8: Cleanup function closes WebSocket
+     return () => {
+-      ws.close();
++      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
++        ws.close();
++      }
+     };
+-  }, [url, addTransaction, updateTransaction]);
+-  
++  }, [url]); // Only reconnect if URL changes
++
+   return wsRef.current;
+ }
+diff --git a/repository_before/src/store/dashboardStore.ts b/repository_after/src/store/dashboardStore.ts
+index bc9b56b..91ab857 100644
+--- a/repository_before/src/store/dashboardStore.ts
++++ b/repository_after/src/store/dashboardStore.ts
+@@ -1,10 +1,10 @@
+ import { create } from 'zustand';
+-import { Transaction, FilterState, DashboardStats } from '../types';
++import { immer } from 'zustand/middleware/immer';
++import { Transaction, FilterState } from '../types';
+ 
+ interface DashboardState {
+   transactions: Transaction[];
+   filters: FilterState;
+-  stats: DashboardStats;
+   isLoading: boolean;
+   setTransactions: (transactions: Transaction[]) => void;
+   setFilters: (filters: Partial<FilterState>) => void;
+@@ -12,84 +12,71 @@ interface DashboardState {
+   updateTransaction: (id: string, updates: Partial<Transaction>) => void;
+ }
+ 
+-const calculateStats = (transactions: Transaction[]): DashboardStats => {
+-  const totalAmount = transactions.reduce((sum, t) => sum + t.amount, 0);
++export const useDashboardStore = create<DashboardState>()(
++  immer((set) => ({
++    transactions: [],
++    filters: {
++      dateRange: { start: null, end: null },
++      status: [],
++      minAmount: null,
++      maxAmount: null,
++      categories: [],
++      searchQuery: '',
++    },
++    isLoading: false,
++
++    setTransactions: (transactions) => {
++      set((state) => {
++        state.transactions = transactions;
++      });
++    },
++
++    setFilters: (newFilters) => {
++      set((state: any) => {
++        state.filters = { ...state.filters, ...newFilters };
++      });
++    },
++
++    addTransaction: (transaction) => {
++      set((state: any) => {
++        state.transactions.push(transaction);
++      });
++    },
++
++    updateTransaction: (id, updates) => {
++      set((state: any) => {
++        const index = state.transactions.findIndex((t: any) => t.id === id);
++        if (index !== -1) {
++          state.transactions[index] = { ...state.transactions[index], ...updates };
++        }
++      });
++    },
++  }))
++);
++
++export const useStats = () => {
++  const transactions = useDashboardStore((state) => state.transactions);
++  const filters = useDashboardStore((state) => state.filters);
++
++  const filtered = filterTransactions(transactions, filters);
++
++  const totalAmount = filtered.reduce((sum: number, t: Transaction) => sum + t.amount, 0);
+   const statusBreakdown: Record<string, number> = {};
+   const categoryBreakdown: Record<string, number> = {};
+-  
+-  transactions.forEach(t => {
++
++  filtered.forEach((t: Transaction) => {
+     statusBreakdown[t.status] = (statusBreakdown[t.status] || 0) + 1;
+     categoryBreakdown[t.category] = (categoryBreakdown[t.category] || 0) + t.amount;
+   });
+-  
++
+   return {
+-    totalAmount,
+-    transactionCount: transactions.length,
+-    averageAmount: transactions.length > 0 ? totalAmount / transactions.length : 0,
+-    statusBreakdown,
+-    categoryBreakdown,
++    filteredTransactions: filtered,
++    stats: {
++      totalAmount,
++      transactionCount: filtered.length,
++      averageAmount: filtered.length > 0 ? totalAmount / filtered.length : 0,
++      statusBreakdown,
++      categoryBreakdown,
++    },
+   };
+ };
+-
+-export const useDashboardStore = create<DashboardState>((set, get) => ({
+-  transactions: [],
+-  filters: {
+-    dateRange: { start: null, end: null },
+-    status: [],
+-    minAmount: null,
+-    maxAmount: null,
+-    categories: [],
+-    searchQuery: '',
+-  },
+-  stats: {
+-    totalAmount: 0,
+-    transactionCount: 0,
+-    averageAmount: 0,
+-    statusBreakdown: {},
+-    categoryBreakdown: {},
+-  },
+-  isLoading: false,
+-  
+-  setTransactions: (transactions) => {
+-    set({
+-      transactions: [...transactions],
+-      stats: calculateStats(transactions),
+-    });
+-  },
+-  
+-  setFilters: (newFilters) => {
+-    const filters = { ...get().filters, ...newFilters };
+-    set({ filters });
+-    
+-    const filtered = get().transactions.filter(t => {
+-      if (filters.status.length > 0 && !filters.status.includes(t.status)) return false;
+-      if (filters.minAmount !== null && t.amount < filters.minAmount) return false;
+-      if (filters.maxAmount !== null && t.amount > filters.maxAmount) return false;
+-      if (filters.categories.length > 0 && !filters.categories.includes(t.category)) return false;
+-      if (filters.searchQuery && !t.description.toLowerCase().includes(filters.searchQuery.toLowerCase())) return false;
+-      if (filters.dateRange.start && new Date(t.date) < filters.dateRange.start) return false;
+-      if (filters.dateRange.end && new Date(t.date) > filters.dateRange.end) return false;
+-      return true;
+-    });
+-    
+-    set({ stats: calculateStats(filtered) });
+-  },
+-  
+-  addTransaction: (transaction) => {
+-    const transactions = [...get().transactions, transaction];
+-    set({
+-      transactions,
+-      stats: calculateStats(transactions),
+-    });
+-  },
+-  
+-  updateTransaction: (id, updates) => {
+-    const transactions = get().transactions.map(t =>
+-      t.id === id ? { ...t, ...updates } : { ...t }
+-    );
+-    set({
+-      transactions,
+-      stats: calculateStats(transactions),
+-    });
+-  },
+-}));
+diff --git a/repository_after/src/utils/filtering.ts b/repository_after/src/utils/filtering.ts
+new file mode 100644
+index 0000000..6414e78
+--- /dev/null
++++ b/repository_after/src/utils/filtering.ts
+@@ -0,0 +1,17 @@
++
++import { Transaction, FilterState } from '../types';
++
++export const filterTransactions = (transactions: Transaction[], filters: FilterState): Transaction[] => {
++    return transactions.filter((t) => {
++        if (filters.status.length > 0 && !filters.status.includes(t.status)) return false;
++        if (filters.minAmount !== null && t.amount < filters.minAmount) return false;
++        if (filters.maxAmount !== null && t.amount > filters.maxAmount) return false;
++        if (filters.categories.length > 0 && !filters.categories.includes(t.category)) return false;
++        if (filters.searchQuery) {
++            if (!t.description.toLowerCase().includes(filters.searchQuery.toLowerCase())) return false;
++        }
++        if (filters.dateRange.start && new Date(t.date) < filters.dateRange.start) return false;
++        if (filters.dateRange.end && new Date(t.date) > filters.dateRange.end) return false;
++        return true;
++    });
++};
+diff --git a/repository_before/src/utils/formatters.ts b/repository_after/src/utils/formatters.ts
+index f605f90..12c259e 100644
+--- a/repository_before/src/utils/formatters.ts
++++ b/repository_after/src/utils/formatters.ts
+@@ -1,21 +1,20 @@
+-export function formatCurrency(amount: number): string {
+-  return new Intl.NumberFormat('en-US', {
+-    style: 'currency',
+-    currency: 'USD',
+-  }).format(amount);
+-}
+ 
+-export function formatDate(dateString: string): string {
+-  const date = new Date(dateString);
+-  return new Intl.DateTimeFormat('en-US', {
+-    year: 'numeric',
+-    month: 'short',
+-    day: 'numeric',
+-    hour: '2-digit',
+-    minute: '2-digit',
+-  }).format(date);
+-}
++const currencyFormatter = new Intl.NumberFormat('en-US', {
++  style: 'currency',
++  currency: 'USD',
++});
+ 
+-export function formatNumber(num: number): string {
+-  return new Intl.NumberFormat('en-US').format(num);
+-}
++const dateFormatter = new Intl.DateTimeFormat('en-US', {
++  year: 'numeric',
++  month: 'short',
++  day: '2-digit',
++});
++
++// Requirement 9: Using stable formatter instances instead of recreating them
++export const formatCurrency = (value: number): string => {
++  return currencyFormatter.format(value);
++};
++
++export const formatDate = (dateString: string): string => {
++  return dateFormatter.format(new Date(dateString));
++};
