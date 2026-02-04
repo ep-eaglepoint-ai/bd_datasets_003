@@ -11,12 +11,12 @@ docker compose build
 
 ### 2. Run Tests on repository_before
 ```bash
-docker compose run --rm app bash -c 'cd repository_before && python -c "print(\"No implementation in repository_before\")"'
+docker compose run --rm app bash -c 'cd repository_before && python -m pytest || true'
 ```
 
 ### 3. Run Tests on repository_after
 ```bash
-docker compose run --rm app bash -c 'cd repository_after && python -m pytest ../tests/test_news_feed.py -v'
+docker compose run --rm app bash -c 'cd repository_after && python -m pytest ../tests/test_news_feed.py -q --tb=no --no-header -r no'
 ```
 
 ### 4. Run Evaluation
@@ -37,9 +37,6 @@ docker compose run --rm app python evaluation/evaluation.py
 ```
 tests/test_news_feed.py::TestArticle::test_article_creation_with_date_object PASSED
 tests/test_news_feed.py::TestArticle::test_article_creation_with_date_string PASSED
-tests/test_news_feed.py::TestArticle::test_article_attributes PASSED
-tests/test_news_feed.py::TestNewsFeed::test_fetch_all_articles_empty_feed PASSED
-tests/test_news_feed.py::TestNewsFeed::test_fetch_all_articles_returns_all PASSED
 tests/test_news_feed.py::TestNewsFeed::test_fetch_all_articles_sorted_by_date PASSED
 ...
 ============================== 26 passed ==============================
