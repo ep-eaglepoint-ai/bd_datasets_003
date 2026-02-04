@@ -23,6 +23,7 @@ services:
       - ./evaluation:/app/evaluation
       - ./repository_before:/app/repository_before
       - ./repository_after:/app/repository_after
+      - ./tests:/app/src/tests_mount
       - /app/node_modules
     command: node evaluation/evaluation.js
     working_dir: /app
