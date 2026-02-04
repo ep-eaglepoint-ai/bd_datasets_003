@@ -1,0 +1,13 @@
+{
+            "instance_id": "0QP2SH",
+            "problem_statement": "
+Three pytest test suites were evaluated for their ability to enforce strict edge case handling on a currency formatting function. While all three cover many input classes, they consistently fail to enforce several critical correctness rules. Specifically, at least two versions incorrectly accept Decimal inputs as valid, fail to strictly enforce exceptions for NaN and Infinity values, and use invalid “trap” tests that reward incorrect behavior instead of enforcing correctness. These gaps reduce the test suites’ reliability as safety mechanisms for financial-grade code and allow naive or unsafe implementations to pass undetected.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/0qp2sh-edge-case-test-failures-in-python-currency-formatting-test-suites",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
