@@ -1,0 +1,11 @@
+{
+            "instance_id": "S2NULN",
+            "problem_statement": "Generating a gradient between two colors seems trivial, but operating in the RGB space creates the "Muddy Middle" effect where the midpoint of the gradient loses saturation (e.g., Red to Green becomes Brown). To maintain vibrancy, the interpolation must happen in a perceptual space like HSL. The primary logical trap is the Hue Wrap: Hue is circular (0-360). Mid-tier models frequently implement a simple linear interpolation start + (end - start) * t. If the inputs are 350° and 10°, this formula traverses the long way around (340 degrees), creating a "Rainbow Spin" effect instead of a smooth 20-degree transition across the zero meridian. The solution requires calculating the delta, checking if it exceeds 180 degrees, and adjusting the target accordingly.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/s2nuln-vibrant-gradient-generation-with-hsl-shortest-path-interpolation",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
