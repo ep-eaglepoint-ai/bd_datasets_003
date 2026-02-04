@@ -4,49 +4,22 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"sync"
 	"sync/atomic"
 	"testing"
-
-	"reservation-system/repository_after/model"
 )
 
-func startTestServer() *httptest.Server {
-	inventory := &model.Inventory{
-		Items: map[string]int{
-			"item-1": 5,
-		},
-	}
-	rateLimiter := model.NewRateLimiter(100)
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !rateLimiter.Allow() {
-			http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
-			return
-		}
-		defer r.Body.Close()
-		var req model.ReserveRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "invalid json", http.StatusBadRequest)
-			return
-		}
-		inventory.Mu.Lock()
-		defer inventory.Mu.Unlock()
-		current := inventory.Items[req.ResourceID]
-		if current < req.Quantity {
-			http.Error(w, "insufficient stock", http.StatusConflict)
-			return
-		}
-		inventory.Items[req.ResourceID] -= req.Quantity
-		w.WriteHeader(http.StatusOK)
-	})
-
-	return httptest.NewServer(handler)
+type reserveRequest struct {
+	ResourceID string `json:"resource_id"`
+	Quantity   int    `json:"quantity"`
 }
 
+const baseURL = "http://localhost:8080"
+
 func TestConcurrentReservations(t *testing.T) {
-	server := startTestServer()
-	defer server.Close()
+	t.Setenv("PORT", "8080")
+	stop := startServer(t)
+	defer stop()
 
 	var wg sync.WaitGroup
 	var successCount int32
@@ -56,9 +29,9 @@ func TestConcurrentReservations(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			payload := model.ReserveRequest{"item-1", 1}
+			payload := reserveRequest{"item-1", 10}
 			body, _ := json.Marshal(payload)
-			resp, err := http.Post(server.URL, "application/json", bytes.NewBuffer(body))
+			resp, err := http.Post(baseURL+"/reserve", "application/json", bytes.NewBuffer(body))
 			if err != nil {
 				t.Errorf("request failed: %v", err)
 				return
@@ -75,20 +48,21 @@ func TestConcurrentReservations(t *testing.T) {
 
 	wg.Wait()
 
-	// Stock = 5, so successCount must not exceed 5
+	// Stock = 50, so successCount must not exceed 5
 	if atomic.LoadInt32(&successCount) > 5 {
 		t.Errorf("overselling occurred, successCount=%d", successCount)
 	}
 }
 
 func TestInsufficientStock(t *testing.T) {
-	server := startTestServer()
-	defer server.Close()
+	t.Setenv("PORT", "8080")
+	stop := startServer(t)
+	defer stop()
 
-	// Request 10 units when only 5 available
-	payload := model.ReserveRequest{"item-1", 10}
+	// Request 100 units when only 50 available
+	payload := reserveRequest{"item-1", 100}
 	body, _ := json.Marshal(payload)
-	resp, err := http.Post(server.URL, "application/json", bytes.NewBuffer(body))
+	resp, err := http.Post(baseURL+"/reserve", "application/json", bytes.NewBuffer(body))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,10 +74,11 @@ func TestInsufficientStock(t *testing.T) {
 }
 
 func TestInvalidJSON(t *testing.T) {
-	server := startTestServer()
-	defer server.Close()
+	t.Setenv("PORT", "8080")
+	stop := startServer(t)
+	defer stop()
 
-	resp, err := http.Post(server.URL, "application/json", bytes.NewBuffer([]byte("{invalid json}")))
+	resp, err := http.Post(baseURL+"/reserve", "application/json", bytes.NewBuffer([]byte("{invalid json}")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,25 +90,20 @@ func TestInvalidJSON(t *testing.T) {
 }
 
 func TestRateLimiter(t *testing.T) {
-	rateLimiter := model.NewRateLimiter(5) // 5 requests/sec
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !rateLimiter.Allow() {
-			http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
-			return
-		}
-		w.WriteHeader(http.StatusOK)
-	})
-	server := httptest.NewServer(handler)
-	defer server.Close()
-
+	t.Setenv("PORT", "8080")
+	stop := startServer(t)
+	defer stop()
 	var wg sync.WaitGroup
-	totalRequests := 10
 	var tooMany int32
+	totalRequests := 100
+
 	for i := 0; i < totalRequests; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			resp, _ := http.Get(server.URL)
+			payload := reserveRequest{"item-1", 1}
+			body, _ := json.Marshal(payload)
+			resp, _ := http.Post(baseURL+"/reserve", "application/json", bytes.NewBuffer(body))
 			defer resp.Body.Close()
 			if resp.StatusCode == http.StatusTooManyRequests {
 				atomic.AddInt32(&tooMany, 1)
@@ -149,20 +119,21 @@ func TestRateLimiter(t *testing.T) {
 }
 
 func TestServerSerializability(t *testing.T) {
-	server := startTestServer()
-	defer server.Close()
+	t.Setenv("PORT", "8080")
+	stop := startServer(t)
+	defer stop()
 
-	inventory := 5
+	inventory := 50
 	var mu sync.Mutex
 	success := 0
 	var wg sync.WaitGroup
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 25; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			payload := model.ReserveRequest{"item-1", 1}
+			payload := reserveRequest{"item-1", 2}
 			body, _ := json.Marshal(payload)
-			resp, _ := http.Post(server.URL, "application/json", bytes.NewBuffer(body))
+			resp, _ := http.Post(baseURL+"/reserve", "application/json", bytes.NewBuffer(body))
 			defer resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
 				mu.Lock()

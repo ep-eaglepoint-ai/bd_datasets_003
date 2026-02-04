@@ -86,14 +86,12 @@ func TestAttemptReserve(t *testing.T) {
 			t.Errorf("expected success log after retries, got: %s", logs.String())
 		}
 
-		// Ensure some minimal backoff occurred (not exact, just sanity check)
 		if elapsed < 50*time.Millisecond {
 			t.Errorf("expected backoff delay, but elapsed %v too short", elapsed)
 		}
 	})
 
 	t.Run("connection error handling", func(t *testing.T) {
-		// Point to an invalid URL to simulate connection error
 		t.Setenv("SERVER_URL", "http://localhost:12345") // Likely no server here
 
 		httpClient := &http.Client{Timeout: 500 * time.Millisecond}
