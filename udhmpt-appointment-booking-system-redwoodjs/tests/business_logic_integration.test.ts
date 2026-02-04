@@ -9,7 +9,7 @@ describe('Business Logic Integration Tests', () => {
       const fs = require('fs')
       const path = require('path')
       
-      const servicePath = path.join(__dirname, '../../src/services/availability/search.ts')
+      const servicePath = path.join(__dirname, '../repository_after/api/src/services/availability/search.ts')
       expect(fs.existsSync(servicePath)).toBe(true)
       
       // Verify the service exports the expected function
@@ -23,7 +23,7 @@ describe('Business Logic Integration Tests', () => {
       const fs = require('fs')
       const path = require('path')
       
-      const servicePath = path.join(__dirname, '../../src/services/bookings/bookings.ts')
+      const servicePath = path.join(__dirname, '../repository_after/api/src/services/bookings/bookings.ts')
       expect(fs.existsSync(servicePath)).toBe(true)
       
       const serviceContent = fs.readFileSync(servicePath, 'utf8')
@@ -36,7 +36,7 @@ describe('Business Logic Integration Tests', () => {
       const fs = require('fs')
       const path = require('path')
       
-      const servicePath = path.join(__dirname, '../../src/services/bookings/bookings.ts')
+      const servicePath = path.join(__dirname, '../repository_after/api/src/services/bookings/bookings.ts')
       expect(fs.existsSync(servicePath)).toBe(true)
       
       const serviceContent = fs.readFileSync(servicePath, 'utf8')
@@ -49,7 +49,7 @@ describe('Business Logic Integration Tests', () => {
       const fs = require('fs')
       const path = require('path')
       
-      const serverPath = path.join(__dirname, '../../src/index.ts')
+      const serverPath = path.join(__dirname, '../repository_after/api/src/index.ts')
       expect(fs.existsSync(serverPath)).toBe(true)
       
       const serverContent = fs.readFileSync(serverPath, 'utf8')
@@ -66,7 +66,7 @@ describe('Business Logic Integration Tests', () => {
       const fs = require('fs')
       const path = require('path')
       
-      const serverPath = path.join(__dirname, '../../src/index.ts')
+      const serverPath = path.join(__dirname, '../repository_after/api/src/index.ts')
       const serverContent = fs.readFileSync(serverPath, 'utf8')
       
       // Verify real JWT implementation
@@ -80,7 +80,7 @@ describe('Business Logic Integration Tests', () => {
       const fs = require('fs')
       const path = require('path')
       
-      const serverPath = path.join(__dirname, '../../src/index.ts')
+      const serverPath = path.join(__dirname, '../repository_after/api/src/index.ts')
       const serverContent = fs.readFileSync(serverPath, 'utf8')
       
       // Verify real service calls
@@ -100,7 +100,7 @@ describe('Business Logic Integration Tests', () => {
       const fs = require('fs')
       const path = require('path')
       
-      const servicePath = path.join(__dirname, '../../src/services/availability/search.ts')
+      const servicePath = path.join(__dirname, '../repository_after/api/src/services/availability/search.ts')
       const serviceContent = fs.readFileSync(servicePath, 'utf8')
       
       // Verify complex business logic exists
@@ -115,7 +115,7 @@ describe('Business Logic Integration Tests', () => {
       const fs = require('fs')
       const path = require('path')
       
-      const servicePath = path.join(__dirname, '../../src/services/bookings/bookings.ts')
+      const servicePath = path.join(__dirname, '../repository_after/api/src/services/bookings/bookings.ts')
       const serviceContent = fs.readFileSync(servicePath, 'utf8')
       
       // Verify complex business logic exists
@@ -130,7 +130,7 @@ describe('Business Logic Integration Tests', () => {
       const fs = require('fs')
       const path = require('path')
       
-      const serverPath = path.join(__dirname, '../../src/index.ts')
+      const serverPath = path.join(__dirname, '../repository_after/api/src/index.ts')
       const serverContent = fs.readFileSync(serverPath, 'utf8')
       
       // Verify security features
@@ -147,7 +147,7 @@ describe('Business Logic Integration Tests', () => {
       const fs = require('fs')
       const path = require('path')
       
-      const serverPath = path.join(__dirname, '../../src/index.ts')
+      const serverPath = path.join(__dirname, '../repository_after/api/src/index.ts')
       const serverContent = fs.readFileSync(serverPath, 'utf8')
       
       // These should NOT exist in a real implementation
@@ -161,7 +161,7 @@ describe('Business Logic Integration Tests', () => {
       const fs = require('fs')
       const path = require('path')
       
-      const serverPath = path.join(__dirname, '../../src/index.ts')
+      const serverPath = path.join(__dirname, '../repository_after/api/src/index.ts')
       const serverContent = fs.readFileSync(serverPath, 'utf8')
       
       // Server should fail if services don't exist (no graceful fallbacks)
