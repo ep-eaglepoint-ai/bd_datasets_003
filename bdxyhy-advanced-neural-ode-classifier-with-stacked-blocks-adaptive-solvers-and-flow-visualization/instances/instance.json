@@ -1,0 +1,11 @@
+{
+            "instance_id": "BDXYHY",
+            "problem_statement": "Implement a robust, trainable Neural ODE model for MNIST that handles edge cases, supports multiple ODE blocks, allows dynamic solver accuracy, and provides flow visualization.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/bdxyhy-advanced-neural-ode-classifier-with-stacked-blocks-adaptive-solvers-and-flow-visualization",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
