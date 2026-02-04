@@ -1,4 +1,4 @@
-import { execSync, spawnSync } from 'child_process';
+import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -89,16 +89,35 @@ function parseJestOutput(output: string): TestResult[] {
   for (const line of lines) {
     const trimmed = line.trim();
 
-    if (trimmed.startsWith('✓') || trimmed.startsWith('√')) {
-      const testName = trimmed.substring(1).trim().replace(/\s*\(\d+\s*m?s\)\s*$/, '');
-      tests.push({ nodeid: testName, name: testName, outcome: 'passed' });
-    } else if (trimmed.startsWith('✕') || trimmed.startsWith('×')) {
-      const testName = trimmed.substring(1).trim().replace(/\s*\(\d+\s*m?s\)\s*$/, '');
-      tests.push({ nodeid: testName, name: testName, outcome: 'failed' });
+    // Match checkmark patterns for passed tests
+    if (trimmed.startsWith('✓') || trimmed.startsWith('√') || trimmed.match(/^\u2713/)) {
+      const testName = trimmed.replace(/^[✓√\u2713]\s*/, '').replace(/\s*\(\d+\s*m?s\)\s*$/, '').trim();
+      if (testName) {
+        tests.push({ nodeid: testName, name: testName, outcome: 'passed' });
+      }
+    }
+    // Match X patterns for failed tests
+    else if (trimmed.startsWith('✕') || trimmed.startsWith('×') || trimmed.match(/^\u2717/)) {
+      const testName = trimmed.replace(/^[✕×\u2717]\s*/, '').replace(/\s*\(\d+\s*m?s\)\s*$/, '').trim();
+      if (testName) {
+        tests.push({ nodeid: testName, name: testName, outcome: 'failed' });
+      }
     }
   }
 
   return tests;
+}
+
+function parseSummaryLine(output: string): { passed: number; failed: number; total: number } {
+  // Parse "Tests: 44 passed, 44 total" or "Tests: 2 failed, 42 passed, 44 total"
+  const match = output.match(/Tests:\s+(?:(\d+)\s+failed,\s+)?(\d+)\s+passed,\s+(\d+)\s+total/);
+  if (match) {
+    const failed = match[1] ? parseInt(match[1], 10) : 0;
+    const passed = parseInt(match[2], 10);
+    const total = parseInt(match[3], 10);
+    return { passed, failed, total };
+  }
+  return { passed: 0, failed: 0, total: 0 };
 }
 
 function runJestTests(label: string): RunResults {
@@ -108,52 +127,50 @@ function runJestTests(label: string): RunResults {
 
   const projectRoot = path.resolve(__dirname, '..');
 
+  let stdout = '';
+  let stderr = '';
+  let exitCode = 0;
+
   try {
-    const result = spawnSync('npx', ['jest', '--config', 'jest.config.js', '--verbose', '--no-colors'], {
+    stdout = execSync('npm test -- --no-colors 2>&1', {
       cwd: projectRoot,
       encoding: 'utf-8',
       timeout: 120000,
-      shell: true,
+      stdio: ['pipe', 'pipe', 'pipe'],
     });
-
-    const stdout = result.stdout || '';
-    const stderr = result.stderr || '';
-    const output = stdout + stderr;
-
-    const tests = parseJestOutput(output);
-
-    const passed = tests.filter(t => t.outcome === 'passed').length;
-    const failed = tests.filter(t => t.outcome === 'failed').length;
-    const errors = tests.filter(t => t.outcome === 'error').length;
-    const skipped = tests.filter(t => t.outcome === 'skipped').length;
-    const total = tests.length;
-
-    console.log(`\nResults: ${passed} passed, ${failed} failed, ${errors} errors, ${skipped} skipped (total: ${total})`);
-
-    for (const test of tests) {
-      const icon = test.outcome === 'passed' ? '✅' : test.outcome === 'failed' ? '❌' : '❓';
-      console.log(`  ${icon} ${test.nodeid}: ${test.outcome}`);
-    }
-
-    return {
-      success: result.status === 0,
-      exit_code: result.status ?? -1,
-      tests,
-      summary: { total, passed, failed, errors, skipped },
-      stdout: stdout.length > 3000 ? stdout.slice(-3000) : stdout,
-      stderr: stderr.length > 1000 ? stderr.slice(-1000) : stderr,
-    };
-  } catch (e) {
-    console.log(`❌ Error running tests: ${e}`);
-    return {
-      success: false,
-      exit_code: -1,
-      tests: [],
-      summary: { total: 0, passed: 0, failed: 0, errors: 0, skipped: 0 },
-      stdout: '',
-      stderr: String(e),
-    };
+    exitCode = 0;
+  } catch (e: any) {
+    stdout = e.stdout || '';
+    stderr = e.stderr || '';
+    exitCode = e.status || 1;
   }
+
+  const output = stdout + stderr;
+  console.log(output);
+
+  const tests = parseJestOutput(output);
+  const summaryFromLine = parseSummaryLine(output);
+
+  // Use parsed summary if we found it, otherwise count from tests array
+  let passed = summaryFromLine.total > 0 ? summaryFromLine.passed : tests.filter(t => t.outcome === 'passed').length;
+  let failed = summaryFromLine.total > 0 ? summaryFromLine.failed : tests.filter(t => t.outcome === 'failed').length;
+  let total = summaryFromLine.total > 0 ? summaryFromLine.total : tests.length;
+  const errors = tests.filter(t => t.outcome === 'error').length;
+  const skipped = tests.filter(t => t.outcome === 'skipped').length;
+
+  // Determine success based on exit code
+  const success = exitCode === 0;
+
+  console.log(`\nResults: ${passed} passed, ${failed} failed, ${errors} errors, ${skipped} skipped (total: ${total})`);
+
+  return {
+    success,
+    exit_code: exitCode,
+    tests,
+    summary: { total, passed, failed, errors, skipped },
+    stdout: stdout.length > 3000 ? stdout.slice(-3000) : stdout,
+    stderr: stderr.length > 1000 ? stderr.slice(-1000) : stderr,
+  };
 }
 
 function runEvaluation(): EvaluationResults {
