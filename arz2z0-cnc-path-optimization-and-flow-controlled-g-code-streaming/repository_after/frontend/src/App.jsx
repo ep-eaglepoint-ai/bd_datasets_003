@@ -21,7 +21,90 @@ const App = () => {
      if (jobGCode.length > 0) calculateJobTime(jobGCode);
   }, [feedRate]);
 
-  // ... (useEffects)
+  // WebSocket Connection
+  const connect = () => {
+    if (socket) return;
+    
+    // In dev: localhost:8000 via proxy or direct
+    // Vite proxy handles /ws -> ws://localhost:8000
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host; // includes port
+    const wsUrl = `${protocol}//${host}/ws`;
+    
+    const ws = new WebSocket(wsUrl);
+    
+    ws.onopen = () => {
+        setStatus('Idle');
+        setGcodeLog(prev => [...prev, '--- Connected ---']);
+    };
+    
+    ws.onclose = () => {
+        setStatus('Disconnected');
+        setSocket(null);
+        setGcodeLog(prev => [...prev, '--- Disconnected ---']);
+    };
+    
+    ws.onmessage = (event) => {
+        const msg = event.data;
+        
+        if (msg.startsWith('STATUS:')) {
+            const newStatus = msg.split(':')[1].trim();
+            setStatus(newStatus);
+        } else if (msg.startsWith('GCODE:')) {
+            // Echo from server that it's sending a line
+            // Maybe we don't need to log this if we have the job plan?
+            // But let's log it for verification.
+            setGcodeLog(prev => [...prev, `>> ${msg.substring(7)}`]);
+        } else if (msg.startsWith('ACK:')) {
+            // Machine ack
+            // setGcodeLog(prev => [...prev, `<< ${msg}`]);
+        } else if (msg.startsWith('ERROR:')) {
+            setGcodeLog(prev => [...prev, `!! ${msg}`]);
+        } else if (msg === 'JOB_COMPLETE') {
+            setGcodeLog(prev => [...prev, '--- Job Complete ---']);
+        }
+    };
+    
+    setSocket(ws);
+  };
+
+  const disconnect = () => {
+    if (socket) {
+        socket.close();
+        setSocket(null);
+    }
+  };
+
+  // Auto-scroll log
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [gcodeLog]);
+
+  // Load Test Pattern
+  const loadPattern = () => {
+    // Simple 20x20 square + diagonals
+    const newSegments = [
+        { x1: 10, y1: 10, x2: 30, y2: 10 },
+        { x1: 30, y1: 10, x2: 30, y2: 30 },
+        { x1: 30, y1: 30, x2: 10, y2: 30 },
+        { x1: 10, y1: 30, x2: 10, y2: 10 },
+        // Diagonal
+        { x1: 10, y1: 10, x2: 30, y2: 30 },
+        { x1: 10, y1: 30, x2: 30, y2: 10 }
+    ];
+    setSegments(newSegments);
+    setJobGCode([]); // Clear previous plan
+    setGcodeLog(prev => [...prev, '--- Loaded Test Pattern ---']);
+  };
+
+  const sendCommand = (cmd) => {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(cmd);
+        setGcodeLog(prev => [...prev, `<< ${cmd}`]);
+    } else {
+        console.error("Socket not connected");
+    }
+  };
 
   // Optimize & Plan
   const optimize = async () => {
@@ -92,8 +175,6 @@ const App = () => {
     
     setJobTime(time * 60); // Seconds
   };
-
-  // ... (sendCommand) ...
 
   return (
     <div className="layout" style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem', height: '100vh', display: 'grid', gridTemplateColumns: '300px 1fr', gap: '2rem' }}>
