@@ -16,5 +16,7 @@ services:
   evaluation:
     image: sn-tests:latest
     command: python evaluation/evaluation.py
+    volumes:
+      - ./evaluation/reports:/app/evaluation/reports
     depends_on:
       - before

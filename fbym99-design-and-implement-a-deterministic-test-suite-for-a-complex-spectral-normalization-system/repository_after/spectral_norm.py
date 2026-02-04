@@ -211,6 +211,10 @@ class SpectralNormParamV2(nn.Module):
             self.pre_hook(self.module, self.cfg.param_name)
 
         w_orig = self._get_orig()
+        if self.cfg.strict_shape_checks:
+            if w_orig.dim() < 2:
+                raise RuntimeError(f"Strict checks: Parameter '{self.cfg.param_name}' must have at least 2 dimensions, got {w_orig.dim()}")
+
         w_mat = _reshape_weight_to_matrix(self.module, w_orig)
         if self.cfg.strict_shape_checks and w_mat.dim() != 2:
             raise RuntimeError("Expected reshaped weight matrix to be 2D")

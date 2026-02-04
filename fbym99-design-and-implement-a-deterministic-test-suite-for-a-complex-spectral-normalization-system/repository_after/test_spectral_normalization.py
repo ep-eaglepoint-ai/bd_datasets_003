@@ -452,9 +452,6 @@ class TestEMASmoothing:
         for _ in range(5):
             snp.compute_weight()
         
-        # When ema_decay=0, the ema value shouldn't be meaningfully updated
-        # (it's initialized but sigma_eff uses raw sigma instead)
-        # The key test is that it doesn't crash
 
 
 # ============================================================================
@@ -549,6 +546,20 @@ class TestStrictShapeChecks:
         # Should not raise - 4D weight is reshaped to 2D
         w_sn = snp.compute_weight()
         assert w_sn is not None
+
+    def test_strict_shape_checks_1d_raises(self):
+        """Requirement: Confirm that strict shape checking raises an error when encountering unexpected weight shapes."""
+        class Model1D(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.weight = nn.Parameter(torch.randn(10))
+
+        model = Model1D()
+        cfg = SNConfig(param_name="weight", strict_shape_checks=True)
+        snp = get_snp(model, cfg)
+        
+        with pytest.raises(RuntimeError, match="must have at least 2 dimensions"):
+            snp.compute_weight()
 
 
 # ============================================================================
