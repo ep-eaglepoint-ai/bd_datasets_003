@@ -124,7 +124,9 @@ export function buildAuditTrail(input: RawAction[]): AuditBuildResult {
           });
         } else if (
           typeof action.before !== "object" ||
-          typeof action.after !== "object"
+          typeof action.after !== "object" ||
+          Array.isArray(action.before) ||
+          Array.isArray(action.after)
         ) {
           issues.push({
             code: "INVALID_SNAPSHOTS",

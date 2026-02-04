@@ -179,4 +179,9 @@ function main() {
   }
 }
 
-main();
+try {
+  main();
+} catch (e) {
+  console.error("Evaluator Crashed:", e);
+  process.exit(1);
+}
