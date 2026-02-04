@@ -1,0 +1,11 @@
+# Docker Compose file for running tests. You should customize this as needed.
+
+version: "3.8"
+
+services:
+  app:
+    build: .
+    volumes:
+      - .:/app
+    environment:
+      - REPO_PATH=${REPO_PATH:-repository_after}
