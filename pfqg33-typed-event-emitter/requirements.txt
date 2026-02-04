@@ -1,1 +1,13 @@
 # Add your Python dependencies here if the project is Python-based. If it is not Python-based, you can remove this file and configure the requirements accordingly.
+
+# Project Environment Requirements
+node>=20.0.0
+npm>=10.0.0
+
+# Core Dependencies handled via npm install
+uuid>=9.0.0
+
+# Development Tools
+typescript>=5.0.0
+ts-node>=10.9.0
+@types/node>=20.0.0

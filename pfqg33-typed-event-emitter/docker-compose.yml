@@ -3,6 +3,7 @@
 services:
   app:
     build: .
-    command: pytest -q tests
     volumes:
       - .:/app
+    command: node evaluation/evaluate.js
+

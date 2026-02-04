@@ -1,11 +1,8 @@
 # PFQG33 - typed-event-emitter
 
-    ## Before Test Docker Command
-    <docker before command here>
+```bash
+## After Test Docker Command
+docker compose run --rm -w /app/repository_after app npx -y ts-node --project tsconfig.json ../tests/event-emitter.test.ts
 
-    ## After Test Docker Command
-    <docker after command here>
-
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## Evaluation Docker Command
+docker compose run --rm -w /app/repository_after app npm install; docker compose run --rm -e NODE_PATH=/app/repository_after/node_modules app node evaluation/evaluate.js

@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "es2020",
+    "lib": ["es2020"],
+    "types": ["node"],
+    
+    "sourceMap": true,
+    "declaration": true,
+    
+    /* Path Mapping */
+    "rootDir": "..", 
+    "outDir": "../dist/repository_after",
+
+    /* Strictness */
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "moduleDetection": "force"
+  },
+  "include": [
+    "./**/*", 
+    "../tests/**/*"
+  ]
+}
