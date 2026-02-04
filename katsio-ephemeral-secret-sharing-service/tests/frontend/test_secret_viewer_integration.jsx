@@ -2,11 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter, MemoryRouter } from 'react-router-dom';
-import SecretViewer from '../repository_after/frontend/src/components/SecretViewer';
-import * as api from '../repository_after/frontend/src/api';
+import SecretViewer from '@/components/SecretViewer';
+import * as api from '@/api';
 
 // Mock the API module
-vi.mock('../repository_after/frontend/src/api', () => ({
+vi.mock('@/api', () => ({
   getSecret: vi.fn(),
 }));
 
@@ -87,9 +87,9 @@ describe('SecretViewer - Integration Tests for Shoulder-Surfing Prevention', () 
 
     // First render with secret1
     api.getSecret.mockResolvedValueOnce({ secret: secret1 });
-    mockUseParams.mockReturnValueOnce({ uuid: 'uuid-1' });
+    mockUseParams.mockReturnValue({ uuid: 'uuid-1' });
 
-    const { rerender } = render(
+    const { unmount } = render(
       <MemoryRouter initialEntries={['/secret/uuid-1']}>
         <SecretViewer />
       </MemoryRouter>
@@ -105,11 +105,14 @@ describe('SecretViewer - Integration Tests for Shoulder-Surfing Prevention', () 
       expect(screen.getByText(secret1)).toBeInTheDocument();
     });
 
-    // Switch to second secret (simulating navigation)
-    api.getSecret.mockResolvedValueOnce({ secret: secret2 });
-    mockUseParams.mockReturnValueOnce({ uuid: 'uuid-2' });
+    // Unmount to clear all state
+    unmount();
 
-    rerender(
+    // Switch to second secret (simulating navigation to a new page)
+    api.getSecret.mockResolvedValueOnce({ secret: secret2 });
+    mockUseParams.mockReturnValue({ uuid: 'uuid-2' });
+
+    render(
       <MemoryRouter initialEntries={['/secret/uuid-2']}>
         <SecretViewer />
       </MemoryRouter>
@@ -119,8 +122,9 @@ describe('SecretViewer - Integration Tests for Shoulder-Surfing Prevention', () 
       expect(api.getSecret).toHaveBeenCalledWith('uuid-2');
     });
 
-    // Second secret should be masked initially
+    // Second secret should be masked initially (fresh component state)
     expect(screen.queryByText(secret2)).not.toBeInTheDocument();
+    expect(screen.queryByText(secret1)).not.toBeInTheDocument(); // First secret should be gone
     expect(screen.getByText('Reveal Secret')).toBeInTheDocument();
   });
 

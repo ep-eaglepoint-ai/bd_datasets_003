@@ -12,6 +12,7 @@ COPY ./vite.config.js ./
 # Copy the frontend app (index.html and src/)
 COPY ./repository_after/frontend/index.html ./
 COPY ./repository_after/frontend/src ./src
+COPY ./tests/frontend ./tests
 
 EXPOSE 3000
 CMD ["pnpm", "run", "dev"]

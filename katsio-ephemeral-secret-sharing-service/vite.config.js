@@ -3,16 +3,24 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 import { existsSync } from 'fs'
 
+
 // Determine setup file path (works in both Docker and local)
-const setupFile = existsSync('./src/test/setup.js') 
-  ? './src/test/setup.js' 
+const setupFile = existsSync('./src/test/setup.js')
+  ? './src/test/setup.js'
   : './repository_after/frontend/src/test/setup.js';
+
+// Determine source path (works in both Docker and local)
+// In Docker: ./src exists (mounted from repository_after/frontend/src)
+// Locally: ./repository_after/frontend/src exists
+const srcPath = existsSync('./src')
+  ? path.resolve(__dirname, './src')
+  : path.resolve(__dirname, './repository_after/frontend/src');
 
 export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './repository_after/frontend/src'),
+      '@': srcPath,
     },
   },
   server: {
@@ -29,7 +37,7 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: setupFile,
-    include: ['tests/**/*.{test,spec}.{js,jsx}'],
+    include: ['tests/**/*.{test,spec}.{js,jsx}', 'tests/frontend/test_*.{js,jsx}'],
   },
 })
 

@@ -2,11 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
-import SecretViewer from '../repository_after/frontend/src/components/SecretViewer';
-import * as api from '../repository_after/frontend/src/api';
+import SecretViewer from '@/components/SecretViewer';
+import * as api from '@/api';
 
 // Mock the API module
-vi.mock('../repository_after/frontend/src/api', () => ({
+vi.mock('@/api', () => ({
   getSecret: vi.fn(),
 }));
 
