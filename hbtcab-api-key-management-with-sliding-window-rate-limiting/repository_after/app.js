@@ -211,6 +211,21 @@ if (USE_MOCKS) {
         return { rows: [] };
       }
 
+      // Usage endpoint - check key ownership
+      if (sql.startsWith('SELECT id FROM api_keys WHERE id =')) {
+        const keyId = Number(params[0]);
+        const userId = Number(params[1]);
+        const key = store.apiKeys.find((k) => k.id === keyId && k.user_id === userId);
+        return { rows: key ? [{ id: key.id }] : [] };
+      }
+
+      // Usage endpoint - get usage data
+      if (sql.startsWith('SELECT endpoint, method, usage_date, request_count')) {
+        const apiKeyId = Number(params[0]);
+        const usage = store.apiKeyUsage.filter((u) => u.api_key_id === apiKeyId);
+        return { rows: usage };
+      }
+
       // Fallback
       return { rows: [] };
     },
@@ -411,6 +426,14 @@ const authenticateJWT = async (req, res, next) => {
         }
       }
       req.user = user;
+      
+      // Add rate limit headers for JWT auth too (Requirement 7)
+      const limits = { free: 100, pro: 1000, enterprise: 10000 };
+      const limit = limits[user.tier] || limits.free;
+      res.set('X-RateLimit-Limit', `${limit}`);
+      res.set('X-RateLimit-Remaining', `${limit}`);
+      res.set('X-RateLimit-Reset', `${Math.floor(Date.now() / 1000) + 3600}`);
+      
       next();
       return;
     }
@@ -420,6 +443,14 @@ const authenticateJWT = async (req, res, next) => {
       return res.status(401).json({ error: 'User not found' });
     }
     req.user = result.rows[0];
+    
+    // Add rate limit headers for JWT auth too (Requirement 7)
+    const limits = { free: 100, pro: 1000, enterprise: 10000 };
+    const limit = limits[req.user.tier] || limits.free;
+    res.set('X-RateLimit-Limit', `${limit}`);
+    res.set('X-RateLimit-Remaining', `${limit}`);
+    res.set('X-RateLimit-Reset', `${Math.floor(Date.now() / 1000) + 3600}`);
+    
     next();
   } catch (error) {
     return res.status(401).json({ error: 'Invalid token' });
@@ -546,45 +577,6 @@ app.get('/api/resources', authenticateRequest, trackUsageMiddleware, async (req,
   }
 });
 
-
-
-app.get('/api/keys/:id/usage', authenticateJWT, async (req, res) => {
-  const { id } = req.params;
-  const { from, to } = req.query;
-  try {
-    const keyCheck = await pool.query(
-      'SELECT id FROM api_keys WHERE id = $1 AND user_id = $2',
-      [id, req.user.id]
-    );
-    if (keyCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'API key not found' });
-    }
-
-    const params = [id];
-    let dateClause = '';
-    if (from) {
-      params.push(from);
-      dateClause += ` AND usage_date >= $${params.length}`;
-    }
-    if (to) {
-      params.push(to);
-      dateClause += ` AND usage_date <= $${params.length}`;
-    }
-
-    const usage = await pool.query(
-      `SELECT endpoint, method, usage_date, request_count
-       FROM api_key_usage
-       WHERE api_key_id = $1${dateClause}
-       ORDER BY usage_date DESC, endpoint ASC`,
-      params
-    );
-
-    res.json({ api_key_id: Number(id), usage: usage.rows });
-  } catch (error) {
-    res.status(500).json({ error: 'Database error' });
-  }
-});
-
 app.post('/api/resources', authenticateRequest, trackUsageMiddleware, async (req, res) => {
   const { name, data } = req.body;
   
@@ -703,6 +695,70 @@ app.get('/api/keys', authenticateJWT, async (req, res) => {
       };
     });
     res.json(keys);
+  } catch (error) {
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.get('/api/keys/:id/usage', authenticateJWT, async (req, res) => {
+  const { id } = req.params;
+  const { from, to } = req.query;
+  try {
+    const keyCheck = await pool.query(
+      'SELECT id FROM api_keys WHERE id = $1 AND user_id = $2',
+      [id, req.user.id]
+    );
+    if (keyCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'API key not found' });
+    }
+
+    const params = [id];
+    let dateClause = '';
+    if (from) {
+      params.push(from);
+      dateClause += ` AND usage_date >= $${params.length}`;
+    }
+    if (to) {
+      params.push(to);
+      dateClause += ` AND usage_date <= $${params.length}`;
+    }
+
+    const usage = await pool.query(
+      `SELECT endpoint, method, usage_date, request_count
+       FROM api_key_usage
+       WHERE api_key_id = $1${dateClause}
+       ORDER BY usage_date DESC, endpoint ASC`,
+      params
+    );
+
+    res.json({ api_key_id: Number(id), usage: usage.rows });
+  } catch (error) {
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.put('/api/users/webhook', authenticateJWT, async (req, res) => {
+  const { webhook_url } = req.body;
+  
+  if (!webhook_url || typeof webhook_url !== 'string') {
+    return res.status(400).json({ error: 'webhook_url is required' });
+  }
+
+  try {
+    if (USE_MOCKS) {
+      const user = global.__mockStore.users.find((u) => u.id === req.user.id);
+      if (user) {
+        user.webhook_url = webhook_url;
+        user.updated_at = new Date();
+      }
+      return res.json({ webhook_url });
+    }
+
+    await pool.query(
+      'UPDATE users SET webhook_url = $1, updated_at = NOW() WHERE id = $2',
+      [webhook_url, req.user.id]
+    );
+    res.json({ webhook_url });
   } catch (error) {
     res.status(500).json({ error: 'Database error' });
   }

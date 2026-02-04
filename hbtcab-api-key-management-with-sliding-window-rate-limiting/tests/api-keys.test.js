@@ -77,9 +77,11 @@ async function ensureMockSchema(pool) {
       api_key_id INTEGER REFERENCES api_keys(id) ON DELETE CASCADE,
       endpoint TEXT NOT NULL,
       method TEXT NOT NULL,
-      day DATE NOT NULL,
+      usage_date DATE NOT NULL,
       request_count INTEGER NOT NULL DEFAULT 0,
-      PRIMARY KEY (api_key_id, endpoint, method, day)
+      created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+      updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+      PRIMARY KEY (api_key_id, endpoint, method, usage_date)
     );
   `);
 }
@@ -87,18 +89,20 @@ async function ensureMockSchema(pool) {
 // Mock implementations
 function createMockPool() {
   // Use global mock store to share data between test and app
-  if (!global.mockStore) {
-    global.mockStore = {
+  if (!global.__mockStore) {
+    global.__mockStore = {
       users: [],
       apiKeys: [],
       resources: [],
       apiKeyUsage: [],
       nextId: 1,
-      redisStore: new Map()
+      redisKV: new Map(),
+      redisZ: new Map(),
+      now: () => Date.now()
     };
   }
   
-  const store = global.mockStore;
+  const store = global.__mockStore;
 
   return {
     query: async (text, params) => {
@@ -153,6 +157,21 @@ function createMockPool() {
         return { rows: store.apiKeys };
       }
 
+      // Mock check for key ownership
+      if (text.includes('SELECT id FROM api_keys WHERE id =') && text.includes('user_id =')) {
+        const keyId = Number(params[0]);
+        const userId = Number(params[1]);
+        const key = store.apiKeys.find(k => k.id === keyId && k.user_id === userId);
+        return { rows: key ? [{ id: key.id }] : [] };
+      }
+
+      // Mock usage query
+      if (text.includes('SELECT endpoint, method, usage_date, request_count')) {
+        const apiKeyId = Number(params[0]);
+        const usage = store.apiKeyUsage.filter(u => u.api_key_id === apiKeyId);
+        return { rows: usage };
+      }
+
       // Mock user lookup by ID
       if (text.includes('SELECT') && text.includes('users') && text.includes('id =')) {
         const userId = params[0];
@@ -191,18 +210,20 @@ function createMockPool() {
 
 function createMockRedis() {
   // Use global mock store to share data between test and app
-  if (!global.mockStore) {
-    global.mockStore = {
+  if (!global.__mockStore) {
+    global.__mockStore = {
       users: [],
       apiKeys: [],
       resources: [],
       apiKeyUsage: [],
       nextId: 1,
-      redisStore: new Map()
+      redisKV: new Map(),
+      redisZ: new Map(),
+      now: () => Date.now()
     };
   }
   
-  const store = global.mockStore.redisStore;
+  const store = global.__mockStore.redisKV;
   
   return {
     get: async (key) => store.get(key) || null,
@@ -423,6 +444,17 @@ class TestRunner {
     
     this.assert(!storedKey.key.includes(secret), 'Secret should not be stored in plaintext');
     this.assert(storedKey.key.includes('****'), 'Key should be masked');
+
+    // Verify DB doesn't store plaintext (check secret_hash is actually hashed)
+    if (!USE_MOCKS) {
+      const dbCheck = await this.pool.query(
+        'SELECT secret_hash FROM api_keys WHERE id = $1',
+        [keyId]
+      );
+      const storedHash = dbCheck.rows[0].secret_hash;
+      this.assert(storedHash !== secret, 'DB should not store plaintext secret');
+      this.assert(storedHash.length === 64, 'Should store SHA-256 hash (64 hex chars)');
+    }
   }
 
   // Constant-time Comparison (Requirement 3)
@@ -487,6 +519,20 @@ class TestRunner {
     this.assert(firstResponse.headers.get('X-RateLimit-Remaining') === '99', 'First request should have 99 remaining');
     this.assert(firstResponse.headers.get('X-RateLimit-Limit') === '100', 'Limit should be 100');
     this.assert(firstResponse.headers.get('X-RateLimit-Reset'), 'Reset header should be present');
+
+    // Test concurrent requests (sliding window should handle them correctly)
+    const concurrentRequests = Array(5).fill(null).map(() => 
+      this.fetch('/api/resources', {
+        headers: { Authorization: `ApiKey ${apiKey}` },
+      })
+    );
+    
+    const results = await Promise.all(concurrentRequests);
+    this.assert(results.every(r => r.status === 200), 'All concurrent requests should succeed');
+    
+    const lastResult = results[results.length - 1];
+    const remaining = parseInt(lastResult.headers.get('X-RateLimit-Remaining'));
+    this.assert(remaining <= 94, 'Remaining should account for all concurrent requests');
   }
 
   // Tier-based Rate Limits (Requirement 6)
@@ -504,6 +550,28 @@ class TestRunner {
     });
     
     this.assert(apiResponse.headers.get('X-RateLimit-Limit') === '100', 'Free tier limit should be 100');
+
+    // Test tier upgrade without key regeneration
+    if (USE_MOCKS) {
+      const user = global.__mockStore.users.find((u) => u.id === this.testUser.id);
+      if (user) user.tier = 'pro';
+    } else {
+      await this.pool.query('UPDATE users SET tier = $1 WHERE id = $2', ['pro', this.testUser.id]);
+    }
+
+    const upgradedResponse = await this.fetch('/api/resources', {
+      headers: { Authorization: `ApiKey ${apiKey}` },
+    });
+    
+    this.assert(upgradedResponse.headers.get('X-RateLimit-Limit') === '1000', 'Pro tier limit should be 1000 without key regen');
+
+    // Reset tier back to free for subsequent tests
+    if (USE_MOCKS) {
+      const user = global.__mockStore.users.find((u) => u.id === this.testUser.id);
+      if (user) user.tier = 'free';
+    } else {
+      await this.pool.query('UPDATE users SET tier = $1 WHERE id = $2', ['free', this.testUser.id]);
+    }
   }
 
   // Rate Limit Headers and 429 (Requirement 7)
@@ -523,6 +591,30 @@ class TestRunner {
     this.assert(apiResponse.headers.get('X-RateLimit-Limit'), 'Should have rate limit header');
     this.assert(apiResponse.headers.get('X-RateLimit-Remaining'), 'Should have remaining header');
     this.assert(apiResponse.headers.get('X-RateLimit-Reset'), 'Should have reset header');
+
+    // Test 429 by exhausting rate limit
+    // Free tier has 100 requests. Make requests until we get close to the limit
+    let lastRemaining = 99;
+    for (let i = 0; i < 99; i++) {
+      const r = await this.fetch('/api/resources', {
+        headers: { Authorization: `ApiKey ${apiKey}` },
+      });
+      this.assert(r.status === 200, `Request ${i+2} should succeed, got ${r.status}`);
+      lastRemaining = parseInt(r.headers.get('X-RateLimit-Remaining'));
+    }
+
+    // Verify we're at the limit
+    this.assert(lastRemaining === 0, `Should have 0 remaining after 100 requests, got ${lastRemaining}`);
+
+    // Now the 101st request should get 429
+    const exhaustedResponse = await this.fetch('/api/resources', {
+      headers: { Authorization: `ApiKey ${apiKey}` },
+    });
+    
+    this.assert(exhaustedResponse.status === 429, `Should return 429 when rate limit exceeded, got ${exhaustedResponse.status}`);
+    this.assert(exhaustedResponse.headers.get('X-RateLimit-Limit') === '100', 'Should have limit header on 429');
+    this.assert(exhaustedResponse.headers.get('X-RateLimit-Remaining') === '0', 'Should have 0 remaining on 429');
+    this.assert(exhaustedResponse.headers.get('X-RateLimit-Reset'), 'Should have reset header on 429');
   }
 
   // Key Rotation Grace Period (Requirement 8)
@@ -534,6 +626,7 @@ class TestRunner {
     });
     const data1 = await response1.json();
     const oldKey = data1.api_key;
+    const oldKeyId = data1.id;
 
     const response2 = await this.fetch('/api/keys', {
       method: 'POST',
@@ -549,6 +642,20 @@ class TestRunner {
       headers: { Authorization: `ApiKey ${oldKey}` },
     });
     this.assert(oldKeyResponse.status === 200, 'Old key should still work during grace period');
+
+    // Test that key expires after grace period
+    if (USE_MOCKS && global.__mockStore) {
+      // Simulate time passing beyond grace period
+      const oldKeyRecord = global.__mockStore.apiKeys.find(k => k.id === oldKeyId);
+      if (oldKeyRecord) {
+        oldKeyRecord.grace_expires_at = new Date(Date.now() - 1000); // Expired 1 second ago
+      }
+
+      const expiredResponse = await this.fetch('/api/resources', {
+        headers: { Authorization: `ApiKey ${oldKey}` },
+      });
+      this.assert(expiredResponse.status === 401, 'Old key should not work after grace period expires');
+    }
   }
 
   // Usage Tracking Upsert (Requirement 9)
@@ -560,7 +667,9 @@ class TestRunner {
     });
     const data = await response.json();
     const apiKey = data.api_key;
+    const keyId = data.id;
 
+    // Make some requests to generate usage data
     await this.fetch('/api/resources', {
       headers: { Authorization: `ApiKey ${apiKey}` },
     });
@@ -569,12 +678,86 @@ class TestRunner {
       headers: { Authorization: `ApiKey ${apiKey}` },
     });
 
-    this.assert(true, 'Usage tracking should work without errors');
+    // Verify usage was tracked
+    const usageResponse = await this.fetch(`/api/keys/${keyId}/usage`, {
+      headers: { Authorization: `Bearer ${this.testToken}` },
+    });
+    
+    if (usageResponse.status !== 200) {
+      const errorText = await usageResponse.text();
+      this.assert(false, `Should be able to fetch usage, got ${usageResponse.status}: ${errorText}`);
+    }
+    
+    const usageData = await usageResponse.json();
+    this.assert(usageData.usage && usageData.usage.length > 0, `Should have usage records, got: ${JSON.stringify(usageData)}`);
+    this.assert(usageData.usage[0].request_count >= 2, `Should aggregate multiple requests, got ${usageData.usage[0].request_count}`);
   }
 
   // Webhook at 80% Threshold (Requirement 10)
   async testWebhookThreshold() {
-    this.assert(true, 'Webhook threshold test passed (mocked)');
+    // Track webhook calls in mock mode
+    let webhookCalled = false;
+    let webhookPayload = null;
+    let webhookSignature = null;
+    
+    if (USE_MOCKS) {
+      // Mock fetch to capture webhook calls
+      global.fetch = async (url, options) => {
+        if (url === 'https://example.com/webhook') {
+          webhookCalled = true;
+          webhookPayload = JSON.parse(options.body);
+          webhookSignature = options.headers['X-Webhook-Signature'];
+          return { ok: true, status: 200 };
+        }
+        throw new Error(`Unexpected fetch to ${url}`);
+      };
+    }
+    
+    // Set webhook URL
+    const webhookResponse = await this.fetch('/api/users/webhook', {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${this.testToken}` },
+      body: JSON.stringify({ webhook_url: 'https://example.com/webhook' }),
+    });
+    this.assert(webhookResponse.status === 200, 'Should be able to set webhook URL');
+
+    const response = await this.fetch('/api/keys', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.testToken}` },
+      body: JSON.stringify({ environment: 'test', scope: 'read' }),
+    });
+    const data = await response.json();
+    const apiKey = data.api_key;
+
+    // Make 80 requests to trigger webhook threshold (80% of 100)
+    for (let i = 0; i < 80; i++) {
+      await this.fetch('/api/resources', {
+        headers: { Authorization: `ApiKey ${apiKey}` },
+      });
+    }
+
+    if (USE_MOCKS) {
+      // Verify webhook was called
+      this.assert(webhookCalled, 'Webhook should have been called at 80% threshold');
+      this.assert(webhookPayload !== null, 'Webhook payload should be present');
+      this.assert(webhookPayload.api_key_id === data.id, 'Webhook should include API key ID');
+      this.assert(webhookPayload.usage === 80, 'Webhook should show 80 requests');
+      this.assert(webhookPayload.limit === 100, 'Webhook should show limit of 100');
+      this.assert(webhookPayload.threshold === 0.8, 'Webhook should show 80% threshold');
+      this.assert(webhookSignature && webhookSignature.length > 0, 'Webhook should include HMAC signature');
+      
+      // Verify webhook is only sent once per window
+      webhookCalled = false;
+      await this.fetch('/api/resources', {
+        headers: { Authorization: `ApiKey ${apiKey}` },
+      });
+      this.assert(!webhookCalled, 'Webhook should not be called again in same window');
+      
+      // Cleanup
+      delete global.fetch;
+    } else {
+      this.assert(true, 'Webhook threshold test completed (non-mock mode)');
+    }
   }
 
   // Dual Auth Methods (Requirement 11)

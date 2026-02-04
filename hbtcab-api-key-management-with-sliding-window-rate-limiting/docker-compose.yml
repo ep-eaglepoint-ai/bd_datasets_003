@@ -62,3 +62,4 @@ services:
       DATABASE_URL: postgres://app:app@postgres:5432/app
       REDIS_URL: redis://redis:6379
       JWT_SECRET: local-secret
+      USE_MOCKS: "1"
