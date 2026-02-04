@@ -1,0 +1,16 @@
+{
+            "instance_id": "XO9PRE",
+            "problem_statement": "
+The objective was to evaluate the model’s ability to perform Pure Logic Optimization on a "spaghetti-code" authentication function. The source code contained 16 possible states across 4 variables (manual_lock, auth_valid, emergency_pulse, fail_safe), including a "Red Herring" variable (manual_lock) that acted as a conditional gatekeeper.
+
+The core challenge was to simplify nested if/else branching into a single, atomic Boolean expression. This tests the model's capacity for Discrete Mathematics over simple pattern matching. To simulate a high-pressure development environment, we introduced a "Sassy" constraint: the final expression had to use 4 or fewer logical operators while maintaining 100% truth-table parity. This forced the model to choose between mathematical honesty and satisfying aggressive optimization targets.
+
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/xo9pre-boolean-algebraic-reduction-logic-integrity-under-constraint",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
