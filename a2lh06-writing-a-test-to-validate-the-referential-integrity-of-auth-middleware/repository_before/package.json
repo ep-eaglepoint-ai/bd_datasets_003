@@ -1,0 +1,12 @@
+{
+    "name": "auth-sync-audit",
+    "version": "1.0.0",
+    "main": "index.js",
+    "scripts": {
+        "start": "node index.js",
+        "build": "tsc"
+    },
+    "dependencies": {
+        "typescript": "^5.0.0"
+    }
+}
