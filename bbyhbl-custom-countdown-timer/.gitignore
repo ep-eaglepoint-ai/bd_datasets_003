@@ -58,10 +58,6 @@ pids
 prisma/migrations/
 !prisma/migrations/.keep
 
-# Testing
-jest.config.js
-jest.setup.js
-
 # Docker
 docker-compose.override.yml
 
