@@ -113,3 +113,23 @@ def test_gcode_output_order():
     
     # Last line should be home
     assert gcode[-1] == "G0 X0 Y0", "Last line should be home"
+
+def test_gcode_buffer_limit():
+    """Test that G-code generator raises error if line exceeds 128 bytes."""
+    # To exceed 128 bytes with F-string formatting (:.3f), we need very large numbers.
+    # 1e60 formats to 100...000.000 (60 zeros + 4 chars). ~64 chars.
+    # We need both X and Y to be huge to break 128.
+    
+    val = 1e60 
+    s = Segment(id=1, p1=Point(x=val, y=val), p2=Point(x=0, y=0))
+    
+    try:
+        GCodeGenerator.generate([s])
+        # If it doesn't raise, the buffer check might be missing or logic allows it.
+        # With 1e60, line is roughly: "G0 X100...000.000 Y100...000.000"
+        # 3 (G0 ) + 1 (X) + 64 + 1 ( ) + 1 (Y) + 64 = ~134 chars.
+        # This should trigger the check.
+    except ValueError as e:
+        assert "exceeds 128 bytes" in str(e)
+    else:
+        pytest.fail("Should have raised ValueError for buffer overflow")

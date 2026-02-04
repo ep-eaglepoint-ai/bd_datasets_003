@@ -24,4 +24,10 @@ class GCodeGenerator:
         # Homming at end? Optional but good practice.
         gcode.append("G0 X0 Y0")
         
+        # Buffer Limit Validation (Req: 128 byte buffer)
+        for line in gcode:
+            # G-code is typically ASCII, but utf-8 safety check
+            if len(line.encode('utf-8')) > 128:
+                raise ValueError(f"G-Code line exceeds 128 bytes (Buffer Overflow Risk): {line}")
+        
         return gcode

@@ -1,8 +1,7 @@
-version: "3.8"
 services:
   test-after:
     build: .
-    command: pytest /app/tests -v
+    command: bash -c "pytest /app/tests -v && cd /app/tests/frontend && npm test"
     volumes:
       - ./evaluation:/app/evaluation
       - ./patches:/app/patches

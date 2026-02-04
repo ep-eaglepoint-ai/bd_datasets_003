@@ -1,5 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 
+import { calculateBounds, calculateTransform, toScreen } from '../utils/visualizerUtils';
+
 const Visualizer = ({ gcodeLines, segments }) => {
   const canvasRef = useRef(null);
 
@@ -20,50 +22,12 @@ const Visualizer = ({ gcodeLines, segments }) => {
       return;
     }
 
-    // 1. Calculate Bounding Box from ORIGINAL segments to determine fit
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    // 1. Calculate Layout
+    const bounds = calculateBounds(segments);
+    const { scale, offsetX, offsetY } = calculateTransform(bounds, width, height);
     
-    segments.forEach(s => {
-      minX = Math.min(minX, s.x1, s.x2);
-      maxX = Math.max(maxX, s.x1, s.x2);
-      minY = Math.min(minY, s.y1, s.y2);
-      maxY = Math.max(maxY, s.y1, s.y2);
-    });
-    
-    // Add some padding
-    const padding = 20;
-    const dataWidth = maxX - minX;
-    const dataHeight = maxY - minY;
-    
-    // Scale to fit
-    if (dataWidth === 0 && dataHeight === 0) return; // Single point?
-    
-    const scaleX = (width - 2 * padding) / (dataWidth || 1);
-    const scaleY = (height - 2 * padding) / (dataHeight || 1);
-    const scale = Math.min(scaleX, scaleY);
-    
-    // Coordinate Transform Helper
-    // Center the design
-    const offsetX = (width - dataWidth * scale) / 2 - minX * scale;
-    const offsetY = (height - dataHeight * scale) / 2 - minY * scale;
-    
-    const toScreen = (x, y) => {
-      const screenX = x * scale + offsetX;
-      // Flip Y: Screen Y (0 at top) = Height - (Machine Y * Scale + OffsetY)
-      // Actually, machine Y increases UP. Screen Y increases DOWN.
-      // So we map minY -> Bottom, maxY -> Top.
-      // Let's do:
-      // screenY = height - margin - (y - minY) * scale
-      // But we need to center it properly.
-      // Standard Flip:
-      // screenY = height - (y * scale + offsetFromBottom)
-      
-      // Let's stick to the prompt requirement: "translating Cartesian machine coordinates (0,0 at bottom-left) to Screen coordinates (0,0 at top-left)"
-      return {
-        x: screenX,
-        y: height - (y * scale + offsetY) // Invert Y
-      };
-    };
+    // Helper wrapper
+    const convert = (x, y) => toScreen(x, y, scale, offsetX, offsetY, height);
 
     // 2. Draw parsed G-Code
     // We parse the lines sequentially to track current position
@@ -88,8 +52,8 @@ const Visualizer = ({ gcodeLines, segments }) => {
         if (p.startsWith('Y')) newY = parseFloat(p.substring(1));
       });
       
-      const start = toScreen(curX, curY);
-      const end = toScreen(newX, newY);
+      const start = convert(curX, curY);
+      const end = convert(newX, newY);
       
       ctx.beginPath();
       ctx.moveTo(start.x, start.y);
@@ -115,7 +79,7 @@ const Visualizer = ({ gcodeLines, segments }) => {
     });
     
     // Draw "Head"
-    const head = toScreen(curX, curY);
+    const head = convert(curX, curY);
     ctx.beginPath();
     ctx.arc(head.x, head.y, 5, 0, 2 * Math.PI);
     ctx.fillStyle = '#22c55e'; // Green head

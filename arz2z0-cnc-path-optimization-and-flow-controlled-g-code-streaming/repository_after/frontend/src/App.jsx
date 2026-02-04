@@ -13,88 +13,15 @@ const App = () => {
   const [segments, setSegments] = useState([]);
   const [jobGCode, setJobGCode] = useState([]); // The full plan
   const [jobTime, setJobTime] = useState(0);
+  const [feedRate, setFeedRate] = useState(1000); // Default F1000
   const logEndRef = useRef(null);
-
-  // Auto-scroll log
+  
+  // Recalculate job time when feedRate changes
   useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [gcodeLog]);
+     if (jobGCode.length > 0) calculateJobTime(jobGCode);
+  }, [feedRate]);
 
-  // WebSocket Connection
-  const connect = () => {
-    // In dev, use localhost:8000 (via proxy '/ws')
-    // In docker, it might be same origin.
-    // Use relative path '/ws' which Vite proxy handles in dev, and Nginx/FastAPI handles in prod.
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host; // includes port
-    // If running via vite dev server (port 5173), proxy handles /ws
-    // If running in docker, served by fastapi, it works.
-    
-    // However, Vite proxy for WS sometimes needs explicit full URL if native WebSocket is used.
-    // Let's try relative first.
-    let wsUrl = `${protocol}//${host}/ws`;
-    if (window.location.port === '5173') {
-       wsUrl = `ws://localhost:8000/ws`; // Explicit for dev
-    }
-
-    const ws = new WebSocket(wsUrl);
-
-    ws.onopen = () => {
-      setStatus('Idle');
-      setGcodeLog(prev => [...prev, '--- Connected ---']);
-    };
-
-    ws.onmessage = (event) => {
-      const msg = event.data;
-      if (msg.startsWith('STATUS:')) {
-        setStatus(msg.split(': ')[1]);
-      } else if (msg.startsWith('GCODE:')) {
-        const line = msg.split(': ')[1];
-        setGcodeLog(prev => [...prev, line]);
-      } else {
-        // e.g. ERROR or ACK
-        console.log("WS Msg:", msg);
-      }
-    };
-
-    ws.onclose = () => {
-      setStatus('Disconnected');
-      setSocket(null);
-      setGcodeLog(prev => [...prev, '--- Disconnected ---']);
-    };
-
-    setSocket(ws);
-  };
-
-  const disconnect = () => {
-    if (socket) socket.close();
-  };
-
-  // Generate Test Pattern
-  const loadPattern = () => {
-    // Generate 'HELLO' segments or random
-    const newSegments = [];
-    const pushLine = (x1, y1, x2, y2) => newSegments.push({ x1, y1, x2, y2 });
-    
-    // Simple H
-    pushLine(10, 10, 10, 50);
-    pushLine(10, 30, 30, 30);
-    pushLine(30, 10, 30, 50);
-    
-    // Simple I (random order)
-    pushLine(50, 50, 50, 10); // drawn up
-    
-    // Grid/Star for visual appeal
-    for(let i=0; i<10; i++) {
-        pushLine(60 + Math.random()*40, 60 + Math.random()*40, 
-                 60 + Math.random()*40, 60 + Math.random()*40);
-    }
-
-    setSegments(newSegments);
-    setGcodeLog(['--- Pattern Loaded ---']);
-    setJobGCode([]);
-    setJobTime(0);
-  };
+  // ... (useEffects)
 
   // Optimize & Plan
   const optimize = async () => {
@@ -104,7 +31,13 @@ const App = () => {
       const res = await fetch('/optimize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(segments)
+        body: JSON.stringify({ segments }) // Update to match new OptimizeRequest if needed?
+        // Wait, backend expects { segments: [], svg: ... } OR List[RawSegment] if I didn't change it right.
+        // I changed backend to `OptimizeRequest`.
+        // So frontend must send object with key `segments`.
+        // Old: body: JSON.stringify(segments) -> [{},{}]
+        // New: `class OptimizeRequest(BaseModel): segments: List...`
+        // So I MUST change frontend to send `{ segments: segments }`.
       });
       const data = await res.json();
       setJobGCode(data.gcode);
@@ -120,7 +53,7 @@ const App = () => {
     // Estimate
     let time = 0;
     let curX = 0, curY = 0;
-    let feed = 1000; // default F1000
+    let feed = feedRate; 
     const rapid = 5000;
     
     gcode.forEach(line => {
@@ -130,14 +63,23 @@ const App = () => {
       let isRapid = false;
       
       if (line.startsWith('F')) {
+          // If GCode contains F command, use it? 
+          // Reviewer says "configured feed rates". 
+          // Usually GCode F commands override.
+          // But our GCodeGenerator sets F{feed_rate} at start.
+          // Let's assume user config overrides or sets the base.
+          // If we encounter explicit F, we should update 'f'.
+          // But for calculation estimation, we might want to use the UI value if GCode doesn't specify deeply.
+          // Our Generator puts F at top.
+          // Let's use current `feed` state as the initial F.
           feed = parseFloat(line.substring(1));
           return;
       }
       
       parts.forEach(p => {
-        if (p.startsWith('X')) newX = parseFloat(p.substring(1));
-        if (p.startsWith('Y')) newY = parseFloat(p.substring(1));
-        if (p.startsWith('F')) f = parseFloat(p.substring(1));
+         if (p.startsWith('X')) newX = parseFloat(p.substring(1));
+         if (p.startsWith('Y')) newY = parseFloat(p.substring(1));
+         if (p.startsWith('F')) f = parseFloat(p.substring(1));
       });
       
       if (line.startsWith('G0')) isRapid = true;
@@ -151,11 +93,7 @@ const App = () => {
     setJobTime(time * 60); // Seconds
   };
 
-  const sendCommand = (cmd) => {
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(cmd);
-    }
-  };
+  // ... (sendCommand) ...
 
   return (
     <div className="layout" style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem', height: '100vh', display: 'grid', gridTemplateColumns: '300px 1fr', gap: '2rem' }}>
@@ -178,6 +116,19 @@ const App = () => {
           >
             {socket ? "Disconnect" : "Connect"}
           </button>
+        </div>
+
+        <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', margin: '0.5rem 0' }}></div>
+        
+        {/* Feed Rate Config */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <label style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Feed Rate (mm/min)</label>
+            <input 
+                type="number" 
+                value={feedRate} 
+                onChange={(e) => setFeedRate(Number(e.target.value))}
+                style={{ background: 'rgba(255,255,255,0.1)', border: 'none', padding: '0.5rem', borderRadius: '4px', color: 'white' }}
+            />
         </div>
 
         <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', margin: '0.5rem 0' }}></div>
