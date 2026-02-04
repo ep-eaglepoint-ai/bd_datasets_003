@@ -1,0 +1,20 @@
+{
+            "instance_id": "3G0F59",
+            "problem_statement": "
+You need to write a deterministic Vitest test suite for a legacy JavaScript retry queue module.
+The module manages asynchronous task execution, retries, cancellation, and exposes internal statistics.
+
+The implementation relies on Promises, timers, and shared module state, and its correctness depends on subtle execution order and state transitions. Some behaviors are non-intuitive and must be verified exactly as they occur at runtime.
+
+Your task is to write tests that capture real behavior, not ideal behavior.
+You must not modify the implementation.
+The test suite must be stable, repeatable, and prevent regressions caused by incorrect assumptions about async timing or state management.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/3g0f59-retry-queue-test-suite-evaluation",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
