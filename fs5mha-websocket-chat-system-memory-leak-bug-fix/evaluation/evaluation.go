@@ -21,47 +21,46 @@ type Test struct {
 	Outcome string `json:"outcome"`
 }
 
-// Summary represents the test run summary
-type Summary struct {
-	Total   int `json:"total"`
-	Passed  int `json:"passed"`
-	Failed  int `json:"failed"`
-	Errors  int `json:"errors"`
-	Skipped int `json:"skipped"`
+// TestResult represents the results of a test run
+type TestResult struct {
+	Passed     bool   `json:"passed"`
+	ReturnCode int    `json:"return_code"`
+	Output     string `json:"output"`
 }
 
-// Result represents the results of a test run on a repository
-type Result struct {
-	Success  bool    `json:"success"`
-	ExitCode int     `json:"exit_code"`
-	Tests    []Test  `json:"tests"`
-	Summary  Summary `json:"summary"`
-	Stdout   string  `json:"stdout"`
-	Stderr   string  `json:"stderr"`
+// Metrics represents additional metrics (placeholder for future use)
+type Metrics struct{}
+
+// ImplementationResult represents results for before/after implementation
+type ImplementationResult struct {
+	Tests   TestResult `json:"tests"`
+	Metrics Metrics    `json:"metrics"`
+}
+
+// Comparison represents the comparison between before and after
+type Comparison struct {
+	PassedGate         bool   `json:"passed_gate"`
+	ImprovementSummary string `json:"improvement_summary"`
 }
 
 // Environment contains metadata about the execution environment
 type Environment struct {
-	GoVersion    string `json:"go_version"`
-	Platform     string `json:"platform"`
-	OS           string `json:"os"`
-	OSRelease    string `json:"os_release"`
-	Architecture string `json:"architecture"`
-	Hostname     string `json:"hostname"`
-	GitCommit    string `json:"git_commit"`
-	GitBranch    string `json:"git_branch"`
+	GoVersion string `json:"go_version"`
+	Platform  string `json:"platform"`
 }
 
 // Report is the top-level report structure
 type Report struct {
-	RunID           string            `json:"run_id"`
-	StartedAt       string            `json:"started_at"`
-	FinishedAt      string            `json:"finished_at"`
-	DurationSeconds float64           `json:"duration_seconds"`
-	Success         bool              `json:"success"`
-	Error           *string           `json:"error"`
-	Environment     Environment       `json:"environment"`
-	Results         map[string]Result `json:"results"`
+	RunID           string                          `json:"run_id"`
+	StartedAt       string                          `json:"started_at"`
+	FinishedAt      string                          `json:"finished_at"`
+	DurationSeconds float64                         `json:"duration_seconds"`
+	Environment     Environment                     `json:"environment"`
+	Before          ImplementationResult            `json:"before"`
+	After           ImplementationResult            `json:"after"`
+	Comparison      Comparison                      `json:"comparison"`
+	Success         bool                            `json:"success"`
+	Error           *string                         `json:"error"`
 }
 
 func generateRunID() string {
@@ -72,57 +71,11 @@ func generateRunID() string {
 	return hex.EncodeToString(b)
 }
 
-func getGitInfo() (commit, branch string) {
-	commit = "unknown"
-	branch = "unknown"
-
-	cmd := exec.Command("git", "rev-parse", "HEAD")
-	out, err := cmd.Output()
-	if err == nil {
-		commit = strings.TrimSpace(string(out))
-		if len(commit) > 8 {
-			commit = commit[:8]
-		}
-	}
-
-	cmd = exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
-	out, err = cmd.Output()
-	if err == nil {
-		branch = strings.TrimSpace(string(out))
-	}
-
-	return commit, branch
-}
-
 func getEnvironmentInfo() Environment {
-	commit, branch := getGitInfo()
-	hostname, _ := os.Hostname()
-
-	envInfo := Environment{
-		GoVersion:    runtime.Version(),
-		Platform:     fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH),
-		OS:           runtime.GOOS,
-		OSRelease:    "unknown",
-		Architecture: runtime.GOARCH,
-		Hostname:     hostname,
-		GitCommit:    commit,
-		GitBranch:    branch,
+	return Environment{
+		GoVersion: runtime.Version(),
+		Platform:  fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH),
 	}
-
-	// Try to get OS release
-	if runtime.GOOS == "windows" {
-		out, err := exec.Command("cmd", "/c", "ver").Output()
-		if err == nil {
-			envInfo.OSRelease = strings.TrimSpace(string(out))
-		}
-	} else {
-		out, err := exec.Command("uname", "-r").Output()
-		if err == nil {
-			envInfo.OSRelease = strings.TrimSpace(string(out))
-		}
-	}
-
-	return envInfo
 }
 
 func parseGoTestOutput(output string) []Test {
@@ -164,18 +117,18 @@ func parseGoTestOutput(output string) []Test {
 	return tests
 }
 
-func runGoTestWithConfig(repoDirName, testsDir, label string) Result {
-	fmt.Printf("\n%s\n", strings.Repeat("=", 60))
-	fmt.Printf("RUNNING TESTS: %s\n", strings.ToUpper(label))
-	fmt.Printf("%s\n", strings.Repeat("=", 60))
+func runGoTestWithConfig(repoDirName, testsDir, label string) TestResult {
+	fmt.Printf("\n%s\n", strings.Repeat("=", 100))
+	fmt.Printf("RUNNING TESTS FOR: %s\n", strings.ToUpper(label))
+	fmt.Printf("%s\n", strings.Repeat("=", 100))
 	fmt.Printf("Target Repository Directory: %s\n", repoDirName)
-	fmt.Printf("Tests directory: %s\n", repoDirName)
+	fmt.Printf("Tests directory: %s\n", testsDir)
 
 	cmd := exec.Command("go", "test", "-v", "-race", "./"+repoDirName+"/...")
 	cmd.Env = append(os.Environ(), "REDIS_ADDR=redis:6379")
 
 	out, _ := cmd.CombinedOutput()
-	stdout := string(out)
+	output := string(out)
 
 	// Determine exit code
 	exitCode := 0
@@ -183,7 +136,7 @@ func runGoTestWithConfig(repoDirName, testsDir, label string) Result {
 		exitCode = cmd.ProcessState.ExitCode()
 	}
 
-	tests := parseGoTestOutput(stdout)
+	tests := parseGoTestOutput(output)
 	passed := 0
 	failed := 0
 	skipped := 0
@@ -223,20 +176,94 @@ func runGoTestWithConfig(repoDirName, testsDir, label string) Result {
 		fmt.Printf("  %s %s: %s\n", icon, t.NodeID, t.Outcome)
 	}
 
-	return Result{
-		Success:  exitCode == 0 && len(tests) > 0,
-		ExitCode: exitCode,
-		Tests:    tests,
-		Summary: Summary{
-			Total:   len(tests),
-			Passed:  passed,
-			Failed:  failed,
-			Errors:  errors,
-			Skipped: skipped,
-		},
-		Stdout: truncate(stdout, 3000),
-		Stderr: "",
+	testPassed := exitCode == 0 && len(tests) > 0 && failed == 0 && errors == 0
+
+	return TestResult{
+		Passed:     testPassed,
+		ReturnCode: exitCode,
+		Output:     truncate(output, 3000),
 	}
+}
+
+func runEvaluation() (ImplementationResult, ImplementationResult, Comparison, error) {
+
+	testsDir := "tests"
+	
+	// Run tests with BEFORE implementation
+	beforeResult := runGoTestWithConfig("repository_before", testsDir, "before (repository_before)")
+	
+	// Run tests with AFTER implementation
+	afterResult := runGoTestWithConfig("repository_after", testsDir, "after (repository_after)")
+
+	// Print Summary
+	fmt.Printf("\n%s\n", strings.Repeat("=", 100))
+	fmt.Println("EVALUATION SUMMARY")
+	fmt.Printf("%s\n", strings.Repeat("=", 100))
+
+	fmt.Printf("\nBefore Implementation (repository_before):\n")
+	beforeStatus := "❌ FAILED"
+	if beforeResult.Passed {
+		beforeStatus = "✅ PASSED"
+	}
+	fmt.Printf("  Overall: %s\n", beforeStatus)
+
+	fmt.Printf("\nAfter Implementation (repository_after):\n")
+	afterStatus := "❌ FAILED"
+	if afterResult.Passed {
+		afterStatus = "✅ PASSED"
+	}
+	fmt.Printf("  Overall: %s\n", afterStatus)
+
+	// Determine expected behavior
+	fmt.Printf("\n%s\n", strings.Repeat("=", 100))
+	fmt.Println("EXPECTED BEHAVIOR CHECK")
+	fmt.Printf("%s\n", strings.Repeat("=", 100))
+
+	beforeFailed := !beforeResult.Passed
+	afterPassed := afterResult.Passed
+
+	if beforeFailed {
+		fmt.Println("✅ Before implementation: Tests failed (expected)")
+	} else {
+		fmt.Println("⚠️  Before implementation: Tests passed (unexpected - should fail)")
+	}
+
+	if afterPassed {
+		fmt.Println("✅ After implementation: All tests passed (expected)")
+	} else {
+		fmt.Println("❌ After implementation: Some tests failed (unexpected - should pass all)")
+	}
+
+	// Generate comparison summary
+	passedGate := beforeFailed && afterPassed
+	var improvementSummary string
+
+	if passedGate {
+		improvementSummary = "Repository after passes all correctness tests while repository before fails as expected."
+	} else if afterPassed && !beforeFailed {
+		improvementSummary = "Repository after passes all tests, but repository before also passes (unexpected)."
+	} else if !afterPassed && beforeFailed {
+		improvementSummary = "Repository before fails as expected, but repository after also fails (unexpected)."
+	} else {
+		improvementSummary = "Both repository before and after pass all tests (unexpected)."
+	}
+
+	beforeImpl := ImplementationResult{
+		Tests:   beforeResult,
+		Metrics: Metrics{},
+	}
+
+	afterImpl := ImplementationResult{
+		Tests:   afterResult,
+		Metrics: Metrics{},
+	}
+
+	comparison := Comparison{
+		PassedGate:         passedGate,
+		ImprovementSummary: improvementSummary,
+	}
+
+	return beforeImpl, afterImpl, comparison, nil
 }
 
 func truncate(s string, n int) string {
@@ -247,7 +274,7 @@ func truncate(s string, n int) string {
 }
 
 func main() {
-	outputFlag := flag.String("output", "", "Output JSON file path")
+	outputFlag := flag.String("output", "", "Output JSON file path (default: evaluation/YYYY-MM-DD/HH-MM-SS/report.json)")
 	flag.Parse()
 
 	runID := generateRunID()
@@ -256,7 +283,9 @@ func main() {
 	fmt.Printf("Run ID: %s\n", runID)
 	fmt.Printf("Started at: %s\n", startedAt.Format(time.RFC3339))
 
-	var results map[string]Result
+	var beforeImpl ImplementationResult
+	var afterImpl ImplementationResult
+	var comparison Comparison
 	var errStr *string
 
 	func() {
@@ -267,62 +296,23 @@ func main() {
 			}
 		}()
 
-		fmt.Printf("\n%s\n", strings.Repeat("=", 60))
-		fmt.Println("Websocket Chat System Evaluation")
-		fmt.Printf("%s\n", strings.Repeat("=", 60))
-
-		testsDir := "tests"
-		results = make(map[string]Result)
-		results["before"] = runGoTestWithConfig("repository_before", testsDir, "before (repository_before)")
-		results["after"] = runGoTestWithConfig("repository_after", testsDir, "after (repository_after)")
+		var err error
+		beforeImpl, afterImpl, comparison, err = runEvaluation()
+		if err != nil {
+			s := err.Error()
+			errStr = &s
+		}
 	}()
 
 	finishedAt := time.Now()
 	duration := finishedAt.Sub(startedAt).Seconds()
 
-	success := false
-	if results != nil {
-		if after, ok := results["after"]; ok {
-			success = after.Success
-		}
-	}
+	// Success if after implementation passes all tests
+	success := afterImpl.Tests.Passed
 
 	if !success && errStr == nil {
 		s := "After implementation tests failed"
 		errStr = &s
-	}
-
-	// Print Summary
-	fmt.Printf("\n%s\n", strings.Repeat("=", 60))
-	fmt.Println("EVALUATION SUMMARY")
-	fmt.Printf("%s\n", strings.Repeat("=", 60))
-
-	if res, ok := results["before"]; ok {
-		fmt.Printf("\nBefore Implementation (repository_before):\n")
-		status := "❌ FAILED"
-		if res.Success {
-			status = "✅ PASSED"
-		}
-		fmt.Printf("  Overall: %s\n", status)
-	}
-
-	if res, ok := results["after"]; ok {
-		fmt.Printf("\nAfter Implementation (repository_after):\n")
-		status := "❌ FAILED"
-		if res.Success {
-			status = "✅ PASSED"
-		}
-		fmt.Printf("  Overall: %s\n", status)
-	}
-
-	fmt.Printf("\n%s\n", strings.Repeat("=", 60))
-	fmt.Println("EXPECTED BEHAVIOR CHECK")
-	fmt.Printf("%s\n", strings.Repeat("=", 60))
-
-	if success {
-		fmt.Println("✅ After implementation: All tests passed (expected)")
-	} else {
-		fmt.Println("❌ After implementation: Some tests failed (unexpected - should pass all)")
 	}
 
 	// Build the report
@@ -331,10 +321,12 @@ func main() {
 		StartedAt:       startedAt.Format(time.RFC3339),
 		FinishedAt:      finishedAt.Format(time.RFC3339),
 		DurationSeconds: duration,
+		Environment:     getEnvironmentInfo(),
+		Before:          beforeImpl,
+		After:           afterImpl,
+		Comparison:      comparison,
 		Success:         success,
 		Error:           errStr,
-		Environment:     getEnvironmentInfo(),
-		Results:         results,
 	}
 
 	// Determine output path
@@ -357,9 +349,9 @@ func main() {
 		}
 	}
 
-	fmt.Printf("\n%s\n", strings.Repeat("=", 60))
+	fmt.Printf("\n%s\n", strings.Repeat("=", 100))
 	fmt.Println("EVALUATION COMPLETE")
-	fmt.Printf("%s\n", strings.Repeat("=", 60))
+	fmt.Printf("%s\n", strings.Repeat("=", 100))
 	fmt.Printf("Run ID: %s\n", runID)
 	fmt.Printf("Duration: %.2fs\n", duration)
 	successStr := "❌ NO"
@@ -367,4 +359,8 @@ func main() {
 		successStr = "✅ YES"
 	}
 	fmt.Printf("Success: %s\n", successStr)
+
+	if !success {
+		os.Exit(1)
+	}
 }
