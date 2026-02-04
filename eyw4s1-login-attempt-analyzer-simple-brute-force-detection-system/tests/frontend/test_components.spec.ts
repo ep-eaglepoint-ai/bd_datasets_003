@@ -47,6 +47,7 @@ describe('SummaryPanel', () => {
     const wrapper = mount(SummaryPanel, {
       props: {
         totalAttempts: 10,
+        failedAttempts: 3,
         suspiciousCount: 2,
         loading: false,
       },
@@ -54,21 +55,24 @@ describe('SummaryPanel', () => {
 
     expect(wrapper.find('.summary-panel h2').text()).toBe('Summary Statistics')
     expect(wrapper.find('.stat-value').text()).toBe('10')
-    expect(wrapper.findAll('.stat-value')[1].text()).toBe('2')
+    expect(wrapper.findAll('.stat-value')[2].text()).toBe('2')
     expect(wrapper.find('.stat-label').text()).toBe('Total Attempts')
-    expect(wrapper.findAll('.stat-label')[1].text()).toBe('Suspicious IPs')
+    expect(wrapper.findAll('.stat-value')[1].text()).toBe('3')
+    expect(wrapper.findAll('.stat-label')[1].text()).toBe('Failed Attempts')
+    expect(wrapper.findAll('.stat-label')[2].text()).toBe('Suspicious IPs')
   })
 
   it('applies suspicious styling to suspicious count', () => {
     const wrapper = mount(SummaryPanel, {
       props: {
         totalAttempts: 10,
+        failedAttempts: 3,
         suspiciousCount: 2,
         loading: false,
       },
     })
 
-    const suspiciousStatValue = wrapper.findAll('.stat-value')[1]
+    const suspiciousStatValue = wrapper.findAll('.stat-value')[2]
     expect(suspiciousStatValue.classes()).toContain('suspicious')
   })
 
@@ -76,6 +80,7 @@ describe('SummaryPanel', () => {
     const wrapper = mount(SummaryPanel, {
       props: {
         totalAttempts: 0,
+        failedAttempts: 0,
         suspiciousCount: 0,
         loading: false,
       },
@@ -83,6 +88,7 @@ describe('SummaryPanel', () => {
 
     expect(wrapper.find('.stat-value').text()).toBe('0')
     expect(wrapper.findAll('.stat-value')[1].text()).toBe('0')
+    expect(wrapper.findAll('.stat-value')[2].text()).toBe('0')
   })
 })
 
@@ -90,7 +96,7 @@ describe('LoginAttemptsTable', () => {
   it('renders table with correct headers', () => {
     const wrapper = mount(LoginAttemptsTable, {
       props: {
-        attempts: [],
+        attempts: mockLoginAttempts,
         suspiciousIPs: [],
         loading: false,
         error: null,
@@ -367,6 +373,7 @@ describe('App Integration', () => {
     // Verify data binding to SummaryPanel
     const summaryPanel = wrapper.findComponent(SummaryPanel)
     expect(summaryPanel.props('totalAttempts')).toBe(2)
+    expect(summaryPanel.props('failedAttempts')).toBe(1)
     expect(summaryPanel.props('suspiciousCount')).toBe(1)
 
     // Verify data binding to LoginAttemptsTable
@@ -374,7 +381,7 @@ describe('App Integration', () => {
     expect(table.props('attempts')).toEqual(mockLoginAttempts)
     expect(table.props('suspiciousIPs')).toEqual(['192.168.1.100'])
   })
-})
+
   it('shows loading states during API calls', async () => {
     // Mock delayed API responses
     vi.mocked(loginAttemptApi.getLoginAttempts).mockImplementation(
@@ -385,6 +392,7 @@ describe('App Integration', () => {
     )
 
     const wrapper = mount(App)
+    await wrapper.vm.$nextTick()
 
     // Initially should show loading states
     expect(wrapper.findComponent(SummaryPanel).props('loading')).toBe(true)

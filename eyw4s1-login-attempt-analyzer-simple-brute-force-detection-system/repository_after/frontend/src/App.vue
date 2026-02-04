@@ -9,6 +9,7 @@
       <!-- Summary Panel -->
       <SummaryPanel
         :totalAttempts="totalAttempts"
+        :failedAttempts="failedAttempts"
         :suspiciousCount="suspiciousCount"
         :loading="summaryLoading"
       />
@@ -34,6 +35,7 @@ import LoginAttemptsTable from './components/LoginAttemptsTable.vue'
 const loginAttempts = ref<LoginAttempt[]>([])
 const suspiciousActivity = ref<SuspiciousActivity | null>(null)
 const totalAttempts = ref(0)
+const failedAttempts = ref(0)
 const suspiciousCount = ref(0)
 const suspiciousIPs = ref<string[]>([])
 const summaryLoading = ref(false)
@@ -56,6 +58,7 @@ const fetchData = async () => {
     loginAttempts.value = attemptsData
     suspiciousActivity.value = suspiciousData
     totalAttempts.value = attemptsData.length
+    failedAttempts.value = attemptsData.filter(a => !a.success).length
     suspiciousCount.value = suspiciousData.total_suspicious_ips
     suspiciousIPs.value = suspiciousData.suspicious_ips
   } catch (err) {

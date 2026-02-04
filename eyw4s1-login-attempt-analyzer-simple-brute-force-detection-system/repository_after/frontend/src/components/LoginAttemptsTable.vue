@@ -12,7 +12,7 @@
       {{ error }}
     </div>
     
-    <div v-else-if="attempts.length === 0" class="loading">
+    <div v-else-if="attempts.length === 0" class="empty">
       No login attempts found
     </div>
     

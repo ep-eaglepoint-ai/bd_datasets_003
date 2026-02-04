@@ -44,18 +44,18 @@ describe('REQUIREMENT: Frontend fetches and displays suspicious activity', () =>
 
     // Assert: Backend data is correctly processed for highlighting
     expect(suspiciousActivity.suspicious_ips).toEqual(backendSuspiciousIPs)
-    
+
     // Verify the core requirement: suspicious IPs from backend are used to highlight rows
-    const highlightedRows = loginAttempts.filter(attempt => 
+    const highlightedRows = loginAttempts.filter(attempt =>
       suspiciousActivity.suspicious_ips.includes(attempt.ip_address)
     )
 
     // Critical assertion: Only rows with suspicious IPs are highlighted
     expect(highlightedRows).toHaveLength(2)
     expect(highlightedRows.map(row => row.ip_address)).toEqual(['192.168.1.100', '192.168.1.100'])
-    
+
     // Verify non-suspicious IPs are NOT highlighted
-    const nonHighlightedRows = loginAttempts.filter(attempt => 
+    const nonHighlightedRows = loginAttempts.filter(attempt =>
       !suspiciousActivity.suspicious_ips.includes(attempt.ip_address)
     )
     expect(nonHighlightedRows).toHaveLength(1)
@@ -113,9 +113,9 @@ describe('REQUIREMENT: Frontend fetches and displays suspicious activity', () =>
     // Assert: Empty data is handled correctly
     expect(suspiciousActivity.suspicious_ips).toEqual([])
     expect(loginAttempts).toEqual([])
-    
+
     // No rows should be highlighted when no suspicious IPs exist
-    const highlightedRows = loginAttempts.filter(attempt => 
+    const highlightedRows = loginAttempts.filter(attempt =>
       suspiciousActivity.suspicious_ips.includes(attempt.ip_address)
     )
     expect(highlightedRows).toHaveLength(0)
@@ -150,7 +150,7 @@ describe('REQUIREMENT: Frontend fetches and displays suspicious activity', () =>
     // Assert: Calls completed in parallel (not sequential)
     const endTime = Date.now()
     const duration = endTime - startTime!
-    
+
     // If sequential, would take ~200ms. If parallel, should take ~100ms
     expect(duration).toBeLessThan(150) // Allow some margin
   })

@@ -27,7 +27,7 @@ def index_view(request):
     return render(request, 'index.html')
 
 
-class LoginAttemptListAPIView(generics.ListAPIView):
+class LoginAttemptListAPIView(generics.ListCreateAPIView):
     """
     API endpoint to list recent login attempts.
     

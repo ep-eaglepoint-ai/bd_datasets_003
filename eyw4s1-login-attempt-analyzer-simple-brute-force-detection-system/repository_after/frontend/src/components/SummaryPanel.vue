@@ -7,6 +7,10 @@
         <div class="stat-label">Total Attempts</div>
       </div>
       <div class="stat-item">
+        <span class="stat-value failed">{{ failedAttempts }}</span>
+        <div class="stat-label">Failed Attempts</div>
+      </div>
+      <div class="stat-item">
         <span class="stat-value suspicious">{{ suspiciousCount }}</span>
         <div class="stat-label">Suspicious IPs</div>
       </div>
@@ -17,6 +21,7 @@
 <script setup lang="ts">
 interface Props {
   totalAttempts: number
+  failedAttempts: number
   suspiciousCount: number
   loading: boolean
 }
@@ -62,6 +67,10 @@ defineProps<Props>()
 
 .stat-value.suspicious {
   color: #dc3545;
+}
+
+.stat-value.failed {
+  color: #ffc107;
 }
 
 .stat-label {
