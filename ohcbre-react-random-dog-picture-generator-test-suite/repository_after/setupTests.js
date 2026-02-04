@@ -22,7 +22,10 @@ const localStorageMock = (() => {
   };
 })();
 
-global.localStorage = localStorageMock;
+Object.defineProperty(global, 'localStorage', {
+  value: localStorageMock,
+  writable: true
+});
 
 // Mock fetch globally
 global.fetch = jest.fn();
@@ -47,7 +50,7 @@ global.afterAll(() => {
 // Reset mocks before each test
 global.beforeEach(() => {
   jest.clearAllMocks();
-  localStorage.clear();
+  localStorageMock.clear();
   global.fetch.mockReset();
 });
 

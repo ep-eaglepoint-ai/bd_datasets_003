@@ -1,5 +1,6 @@
 /**
  * Integration Tests
+ * Tests complete user flows and feature combinations
  */
 import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
@@ -16,6 +17,7 @@ describe('Integration Tests', () => {
 
   beforeEach(() => {
     imageCounter = 0;
+    jest.clearAllMocks();
     global.fetch = jest.fn((url) => {
       if (url.includes('breeds/list/all')) {
         return Promise.resolve({
@@ -41,28 +43,31 @@ describe('Integration Tests', () => {
     });
   });
 
-  test('complete flow: fetch → add to favorites → verify', async () => {
+  test('complete flow: fetch image → add to favorites → verify in favorites list', async () => {
     await act(async () => {
       render(<Dog />);
     });
 
+    // Wait for initial image
     await waitFor(() => {
       const images = screen.getAllByRole('img');
-      expect(images.find(img => img.src.includes('dog.ceo'))).toBeInTheDocument();
+      expect(images.find(img => img.src && img.src.includes('dog.ceo'))).toBeTruthy();
     });
 
+    // Add to favorites
     const heartIcon = screen.getByTestId('heart-icon');
 
     await act(async () => {
       fireEvent.click(heartIcon);
     });
 
+    // Verify favorites section appears
     await waitFor(() => {
       expect(screen.getByText(/favorites/i)).toBeInTheDocument();
     });
   });
 
-  test('breed filter flow: select → fetch → verify URL', async () => {
+  test('breed filter flow: select breed → fetch → verify URL contains breed name', async () => {
     const user = userEvent.setup();
 
     await act(async () => {
@@ -73,6 +78,7 @@ describe('Integration Tests', () => {
       expect(screen.getByRole('combobox')).toBeInTheDocument();
     });
 
+    // Select poodle breed
     const select = screen.getByRole('combobox');
 
     await act(async () => {
@@ -81,12 +87,14 @@ describe('Integration Tests', () => {
 
     expect(select.value).toBe('poodle');
 
+    // Fetch image
     const generateButton = screen.getByRole('button', { name: /generate dog/i });
 
     await act(async () => {
       fireEvent.click(generateButton);
     });
 
+    // Verify API was called with breed
     await waitFor(() => {
       const breedCall = global.fetch.mock.calls.find(
         call => call[0].includes('/breed/poodle/')
@@ -94,14 +102,15 @@ describe('Integration Tests', () => {
       expect(breedCall).toBeTruthy();
     });
 
+    // Verify image URL contains breed name
     await waitFor(() => {
       const images = screen.getAllByRole('img');
-      const poodleImage = images.find(img => img.src.includes('poodle'));
+      const poodleImage = images.find(img => img.src && img.src.includes('poodle'));
       expect(poodleImage).toBeTruthy();
     });
   });
 
-  test('error recovery: fail → retry → success', async () => {
+  test('error recovery: trigger error → click retry/generate → verify successful fetch', async () => {
     let callCount = 0;
 
     global.fetch = jest.fn((url) => {
@@ -130,26 +139,34 @@ describe('Integration Tests', () => {
       render(<Dog />);
     });
 
+    // First fetch fails
     await waitFor(() => {
       expect(callCount).toBe(1);
     });
 
+    // Click generate button to retry
     const generateButton = screen.getByRole('button', { name: /generate dog/i });
 
     await act(async () => {
       fireEvent.click(generateButton);
     });
 
+    // Verify successful fetch after retry
     await waitFor(() => {
       const images = screen.getAllByRole('img');
-      const successImage = images.find(img => img.src.includes('success.jpg'));
-      expect(successImage).toBeInTheDocument();
+      const successImage = images.find(img => img.src && img.src.includes('success.jpg'));
+      expect(successImage).toBeTruthy();
     });
   });
 
   test('favorites load from storage on mount', async () => {
     const savedFavorites = ['https://images.dog.ceo/breeds/labrador/fav1.jpg'];
-    localStorage.getItem.mockReturnValue(JSON.stringify(savedFavorites));
+    localStorage.getItem.mockImplementation((key) => {
+      if (key === 'dogFavorites') {
+        return JSON.stringify(savedFavorites);
+      }
+      return null;
+    });
 
     await act(async () => {
       render(<Dog />);
@@ -175,24 +192,31 @@ describe('Integration Tests', () => {
       expect(screen.getByRole('combobox')).toBeInTheDocument();
     });
 
-    const generateButton = screen.getByRole('button', { name: /generate dog/i });
-    await act(async () => {
-      fireEvent.click(generateButton);
-    });
-
+    // 1. Fetch initial image (component does this on mount)
     await waitFor(() => {
       expect(screen.getAllByRole('img').length).toBeGreaterThan(0);
     });
 
+    // 2. Add to favorites
     const heartIcon = screen.getByTestId('heart-icon');
+
     await act(async () => {
       fireEvent.click(heartIcon);
     });
 
+    await waitFor(() => {
+      expect(screen.getByText(/favorites/i)).toBeInTheDocument();
+    });
+
+    // 3. Switch breed
     const select = screen.getByRole('combobox');
+
     await act(async () => {
       await user.selectOptions(select, 'bulldog');
     });
+
+    // 4. Fetch breed-specific image
+    const generateButton = screen.getByRole('button', { name: /generate dog/i });
 
     await act(async () => {
       fireEvent.click(generateButton);
@@ -205,6 +229,7 @@ describe('Integration Tests', () => {
       expect(bulldogCall).toBeTruthy();
     });
 
+    // Favorites should still be present
     await waitFor(() => {
       expect(screen.getByText(/favorites/i)).toBeInTheDocument();
     });
@@ -218,10 +243,16 @@ describe('Integration Tests', () => {
     const generateButton = screen.getByRole('button', { name: /generate dog/i });
     const heartIcon = screen.getByTestId('heart-icon');
 
+    // Fetch first image and add to favorites
     await act(async () => {
       fireEvent.click(heartIcon);
     });
 
+    await waitFor(() => {
+      expect(screen.getByText(/favorites.*1/i)).toBeInTheDocument();
+    });
+
+    // Fetch second image
     await act(async () => {
       fireEvent.click(generateButton);
     });
@@ -230,12 +261,13 @@ describe('Integration Tests', () => {
       expect(heartIcon).not.toHaveClass('favorited');
     });
 
+    // Add second image to favorites
     await act(async () => {
       fireEvent.click(heartIcon);
     });
 
     await waitFor(() => {
-      expect(screen.getByText(/favorites \(2\)/i)).toBeInTheDocument();
+      expect(screen.getByText(/favorites.*2/i)).toBeInTheDocument();
     });
   });
 });

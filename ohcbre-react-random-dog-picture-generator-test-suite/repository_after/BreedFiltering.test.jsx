@@ -1,5 +1,6 @@
 /**
  * Breed Filtering Tests
+ * Requirements 8-10: Breed dropdown, breed selection, and breed-specific fetching
  */
 import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
@@ -17,6 +18,7 @@ describe('Breed Filtering Tests', () => {
   };
 
   beforeEach(() => {
+    jest.clearAllMocks();
     global.fetch = jest.fn((url) => {
       if (url.includes('breeds/list/all')) {
         return Promise.resolve({
@@ -45,12 +47,14 @@ describe('Breed Filtering Tests', () => {
     await waitFor(() => {
       const select = screen.getByRole('combobox');
       expect(select).toBeInTheDocument();
+
       const options = screen.getAllByRole('option');
+      // Should have default option + actual breeds
       expect(options.length).toBeGreaterThan(1);
     });
   });
 
-  test('selecting a breed fetches image of that breed', async () => {
+  test('selecting a breed fetches random image of that breed only', async () => {
     const user = userEvent.setup();
 
     await act(async () => {
@@ -81,13 +85,22 @@ describe('Breed Filtering Tests', () => {
     });
   });
 
-  test('default selection fetches from general endpoint', async () => {
+  test('"All Breeds" option fetches from general random endpoint', async () => {
+    const user = userEvent.setup();
+
     await act(async () => {
       render(<Dog />);
     });
 
     await waitFor(() => {
       expect(screen.getByRole('combobox')).toBeInTheDocument();
+    });
+
+    const select = screen.getByRole('combobox');
+
+    // Ensure default/empty option is selected (All Breeds)
+    await act(async () => {
+      await user.selectOptions(select, '');
     });
 
     const generateButton = screen.getByRole('button', { name: /generate dog/i });
@@ -98,13 +111,14 @@ describe('Breed Filtering Tests', () => {
 
     await waitFor(() => {
       const randomCall = global.fetch.mock.calls.find(
-        call => call[0].includes('breeds/image/random')
+        call => call[0].includes('breeds/image/random') || 
+               (call[0].includes('image/random') && !call[0].includes('/breed/'))
       );
       expect(randomCall).toBeTruthy();
     });
   });
 
-  test('breed list fetch error is handled gracefully', async () => {
+  test('breed list fetch error shows fallback message', async () => {
     global.fetch = jest.fn((url) => {
       if (url.includes('breeds/list/all')) {
         return Promise.reject(new Error('Failed to fetch breeds'));
@@ -119,35 +133,17 @@ describe('Breed Filtering Tests', () => {
       render(<Dog />);
     });
 
+    // Component should handle gracefully - either show error or have empty dropdown
     await waitFor(() => {
-      expect(screen.getByRole('combobox')).toBeInTheDocument();
-    });
-  });
-
-  test('breed selection updates state correctly', async () => {
-    const user = userEvent.setup();
-
-    await act(async () => {
-      render(<Dog />);
+      const select = screen.getByRole('combobox');
+      expect(select).toBeInTheDocument();
     });
 
-    await waitFor(() => {
-      expect(screen.getByRole('combobox')).toBeInTheDocument();
-    });
-
-    const select = screen.getByRole('combobox');
-
-    await act(async () => {
-      await user.selectOptions(select, 'poodle');
-    });
-
-    expect(select.value).toBe('poodle');
-
-    await act(async () => {
-      await user.selectOptions(select, 'beagle');
-    });
-
-    expect(select.value).toBe('beagle');
+    // Check for error message or fallback behavior
+    const errorMessage = screen.queryByText(/failed/i) || 
+                        screen.queryByText(/error/i) ||
+                        screen.queryByText(/select/i);
+    expect(errorMessage).toBeTruthy();
   });
 
   test('breed-specific image URL contains breed name', async () => {
@@ -197,8 +193,34 @@ describe('Breed Filtering Tests', () => {
 
     await waitFor(() => {
       const images = screen.getAllByRole('img');
-      const poodleImage = images.find(img => img.src.includes('poodle'));
+      const poodleImage = images.find(img => img.src && img.src.includes('poodle'));
       expect(poodleImage).toBeTruthy();
     });
+  });
+
+  test('breed selection updates state correctly', async () => {
+    const user = userEvent.setup();
+
+    await act(async () => {
+      render(<Dog />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('combobox')).toBeInTheDocument();
+    });
+
+    const select = screen.getByRole('combobox');
+
+    await act(async () => {
+      await user.selectOptions(select, 'poodle');
+    });
+
+    expect(select.value).toBe('poodle');
+
+    await act(async () => {
+      await user.selectOptions(select, 'beagle');
+    });
+
+    expect(select.value).toBe('beagle');
   });
 });

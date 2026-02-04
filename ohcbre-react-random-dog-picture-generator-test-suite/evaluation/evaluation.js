@@ -25,7 +25,8 @@ function parseTestResults(resultsPath) {
       total: 0,
       success: false,
       output: '',
-      error: `Results file not found: ${resultsPath}`
+      error: `Results file not found: ${resultsPath}`,
+      testResults: []
     };
   }
 
@@ -47,121 +48,211 @@ function parseTestResults(resultsPath) {
       total: 0,
       success: false,
       output: '',
-      error: error.message
+      error: error.message,
+      testResults: []
     };
   }
 }
 
-function analyzeCodeMetrics(testResults) {
-  const testNames = testResults.map(t => t.name || '').join(' ').toLowerCase();
+function extractAllTests(testResults) {
+  const allTests = [];
   
-  return {
-    total_files: 7,
-    has_tests: testResults.length > 0,
-    component_coverage: testResults.filter(t => 
-      (t.name || '').toLowerCase().includes('component')
-    ).length > 0,
-    integration_tests: testResults.filter(t => 
-      (t.name || '').toLowerCase().includes('integration')
-    ).length > 0,
-    unit_tests: testResults.filter(t => 
-      (t.name || '').toLowerCase().includes('test')
-    ).length > 0
-  };
-}
-
-function extractRequirementsCoverage(testResults) {
-  const requirements = {
-    image_fetching_api_call: false,
-    successful_fetch_displays_image: false,
-    image_src_set_correctly: false,
-    fetch_error_displays_message: false,
-    retry_button_triggers_fetch: false,
-    loading_indicator_shown: false,
-    multiple_clicks_handled: false,
-    breed_selection_fetches_breed: false,
-    all_breeds_general_endpoint: false,
-    breed_dropdown_populated: false,
-    heart_icon_adds_favorite: false,
-    duplicate_favorites_prevented: false,
-    favorites_persisted_localstorage: false,
-    viewed_images_tracked: false,
-    component_cleanup_on_unmount: false
-  };
-
-  testResults.forEach(result => {
-    if (!result.assertionResults) return;
+  testResults.forEach(suite => {
+    const suiteName = path.basename(suite.name || 'Unknown');
+    const assertions = suite.assertionResults || [];
     
-    result.assertionResults.forEach(assertion => {
-      const title = (assertion.title || '').toLowerCase();
-      
-      if (title.includes('clicking') && title.includes('generate') && title.includes('api')) {
-        requirements.image_fetching_api_call = assertion.status === 'passed';
-      }
-      if (title.includes('successful') && title.includes('displays') && title.includes('image')) {
-        requirements.successful_fetch_displays_image = assertion.status === 'passed';
-      }
-      if (title.includes('image') && title.includes('src')) {
-        requirements.image_src_set_correctly = assertion.status === 'passed';
-      }
-      if (title.includes('error') && title.includes('message')) {
-        requirements.fetch_error_displays_message = assertion.status === 'passed';
-      }
-      if (title.includes('retry') || title.includes('failure')) {
-        requirements.retry_button_triggers_fetch = assertion.status === 'passed';
-      }
-      if (title.includes('loading')) {
-        requirements.loading_indicator_shown = assertion.status === 'passed';
-      }
-      if (title.includes('multiple') && title.includes('click')) {
-        requirements.multiple_clicks_handled = assertion.status === 'passed';
-      }
-      if (title.includes('breed') && title.includes('fetch')) {
-        requirements.breed_selection_fetches_breed = assertion.status === 'passed';
-      }
-      if (title.includes('all breeds') || title.includes('general')) {
-        requirements.all_breeds_general_endpoint = assertion.status === 'passed';
-      }
-      if (title.includes('breed') && title.includes('dropdown')) {
-        requirements.breed_dropdown_populated = assertion.status === 'passed';
-      }
-      if (title.includes('heart') && title.includes('favorite')) {
-        requirements.heart_icon_adds_favorite = assertion.status === 'passed';
-      }
-      if (title.includes('duplicate') && title.includes('favorite')) {
-        requirements.duplicate_favorites_prevented = assertion.status === 'passed';
-      }
-      if (title.includes('favorite') && title.includes('localstorage')) {
-        requirements.favorites_persisted_localstorage = assertion.status === 'passed';
-      }
-      if (title.includes('history') || title.includes('viewed')) {
-        requirements.viewed_images_tracked = assertion.status === 'passed';
-      }
-      if (title.includes('cleanup') || title.includes('unmount')) {
-        requirements.component_cleanup_on_unmount = assertion.status === 'passed';
-      }
+    assertions.forEach(assertion => {
+      allTests.push({
+        suite: suiteName,
+        title: assertion.title || 'Unknown test',
+        fullName: assertion.fullName || '',
+        status: assertion.status || 'unknown',
+        duration: assertion.duration || 0,
+        ancestorTitles: assertion.ancestorTitles || [],
+        failureMessages: assertion.failureMessages || []
+      });
     });
   });
+  
+  return allTests;
+}
 
+function mapTestToRequirement(test) {
+  const title = (test.title || '').toLowerCase();
+  const fullName = (test.fullName || '').toLowerCase();
+  const combined = `${title} ${fullName}`;
+  
+  const requirementMappings = [
+    { 
+      id: 1, 
+      name: "Click triggers API call and loading state",
+      patterns: [/get random dog.*api|trigger.*api|api.*call.*loading/i]
+    },
+    { 
+      id: 2, 
+      name: "Successful fetch displays image and clears loading",
+      patterns: [/successful.*fetch.*display|display.*image.*clear/i]
+    },
+    { 
+      id: 3, 
+      name: "Image src set to fetched URL",
+      patterns: [/image.*src.*url|src.*set.*fetch/i]
+    },
+    { 
+      id: 4, 
+      name: "Fetch error displays message and retry button",
+      patterns: [/error.*display.*message|error.*retry|fetch.*error/i]
+    },
+    { 
+      id: 5, 
+      name: "Retry button triggers new fetch",
+      patterns: [/retry.*trigger|retry.*fetch|retry.*button/i]
+    },
+    { 
+      id: 6, 
+      name: "Loading indicator shows/hides",
+      patterns: [/loading.*show|loading.*hide|loading.*spinner|loading.*indicator/i]
+    },
+    { 
+      id: 7, 
+      name: "Multiple rapid clicks handled",
+      patterns: [/multiple.*click|rapid.*click|simultaneous.*request/i]
+    },
+    { 
+      id: 8, 
+      name: "Breed selection fetches that breed",
+      patterns: [/breed.*fetch|select.*breed.*fetch|breed.*image/i]
+    },
+    { 
+      id: 9, 
+      name: "All Breeds uses general endpoint",
+      patterns: [/all breeds.*general|all breeds.*endpoint|general.*endpoint/i]
+    },
+    { 
+      id: 10, 
+      name: "Breed dropdown populated on mount",
+      patterns: [/dropdown.*populate|breed.*dropdown|populate.*api/i]
+    },
+    { 
+      id: 11, 
+      name: "Heart icon adds to favorites",
+      patterns: [/heart.*add.*favorite|heart.*icon.*favorite|click.*heart/i]
+    },
+    { 
+      id: 12, 
+      name: "Duplicate favorites prevented",
+      patterns: [/duplicate.*prevent|duplicate.*favorite|same.*url.*not.*added/i]
+    },
+    { 
+      id: 13, 
+      name: "Favorites persist to localStorage",
+      patterns: [/favorite.*persist|favorite.*localstorage|localstorage.*favorite/i]
+    },
+    { 
+      id: 14, 
+      name: "History capped at 10 items",
+      patterns: [/history.*cap|history.*10|oldest.*removed|viewed.*image/i]
+    },
+    { 
+      id: 15, 
+      name: "Component cleanup on unmount",
+      patterns: [/cleanup.*unmount|unmount.*cleanup|cancel.*pending|cleanup.*request/i]
+    }
+  ];
+  
+  for (const req of requirementMappings) {
+    for (const pattern of req.patterns) {
+      if (pattern.test(combined)) {
+        return req;
+      }
+    }
+  }
+  
+  return null;
+}
+
+function buildRequirementsReport(allTests) {
+  const requirements = {};
+  
+  // Initialize all 15 requirements
+  for (let i = 1; i <= 15; i++) {
+    requirements[i] = {
+      id: i,
+      name: getRequirementName(i),
+      tests: [],
+      covered: false,
+      passed: false
+    };
+  }
+  
+  // Map tests to requirements
+  allTests.forEach(test => {
+    const req = mapTestToRequirement(test);
+    if (req) {
+      requirements[req.id].tests.push({
+        title: test.title,
+        suite: test.suite,
+        status: test.status
+      });
+      requirements[req.id].covered = true;
+      if (test.status === 'passed') {
+        requirements[req.id].passed = true;
+      }
+    }
+  });
+  
   return requirements;
+}
+
+function getRequirementName(id) {
+  const names = {
+    1: "Click 'Get Random Dog' triggers API call and displays loading state",
+    2: "Successful fetch displays image and clears loading state",
+    3: "Image src is set to the fetched URL",
+    4: "Fetch error displays error message and retry button",
+    5: "Retry button triggers new fetch attempt",
+    6: "Loading indicator shows during fetch and hides after completion",
+    7: "Multiple rapid clicks don't trigger multiple simultaneous requests",
+    8: "Selecting a breed fetches random image of that breed only",
+    9: "'All Breeds' option fetches from general random endpoint",
+    10: "Breed dropdown populates from API on mount",
+    11: "Clicking heart icon adds current image to favorites",
+    12: "Duplicate favorites are prevented (same URL not added twice)",
+    13: "Favorites persist to and load from localStorage",
+    14: "History is capped at 10 items (oldest removed when exceeding)",
+    15: "Component cleanup cancels pending requests on unmount"
+  };
+  return names[id] || `Requirement ${id}`;
 }
 
 function generateEvaluation() {
   const now = new Date();
   const gitInfo = getGitInfo();
-  
   const evaluationId = generateEvaluationId();
   
-  // Read test results from /tmp/test-results
+  // Read test results
   const beforeResults = parseTestResults('/tmp/test-results/before-results.json');
   const afterResults = parseTestResults('/tmp/test-results/after-results.json');
   
-  // Analyze metrics
-  const beforeMetrics = analyzeCodeMetrics(beforeResults.testResults || []);
-  const afterMetrics = analyzeCodeMetrics(afterResults.testResults || []);
+  // Extract all individual tests
+  const componentTests = extractAllTests(beforeResults.testResults || []);
+  const metaTests = extractAllTests(afterResults.testResults || []);
   
-  // Extract requirements coverage
-  const afterRequirements = extractRequirementsCoverage(afterResults.testResults || []);
+  // Build requirements coverage from component tests
+  const requirementsReport = buildRequirementsReport(componentTests);
+  
+  // Count requirements coverage
+  const coveredCount = Object.values(requirementsReport).filter(r => r.covered).length;
+  const passedCount = Object.values(requirementsReport).filter(r => r.passed).length;
+  
+  // Group component tests by suite
+  const testsBySuite = {};
+  componentTests.forEach(test => {
+    if (!testsBySuite[test.suite]) {
+      testsBySuite[test.suite] = [];
+    }
+    testsBySuite[test.suite].push(test);
+  });
   
   const report = {
     evaluation_metadata: {
@@ -182,104 +273,80 @@ function generateEvaluation() {
       git_branch: gitInfo.branch
     },
     test_execution: {
-      success: afterResults.success,
-      exit_code: afterResults.success ? 0 : 1,
-      tests: afterResults.testResults || [],
-      summary: {
-        total: beforeResults.total + afterResults.total,
-        passed: beforeResults.passed + afterResults.passed,
-        failed: beforeResults.failed + afterResults.failed,
-        errors: 0,
-        skipped: 0,
-        xfailed: 0
-      },
-      stdout: `Before Repository: ${beforeResults.passed}/${beforeResults.total} passed\nAfter Repository: ${afterResults.passed}/${afterResults.total} passed`,
-      stderr: beforeResults.error || afterResults.error || ""
-    },
-    meta_testing: {
-      requirement_traceability: {
-        image_fetching_tests: "ImageFetching.test.jsx",
-        loading_error_states: "LoadingErrorState.test.jsx",
-        favorites_management: "FavoritesManagement.test.jsx",
-        breed_filtering: "BreedFiltering.test.jsx",
-        image_history: "ImageHistory.test.jsx",
-        edge_cases: "EdgeCases.test.jsx",
-        integration: "Integration.test.jsx"
-      },
-      adversarial_testing: {
-        async_behavior_validation: "all_test_suites",
-        error_handling_coverage: "EdgeCases.test.jsx",
-        state_management_testing: "FavoritesManagement.test.jsx",
-        api_mock_verification: "ImageFetching.test.jsx"
-      },
-      edge_case_coverage: {
-        malformed_json: "EdgeCases.test.jsx",
-        network_timeout: "LoadingErrorState.test.jsx",
-        duplicate_prevention: "FavoritesManagement.test.jsx",
-        component_unmount: "EdgeCases.test.jsx"
-      }
-    },
-    compliance_check: {
-      tests_use_jest: true,
-      tests_use_react_testing_library: true,
-      async_testing_implemented: true,
-      mocks_properly_configured: true,
-      localStorage_tested: afterRequirements.favorites_persisted_localstorage,
-      error_handling_tested: afterRequirements.fetch_error_displays_message
-    },
-    before: {
-      metrics: beforeMetrics,
-      tests: {
+      component_tests: {
+        total: beforeResults.total,
         passed: beforeResults.passed,
         failed: beforeResults.failed,
-        total: beforeResults.total,
         success: beforeResults.success,
-        output: beforeResults.output || "No output available"
-      }
-    },
-    after: {
-      metrics: afterMetrics,
-      tests: {
+        suites: Object.keys(testsBySuite).map(suite => ({
+          name: suite,
+          tests: testsBySuite[suite].map(t => ({
+            title: t.title,
+            status: t.status,
+            duration: t.duration,
+            requirement_id: mapTestToRequirement(t)?.id || null
+          }))
+        }))
+      },
+      meta_tests: {
+        total: afterResults.total,
         passed: afterResults.passed,
         failed: afterResults.failed,
-        total: afterResults.total,
         success: afterResults.success,
-        output: afterResults.output || "No output available"
+        tests: metaTests.map(t => ({
+          title: t.title,
+          status: t.status,
+          duration: t.duration
+        }))
+      },
+      summary: {
+        component_tests_total: beforeResults.total,
+        component_tests_passed: beforeResults.passed,
+        component_tests_failed: beforeResults.failed,
+        meta_tests_total: afterResults.total,
+        meta_tests_passed: afterResults.passed,
+        meta_tests_failed: afterResults.failed,
+        combined_total: beforeResults.total + afterResults.total,
+        combined_passed: beforeResults.passed + afterResults.passed,
+        combined_failed: beforeResults.failed + afterResults.failed
       }
     },
-    comparison: {
-      tests_added: afterResults.total > 0,
-      test_coverage_improved: afterResults.passed > beforeResults.passed,
-      meta_tests_passing: afterResults.success,
-      all_categories_covered: afterResults.total >= 7,
-      test_improvement: afterResults.passed - beforeResults.passed
+    requirements_coverage: {
+      total_requirements: 15,
+      covered: coveredCount,
+      passed: passedCount,
+      details: Object.values(requirementsReport).map(req => ({
+        id: req.id,
+        name: req.name,
+        covered: req.covered,
+        passed: req.passed,
+        tests: req.tests
+      }))
     },
-    requirements_checklist: {
-      image_fetching_api_call_tested: afterRequirements.image_fetching_api_call,
-      successful_fetch_displays_image: afterRequirements.successful_fetch_displays_image,
-      image_src_set_correctly: afterRequirements.image_src_set_correctly,
-      fetch_error_displays_message: afterRequirements.fetch_error_displays_message,
-      retry_mechanism_tested: afterRequirements.retry_button_triggers_fetch,
-      loading_indicator_tested: afterRequirements.loading_indicator_shown,
-      multiple_clicks_handled: afterRequirements.multiple_clicks_handled,
-      breed_selection_tested: afterRequirements.breed_selection_fetches_breed,
-      all_breeds_endpoint_tested: afterRequirements.all_breeds_general_endpoint,
-      breed_dropdown_populated: afterRequirements.breed_dropdown_populated,
-      heart_icon_adds_favorite: afterRequirements.heart_icon_adds_favorite,
-      duplicate_favorites_prevented: afterRequirements.duplicate_favorites_prevented,
-      favorites_persisted: afterRequirements.favorites_persisted_localstorage,
-      image_history_tracked: afterRequirements.viewed_images_tracked,
-      component_cleanup_tested: afterRequirements.component_cleanup_on_unmount
-    },
+    all_component_tests: componentTests.map(t => ({
+      suite: t.suite,
+      title: t.title,
+      status: t.status,
+      duration: t.duration,
+      mapped_requirement: mapTestToRequirement(t)?.id || null
+    })),
+    all_meta_tests: metaTests.map(t => ({
+      title: t.title,
+      status: t.status,
+      duration: t.duration
+    })),
     final_verdict: {
-      success: afterResults.success,
-      total_tests: beforeResults.total + afterResults.total,
-      passed_tests: beforeResults.passed + afterResults.passed,
-      failed_tests: beforeResults.failed + afterResults.failed,
-      success_rate: afterResults.total > 0 
-        ? ((afterResults.passed / afterResults.total) * 100).toFixed(1)
+      component_tests_success: beforeResults.success,
+      meta_tests_success: afterResults.success,
+      requirements_covered: coveredCount,
+      requirements_passed: passedCount,
+      total_requirements: 15,
+      component_test_pass_rate: beforeResults.total > 0 
+        ? ((beforeResults.passed / beforeResults.total) * 100).toFixed(1)
         : "0.0",
-      meets_requirements: afterResults.success && afterResults.total >= 7
+      meta_test_pass_rate: afterResults.total > 0 
+        ? ((afterResults.passed / afterResults.total) * 100).toFixed(1)
+        : "0.0"
     }
   };
 
@@ -290,11 +357,10 @@ function generateEvaluation() {
   
   fs.mkdirSync(reportsDir, { recursive: true });
   
-  // Write report to timestamped directory only
   const reportPath = path.join(reportsDir, 'report.json');
   fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
 
-  // Print summary to console
+  // Print detailed summary to console
   console.log('='.repeat(80));
   console.log('EVALUATION REPORT');
   console.log('='.repeat(80));
@@ -302,39 +368,77 @@ function generateEvaluation() {
   console.log(`Timestamp: ${report.evaluation_metadata.timestamp}`);
   console.log(`Report saved to: ${reportPath}`);
   console.log('');
+  
   console.log('ENVIRONMENT');
   console.log('-'.repeat(40));
   console.log(`Node: ${report.environment.node_version}`);
   console.log(`Platform: ${report.environment.platform}`);
   console.log(`OS: ${report.environment.os}`);
   console.log('');
-  console.log('TEST EXECUTION SUMMARY');
+  
+  console.log('COMPONENT TESTS (Testing the Dog component)');
   console.log('-'.repeat(40));
-  console.log(`Total Tests: ${report.test_execution.summary.total}`);
-  console.log(`Passed: ${report.test_execution.summary.passed}`);
-  console.log(`Failed: ${report.test_execution.summary.failed}`);
+  console.log(`Total: ${beforeResults.total} | Passed: ${beforeResults.passed} | Failed: ${beforeResults.failed}`);
+  console.log(`Success: ${beforeResults.success ? '✓' : '✗'}`);
   console.log('');
-  console.log('BEFORE REPOSITORY');
+  
+  // Print each test suite and its tests
+  Object.keys(testsBySuite).forEach(suite => {
+    console.log(`  📁 ${suite}`);
+    testsBySuite[suite].forEach(test => {
+      const icon = test.status === 'passed' ? '✅' : '❌';
+      const reqId = mapTestToRequirement(test)?.id;
+      const reqStr = reqId ? ` [Req ${reqId}]` : '';
+      console.log(`     ${icon} ${test.title}${reqStr}`);
+    });
+    console.log('');
+  });
+  
+  console.log('META TESTS (Validating test suite structure)');
   console.log('-'.repeat(40));
-  console.log(`Tests: ${report.before.tests.passed}/${report.before.tests.total} passed`);
-  console.log(`Success: ${report.before.tests.success ? '✓' : '✗'}`);
+  console.log(`Total: ${afterResults.total} | Passed: ${afterResults.passed} | Failed: ${afterResults.failed}`);
+  console.log(`Success: ${afterResults.success ? '✓' : '✗'}`);
   console.log('');
-  console.log('AFTER REPOSITORY (META TESTS)');
+  
+  metaTests.forEach(test => {
+    const icon = test.status === 'passed' ? '✅' : '❌';
+    console.log(`  ${icon} ${test.title}`);
+  });
+  console.log('');
+  
+  console.log('REQUIREMENTS COVERAGE');
   console.log('-'.repeat(40));
-  console.log(`Tests: ${report.after.tests.passed}/${report.after.tests.total} passed`);
-  console.log(`Success: ${report.after.tests.success ? '✓' : '✗'}`);
+  console.log(`Covered: ${coveredCount}/15 | With Passing Tests: ${passedCount}/15`);
   console.log('');
-  console.log('COMPARISON');
-  console.log('-'.repeat(40));
-  console.log(`Tests Added: ${report.comparison.tests_added ? 'Yes' : 'No'}`);
-  console.log(`Meta Tests Passing: ${report.comparison.meta_tests_passing ? 'Yes' : 'No'}`);
-  console.log(`All Categories Covered: ${report.comparison.all_categories_covered ? 'Yes' : 'No'}`);
-  console.log('');
+  
+  Object.values(requirementsReport).forEach(req => {
+    let icon;
+    if (req.passed) {
+      icon = '✅';
+    } else if (req.covered) {
+      icon = '⚠️';
+    } else {
+      icon = '❌';
+    }
+    
+    const status = req.passed ? 'PASSED' : (req.covered ? 'COVERED (failing)' : 'NOT COVERED');
+    console.log(`  ${icon} Req ${req.id}: ${req.name}`);
+    console.log(`      Status: ${status}`);
+    if (req.tests.length > 0) {
+      req.tests.forEach(t => {
+        const testIcon = t.status === 'passed' ? '✓' : '✗';
+        console.log(`      ${testIcon} ${t.title} (${t.suite})`);
+      });
+    }
+    console.log('');
+  });
+  
   console.log('FINAL VERDICT');
   console.log('-'.repeat(40));
-  console.log(`Success: ${report.final_verdict.success ? '✅ YES' : '❌ NO'}`);
-  console.log(`Success Rate: ${report.final_verdict.success_rate}%`);
-  console.log(`Meets Requirements: ${report.final_verdict.meets_requirements ? 'Yes' : 'No'}`);
+  console.log(`Component Tests: ${beforeResults.passed}/${beforeResults.total} passed (${report.final_verdict.component_test_pass_rate}%)`);
+  console.log(`Meta Tests: ${afterResults.passed}/${afterResults.total} passed (${report.final_verdict.meta_test_pass_rate}%)`);
+  console.log(`Requirements Covered: ${coveredCount}/15`);
+  console.log(`Requirements with Passing Tests: ${passedCount}/15`);
   console.log('');
   console.log('='.repeat(80));
 
