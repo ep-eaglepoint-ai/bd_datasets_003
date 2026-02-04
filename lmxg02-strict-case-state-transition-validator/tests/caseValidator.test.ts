@@ -1,9 +1,15 @@
-import {
-  applyCaseAction,
+// Dynamic import based on REPO_UNDER_TEST environment variable
+const repoPath = process.env.REPO_UNDER_TEST || 'repository_after';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const caseValidatorModule = require(`../${repoPath}/caseValidator`);
+const applyCaseAction: typeof import('../repository_after/caseValidator').applyCaseAction = caseValidatorModule.applyCaseAction;
+
+import type {
   Case,
   CaseAction,
   CaseState,
   CaseActionResult,
+  AppliedChange,
 } from '../repository_after/caseValidator';
 
 function createCase(state: CaseState, overrides: Partial<Case> = {}): Case {
@@ -544,7 +550,7 @@ describe('applyCaseAction', () => {
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.applied).toHaveLength(2);
-        const codes = result.applied.map(c => c.code);
+        const codes = result.applied.map((c: AppliedChange) => c.code);
         expect(codes).toContain('STATE_CHANGED');
         expect(codes).toContain('ASSIGNEE_CHANGED');
       }
@@ -557,7 +563,7 @@ describe('applyCaseAction', () => {
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.applied).toHaveLength(2);
-        const codes = result.applied.map(c => c.code);
+        const codes = result.applied.map((c: AppliedChange) => c.code);
         expect(codes).toContain('STATE_CHANGED');
         expect(codes).toContain('NOTE_ADDED');
       }
@@ -570,7 +576,7 @@ describe('applyCaseAction', () => {
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.applied).toHaveLength(2);
-        const codes = result.applied.map(c => c.code);
+        const codes = result.applied.map((c: AppliedChange) => c.code);
         expect(codes).toContain('STATE_CHANGED');
         expect(codes).toContain('NOTE_ADDED');
       }

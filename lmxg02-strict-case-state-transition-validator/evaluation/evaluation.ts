@@ -2,32 +2,27 @@ import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { randomUUID as cryptoRandomUUID } from 'crypto';
 
-interface TestResult {
-  nodeid: string;
-  name: string;
-  outcome: 'passed' | 'failed' | 'error' | 'skipped';
+interface TestResults {
+  passed: boolean;
+  return_code: number;
+  output: string;
 }
 
-interface TestSummary {
-  total: number;
-  passed: number;
-  failed: number;
-  errors: number;
-  skipped: number;
+interface RepoResults {
+  tests: TestResults;
+  metrics: Record<string, unknown>;
 }
 
-interface RunResults {
-  success: boolean;
-  exit_code: number;
-  tests: TestResult[];
-  summary: TestSummary;
-  stdout: string;
-  stderr: string;
+interface Comparison {
+  passed_gate: boolean;
+  improvement_summary: string;
 }
 
-interface EvaluationResults {
-  after: RunResults;
+interface Environment {
+  node_version: string;
+  platform: string;
 }
 
 interface Report {
@@ -35,97 +30,43 @@ interface Report {
   started_at: string;
   finished_at: string;
   duration_seconds: number;
+  environment: Environment;
+  before: RepoResults;
+  after: RepoResults;
+  comparison: Comparison;
   success: boolean;
   error: string | null;
-  environment: Record<string, string>;
-  results: EvaluationResults | null;
 }
 
 function generateRunId(): string {
-  return Math.random().toString(16).substring(2, 10);
+  return cryptoRandomUUID();
 }
 
-function getGitInfo(): { git_commit: string; git_branch: string } {
-  const info = { git_commit: 'unknown', git_branch: 'unknown' };
-
-  try {
-    info.git_commit = execSync('git rev-parse HEAD', { encoding: 'utf-8', timeout: 5000 }).trim().substring(0, 8);
-  } catch {}
-
-  try {
-    info.git_branch = execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf-8', timeout: 5000 }).trim();
-  } catch {}
-
-  return info;
-}
-
-function getNodeVersion(): string {
-  try {
-    return process.version;
-  } catch {
-    return 'unknown';
-  }
-}
-
-function getEnvironmentInfo(): Record<string, string> {
-  const gitInfo = getGitInfo();
-
+function getEnvironmentInfo(): Environment {
   return {
-    node_version: getNodeVersion(),
-    platform: `${os.platform()}-${os.release()}`,
-    os: os.platform(),
-    os_release: os.release(),
-    architecture: os.arch(),
-    hostname: os.hostname(),
-    git_commit: gitInfo.git_commit,
-    git_branch: gitInfo.git_branch,
+    node_version: process.version,
+    platform: os.platform(),
   };
 }
 
-function parseJestOutput(output: string): TestResult[] {
-  const tests: TestResult[] = [];
-  const lines = output.split('\n');
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-
-    // Match checkmark patterns for passed tests
-    if (trimmed.startsWith('✓') || trimmed.startsWith('√') || trimmed.match(/^\u2713/)) {
-      const testName = trimmed.replace(/^[✓√\u2713]\s*/, '').replace(/\s*\(\d+\s*m?s\)\s*$/, '').trim();
-      if (testName) {
-        tests.push({ nodeid: testName, name: testName, outcome: 'passed' });
-      }
-    }
-    // Match X patterns for failed tests
-    else if (trimmed.startsWith('✕') || trimmed.startsWith('×') || trimmed.match(/^\u2717/)) {
-      const testName = trimmed.replace(/^[✕×\u2717]\s*/, '').replace(/\s*\(\d+\s*m?s\)\s*$/, '').trim();
-      if (testName) {
-        tests.push({ nodeid: testName, name: testName, outcome: 'failed' });
-      }
-    }
-  }
-
-  return tests;
-}
-
-function parseSummaryLine(output: string): { passed: number; failed: number; total: number } {
-  // Parse "Tests: 44 passed, 44 total" or "Tests: 2 failed, 42 passed, 44 total"
-  const match = output.match(/Tests:\s+(?:(\d+)\s+failed,\s+)?(\d+)\s+passed,\s+(\d+)\s+total/);
-  if (match) {
-    const failed = match[1] ? parseInt(match[1], 10) : 0;
-    const passed = parseInt(match[2], 10);
-    const total = parseInt(match[3], 10);
-    return { passed, failed, total };
-  }
-  return { passed: 0, failed: 0, total: 0 };
-}
-
-function runJestTests(label: string): RunResults {
+function runTests(repoName: string): TestResults {
   console.log(`\n${'='.repeat(60)}`);
-  console.log(`RUNNING TESTS: ${label.toUpperCase()}`);
+  console.log(`RUNNING TESTS: ${repoName.toUpperCase()}`);
   console.log('='.repeat(60));
 
   const projectRoot = path.resolve(__dirname, '..');
+  const repoPath = path.join(projectRoot, repoName);
+
+  // Check if repository source file exists
+  const sourceFile = path.join(repoPath, 'caseValidator.ts');
+  if (!fs.existsSync(sourceFile)) {
+    console.log(`❌ Source file not found: ${sourceFile}`);
+    return {
+      passed: false,
+      return_code: 1,
+      output: `Source file not found: ${sourceFile}. The ${repoName} directory is empty or missing the required caseValidator.ts file.`,
+    };
+  }
 
   let stdout = '';
   let stderr = '';
@@ -137,6 +78,7 @@ function runJestTests(label: string): RunResults {
       encoding: 'utf-8',
       timeout: 120000,
       stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env, REPO_UNDER_TEST: repoName },
     });
     exitCode = 0;
   } catch (e: any) {
@@ -145,84 +87,68 @@ function runJestTests(label: string): RunResults {
     exitCode = e.status || 1;
   }
 
-  const output = stdout + stderr;
+  const output = (stdout + stderr).slice(0, 8000);
   console.log(output);
 
-  const tests = parseJestOutput(output);
-  const summaryFromLine = parseSummaryLine(output);
-
-  // Use parsed summary if we found it, otherwise count from tests array
-  let passed = summaryFromLine.total > 0 ? summaryFromLine.passed : tests.filter(t => t.outcome === 'passed').length;
-  let failed = summaryFromLine.total > 0 ? summaryFromLine.failed : tests.filter(t => t.outcome === 'failed').length;
-  let total = summaryFromLine.total > 0 ? summaryFromLine.total : tests.length;
-  const errors = tests.filter(t => t.outcome === 'error').length;
-  const skipped = tests.filter(t => t.outcome === 'skipped').length;
-
-  // Determine success based on exit code
-  const success = exitCode === 0;
-
-  console.log(`\nResults: ${passed} passed, ${failed} failed, ${errors} errors, ${skipped} skipped (total: ${total})`);
-
   return {
-    success,
-    exit_code: exitCode,
-    tests,
-    summary: { total, passed, failed, errors, skipped },
-    stdout: stdout.length > 3000 ? stdout.slice(-3000) : stdout,
-    stderr: stderr.length > 1000 ? stderr.slice(-1000) : stderr,
+    passed: exitCode === 0,
+    return_code: exitCode,
+    output,
   };
 }
 
-function runEvaluation(): EvaluationResults {
+function runMetrics(): Record<string, unknown> {
+  // Optional – trainers implement if needed
+  return {};
+}
+
+function evaluate(repoName: string): RepoResults {
+  const tests = runTests(repoName);
+  const metrics = runMetrics();
+  return { tests, metrics };
+}
+
+function runEvaluation(): { before: RepoResults; after: RepoResults; comparison: Comparison } {
   console.log(`\n${'='.repeat(60)}`);
   console.log('STRICT CASE STATE TRANSITION VALIDATOR EVALUATION');
   console.log('='.repeat(60));
 
-  const afterResults = runJestTests('after (repository_after)');
+  const before = evaluate('repository_before');
+  const after = evaluate('repository_after');
+
+  const comparison: Comparison = {
+    passed_gate: after.tests.passed,
+    improvement_summary: after.tests.passed
+      ? 'Repository after passes all correctness tests while repository before fails as expected.'
+      : 'After implementation failed correctness tests.',
+  };
 
   console.log(`\n${'='.repeat(60)}`);
   console.log('EVALUATION SUMMARY');
   console.log('='.repeat(60));
 
-  console.log(`\nAfter Implementation (repository_after):`);
-  console.log(`  Overall: ${afterResults.success ? '✅ PASSED' : '❌ FAILED'}`);
-  console.log(`  Tests: ${afterResults.summary.passed}/${afterResults.summary.total} passed`);
+  console.log(`\nBefore Implementation:`);
+  console.log(`  Overall: ${before.tests.passed ? '✅ PASSED' : '❌ FAILED'}`);
+
+  console.log(`\nAfter Implementation:`);
+  console.log(`  Overall: ${after.tests.passed ? '✅ PASSED' : '❌ FAILED'}`);
 
   console.log(`\n${'='.repeat(60)}`);
   console.log('EXPECTED BEHAVIOR CHECK');
   console.log('='.repeat(60));
 
-  if (afterResults.success) {
+  if (after.tests.passed) {
     console.log('✅ After implementation: All tests passed (expected)');
   } else {
     console.log('❌ After implementation: Some tests failed (unexpected - should pass all)');
   }
 
-  return { after: afterResults };
-}
-
-function generateOutputPath(): string {
-  const now = new Date();
-  const dateStr = now.toISOString().split('T')[0];
-  const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
-
-  const projectRoot = path.resolve(__dirname, '..');
-  const outputDir = path.join(projectRoot, 'evaluation', dateStr, timeStr);
-
-  fs.mkdirSync(outputDir, { recursive: true });
-
-  return path.join(outputDir, 'report.json');
+  return { before, after, comparison };
 }
 
 function main(): number {
-  const args = process.argv.slice(2);
-  let outputPath: string | null = null;
-
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--output' && args[i + 1]) {
-      outputPath = args[i + 1];
-    }
-  }
+  const projectRoot = path.resolve(__dirname, "..");
+  const baseReportsDir = path.join(projectRoot, "evaluation");
 
   const runId = generateRunId();
   const startedAt = new Date();
@@ -230,15 +156,26 @@ function main(): number {
   console.log(`Run ID: ${runId}`);
   console.log(`Started at: ${startedAt.toISOString()}`);
 
-  let results: EvaluationResults | null = null;
+  let before: RepoResults = {
+    tests: { passed: false, return_code: -1, output: "" },
+    metrics: {},
+  };
+  let after: RepoResults = {
+    tests: { passed: false, return_code: -1, output: "" },
+    metrics: {},
+  };
+  let comparison: Comparison = { passed_gate: false, improvement_summary: "" };
   let success = false;
   let errorMessage: string | null = null;
 
   try {
-    results = runEvaluation();
-    success = results.after.success;
+    const results = runEvaluation();
+    before = results.before;
+    after = results.after;
+    comparison = results.comparison;
+    success = comparison.passed_gate;
     if (!success) {
-      errorMessage = 'After implementation tests failed';
+      errorMessage = "After implementation tests failed";
     }
   } catch (e) {
     console.log(`\nERROR: ${e}`);
@@ -255,26 +192,32 @@ function main(): number {
     run_id: runId,
     started_at: startedAt.toISOString(),
     finished_at: finishedAt.toISOString(),
-    duration_seconds: Math.round(duration * 1000000) / 1000000,
+    duration_seconds: duration,
+    environment,
+    before,
+    after,
+    comparison,
     success,
     error: errorMessage,
-    environment,
-    results,
   };
 
-  const finalOutputPath = outputPath || generateOutputPath();
-  const outputDir = path.dirname(finalOutputPath);
+  // Create timeline directory: evaluation/YYYY-MM-DD/HH-MM-SS
+  const dateStr = startedAt.toISOString().slice(0, 10);
+  const timeStr = startedAt.toISOString().slice(11, 19).replace(/:/g, "-");
+  const outputDir = path.join(baseReportsDir, dateStr, timeStr);
+
   fs.mkdirSync(outputDir, { recursive: true });
 
-  fs.writeFileSync(finalOutputPath, JSON.stringify(report, null, 2));
-  console.log(`\n✅ Report saved to: ${finalOutputPath}`);
+  const outputPath = path.join(outputDir, "report.json");
+  fs.writeFileSync(outputPath, JSON.stringify(report, null, 2));
+  console.log(`\nReport written to ${outputPath}`);
 
-  console.log(`\n${'='.repeat(60)}`);
-  console.log('EVALUATION COMPLETE');
-  console.log('='.repeat(60));
+  console.log(`\n${"=".repeat(60)}`);
+  console.log("EVALUATION COMPLETE");
+  console.log("=".repeat(60));
   console.log(`Run ID: ${runId}`);
   console.log(`Duration: ${duration.toFixed(2)}s`);
-  console.log(`Success: ${success ? '✅ YES' : '❌ NO'}`);
+  console.log(`Success: ${success ? "✅ YES" : "❌ NO"}`);
 
   return success ? 0 : 1;
 }
