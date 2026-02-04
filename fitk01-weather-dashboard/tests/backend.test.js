@@ -127,25 +127,76 @@ describe('Weather Dashboard Backend API', () => {
 
   // Requirement 6: Backend must return HTTP 503 with message "Weather service unavailable" when the weather provider fails
   describe('GET /api/weather - Service Unavailable (Req 6)', () => {
-    test('weatherService should throw 503 error when service is unavailable', () => {
-      const originalGetWeather = weatherService.getMockCurrentWeather;
-      
-      weatherService.getMockCurrentWeather = jest.fn(() => {
+    let originalGetCurrentWeather;
+    let originalGetForecast;
+
+    beforeEach(() => {
+      originalGetCurrentWeather = weatherService.getCurrentWeather;
+      originalGetForecast = weatherService.getForecast;
+    });
+
+    afterEach(() => {
+      weatherService.getCurrentWeather = originalGetCurrentWeather;
+      weatherService.getForecast = originalGetForecast;
+    });
+
+    test('should return HTTP 503 with correct message when weather service fails for /api/weather', async () => {
+      weatherService.getCurrentWeather = jest.fn().mockImplementation(() => {
         const error = new Error('Weather service unavailable');
         error.status = 503;
         throw error;
       });
 
-      expect(() => {
-        weatherService.getMockCurrentWeather('London');
-      }).toThrow('Weather service unavailable');
+      const response = await request(app)
+        .get('/api/weather?city=London')
+        .expect(503);
 
-      weatherService.getMockCurrentWeather = originalGetWeather;
+      expect(response.body.message).toBe('Weather service unavailable');
+    });
+
+    test('should return HTTP 503 with correct message when weather service fails for /api/forecast', async () => {
+      weatherService.getForecast = jest.fn().mockImplementation(() => {
+        const error = new Error('Weather service unavailable');
+        error.status = 503;
+        throw error;
+      });
+
+      const response = await request(app)
+        .get('/api/forecast?city=London')
+        .expect(503);
+
+      expect(response.body.message).toBe('Weather service unavailable');
+    });
+
+    test('503 error response should have correct JSON structure', async () => {
+      weatherService.getCurrentWeather = jest.fn().mockImplementation(() => {
+        const error = new Error('Weather service unavailable');
+        error.status = 503;
+        throw error;
+      });
+
+      const response = await request(app)
+        .get('/api/weather?city=London')
+        .expect(503)
+        .expect('Content-Type', /json/);
+
+      expect(response.body).toHaveProperty('message');
+      expect(response.body.message).toBe('Weather service unavailable');
     });
   });
 
   // Requirement 7: 404 and 503 responses must be clearly distinguishable
   describe('Error Response Differentiation (Req 7)', () => {
+    let originalGetCurrentWeather;
+
+    beforeEach(() => {
+      originalGetCurrentWeather = weatherService.getCurrentWeather;
+    });
+
+    afterEach(() => {
+      weatherService.getCurrentWeather = originalGetCurrentWeather;
+    });
+
     test('404 error should have specific message "City not found"', async () => {
       const response = await request(app)
         .get('/api/weather?city=NonExistentCity999')
@@ -154,12 +205,57 @@ describe('Weather Dashboard Backend API', () => {
       expect(response.body.message).toBe('City not found');
     });
 
-    test('different status codes for different error types', async () => {
-      const invalidCityResponse = await request(app)
+    test('503 error should have specific message "Weather service unavailable"', async () => {
+      weatherService.getCurrentWeather = jest.fn().mockImplementation(() => {
+        const error = new Error('Weather service unavailable');
+        error.status = 503;
+        throw error;
+      });
+
+      const response = await request(app)
+        .get('/api/weather?city=London')
+        .expect(503);
+
+      expect(response.body.message).toBe('Weather service unavailable');
+    });
+
+    test('404 and 503 responses must have different status codes', async () => {
+      const notFoundResponse = await request(app)
         .get('/api/weather?city=InvalidCityXYZ123');
       
-      expect(invalidCityResponse.status).toBe(404);
-      expect(invalidCityResponse.body.message).not.toBe('Weather service unavailable');
+      expect(notFoundResponse.status).toBe(404);
+
+      weatherService.getCurrentWeather = jest.fn().mockImplementation(() => {
+        const error = new Error('Weather service unavailable');
+        error.status = 503;
+        throw error;
+      });
+
+      const serviceErrorResponse = await request(app)
+        .get('/api/weather?city=London');
+
+      expect(serviceErrorResponse.status).toBe(503);
+      expect(notFoundResponse.status).not.toBe(serviceErrorResponse.status);
+    });
+
+    test('404 and 503 responses must have different messages', async () => {
+      const notFoundResponse = await request(app)
+        .get('/api/weather?city=InvalidCityXYZ123')
+        .expect(404);
+
+      weatherService.getCurrentWeather = jest.fn().mockImplementation(() => {
+        const error = new Error('Weather service unavailable');
+        error.status = 503;
+        throw error;
+      });
+
+      const serviceErrorResponse = await request(app)
+        .get('/api/weather?city=London')
+        .expect(503);
+
+      expect(notFoundResponse.body.message).toBe('City not found');
+      expect(serviceErrorResponse.body.message).toBe('Weather service unavailable');
+      expect(notFoundResponse.body.message).not.toBe(serviceErrorResponse.body.message);
     });
   });
 

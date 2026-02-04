@@ -3,13 +3,13 @@ module.exports = {
     {
       displayName: 'backend',
       testEnvironment: 'node',
-      testMatch: ['**/tests/backend.test.js'],
+      testMatch: ['<rootDir>/tests/backend.test.js'],
       testTimeout: 10000
     },
     {
       displayName: 'frontend',
       testEnvironment: 'jsdom',
-      testMatch: ['**/tests/frontend.test.js'],
+      testMatch: ['<rootDir>/tests/frontend.test.js'],
       testTimeout: 10000
     }
   ],
