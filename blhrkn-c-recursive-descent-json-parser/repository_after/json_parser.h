@@ -54,6 +54,8 @@ public:
     JsonArray& asArray() { return std::get<JsonArray>(value_); }
     JsonObject& asObject() { return std::get<JsonObject>(value_); }
     
+    void print(std::ostream& os, int indent = 0) const;
+
 private:
     Value value_;
 };

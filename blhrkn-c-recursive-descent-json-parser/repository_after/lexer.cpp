@@ -152,15 +152,10 @@ Token Lexer::scanNumber() {
 // Scans ahead to count elements at the current nesting level.
 // Returns 0 if calculation is too complex or fails.
 size_t Lexer::scanArrayElementCount() {
-    size_t saved_pos = pos_;
-    size_t saved_line = line_;
-    size_t saved_col = col_;
-    
     // We are currently after '[' which was just consumed by parser/lexer advance.
-    // pos_ points to the first char of the first element (or ']' if empty).
-    
     size_t count = 0;
-    size_t nesting = 1; // We are inside one array
+    size_t bracket_nesting = 1; // [
+    size_t brace_nesting = 0;   // {
     bool in_string = false;
     bool escape = false;
     
@@ -181,57 +176,25 @@ size_t Lexer::scanArrayElementCount() {
             if (c == '"') {
                 in_string = true;
             } else if (c == '[') {
-                nesting++;
+                bracket_nesting++;
             } else if (c == ']') {
-                nesting--;
-                if (nesting == 0) {
+                bracket_nesting--;
+                if (bracket_nesting == 0) {
                     // Found end of our array
-                    if (count == 0) { // e.g. [1] or []
-                         // If cur > pos_ (moved), it means we have content
-                         // Check if non-whitespace exists between start and here
-                         // scan loop is raw chars.
-                         // Actually, if we hit ']', and count is 0, it means empty array []?
-                         // Or single element [1]?
-                         // Comma counting counts separators. N commas = N+1 elements (unless empty).
-                         
-                         // Let's refine:
-                         // If we see a comma at nesting==1, increment count.
-                         // Total elements = count + 1 (if not empty).
-                    }
                     break;
                 }
             } else if (c == '{') {
-                // Start of object logic? 
-                // Just nesting braces?
-                // NOTE: This simple scan might be fooled by { [ ] } inside.
-                // Need to track object braces too?
-                // Yes, to skip commas inside objects.
+                brace_nesting++;
+            } else if (c == '}') {
+                if (brace_nesting > 0) brace_nesting--;
             } else if (c == ',') {
-                if (nesting == 1) {
+                if (bracket_nesting == 1 && brace_nesting == 0) {
                     count++;
                 }
             }
         }
         cur++;
     }
-    
-    // Restore state implicitly? No, we didn't modify members pos_/line_/col_ yet.
-    // We used local 'cur'.
-    
-    // Logic check:
-    // [1, 2, 3] -> 2 commas -> count 2 -> return 3.
-    // [] -> 0 commas -> immediate ] -> return 0.
-    // [1] -> 0 commas -> return 1.
-    
-    // Just need to distinguish [] from [1].
-    // Check first non-whitespace char?
-    // Let's use Lexer methods to peek? Can't.
-    
-    // Simple logic: If we found closing bracket, and count > 0, return count + 1.
-    // If count == 0: check if empty.
-    
-    // Let's just return count. reserve(count + 1).
-    // If empty, reserve(1) is fine.
     
     return count; 
 }

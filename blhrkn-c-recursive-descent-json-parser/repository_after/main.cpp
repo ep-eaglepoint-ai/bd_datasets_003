@@ -21,8 +21,14 @@ int main(int argc, char* argv[]) {
     
     try {
         json::JsonParser parser;
-        // Optional: parser.setMaxDepth(2000); 
         json::JsonValue value = parser.parse(content);
+        
+        // Output dump if requested for verification
+        if (argc > 2 && std::string(argv[2]) == "--dump") {
+             value.print(std::cout);
+             std::cout << std::endl;
+             return 0;
+        }
         
         if (value.isObject()) {
             std::cout << "Parsed JSON object with " 
