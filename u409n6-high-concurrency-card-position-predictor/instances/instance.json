@@ -1,0 +1,11 @@
+{
+            "instance_id": "U409N6",
+            "problem_statement": "Most card position predictors are written following the lazy approach of materializing card decks passed to their functions. The objective is to write a high-concurrency mathematical model capable of predicting a target card's final index following multiple column-shuffle iterations without materializing the deck in memory. By utilizing a pure recurrence relation, the system must achieve extreme resource efficiency to support massive deck sizes and high-throughput gaming environments.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/u409n6-high-concurrency-card-position-predictor",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
