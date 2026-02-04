@@ -1,8 +1,8 @@
 # G6JI3T - Hierarchical-Content-Moderation-Pipeline
 
-## Before Test Docker Command
+## Before Test Docker Command (SKIPPED)
 
-docker compose run --rm noop
+docker run --rm alpine true
 
 ## After Test Docker Command
 
