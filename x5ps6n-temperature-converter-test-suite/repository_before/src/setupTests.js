@@ -3,3 +3,14 @@
 // expect(element).toHaveTextContent(/react/i)
 // learn more: https://github.com/testing-library/jest-dom
 import '@testing-library/jest-dom';
+
+const originalError = console.error;
+console.error = (...args) => {
+    const msg = args[0];
+    if (typeof msg === 'string') {
+        if (msg.includes('deprecated')) return;
+        if (msg.includes('wrapped in act')) return;
+        if (msg.includes('Warning: An update to')) return;
+    }
+    originalError.call(console, ...args);
+};

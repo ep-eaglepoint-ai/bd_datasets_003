@@ -5,7 +5,7 @@ module.exports = {
     '<rootDir>/tests/**/*.test.js',
     '<rootDir>/repository_after/**/*.test.js'
   ],
-  moduleNameMapping: {
+  moduleNameMapper: {
     '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
   },
   transform: {
