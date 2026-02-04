@@ -1,0 +1,27 @@
+{
+    "instance_id": "VSWIEH",
+    "problem_statement": "A Telegram bot must process messages from multiple users concurrently while ensuring responses are routed correctly and user state remains isolated. The backend should demonstrate a clear concurrency model where each message is processed independently without interference, ensuring reliability and responsiveness even under concurrent load.",
+    "base_commit": "repository_before/",
+    "test_patch": "tests/",
+    "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/vswieh-design-concurrent-telegram-bot-backend-with-safe-message-routing",
+    "environment_setup": "Dockerfile",
+    "FAIL_TO_PASS": [
+        "tests/test_telegram_bot.py::TestConcurrentStartCommands::test_two_users_get_independent_responses",
+        "tests/test_telegram_bot.py::TestConcurrentStartCommands::test_stress_50_concurrent_users",
+        "tests/test_telegram_bot.py::TestSlowOperationNoBlocking::test_fast_completes_without_waiting_for_slow",
+        "tests/test_telegram_bot.py::TestSlowOperationNoBlocking::test_completion_order_independent",
+        "tests/test_telegram_bot.py::TestEchoRoutesCorrectly::test_each_user_gets_own_echo",
+        "tests/test_telegram_bot.py::TestEchoRoutesCorrectly::test_100_concurrent_echoes_no_mixing",
+        "tests/test_telegram_bot.py::TestErrorIsolation::test_error_doesnt_crash_other_tasks",
+        "tests/test_telegram_bot.py::TestErrorIsolation::test_error_response_only_to_affected_user",
+        "tests/test_telegram_bot.py::TestStateIsolation::test_concurrent_increments_no_lost_updates",
+        "tests/test_telegram_bot.py::TestStateIsolation::test_different_users_isolated",
+        "tests/test_telegram_bot.py::TestStateIsolation::test_100_users_10_messages_each",
+        "tests/test_telegram_bot.py::TestResponseRoutingIntegrity::test_no_cross_routing",
+        "tests/test_telegram_bot.py::TestResponseRoutingIntegrity::test_all_responses_logged_correctly",
+        "tests/test_telegram_bot.py::TestEdgeCases::test_empty_text",
+        "tests/test_telegram_bot.py::TestEdgeCases::test_unknown_command",
+        "tests/test_telegram_bot.py::TestEdgeCases::test_single_user_rapid_messages"
+    ],
+    "PASS_TO_PASS": []
+}
