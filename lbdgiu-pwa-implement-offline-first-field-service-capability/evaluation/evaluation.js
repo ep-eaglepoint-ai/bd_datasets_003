@@ -3,7 +3,7 @@ import path from "path";
 import { v4 as uuidv4 } from "uuid";
 import { spawn } from "child_process";
 
-const REPORTS_DIR = path.join(process.cwd(), "evaluation/reports");
+const REPORTS_DIR = path.join(process.cwd(), "evaluation");
 if (!fs.existsSync(REPORTS_DIR)) {
     fs.mkdirSync(REPORTS_DIR, { recursive: true });
 }
