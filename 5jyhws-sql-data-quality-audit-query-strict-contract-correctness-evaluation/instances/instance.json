@@ -1,0 +1,19 @@
+{
+            "instance_id": "5JYHWS",
+            "problem_statement": "
+We need a single, read-only SQL audit query that detects data quality violations in a legacy PostgreSQL database where foreign key constraints and strict validations are not enforced at the schema level.
+
+The query must identify common integrity issues (orphan records, invalid statuses, impossible amounts, inconsistent timestamps, and duplicate natural keys) and return a standardized, deterministic report suitable for automated checks, dashboards, and alerting.
+
+This task intentionally tests spec discipline, not just SQL correctness.
+Any deviation from the required output format, logic semantics, or edge-case handling is considered a failure.
+
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/5jyhws-sql-data-quality-audit-query-strict-contract-correctness-evaluation",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
