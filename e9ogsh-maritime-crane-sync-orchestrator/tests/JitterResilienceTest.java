@@ -28,7 +28,7 @@ class JitterResilienceTest {
         service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_B, 1000.0, base));
         service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 1000.0, base - 100_000_001L));
         
-        assertTrue(service.isStaleDataDetected());
+        assertTrue(service.isStaleDataDetected(), "100ms+ timestamp gap should be stale");
     }
     
     @Test
@@ -47,7 +47,7 @@ class JitterResilienceTest {
             arrivalB
         );
         
-        assertTrue(service.hasStaleArrivalData());
+        assertTrue(service.hasStaleArrivalData(), "Arrival time delay should be detected");
     }
     
     @Test
@@ -60,7 +60,8 @@ class JitterResilienceTest {
         service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 1000.0, base - 100_000_001L));
         
         assertTrue(service.isStaleDataDetected());
-        assertFalse(service.executeCommand(Command.move(TelemetryPulse.CRANE_A, 100.0)));
+        assertFalse(service.executeCommand(Command.move(TelemetryPulse.CRANE_A, 100.0)),
+            "MOVE should be rejected when stale");
     }
     
     @Test

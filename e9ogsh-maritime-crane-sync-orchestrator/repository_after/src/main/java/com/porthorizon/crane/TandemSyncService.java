@@ -27,9 +27,11 @@ public class TandemSyncService {
     private final AtomicReference<TelemetryPulse> latestCraneA = new AtomicReference<>();
     private final AtomicReference<TelemetryPulse> latestCraneB = new AtomicReference<>();
     
-    // Clock drift offset tracking (CraneA's clock relative to CraneB)
+    // Clock drift tracking
     private final AtomicLong clockOffsetNs = new AtomicLong(0);
     private final AtomicBoolean clockOffsetCalibrated = new AtomicBoolean(false);
+    private final AtomicLong lastCalibrationTimeNs = new AtomicLong(0);
+    private final AtomicLong clockDriftRateNsPerSec = new AtomicLong(0);
     
     private final MotorController motorControllerA;
     private final MotorController motorControllerB;
@@ -37,7 +39,6 @@ public class TandemSyncService {
     private final ExecutorService processingExecutor;
     private final ConcurrentLinkedQueue<Command> commandHistory = new ConcurrentLinkedQueue<>();
     
-    // Latest-only flag for non-blocking evaluation (coalescing)
     private final AtomicBoolean evaluationPending = new AtomicBoolean(false);
     
     private Consumer<Command> commandListener;
@@ -86,8 +87,6 @@ public class TandemSyncService {
         haltIssuedTimestampNs.set(0);
         latestCraneA.set(null);
         latestCraneB.set(null);
-        clockOffsetNs.set(0);
-        clockOffsetCalibrated.set(false);
         clearBuffers();
         commandHistory.clear();
     }
@@ -102,29 +101,67 @@ public class TandemSyncService {
     }
     
     /**
-     * Calibrate clock offset between two crane controllers for clock drift resilience.
+     * Calibrate initial clock offset between two crane controllers.
+     * Call this with synchronized pulses from both cranes.
      */
     public void calibrateClockOffset(long craneATimestampNs, long craneBTimestampNs) {
         clockOffsetNs.set(craneATimestampNs - craneBTimestampNs);
+        lastCalibrationTimeNs.set(System.nanoTime());
         clockOffsetCalibrated.set(true);
     }
     
-    private long getAdjustedTimestamp(TelemetryPulse pulse) {
-        if (TelemetryPulse.CRANE_A.equals(pulse.craneId()) && clockOffsetCalibrated.get()) {
-            return pulse.timestampNs() - clockOffsetNs.get();
+    /**
+     * Update clock drift rate estimate based on new synchronized observations.
+     * This handles systematic clock drift over time.
+     */
+    public void updateClockDriftEstimate(long craneATimestampNs, long craneBTimestampNs) {
+        long currentOffset = craneATimestampNs - craneBTimestampNs;
+        long previousOffset = clockOffsetNs.get();
+        long calibrationTime = lastCalibrationTimeNs.get();
+        long now = System.nanoTime();
+        
+        if (calibrationTime > 0 && now > calibrationTime) {
+            long elapsedNs = now - calibrationTime;
+            long offsetChange = currentOffset - previousOffset;
+            
+            // Drift rate in nanoseconds per second
+            if (elapsedNs > 0) {
+                long driftRate = (offsetChange * 1_000_000_000L) / elapsedNs;
+                clockDriftRateNsPerSec.set(driftRate);
+            }
         }
-        return pulse.timestampNs();
+        
+        clockOffsetNs.set(currentOffset);
+        lastCalibrationTimeNs.set(now);
+        clockOffsetCalibrated.set(true);
     }
     
     /**
-     * Non-blocking telemetry ingestion with latest-only coalescing.
-     * Prevents backlog from delaying evaluation of most recent safety frames.
+     * Get adjusted timestamp for Crane-A accounting for clock drift.
      */
+    public long getAdjustedTimestamp(TelemetryPulse pulse) {
+        if (!TelemetryPulse.CRANE_A.equals(pulse.craneId()) || !clockOffsetCalibrated.get()) {
+            return pulse.timestampNs();
+        }
+        
+        long offset = clockOffsetNs.get();
+        long driftRate = clockDriftRateNsPerSec.get();
+        long calibrationTime = lastCalibrationTimeNs.get();
+        long now = System.nanoTime();
+        
+        // Apply drift compensation if we have drift rate
+        if (driftRate != 0 && calibrationTime > 0) {
+            long elapsedSec = (now - calibrationTime) / 1_000_000_000L;
+            offset += driftRate * elapsedSec;
+        }
+        
+        return pulse.timestampNs() - offset;
+    }
+    
     public void ingestTelemetry(TelemetryPulse pulse) {
         long arrivalTime = System.nanoTime();
         updatePulseState(pulse, arrivalTime);
         
-        // Latest-only coalescing: skip if evaluation already pending
         if (evaluationPending.compareAndSet(false, true)) {
             CompletableFuture.runAsync(() -> {
                 try {
@@ -320,6 +357,7 @@ public class TandemSyncService {
     public long getHaltIssuedTimestamp() { return haltIssuedTimestampNs.get(); }
     public boolean isClockOffsetCalibrated() { return clockOffsetCalibrated.get(); }
     public long getClockOffsetNs() { return clockOffsetNs.get(); }
+    public long getClockDriftRateNsPerSec() { return clockDriftRateNsPerSec.get(); }
     
     public List<Command> getCommandHistory() { return new ArrayList<>(commandHistory); }
     public LivenessWatchdog getWatchdog() { return watchdog; }

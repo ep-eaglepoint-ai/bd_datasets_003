@@ -472,10 +472,10 @@ index 0000000..c38835d
 \ No newline at end of file
 diff --git a/repository_after/src/main/java/com/porthorizon/crane/TandemSyncService.java b/repository_after/src/main/java/com/porthorizon/crane/TandemSyncService.java
 new file mode 100644
-index 0000000..98e1af1
+index 0000000..761ec88
 --- /dev/null
 +++ b/repository_after/src/main/java/com/porthorizon/crane/TandemSyncService.java
-@@ -0,0 +1,344 @@
+@@ -0,0 +1,382 @@
 +package com.porthorizon.crane;
 +
 +import java.util.concurrent.*;
@@ -505,9 +505,11 @@ index 0000000..98e1af1
 +    private final AtomicReference<TelemetryPulse> latestCraneA = new AtomicReference<>();
 +    private final AtomicReference<TelemetryPulse> latestCraneB = new AtomicReference<>();
 +    
-+    // Clock drift offset tracking (CraneA's clock relative to CraneB)
++    // Clock drift tracking
 +    private final AtomicLong clockOffsetNs = new AtomicLong(0);
 +    private final AtomicBoolean clockOffsetCalibrated = new AtomicBoolean(false);
++    private final AtomicLong lastCalibrationTimeNs = new AtomicLong(0);
++    private final AtomicLong clockDriftRateNsPerSec = new AtomicLong(0);
 +    
 +    private final MotorController motorControllerA;
 +    private final MotorController motorControllerB;
@@ -515,7 +517,6 @@ index 0000000..98e1af1
 +    private final ExecutorService processingExecutor;
 +    private final ConcurrentLinkedQueue<Command> commandHistory = new ConcurrentLinkedQueue<>();
 +    
-+    // Latest-only flag for non-blocking evaluation (coalescing)
 +    private final AtomicBoolean evaluationPending = new AtomicBoolean(false);
 +    
 +    private Consumer<Command> commandListener;
@@ -564,8 +565,6 @@ index 0000000..98e1af1
 +        haltIssuedTimestampNs.set(0);
 +        latestCraneA.set(null);
 +        latestCraneB.set(null);
-+        clockOffsetNs.set(0);
-+        clockOffsetCalibrated.set(false);
 +        clearBuffers();
 +        commandHistory.clear();
 +    }
@@ -580,29 +579,67 @@ index 0000000..98e1af1
 +    }
 +    
 +    /**
-+     * Calibrate clock offset between two crane controllers for clock drift resilience.
++     * Calibrate initial clock offset between two crane controllers.
++     * Call this with synchronized pulses from both cranes.
 +     */
 +    public void calibrateClockOffset(long craneATimestampNs, long craneBTimestampNs) {
 +        clockOffsetNs.set(craneATimestampNs - craneBTimestampNs);
++        lastCalibrationTimeNs.set(System.nanoTime());
 +        clockOffsetCalibrated.set(true);
 +    }
 +    
-+    private long getAdjustedTimestamp(TelemetryPulse pulse) {
-+        if (TelemetryPulse.CRANE_A.equals(pulse.craneId()) && clockOffsetCalibrated.get()) {
-+            return pulse.timestampNs() - clockOffsetNs.get();
++    /**
++     * Update clock drift rate estimate based on new synchronized observations.
++     * This handles systematic clock drift over time.
++     */
++    public void updateClockDriftEstimate(long craneATimestampNs, long craneBTimestampNs) {
++        long currentOffset = craneATimestampNs - craneBTimestampNs;
++        long previousOffset = clockOffsetNs.get();
++        long calibrationTime = lastCalibrationTimeNs.get();
++        long now = System.nanoTime();
++        
++        if (calibrationTime > 0 && now > calibrationTime) {
++            long elapsedNs = now - calibrationTime;
++            long offsetChange = currentOffset - previousOffset;
++            
++            // Drift rate in nanoseconds per second
++            if (elapsedNs > 0) {
++                long driftRate = (offsetChange * 1_000_000_000L) / elapsedNs;
++                clockDriftRateNsPerSec.set(driftRate);
++            }
 +        }
-+        return pulse.timestampNs();
++        
++        clockOffsetNs.set(currentOffset);
++        lastCalibrationTimeNs.set(now);
++        clockOffsetCalibrated.set(true);
 +    }
 +    
 +    /**
-+     * Non-blocking telemetry ingestion with latest-only coalescing.
-+     * Prevents backlog from delaying evaluation of most recent safety frames.
++     * Get adjusted timestamp for Crane-A accounting for clock drift.
 +     */
++    public long getAdjustedTimestamp(TelemetryPulse pulse) {
++        if (!TelemetryPulse.CRANE_A.equals(pulse.craneId()) || !clockOffsetCalibrated.get()) {
++            return pulse.timestampNs();
++        }
++        
++        long offset = clockOffsetNs.get();
++        long driftRate = clockDriftRateNsPerSec.get();
++        long calibrationTime = lastCalibrationTimeNs.get();
++        long now = System.nanoTime();
++        
++        // Apply drift compensation if we have drift rate
++        if (driftRate != 0 && calibrationTime > 0) {
++            long elapsedSec = (now - calibrationTime) / 1_000_000_000L;
++            offset += driftRate * elapsedSec;
++        }
++        
++        return pulse.timestampNs() - offset;
++    }
++    
 +    public void ingestTelemetry(TelemetryPulse pulse) {
 +        long arrivalTime = System.nanoTime();
 +        updatePulseState(pulse, arrivalTime);
 +        
-+        // Latest-only coalescing: skip if evaluation already pending
 +        if (evaluationPending.compareAndSet(false, true)) {
 +            CompletableFuture.runAsync(() -> {
 +                try {
@@ -798,6 +835,7 @@ index 0000000..98e1af1
 +    public long getHaltIssuedTimestamp() { return haltIssuedTimestampNs.get(); }
 +    public boolean isClockOffsetCalibrated() { return clockOffsetCalibrated.get(); }
 +    public long getClockOffsetNs() { return clockOffsetNs.get(); }
++    public long getClockDriftRateNsPerSec() { return clockDriftRateNsPerSec.get(); }
 +    
 +    public List<Command> getCommandHistory() { return new ArrayList<>(commandHistory); }
 +    public LivenessWatchdog getWatchdog() { return watchdog; }
@@ -912,7 +950,7 @@ index 0000000..26474af
 Binary files /dev/null and b/repository_after/target/classes/com/porthorizon/crane/MotorController.class differ
 diff --git a/repository_after/target/classes/com/porthorizon/crane/TandemSyncService.class b/repository_after/target/classes/com/porthorizon/crane/TandemSyncService.class
 new file mode 100644
-index 0000000..f81dd12
+index 0000000..4cf99c1
 Binary files /dev/null and b/repository_after/target/classes/com/porthorizon/crane/TandemSyncService.class differ
 diff --git a/repository_after/target/classes/com/porthorizon/crane/TelemetryPulse.class b/repository_after/target/classes/com/porthorizon/crane/TelemetryPulse.class
 new file mode 100644
@@ -920,7 +958,7 @@ index 0000000..a50b1d9
 Binary files /dev/null and b/repository_after/target/classes/com/porthorizon/crane/TelemetryPulse.class differ
 diff --git a/repository_after/target/crane-sync-orchestrator-1.0.0.jar b/repository_after/target/crane-sync-orchestrator-1.0.0.jar
 new file mode 100644
-index 0000000..95f7aca
+index 0000000..f9d2531
 Binary files /dev/null and b/repository_after/target/crane-sync-orchestrator-1.0.0.jar differ
 diff --git a/repository_after/target/eval-classes/Evaluation$TestEntry.class b/repository_after/target/eval-classes/Evaluation$TestEntry.class
 new file mode 100644
@@ -971,11 +1009,11 @@ index 0000000..3f19738
 +/app/repository_after/src/main/java/com/porthorizon/crane/LiftState.java
 diff --git a/repository_after/target/test-classes/DriftSimulationTest.class b/repository_after/target/test-classes/DriftSimulationTest.class
 new file mode 100644
-index 0000000..d6bc7f7
+index 0000000..4a02ff7
 Binary files /dev/null and b/repository_after/target/test-classes/DriftSimulationTest.class differ
 diff --git a/repository_after/target/test-classes/JitterResilienceTest.class b/repository_after/target/test-classes/JitterResilienceTest.class
 new file mode 100644
-index 0000000..20799b4
+index 0000000..8bdc992
 Binary files /dev/null and b/repository_after/target/test-classes/JitterResilienceTest.class differ
 diff --git a/repository_after/target/test-classes/LivenessWatchdogTest.class b/repository_after/target/test-classes/LivenessWatchdogTest.class
 new file mode 100644
@@ -983,7 +1021,7 @@ index 0000000..f500a27
 Binary files /dev/null and b/repository_after/target/test-classes/LivenessWatchdogTest.class differ
 diff --git a/repository_after/target/test-classes/RequirementsTest.class b/repository_after/target/test-classes/RequirementsTest.class
 new file mode 100644
-index 0000000..4b631c7
+index 0000000..6d42535
 Binary files /dev/null and b/repository_after/target/test-classes/RequirementsTest.class differ
 diff --git a/repository_after/target/test-classes/TandemSyncServiceTest.class b/repository_after/target/test-classes/TandemSyncServiceTest.class
 new file mode 100644
