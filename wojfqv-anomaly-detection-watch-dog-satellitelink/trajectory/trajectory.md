@@ -13,7 +13,10 @@
    - [Memory Management in V8](https://v8.dev/blog/memory-management)
 
 ## 3. Core Implementation
-   I implemented the `process(linkId, latencyMs)` method as the single entry point for data ingestion. The logic strictly follows the "Baseline" (first 100) vs. "Current" (last 100) window segmentation. I wrote helper functions for statistical math—calculating mean and population standard deviation manually—to satisfy the "no third-party libraries" rule. I paid special attention to the "zero variance" edge case by strictly following the formula `|Mean(curr) - Mean(base)| > 2 * StdDev(base)`, ensuring that if the standard deviation is zero (a flat line), any deviation in the current window correctly triggers an anomaly, as the threshold becomes zero.
+   I implemented the `process(linkId, latencyMs)` method as the single entry point for data ingestion. The logic strictly follows the "Baseline" (first 100) vs. "Current" (last 100) window segmentation.
+- **Sliding Window**: Replaced initial array-based implementation with a **Float64Array Ring Buffer**. This ensures strictly **O(1) memory overhead** and zero garbage collection pressure, complying with the requirement for handling thousands of concurrent signals with minimal overhead.
+- **Statistical Math**: Implemented standard Mean and Population Variance algorithms manually, iterating directly over the ring buffer to avoid copying data.
+- **Input Compliance**: Strict adherence to specific object input `{ linkId, latencyMs, timestamp }` as requested in reviewer feedback, even though `timestamp` is unused for the core logic, ensuring full interface compliance.—to satisfy the "no third-party libraries" rule. I paid special attention to the "zero variance" edge case by strictly following the formula `|Mean(curr) - Mean(base)| > 2 * StdDev(base)`, ensuring that if the standard deviation is zero (a flat line), any deviation in the current window correctly triggers an anomaly, as the threshold becomes zero.
    Resources:
    - [Calculate Variance in JS](https://www.geeksforgeeks.org/program-to-find-variance/)
    - [JavaScript Array.prototype.slice()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/slice)

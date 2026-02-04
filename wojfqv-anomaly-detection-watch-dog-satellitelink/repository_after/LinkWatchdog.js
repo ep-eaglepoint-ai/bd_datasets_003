@@ -3,6 +3,8 @@
  * 
  * Monitors satellite link latency pulses and detects drift anomalies
  * using a dual-window statistical approach.
+ * 
+ * Optimized with Ring Buffer (Float64Array) for O(1) memory stability.
  */
 class LinkWatchdog {
   constructor() {
@@ -23,92 +25,99 @@ class LinkWatchdog {
 
   /**
    * Process a latency pulse for a specific link.
-   * @param {string} linkId - Unique identifier for the satellite link
-   * @param {number} latencyMs - Latency value in milliseconds
+   * @param {Object} record - Input record
+   * @param {string} record.linkId - Unique identifier for the satellite link
+   * @param {number} record.latencyMs - Latency value in milliseconds
+   * @param {number} [record.timestamp] - Unix timestamp (unused in calc)
    * @returns {string} - Current status of the link (WARMING_UP, NOMINAL, ANOMALY)
    */
-  process(linkId, latencyMs) {
+  process({ linkId, latencyMs }) {
     if (!this.links.has(linkId)) {
       this.links.set(linkId, {
-        samples: [],
+        buffer: new Float64Array(this.CONSTANTS.WINDOW_SIZE),
+        count: 0,
+        head: 0,
         status: this.CONSTANTS.STATUS.WARMING_UP
       });
     }
 
-    const linkState = this.links.get(linkId);
+    const state = this.links.get(linkId);
     
-    linkState.samples.push(latencyMs);
+    // Write to buffer
+    state.buffer[state.head] = latencyMs;
+    state.head = (state.head + 1) % this.CONSTANTS.WINDOW_SIZE;
     
-    if (linkState.samples.length > this.CONSTANTS.WINDOW_SIZE) {
-      linkState.samples.shift();
+    if (state.count < this.CONSTANTS.WINDOW_SIZE) {
+      state.count++;
     }
 
-    if (linkState.samples.length < this.CONSTANTS.WINDOW_SIZE) {
-      linkState.status = this.CONSTANTS.STATUS.WARMING_UP;
-      return linkState.status;
+    if (state.count < this.CONSTANTS.WINDOW_SIZE) {
+      state.status = this.CONSTANTS.STATUS.WARMING_UP;
+      return state.status;
     }
 
-    const baselineWindow = linkState.samples.slice(0, this.CONSTANTS.BASELINE_SIZE);
-    const currentWindow = linkState.samples.slice(this.CONSTANTS.BASELINE_SIZE);
-
-    const baselineStats = this._calculateStats(baselineWindow);
-    const currentStats = this._calculateStats(currentWindow);
+    // Full window calculation (Ring Buffer Traversal)
+    const baselineStats = this._calculateWindowStats(state.buffer, state.head, 0, this.CONSTANTS.BASELINE_SIZE);
+    const currentStats = this._calculateWindowStats(state.buffer, state.head, this.CONSTANTS.BASELINE_SIZE, this.CONSTANTS.CURRENT_SIZE);
 
     const delta = Math.abs(currentStats.mean - baselineStats.mean);
     const threshold = this.CONSTANTS.THRESHOLD_SIGMA * baselineStats.stdDev;
 
     if (delta > threshold) {
-      linkState.status = this.CONSTANTS.STATUS.ANOMALY;
+      state.status = this.CONSTANTS.STATUS.ANOMALY;
     } else {
-      linkState.status = this.CONSTANTS.STATUS.NOMINAL;
+      state.status = this.CONSTANTS.STATUS.NOMINAL;
     }
 
-    return linkState.status;
+    return state.status;
   }
 
-  /**
-   * Manually calculates Mean and Standard Deviation.
-   * @param {number[]} data - Array of numbers
-   * @returns {{mean: number, stdDev: number}}
-   */
-  _calculateStats(data) {
-    if (data.length === 0) return { mean: 0, stdDev: 0 };
-
+  _calculateWindowStats(buffer, head, offset, length) {
     let sum = 0;
-    for (let i = 0; i < data.length; i++) {
-      sum += data[i];
+    const capacity = buffer.length;
+    
+    for (let i = 0; i < length; i++) {
+      const idx = (head + offset + i) % capacity;
+      sum += buffer[idx];
     }
-    const mean = sum / data.length;
+    const mean = sum / length;
 
     let varianceSum = 0;
-    for (let i = 0; i < data.length; i++) {
-      const diff = data[i] - mean;
-      varianceSum += diff * diff;
+    for (let i = 0; i < length; i++) {
+        const idx = (head + offset + i) % capacity;
+        const diff = buffer[idx] - mean;
+        varianceSum += diff * diff;
     }
 
-    const variance = varianceSum / data.length;
+    const variance = varianceSum / length;
     const stdDev = Math.sqrt(variance);
 
     return { mean, stdDev };
   }
 
-  /**
-   * Resets the state of a single linkId.
-   * @param {string} linkId 
-   */
   reset(linkId) {
     if (this.links.has(linkId)) {
-      const linkState = this.links.get(linkId);
-      linkState.samples = [];
-      linkState.status = this.CONSTANTS.STATUS.WARMING_UP;
+        const state = this.links.get(linkId);
+        state.count = 0;
+        state.head = 0;
+        state.status = this.CONSTANTS.STATUS.WARMING_UP;
     }
   }
 
-  /**
-   * Helper to inspect state (for testing)
-   */
   getLinkState(linkId) {
-    return this.links.get(linkId);
+      if (!this.links.has(linkId)) return undefined;
+      const state = this.links.get(linkId);
+      
+      const orderedSamples = [];
+      for(let i=0; i < state.count; i++) {
+          if (state.count < this.CONSTANTS.WINDOW_SIZE) {
+            orderedSamples.push(state.buffer[i]);
+          } else {
+            const idx = (state.head + i) % this.CONSTANTS.WINDOW_SIZE;
+            orderedSamples.push(state.buffer[idx]);
+          }
+      }
+      return { status: state.status, samples: orderedSamples };
   }
 }
 
