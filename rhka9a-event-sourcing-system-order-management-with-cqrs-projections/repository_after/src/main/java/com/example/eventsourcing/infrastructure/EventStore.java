@@ -85,10 +85,18 @@ public class EventStore {
     
     /**
      * Append the first event for a new aggregate.
+     * Uses optimistic locking by verifying the aggregate has no existing events (version == 0).
      */
     @Transactional
     public DomainEvent appendInitialEvent(String aggregateId, DomainEvent event) {
         logger.debug("Appending initial event for aggregate {}", aggregateId);
+        
+        // Verify the aggregate has no existing events (optimistic locking for new aggregates)
+        Long currentVersion = eventRepository.getCurrentVersion(aggregateId);
+        if (!currentVersion.equals(0L)) {
+            throw new ConcurrencyException(aggregateId, 0L, currentVersion);
+        }
+        
         EventEntity entity = toEntity(event);
         eventRepository.save(entity);
         logger.info("Saved initial event {} for aggregate {}", event.getEventId(), aggregateId);
@@ -165,11 +173,16 @@ public class EventStore {
     
     /**
      * Convert a persistent entity to a domain event.
+     * Uses the persisted event_type for polymorphic deserialization.
      */
     private DomainEvent fromEntity(EventEntity entity) {
         try {
-            DomainEvent event = objectMapper.readValue(entity.getPayload(), DomainEvent.class);
+            // Use the persisted event_type for polymorphic deserialization
+            Class<? extends DomainEvent> eventClass = (Class<? extends DomainEvent>) Class.forName(entity.getEventType());
+            DomainEvent event = objectMapper.readValue(entity.getPayload(), eventClass);
             return event;
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException("Failed to find event class: " + entity.getEventType(), e);
         } catch (JsonProcessingException e) {
             throw new RuntimeException("Failed to deserialize event", e);
         }

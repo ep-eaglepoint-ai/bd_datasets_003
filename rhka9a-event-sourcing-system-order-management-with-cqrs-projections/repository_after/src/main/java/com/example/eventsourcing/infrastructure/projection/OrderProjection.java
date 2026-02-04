@@ -2,12 +2,16 @@ package com.example.eventsourcing.infrastructure.projection;
 
 import com.example.eventsourcing.domain.DomainEvent;
 import com.example.eventsourcing.domain.order.*;
+import com.example.eventsourcing.infrastructure.DomainEventWrapper;
 import com.example.eventsourcing.infrastructure.persistence.EventEntity;
 import com.example.eventsourcing.infrastructure.persistence.EventRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.event.EventListener;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -47,7 +51,9 @@ public class OrderProjection {
      */
     @EventListener
     @Transactional
-    public void handleDomainEvent(DomainEvent event) {
+    public void handleDomainEvent(DomainEventWrapper wrapper) {
+        // Unwrap the DomainEvent from the wrapper
+        DomainEvent event = wrapper.getDomainEvent();
         String eventId = event.getEventId();
         
         // Check if this event has already been processed (idempotency)
@@ -123,6 +129,7 @@ public class OrderProjection {
     
     /**
      * Handle OrderItemRemovedEvent - update order totals and item count.
+     * Uses newTotalAmount from the event for correct calculation.
      */
     private void handleOrderItemRemoved(OrderItemRemovedEvent event) {
         String orderId = event.getAggregateId();
@@ -136,9 +143,8 @@ public class OrderProjection {
             return;
         }
         
-        // Update the projection
-        BigDecimal newTotal = projection.getTotalAmount().subtract(event.getPreviousTotalAmount());
-        projection.setTotalAmount(newTotal.compareTo(BigDecimal.ZERO) == 0 ? BigDecimal.ZERO : newTotal);
+        // Update the projection using the new total from the event
+        projection.setTotalAmount(event.getNewTotalAmount());
         projection.setItemCount(Math.max(0, projection.getItemCount() - 1));
         
         projectionRepository.save(projection);
@@ -170,6 +176,7 @@ public class OrderProjection {
     
     /**
      * Rebuild the projection from scratch by replaying all events.
+     * Uses streaming/batch loading to keep memory bounded.
      * This method is designed to not block ongoing operations.
      */
     @Transactional
@@ -180,30 +187,61 @@ public class OrderProjection {
         projectionRepository.deleteAll();
         processedEventIds.clear();
         
-        // Load all events in batches to avoid memory issues
-        List<EventEntity> allEvents = eventRepository.findAll();
+        // Get total count for logging
+        long totalEvents = eventRepository.count();
+        logger.info("Replaying {} events for projection rebuild", totalEvents);
         
-        // Sort by timestamp and version to ensure correct order
-        List<EventEntity> sortedEvents = allEvents.stream()
-                .sorted((e1, e2) -> {
-                    int timestampCompare = e1.getTimestamp().compareTo(e2.getTimestamp());
-                    if (timestampCompare != 0) return timestampCompare;
-                    return e1.getVersion().compareTo(e2.getVersion());
-                })
-                .collect(Collectors.toList());
+        // Load events in batches using pagination to keep memory bounded
+        int pageSize = 100;
+        int pageNumber = 0;
+        Page<EventEntity> page;
         
-        logger.info("Replaying {} events for projection rebuild", sortedEvents.size());
-        
-        // Replay events in order
-        for (EventEntity entity : sortedEvents) {
-            // Reconstruct the event
-            DomainEvent event = reconstructEvent(entity);
-            if (event != null) {
-                handleDomainEvent(event);
+        do {
+            page = eventRepository.findAll(PageRequest.of(pageNumber, pageSize, Sort.by(Sort.Direction.ASC, "timestamp", "version")));
+            
+            for (EventEntity entity : page.getContent()) {
+                // Reconstruct the event
+                DomainEvent event = reconstructEvent(entity);
+                if (event != null) {
+                    handleDomainEventForRebuild(event);
+                }
             }
-        }
+            
+            pageNumber++;
+            logger.debug("Processed page {} of {} ({} events so far)", pageNumber, page.getTotalPages(), (pageNumber * pageSize));
+            
+        } while (page.hasNext());
         
         logger.info("Completed full projection rebuild");
+    }
+    
+    /**
+     * Handle a domain event during rebuild (without wrapper unwrapping).
+     */
+    private void handleDomainEventForRebuild(DomainEvent event) {
+        String eventId = event.getEventId();
+        
+        // Check if this event has already been processed (idempotency)
+        if (isEventProcessed(eventId)) {
+            logger.debug("Event {} already processed during rebuild, skipping", eventId);
+            return;
+        }
+        
+        logger.debug("Rebuild - Processing event {} of type {}", eventId, event.getEventType());
+        
+        // Process the event based on its type
+        if (event instanceof OrderCreatedEvent) {
+            handleOrderCreated((OrderCreatedEvent) event);
+        } else if (event instanceof OrderItemAddedEvent) {
+            handleOrderItemAdded((OrderItemAddedEvent) event);
+        } else if (event instanceof OrderItemRemovedEvent) {
+            handleOrderItemRemoved((OrderItemRemovedEvent) event);
+        } else if (event instanceof OrderSubmittedEvent) {
+            handleOrderSubmitted((OrderSubmittedEvent) event);
+        }
+        
+        // Mark event as processed
+        markEventAsProcessed(eventId);
     }
     
     /**
@@ -220,29 +258,41 @@ public class OrderProjection {
         // Clear processed events after the timestamp
         processedEventIds.entrySet().removeIf(entry -> entry.getValue().isAfter(timestamp));
         
-        // Load events after the timestamp
-        List<EventEntity> events = eventRepository.findByTimestampGreaterThanOrderByTimestampAsc(timestamp);
+        // Load events after the timestamp in batches
+        int pageSize = 100;
+        int pageNumber = 0;
+        Page<EventEntity> page;
         
-        logger.info("Replaying {} events for incremental projection rebuild", events.size());
-        
-        for (EventEntity entity : events) {
-            DomainEvent event = reconstructEvent(entity);
-            if (event != null) {
-                handleDomainEvent(event);
+        do {
+            page = eventRepository.findByTimestampGreaterThanOrderByTimestampAsc(
+                    timestamp, PageRequest.of(pageNumber, pageSize));
+            
+            for (EventEntity entity : page.getContent()) {
+                DomainEvent event = reconstructEvent(entity);
+                if (event != null) {
+                    handleDomainEventForRebuild(event);
+                }
             }
-        }
+            
+            pageNumber++;
+            
+        } while (page.hasNext());
         
         logger.info("Completed incremental projection rebuild");
     }
     
     /**
      * Reconstruct a DomainEvent from an EventEntity.
+     * Uses the persisted event_type for polymorphic deserialization.
      */
     private DomainEvent reconstructEvent(EventEntity entity) {
         try {
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
             mapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
-            return mapper.readValue(entity.getPayload(), DomainEvent.class);
+            // Use the persisted event_type for polymorphic deserialization
+            Class<? extends DomainEvent> eventClass = (Class<? extends DomainEvent>) 
+                    Class.forName(entity.getEventType());
+            return mapper.readValue(entity.getPayload(), eventClass);
         } catch (Exception e) {
             logger.error("Failed to reconstruct event {}", entity.getEventId(), e);
             return null;

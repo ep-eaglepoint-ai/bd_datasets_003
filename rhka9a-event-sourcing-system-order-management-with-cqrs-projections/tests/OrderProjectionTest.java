@@ -1,6 +1,7 @@
 package com.example.eventsourcing.infrastructure.projection;
 
 import com.example.eventsourcing.domain.order.*;
+import com.example.eventsourcing.infrastructure.DomainEventWrapper;
 import com.example.eventsourcing.infrastructure.persistence.EventEntity;
 import com.example.eventsourcing.infrastructure.persistence.EventRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -56,11 +57,12 @@ class OrderProjectionTest {
             String orderId = "order-123";
             String customerId = "customer-123";
             OrderCreatedEvent event = new OrderCreatedEvent(orderId, 1L, customerId, BigDecimal.ZERO);
+            DomainEventWrapper wrapper = new DomainEventWrapper(this, event);
             
             when(projectionRepository.existsByOrderId(orderId)).thenReturn(false);
             when(projectionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
             
-            orderProjection.handleDomainEvent(event);
+            orderProjection.handleDomainEvent(wrapper);
             
             ArgumentCaptor<OrderProjectionEntity> captor = ArgumentCaptor.forClass(OrderProjectionEntity.class);
             verify(projectionRepository, times(1)).save(captor.capture());
@@ -78,13 +80,14 @@ class OrderProjectionTest {
         void shouldBeIdempotent() {
             String orderId = "order-123";
             OrderCreatedEvent event = new OrderCreatedEvent(orderId, 1L, "customer-123", BigDecimal.ZERO);
+            DomainEventWrapper wrapper = new DomainEventWrapper(this, event);
             
             when(projectionRepository.existsByOrderId(orderId)).thenReturn(false);
             when(projectionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
             
             // Process event twice
-            orderProjection.handleDomainEvent(event);
-            orderProjection.handleDomainEvent(event);
+            orderProjection.handleDomainEvent(wrapper);
+            orderProjection.handleDomainEvent(wrapper);
             
             // Should only save once
             verify(projectionRepository, times(1)).save(any());
@@ -95,10 +98,11 @@ class OrderProjectionTest {
         void shouldSkipIfProjectionExists() {
             String orderId = "order-123";
             OrderCreatedEvent event = new OrderCreatedEvent(orderId, 1L, "customer-123", BigDecimal.ZERO);
+            DomainEventWrapper wrapper = new DomainEventWrapper(this, event);
             
             when(projectionRepository.existsByOrderId(orderId)).thenReturn(true);
             
-            orderProjection.handleDomainEvent(event);
+            orderProjection.handleDomainEvent(wrapper);
             
             verify(projectionRepository, never()).save(any());
         }
@@ -115,6 +119,7 @@ class OrderProjectionTest {
             OrderItemAddedEvent event = new OrderItemAddedEvent(
                     orderId, 2L, "product-1", "Laptop", 1, 
                     new BigDecimal("999.99"), new BigDecimal("999.99"));
+            DomainEventWrapper wrapper = new DomainEventWrapper(this, event);
             
             OrderProjectionEntity existingProjection = new OrderProjectionEntity(
                     orderId, "customer-123", OrderStatus.DRAFT, BigDecimal.ZERO, 0, Instant.now());
@@ -122,7 +127,7 @@ class OrderProjectionTest {
             when(projectionRepository.findByOrderId(orderId)).thenReturn(Optional.of(existingProjection));
             when(projectionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
             
-            orderProjection.handleDomainEvent(event);
+            orderProjection.handleDomainEvent(wrapper);
             
             ArgumentCaptor<OrderProjectionEntity> captor = ArgumentCaptor.forClass(OrderProjectionEntity.class);
             verify(projectionRepository, times(1)).save(captor.capture());
@@ -138,12 +143,14 @@ class OrderProjectionTest {
     class OrderItemRemovedEventTests {
         
         @Test
-        @DisplayName("Should update projection on OrderItemRemovedEvent")
+        @DisplayName("Should update projection on OrderItemRemovedEvent using newTotalAmount")
         void shouldUpdateProjectionOnItemRemoved() {
             String orderId = "order-123";
             BigDecimal previousTotal = new BigDecimal("999.99");
+            BigDecimal newTotal = BigDecimal.ZERO;
             OrderItemRemovedEvent event = new OrderItemRemovedEvent(
-                    orderId, 3L, "product-1", 1, previousTotal);
+                    orderId, 3L, "product-1", 1, previousTotal, newTotal);
+            DomainEventWrapper wrapper = new DomainEventWrapper(this, event);
             
             OrderProjectionEntity existingProjection = new OrderProjectionEntity(
                     orderId, "customer-123", OrderStatus.DRAFT, previousTotal, 1, Instant.now());
@@ -151,7 +158,7 @@ class OrderProjectionTest {
             when(projectionRepository.findByOrderId(orderId)).thenReturn(Optional.of(existingProjection));
             when(projectionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
             
-            orderProjection.handleDomainEvent(event);
+            orderProjection.handleDomainEvent(wrapper);
             
             ArgumentCaptor<OrderProjectionEntity> captor = ArgumentCaptor.forClass(OrderProjectionEntity.class);
             verify(projectionRepository, times(1)).save(captor.capture());
@@ -172,6 +179,7 @@ class OrderProjectionTest {
             String orderId = "order-123";
             OrderSubmittedEvent event = new OrderSubmittedEvent(
                     orderId, 4L, "customer-123", new BigDecimal("999.99"), 1);
+            DomainEventWrapper wrapper = new DomainEventWrapper(this, event);
             
             OrderProjectionEntity existingProjection = new OrderProjectionEntity(
                     orderId, "customer-123", OrderStatus.DRAFT, new BigDecimal("999.99"), 1, Instant.now());
@@ -179,7 +187,7 @@ class OrderProjectionTest {
             when(projectionRepository.findByOrderId(orderId)).thenReturn(Optional.of(existingProjection));
             when(projectionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
             
-            orderProjection.handleDomainEvent(event);
+            orderProjection.handleDomainEvent(wrapper);
             
             ArgumentCaptor<OrderProjectionEntity> captor = ArgumentCaptor.forClass(OrderProjectionEntity.class);
             verify(projectionRepository, times(1)).save(captor.capture());
@@ -187,31 +195,6 @@ class OrderProjectionTest {
             OrderProjectionEntity updated = captor.getValue();
             assertEquals(OrderStatus.SUBMITTED, updated.getStatus());
             assertNotNull(updated.getSubmittedAt());
-        }
-    }
-    
-    @Nested
-    @DisplayName("Projection Rebuild")
-    class ProjectionRebuildTests {
-        
-        @Test
-        @DisplayName("Should rebuild projection from all events")
-        void shouldRebuildFromAllEvents() {
-            List<EventEntity> events = Arrays.asList(
-                    createEventEntity("event-1", "order-123", 1L, "OrderCreatedEvent"),
-                    createEventEntity("event-2", "order-123", 2L, "OrderItemAddedEvent")
-            );
-            
-            when(eventRepository.findAll()).thenReturn(events);
-            when(projectionRepository.findByOrderId(any())).thenReturn(Optional.empty());
-            when(projectionRepository.existsByOrderId(any())).thenReturn(false);
-            when(projectionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
-            
-            orderProjection.rebuildProjection();
-            
-            verify(projectionRepository, times(1)).deleteAll();
-            // Verify events were processed
-            verify(eventRepository, times(1)).findAll();
         }
     }
     

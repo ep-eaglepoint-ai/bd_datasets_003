@@ -89,12 +89,16 @@ public class OrderAggregate extends Aggregate<DomainEvent> {
             return; // Item not found, nothing to remove
         }
         
+        BigDecimal itemTotal = item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity()));
+        BigDecimal newTotal = getTotalAmount().subtract(itemTotal);
+        
         OrderItemRemovedEvent event = new OrderItemRemovedEvent(
                 getAggregateId(),
                 getNextVersion(),
                 productId,
                 item.getQuantity(),
-                getTotalAmount()
+                getTotalAmount(),
+                newTotal
         );
         registerEvent(event);
     }

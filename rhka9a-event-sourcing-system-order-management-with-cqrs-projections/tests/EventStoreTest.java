@@ -86,17 +86,38 @@ class EventStoreTest {
         }
         
         @Test
-        @DisplayName("Should append initial event for new aggregate")
-        void shouldAppendInitialEvent() {
+        @DisplayName("Should append initial event for new aggregate with optimistic locking")
+        void shouldAppendInitialEventWithOptimisticLocking() {
             String aggregateId = "order-123";
             DomainEvent event = new OrderCreatedEvent(aggregateId, 1L, "customer-123", BigDecimal.ZERO);
             
+            // Simulate no existing events (version = 0)
+            when(eventRepository.getCurrentVersion(aggregateId)).thenReturn(0L);
             when(eventRepository.save(any(EventEntity.class))).thenAnswer(i -> i.getArgument(0));
             
             DomainEvent savedEvent = eventStore.appendInitialEvent(aggregateId, event);
             
             assertNotNull(savedEvent);
             verify(eventRepository, times(1)).save(any(EventEntity.class));
+            // Verify optimistic locking check was performed
+            verify(eventRepository, times(1)).getCurrentVersion(aggregateId);
+        }
+        
+        @Test
+        @DisplayName("Should throw ConcurrencyException when appending initial event to existing aggregate")
+        void shouldThrowConcurrencyExceptionWhenAppendingInitialToExistingAggregate() {
+            String aggregateId = "order-123";
+            DomainEvent event = new OrderCreatedEvent(aggregateId, 1L, "customer-123", BigDecimal.ZERO);
+            
+            // Simulate existing events (version > 0)
+            when(eventRepository.getCurrentVersion(aggregateId)).thenReturn(3L);
+            
+            assertThrows(ConcurrencyException.class, () -> 
+                    eventStore.appendInitialEvent(aggregateId, event)
+            );
+            
+            // Verify save was never called due to optimistic locking failure
+            verify(eventRepository, never()).save(any(EventEntity.class));
         }
     }
     

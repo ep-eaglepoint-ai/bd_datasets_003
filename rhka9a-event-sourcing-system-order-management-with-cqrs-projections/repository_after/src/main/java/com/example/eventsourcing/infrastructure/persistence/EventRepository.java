@@ -1,5 +1,7 @@
 package com.example.eventsourcing.infrastructure.persistence;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -46,6 +48,11 @@ public interface EventRepository extends JpaRepository<EventEntity, String> {
      * Find events after a timestamp for projection rebuilds.
      */
     List<EventEntity> findByTimestampGreaterThanOrderByTimestampAsc(Instant timestamp);
+    
+    /**
+     * Find events after a timestamp with pagination for projection rebuilds.
+     */
+    Page<EventEntity> findByTimestampGreaterThanOrderByTimestampAsc(Instant timestamp, Pageable pageable);
     
     /**
      * Find events within a timestamp range for projection rebuilds.

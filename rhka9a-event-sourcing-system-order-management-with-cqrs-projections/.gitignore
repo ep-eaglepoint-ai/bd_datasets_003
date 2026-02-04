@@ -3,4 +3,19 @@ reports/
 
 # OS
 .DS_Store
-evaluation/*.json
+Thumbs.db
+
+# Java
+wrapper/maven-wrapper.jar*.class
+
+# Maven
+target/
+.mvn/
+
+# Gradle
+.gradle/
+build/
+!gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+

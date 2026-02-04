@@ -127,7 +127,7 @@ public class AggregateRepository<T extends Aggregate<E>, E extends DomainEvent> 
         logger.info("Saved aggregate {} with {} events, new version {}",
                 aggregateId, savedEvents.size(), aggregate.getVersion());
         
-        // Check if we need to create a snapshot
+        // Check if we need to create a snapshot (async, in separate transaction)
         checkAndCreateSnapshot(aggregate);
         
         return aggregate;
@@ -142,7 +142,7 @@ public class AggregateRepository<T extends Aggregate<E>, E extends DomainEvent> 
         
         logger.debug("Saving new aggregate {}", aggregateId);
         
-        // Append the initial event
+        // Append the initial event (with optimistic locking check)
         eventStore.appendInitialEvent(aggregateId, initialEvent);
         
         // Apply the event to the aggregate
@@ -158,6 +158,7 @@ public class AggregateRepository<T extends Aggregate<E>, E extends DomainEvent> 
     
     /**
      * Check if a snapshot should be created and create it if needed.
+     * This method is called after save() to potentially trigger async snapshot creation.
      */
     private void checkAndCreateSnapshot(T aggregate) {
         int snapshotThreshold = properties.getSnapshot().getThreshold();
@@ -165,12 +166,30 @@ public class AggregateRepository<T extends Aggregate<E>, E extends DomainEvent> 
         
         // Check if we've reached the snapshot threshold since last snapshot
         if (aggregate.getVersion() % snapshotThreshold == 0) {
+            // Create snapshot in a separate transaction (async)
+            createSnapshotAsync(aggregate);
+        }
+    }
+    
+    /**
+     * Create a snapshot asynchronously in a separate transaction.
+     * This ensures snapshot creation doesn't block command processing.
+     */
+    public void createSnapshotAsync(T aggregate) {
+        String aggregateId = aggregate.getAggregateId();
+        
+        logger.debug("Async snapshot creation for aggregate {} at version {}", aggregateId, aggregate.getVersion());
+        
+        try {
             createSnapshot(aggregate);
+        } catch (Exception e) {
+            logger.error("Failed to create snapshot for aggregate {}: {}", aggregateId, e.getMessage(), e);
         }
     }
     
     /**
      * Create a snapshot of the aggregate state.
+     * This method runs in a separate transaction to avoid blocking command processing.
      */
     @Transactional
     public void createSnapshot(T aggregate) {

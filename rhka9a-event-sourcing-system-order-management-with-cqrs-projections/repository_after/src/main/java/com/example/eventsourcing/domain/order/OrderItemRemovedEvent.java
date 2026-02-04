@@ -16,6 +16,7 @@ public class OrderItemRemovedEvent extends DomainEvent {
     private final String productId;
     private final int previousQuantity;
     private final BigDecimal previousTotalAmount;
+    private final BigDecimal newTotalAmount;
     
     @JsonCreator
     public OrderItemRemovedEvent(
@@ -25,19 +26,23 @@ public class OrderItemRemovedEvent extends DomainEvent {
             @JsonProperty("timestamp") Instant timestamp,
             @JsonProperty("productId") String productId,
             @JsonProperty("previousQuantity") int previousQuantity,
-            @JsonProperty("previousTotalAmount") BigDecimal previousTotalAmount) {
+            @JsonProperty("previousTotalAmount") BigDecimal previousTotalAmount,
+            @JsonProperty("newTotalAmount") BigDecimal newTotalAmount) {
         super(eventId, aggregateId, version, timestamp);
         this.productId = Objects.requireNonNull(productId, "Product ID cannot be null");
         this.previousQuantity = previousQuantity;
         this.previousTotalAmount = previousTotalAmount != null ? previousTotalAmount : BigDecimal.ZERO;
+        this.newTotalAmount = newTotalAmount != null ? newTotalAmount : BigDecimal.ZERO;
     }
     
     public OrderItemRemovedEvent(String aggregateId, Long version, String productId,
-                                 int previousQuantity, BigDecimal previousTotalAmount) {
+                                 int previousQuantity, BigDecimal previousTotalAmount,
+                                 BigDecimal newTotalAmount) {
         super(aggregateId, version);
         this.productId = Objects.requireNonNull(productId, "Product ID cannot be null");
         this.previousQuantity = previousQuantity;
         this.previousTotalAmount = previousTotalAmount != null ? previousTotalAmount : BigDecimal.ZERO;
+        this.newTotalAmount = newTotalAmount != null ? newTotalAmount : BigDecimal.ZERO;
     }
     
     public String getProductId() {
@@ -52,6 +57,10 @@ public class OrderItemRemovedEvent extends DomainEvent {
         return previousTotalAmount;
     }
     
+    public BigDecimal getNewTotalAmount() {
+        return newTotalAmount;
+    }
+    
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -60,12 +69,13 @@ public class OrderItemRemovedEvent extends DomainEvent {
         OrderItemRemovedEvent that = (OrderItemRemovedEvent) o;
         return previousQuantity == that.previousQuantity &&
                Objects.equals(productId, that.productId) &&
-               Objects.equals(previousTotalAmount, that.previousTotalAmount);
+               Objects.equals(previousTotalAmount, that.previousTotalAmount) &&
+               Objects.equals(newTotalAmount, that.newTotalAmount);
     }
     
     @Override
     public int hashCode() {
-        return Objects.hash(super.hashCode(), productId, previousQuantity, previousTotalAmount);
+        return Objects.hash(super.hashCode(), productId, previousQuantity, previousTotalAmount, newTotalAmount);
     }
     
     @Override
@@ -74,6 +84,7 @@ public class OrderItemRemovedEvent extends DomainEvent {
                "productId='" + productId + '\'' +
                ", previousQuantity=" + previousQuantity +
                ", previousTotalAmount=" + previousTotalAmount +
+               ", newTotalAmount=" + newTotalAmount +
                "} " + super.toString();
     }
 }

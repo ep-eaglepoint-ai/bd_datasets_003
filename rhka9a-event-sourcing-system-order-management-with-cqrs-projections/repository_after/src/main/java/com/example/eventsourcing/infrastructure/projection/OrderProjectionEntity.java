@@ -1,6 +1,7 @@
 package com.example.eventsourcing.infrastructure.projection;
 
 import com.example.eventsourcing.domain.order.OrderStatus;
+import jakarta.persistence.*;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -8,16 +9,35 @@ import java.time.Instant;
 /**
  * JPA Entity representing an order projection (denormalized read model).
  */
+@Entity
+@Table(name = "order_projections")
 public class OrderProjectionEntity {
     
+    @Id
+    @Column(name = "order_id", length = 36)
     private String orderId;
+    
+    @Column(name = "customer_id", nullable = false, length = 36)
     private String customerId;
+    
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 20)
     private OrderStatus status;
+    
+    @Column(name = "total_amount", nullable = false, precision = 19, scale = 4)
     private BigDecimal totalAmount;
+    
+    @Column(name = "item_count", nullable = false)
     private int itemCount;
+    
+    @Column(name = "created_at", nullable = false)
     private Instant createdAt;
+    
+    @Column(name = "submitted_at")
     private Instant submittedAt;
-    private Instant lastProcessedEventId;
+    
+    @Column(name = "last_processed_event_id", length = 36)
+    private String lastProcessedEventId;
     
     public OrderProjectionEntity() {
     }
@@ -88,11 +108,11 @@ public class OrderProjectionEntity {
         this.submittedAt = submittedAt;
     }
     
-    public Instant getLastProcessedEventId() {
+    public String getLastProcessedEventId() {
         return lastProcessedEventId;
     }
     
-    public void setLastProcessedEventId(Instant lastProcessedEventId) {
+    public void setLastProcessedEventId(String lastProcessedEventId) {
         this.lastProcessedEventId = lastProcessedEventId;
     }
 }

@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface OrderProjectionRepository extends JpaRepository<OrderProjectionEntity, Long> {
+public interface OrderProjectionRepository extends JpaRepository<OrderProjectionEntity, String> {
     boolean existsByOrderId(String orderId);
     Optional<OrderProjectionEntity> findByOrderId(String orderId);
     List<OrderProjectionEntity> findByCustomerId(String customerId);
