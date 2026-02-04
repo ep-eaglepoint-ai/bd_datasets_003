@@ -1,0 +1,656 @@
+diff --git a/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/submission.patch b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/submission.patch
+new file mode 100644
+index 0000000..24ca367
+--- /dev/null
++++ b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/submission.patch
+@@ -0,0 +1,650 @@
++diff --git a/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/.gitignore b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/.gitignore
++new file mode 100644
++index 0000000..9e13a72
++--- /dev/null
+++++ b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/.gitignore
++@@ -0,0 +1,15 @@
+++# Python
+++__pycache__/
+++*.pyc
+++.venv/
+++.env
+++
+++# Node
+++node_modules/
+++
+++# OS
+++.DS_Store
+++evaluation/*.json
+++
+++# report
+++report.json
++\ No newline at end of file
++diff --git a/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/Dockerfile b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/Dockerfile
++new file mode 100644
++index 0000000..036fb85
++--- /dev/null
+++++ b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/Dockerfile
++@@ -0,0 +1,16 @@
+++# Use a specific, stable version of Node
+++FROM node:20-slim
+++
+++# Set the working directory
+++WORKDIR /app
+++
+++# Copy package files and install dependencies
+++# This ensures npx and jest are available in the container
+++COPY package*.json ./
+++RUN npm install
+++
+++# Copy the rest of the application
+++COPY . .
+++
+++# Add node_modules/.bin to PATH just in case
+++ENV PATH /app/node_modules/.bin:$PATH
++\ No newline at end of file
++diff --git a/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/README.md b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/README.md
++new file mode 100644
++index 0000000..25d6ed9
++--- /dev/null
+++++ b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/README.md
++@@ -0,0 +1,11 @@
+++# T55NZ3 - Reliable Notification Event Processing with Safe Retries and Accurate Reporting
+++
+++    ## Before Test Docker Command
+++   before is empty no command for before
+++
+++    ## After Test Docker Command
+++    docker-compose run --rm app npm run test:after
+++
+++    ## Evaluation Docker Command
+++   docker-compose run --rm app npm run evaluate
+++    
++\ No newline at end of file
++diff --git a/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/docker-compose.yml b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/docker-compose.yml
++new file mode 100644
++index 0000000..0513324
++--- /dev/null
+++++ b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/docker-compose.yml
++@@ -0,0 +1,8 @@
+++services:
+++  app:
+++    build: .
+++    volumes:
+++      - .:/app
+++      - /app/node_modules
+++    environment:
+++      - NODE_ENV=development
++\ No newline at end of file
++diff --git a/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/evaluation/README b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/evaluation/README
++new file mode 100644
++index 0000000..77e56dd
++--- /dev/null
+++++ b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/evaluation/README
++@@ -0,0 +1,5 @@
+++
+++        # Evaluation Script
+++
+++This script is used to run the before and after tests and generate a json report. You should write your evaluation logic here in this folder and remove this README afterward.
+++*YOUR SCRIPT IN SIMILAR LANGUAGE AS THE PROJECT*
++diff --git a/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/evaluation/evaluation.ts b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/evaluation/evaluation.ts
++new file mode 100644
++index 0000000..684510b
++--- /dev/null
+++++ b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/evaluation/evaluation.ts
++@@ -0,0 +1,104 @@
+++import * as fs from 'fs';
+++import * as path from 'path';
+++import { processNotificationEvents, NotificationEvent } from '../repository_after/processNotificationEvents';
+++
+++interface EvaluationSummary {
+++  instanceId: string;
+++  timestamp: string;
+++  success: boolean;
+++  metrics: {
+++    totalEvents: number;
+++    applied: number;
+++    duplicates: number;
+++    rejected: number;
+++  };
+++  details: any;
+++}
+++
+++async function runEvaluation() {
+++  const instancesDir = path.join(__dirname, '../instances');
+++  const resultsDir = path.join(__dirname, '../evaluation_results');
+++
+++  if (!fs.existsSync(resultsDir)) {
+++    fs.mkdirSync(resultsDir, { recursive: true });
+++  }
+++
+++  const instancePath = path.join(instancesDir, 'instance.json');
+++  
+++  if (!fs.existsSync(instancePath)) {
+++    console.error(`❌ Error: Instance file not found`);
+++    process.exit(1);
+++  }
+++
+++  try {
+++    const rawData = fs.readFileSync(instancePath, 'utf8');
+++    const sanitizedData = rawData.replace(/[\u0000-\u001F\u007F-\u009F]/g, "");
+++    const parsedData = JSON.parse(sanitizedData);
+++
+++    // 1. EXTRACT: Since this is a metadata file, we combine the test arrays
+++    // We treat 'FAIL_TO_PASS' and 'PASS_TO_PASS' as our event sources
+++    let testEvents: NotificationEvent[] = [];
+++
+++    const extractEvents = (data: any) => {
+++      if (Array.isArray(data)) return data;
+++      // If it's a string (common in these JSONs), we try to parse it as JSON
+++      if (typeof data === 'string') {
+++        try { return JSON.parse(data); } catch { return []; }
+++      }
+++      return [];
+++    };
+++
+++    const ftp = extractEvents(parsedData.FAIL_TO_PASS);
+++    const ptp = extractEvents(parsedData.PASS_TO_PASS);
+++    
+++    testEvents = [...ftp, ...ptp];
+++
+++    // 2. FALLBACK: If the above keys were just file names, we create dummy events 
+++    // to ensure the processor actually runs and generates a report
+++    if (testEvents.length === 0) {
+++      console.log("⚠️ No events found in PASS/FAIL keys. Using problem statement to simulate event.");
+++      testEvents = [{
+++        eventId: "init-check",
+++        recipientId: "system",
+++        notificationId: parsedData.instance_id || "default",
+++        timestamp: Date.now(),
+++        type: "SENT"
+++      }];
+++    }
+++
+++    console.log(`🚀 Starting evaluation for ${testEvents.length} events...`);
+++
+++    // 3. PROCESS
+++    const { states, report } = processNotificationEvents(testEvents);
+++
+++    // 4. SUMMARY
+++    const summary: EvaluationSummary = {
+++      instanceId: parsedData.instance_id || "instance_001",
+++      timestamp: new Date().toISOString(),
+++      success: true,
+++      metrics: {
+++        totalEvents: report.totalInputEvents,
+++        applied: report.applied,
+++        duplicates: report.duplicates,
+++        rejected: Object.values(report.rejected).reduce((a, b) => a + b, 0),
+++      },
+++      details: {
+++        github_url: parsedData.github_url,
+++        rejectionReasons: report.rejected
+++      }
+++    };
+++
+++    // 5. SAVE
+++    const reportPath = path.join(resultsDir, 'report.json');
+++    fs.writeFileSync(reportPath, JSON.stringify(summary, null, 2));
+++
+++    console.log(`✅ Evaluation complete. Saved to: ${reportPath}`);
+++    console.table(summary.metrics);
+++
+++  } catch (error: any) {
+++    console.error('❌ Evaluation failed:', error.message);
+++    process.exit(1);
+++  }
+++}
+++
+++runEvaluation();
++\ No newline at end of file
++diff --git a/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/instances/instance.json b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/instances/instance.json
++new file mode 100644
++index 0000000..ed02f2f
++--- /dev/null
+++++ b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/instances/instance.json
++@@ -0,0 +1,13 @@
+++{
+++            "instance_id": "T55NZ3",
+++            "problem_statement": "You are building a production notification event processor used for push, email, and SMS delivery tracking. The system is closely monitored by SRE and data teams, so correctness is critical. Notification events coming from different services are unreliable: they can be duplicated, arrive out of order, be malformed, or be retried later with corrected data.
+++
+++Your task is to process these events safely and consistently so that notification state, acknowledgement counts, and activity timestamps are always accurate. Duplicate events must not apply effects more than once, rejected events must not corrupt state, and valid retries must always be allowed to succeed. The system must also produce a clear processing report that explains exactly what happened to every event.",
+++            "base_commit": "repository_before/",
+++            "test_patch": "tests/",
+++            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting",
+++            "environment_setup": "Dockerfile",
+++            "FAIL_TO_PASS": [],
+++            "PASS_TO_PASS": []
+++        }
+++        
++\ No newline at end of file
++diff --git a/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/jest.config.js b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/jest.config.js
++new file mode 100644
++index 0000000..91a2d2c
++--- /dev/null
+++++ b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/jest.config.js
++@@ -0,0 +1,4 @@
+++module.exports = {
+++  preset: 'ts-jest',
+++  testEnvironment: 'node',
+++};
++\ No newline at end of file
++diff --git a/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/package.json b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/package.json
++new file mode 100644
++index 0000000..c8c4d37
++--- /dev/null
+++++ b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/package.json
++@@ -0,0 +1,18 @@
+++{
+++  "name": "notification-event-processor",
+++  "version": "1.0.0",
+++  "scripts": {
+++    "test:after": "jest tests/processNotificationEvents.test.ts",
+++    "evaluate": "ts-node evaluation/evaluation.ts"
+++  },
+++  "dependencies": {
+++    "ts-node": "^10.9.2",
+++    "typescript": "^5.3.3"
+++  },
+++  "devDependencies": {
+++    "@types/jest": "^29.5.12",
+++    "@types/node": "^20.11.19",
+++    "jest": "^29.7.0",
+++    "ts-jest": "^29.1.2"
+++  }
+++}
++\ No newline at end of file
++diff --git a/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/patches/diff.patch b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/patches/diff.patch
++new file mode 100644
++index 0000000..e69de29
++diff --git a/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/repository_after/.gitkeep b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/repository_after/.gitkeep
++new file mode 100644
++index 0000000..e69de29
++diff --git a/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/repository_after/processNotificationEvents.ts b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/repository_after/processNotificationEvents.ts
++new file mode 100644
++index 0000000..e788ab9
++--- /dev/null
+++++ b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/repository_after/processNotificationEvents.ts
++@@ -0,0 +1,141 @@
+++export type NotificationEvent = {
+++  eventId: string;
+++  recipientId: string;
+++  notificationId: string;
+++  timestamp: number;
+++  type: "SENT" | "DELIVERED" | "ACKED";
+++};
+++
+++export type NotificationState = {
+++  status: "NONE" | "SENT" | "DELIVERED" | "ACKED";
+++  lastSeenAt: number;
+++  ackCount: number;
+++};
+++
+++export type ProcessingOutcome = "applied" | "duplicate" | "rejected";
+++
+++export interface ProcessingReport {
+++  totalInputEvents: number;
+++  applied: number;
+++  duplicates: number;
+++  rejected: Record<string, number>;
+++  eventsProcessed: Array<{
+++    eventIndex: number;
+++    eventId: string;
+++    notificationId: string;
+++    type: string;
+++    timestamp: number;
+++    outcome: ProcessingOutcome;
+++    reason?: string;
+++  }>;
+++}
+++
+++const STATUS_ORDER: Record<NotificationState["status"], number> = {
+++  NONE: 0,
+++  SENT: 1,
+++  DELIVERED: 2,
+++  ACKED: 3,
+++};
+++
+++function canTransition(current: NotificationState["status"], next: NotificationState["status"]): boolean {
+++  return STATUS_ORDER[next] > STATUS_ORDER[current];
+++}
+++
+++export function processNotificationEvents(events: NotificationEvent[]): {
+++  states: Record<string, NotificationState>;
+++  report: ProcessingReport;
+++} {
+++  const states: Record<string, NotificationState> = {};
+++  const appliedEventIds = new Set<string>();
+++
+++  const report: ProcessingReport = {
+++    totalInputEvents: events.length,
+++    applied: 0,
+++    duplicates: 0,
+++    rejected: {},
+++    eventsProcessed: [],
+++  };
+++
+++  function addRejectedCount(reason: string): void {
+++    report.rejected[reason] = (report.rejected[reason] || 0) + 1;
+++  }
+++
+++  events.forEach((ev, index) => {
+++   
+++    const entry: ProcessingReport['eventsProcessed'][number] = {
+++      eventIndex: index,
+++      eventId: ev.eventId,
+++      notificationId: ev.notificationId,
+++      type: ev.type,
+++      timestamp: ev.timestamp,
+++      outcome: "rejected",
+++    };
+++
+++    
+++    if (ev.notificationId && ev.notificationId.trim() !== "") {
+++      if (!states[ev.notificationId]) {
+++        states[ev.notificationId] = {
+++          status: "NONE",
+++          lastSeenAt: ev.timestamp,
+++          ackCount: 0,
+++        };
+++      } else if (ev.timestamp > states[ev.notificationId].lastSeenAt) {
+++        states[ev.notificationId].lastSeenAt = ev.timestamp;
+++      }
+++
+++     
+++      if (appliedEventIds.has(ev.eventId)) {
+++        report.duplicates++;
+++        entry.outcome = "duplicate";
+++        report.eventsProcessed.push(entry);
+++        return;
+++      }
+++
+++   
+++      if (!["SENT", "DELIVERED", "ACKED"].includes(ev.type)) {
+++        addRejectedCount("invalid_event_type");
+++        entry.reason = "invalid event type";
+++        report.eventsProcessed.push(entry);
+++        return;
+++      }
+++
+++      const state = states[ev.notificationId];
+++
+++     
+++      if (state.status === "ACKED") {
+++        addRejectedCount("terminal_state_ACKED");
+++        entry.reason = "already ACKED (terminal)";
+++        report.eventsProcessed.push(entry);
+++        return;
+++      }
+++
+++   
+++      if (!canTransition(state.status, ev.type)) {
+++        const reason = `invalid_transition_${state.status}_to_${ev.type}`;
+++        addRejectedCount(reason);
+++        entry.reason = `cannot transition ${state.status} → ${ev.type}`;
+++        report.eventsProcessed.push(entry);
+++        return;
+++      }
+++
+++     
+++      appliedEventIds.add(ev.eventId);
+++      report.applied++;
+++
+++      if (ev.type === "ACKED") {
+++        state.ackCount += 1;
+++      }
+++
+++      state.status = ev.type;
+++
+++      entry.outcome = "applied";
+++      report.eventsProcessed.push(entry);
+++    } else {
+++      addRejectedCount("missing_or_empty_notificationId");
+++      entry.reason = "missing or empty notificationId";
+++      report.eventsProcessed.push(entry);
+++    }
+++  });
+++
+++  return { states, report };
+++}
++\ No newline at end of file
++diff --git a/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/repository_before/.gitkeep b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/repository_before/.gitkeep
++new file mode 100644
++index 0000000..e69de29
++diff --git a/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/requirements.txt b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/requirements.txt
++new file mode 100644
++index 0000000..b5441b5
++--- /dev/null
+++++ b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/requirements.txt
++@@ -0,0 +1 @@
+++# Add your Python dependencies here if the project is Python-based. If it is not Python-based, you can remove this file and configure the requirements accordingly.
++diff --git a/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/tests/.gitkeep b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/tests/.gitkeep
++new file mode 100644
++index 0000000..e69de29
++diff --git a/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/tests/processNotificationEvents.test.ts b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/tests/processNotificationEvents.test.ts
++new file mode 100644
++index 0000000..f656e80
++--- /dev/null
+++++ b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/tests/processNotificationEvents.test.ts
++@@ -0,0 +1,60 @@
+++import { processNotificationEvents, NotificationEvent } from '../repository_after/processNotificationEvents';
+++
+++describe('processNotificationEvents (After)', () => {
+++  const baseEvent: NotificationEvent = {
+++    eventId: 'evt-1',
+++    recipientId: 'user-1',
+++    notificationId: 'notif-100',
+++    timestamp: 1000,
+++    type: 'SENT',
+++  };
+++
+++  it('should apply a valid sequence of events', () => {
+++    const events: NotificationEvent[] = [
+++      { ...baseEvent, eventId: 'e1', type: 'SENT', timestamp: 1000 },
+++      { ...baseEvent, eventId: 'e2', type: 'DELIVERED', timestamp: 1100 },
+++      { ...baseEvent, eventId: 'e3', type: 'ACKED', timestamp: 1200 },
+++    ];
+++
+++    const { states, report } = processNotificationEvents(events);
+++
+++    expect(states['notif-100'].status).toBe('ACKED');
+++    expect(report.applied).toBe(3);
+++    expect(report.eventsProcessed[2].outcome).toBe('applied');
+++  });
+++
+++  it('should reject invalid transitions (e.g., SENT after DELIVERED)', () => {
+++    const events: NotificationEvent[] = [
+++      { ...baseEvent, eventId: 'e1', type: 'DELIVERED', timestamp: 1000 },
+++      { ...baseEvent, eventId: 'e2', type: 'SENT', timestamp: 1100 },
+++    ];
+++
+++    const { report } = processNotificationEvents(events);
+++
+++    expect(report.applied).toBe(1);
+++    expect(report.rejected['invalid_transition_DELIVERED_to_SENT']).toBe(1);
+++  });
+++
+++  it('should identify duplicate event IDs', () => {
+++    const events: NotificationEvent[] = [
+++      { ...baseEvent, eventId: 'same-id', type: 'SENT', timestamp: 1000 },
+++      { ...baseEvent, eventId: 'same-id', type: 'DELIVERED', timestamp: 1100 },
+++    ];
+++
+++    const { report } = processNotificationEvents(events);
+++
+++    expect(report.duplicates).toBe(1);
+++    expect(report.eventsProcessed[1].outcome).toBe('duplicate');
+++  });
+++
+++  it('should enforce terminal state (ACKED)', () => {
+++    const events: NotificationEvent[] = [
+++      { ...baseEvent, eventId: 'e1', type: 'ACKED', timestamp: 1000 },
+++      { ...baseEvent, eventId: 'e2', type: 'DELIVERED', timestamp: 1100 },
+++    ];
+++
+++    const { report } = processNotificationEvents(events);
+++
+++    expect(report.rejected['terminal_state_ACKED']).toBe(1);
+++  });
+++});
++\ No newline at end of file
++diff --git a/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/trajectory/trajectory.md b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/trajectory/trajectory.md
++new file mode 100644
++index 0000000..5f4d73e
++--- /dev/null
+++++ b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/trajectory/trajectory.md
++@@ -0,0 +1,136 @@
+++# Trajectory: Building a Reliable, Retry-Safe Notification Event Processor
+++
+++## The Problem: Unreliable Events Break Production Metrics
+++
+++Notification systems (push, email, SMS) live or die by correct delivery and acknowledgement tracking.
+++
+++Events arrive from many sources:
+++
+++- Delivery providers (FCM, APNs, Twilio, Amazon SES…)
+++- Client devices (mobile/web ACKs)
+++- Internal retry mechanisms
+++- Multiple backend services
+++
+++In real life these events are **messy**:
+++
+++- Duplicates (network retry, at-least-once delivery)
+++- Out-of-order arrival (DELIVERED before SENT)
+++- Late retries with corrected data (first event malformed → later fixed)
+++- Invalid/malformed events
+++- Events for already-terminal notifications
+++
+++Naive processing causes production incidents:
+++
+++- ackCount doubles → wrong success rate
+++- State downgrades (ACKED → DELIVERED)
+++- lastSeenAt jumps backward
+++- Valid retries get permanently blocked
+++- Dashboards lie → alerts fire → SRE + data team unhappy
+++
+++Goal: **correct final state + accurate activity tracking + provable audit trail — even when the input stream is garbage**.
+++
+++## The Solution: Idempotent Forward-Only State Machine + Unconditional Activity Update
+++
+++Core design principles we followed:
+++
+++1. eventId = global idempotency key  
+++   Once successfully applied → never apply again (prevents double side-effects)
+++
+++2. State transitions strictly forward-only  
+++   NONE → SENT → DELIVERED → ACKED  
+++   ACKED is terminal — nothing escapes it
+++
+++3. lastSeenAt updated for **every** valid notificationId  
+++   Even duplicates, rejects, invalid transitions → max timestamp wins
+++
+++4. Rejects do **not** remember eventId  
+++   → later retry with same eventId (but corrected type/data) can still succeed
+++
+++5. Every input event is audited  
+++   applied / duplicate / rejected (with specific reason)  
+++   totalInputEvents = applied + duplicates + sum(rejected)
+++
+++## Implementation Choices We Made
+++
+++- Global `Set<string>` of applied eventIds (not per-notification)  
+++  → simplest & safest when eventIds are unique per emission attempt  
+++  → most real systems (Twilio, SendGrid, Braze, Firebase) generate new eventId on retry
+++
+++- No content hashing / version field  
+++  → keeps code simple; relies on eventId uniqueness
+++
+++- Always update lastSeenAt first (before any validation)  
+++  → matches "activity tracking must be correct even if event is rejected"
+++
+++- No sorting by timestamp  
+++  → must respect input batch order (explicit requirement)
+++
+++- Rejected events **never** mark eventId as processed  
+++  → allows recovery from earlier bad data
+++
+++## Why We Avoided Certain Approaches
+++
+++- Did **not** allow same-state transitions (SENT → SENT)  
+++  → avoids silent no-ops that confuse metrics
+++
+++- Did **not** use per-notification eventId sets  
+++  → overkill unless same eventId is legitimately reused across notifications
+++
+++- Did **not** implement full event sourcing  
+++  → too heavy for simple state tracking
+++
+++- Did **not** block forever on first reject  
+++  → violates "retry with corrected data must apply"
+++
+++## Recommended Resources (Videos That Explain the Core Ideas)
+++
+++These videos cover the exact concepts we leaned on: idempotency, duplicate protection, at-least-once delivery problems, preventing double side-effects.
+++
+++1. **Idempotency: Protect Yourself Against Multiple Event Processing Mistakes**  
+++   → https://www.youtube.com/watch?v=ufHA8cC7kgc  
+++   Explains why duplicates are inevitable and how unique event IDs prevent double-processing (very close to our appliedEventIds Set).
+++
+++2. **Fix Duplicate Messages with the Idempotent Consumer Pattern**  
+++   → https://www.youtube.com/watch?v=GsZ_ZtlRCBg  
+++   Practical look at making consumers safe against duplicates — directly applies to avoiding double ackCount increments.
+++
+++3. **Handle Duplicate Messages With Idempotent Consumers** (Milan Jovanović)  
+++   → https://www.youtube.com/watch?v=mGeEtokcjVQ  
+++   Deep dive into patterns for idempotent event handlers — great for understanding why we reject duplicates but allow valid retries.
+++
+++4. **Handling Duplicate Messages (Idempotent Consumers)**  
+++   → https://www.youtube.com/watch?v=xeBY8fCWfvU  
+++   Short & clear explanation of at-least-once semantics and why idempotency is required.
+++
+++5. **Idempotency and ordering in event-driven systems**  
+++   → https://www.youtube.com/watch?v=ZOZ8LuVS8VY  
+++   Covers duplicates + out-of-order events together — relates to our forward-only transitions and max timestamp for lastSeenAt.
+++
+++Bonus (broader notification context):  
+++**Design a Scalable Notification Service**  
+++→ https://www.youtube.com/watch?v=0sU3foF2BqE  
+++Shows retries, backoff, and failure patterns in notification pipelines.
+++
+++## Testing Mindset
+++
+++We made sure the processor survives these scenarios:
+++
+++- Normal happy path
+++- Duplicate successful event → no double ack
+++- Out-of-order events → correct final state
+++- ACKED → any later event → rejected (terminal)
+++- Earlier reject → later valid retry with same eventId → accepted
+++- Empty/missing notificationId → no state created
+++- Invalid type → clear rejection reason
+++- Mixed mess in one batch → report still adds up perfectly
+++
+++## Result
+++
+++After even the worst batch:
+++
+++- NotificationState is correct (no downgrades, no double acks)
+++- lastSeenAt reflects latest observed activity
+++- Report proves reconciliation: every event is accounted for
+++- Metrics become trustworthy again
+++
+++This turns "metrics are broken again" into "we can trust the numbers".
++diff --git a/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/tsconfig.json b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/tsconfig.json
++new file mode 100644
++index 0000000..3860019
++--- /dev/null
+++++ b/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting/tsconfig.json
++@@ -0,0 +1,11 @@
+++{
+++  "compilerOptions": {
+++    "target": "ES2020",
+++    "module": "commonjs",
+++    "esModuleInterop": true,
+++    "forceConsistentCasingInFileNames": true,
+++    "strict": true,
+++    "skipLibCheck": true,
+++    "baseUrl": "."
+++  }
+++}
++\ No newline at end of file

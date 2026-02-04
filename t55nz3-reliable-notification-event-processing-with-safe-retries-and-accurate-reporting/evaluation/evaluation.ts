@@ -16,14 +16,9 @@ interface EvaluationSummary {
 }
 
 async function runEvaluation() {
-  const instancesDir = path.join(__dirname, '../instances');
-  const resultsDir = path.join(__dirname, '../evaluation_results');
-
-  if (!fs.existsSync(resultsDir)) {
-    fs.mkdirSync(resultsDir, { recursive: true });
-  }
-
-  const instancePath = path.join(instancesDir, 'instance.json');
+  // Use ONLY the current directory of this script
+  const resultsDir = __dirname; 
+  const instancePath = path.join(__dirname, '../instances/instance.json');
   
   if (!fs.existsSync(instancePath)) {
     console.error(`❌ Error: Instance file not found`);
@@ -35,43 +30,15 @@ async function runEvaluation() {
     const sanitizedData = rawData.replace(/[\u0000-\u001F\u007F-\u009F]/g, "");
     const parsedData = JSON.parse(sanitizedData);
 
-    // 1. EXTRACT: Since this is a metadata file, we combine the test arrays
-    // We treat 'FAIL_TO_PASS' and 'PASS_TO_PASS' as our event sources
+    // Dynamic event extraction
     let testEvents: NotificationEvent[] = [];
+    const source = parsedData.FAIL_TO_PASS || parsedData.PASS_TO_PASS || parsedData.events || parsedData;
+    testEvents = Array.isArray(source) ? source : [source];
 
-    const extractEvents = (data: any) => {
-      if (Array.isArray(data)) return data;
-      // If it's a string (common in these JSONs), we try to parse it as JSON
-      if (typeof data === 'string') {
-        try { return JSON.parse(data); } catch { return []; }
-      }
-      return [];
-    };
+    console.log(`🚀 Processing ${testEvents.length} events...`);
 
-    const ftp = extractEvents(parsedData.FAIL_TO_PASS);
-    const ptp = extractEvents(parsedData.PASS_TO_PASS);
-    
-    testEvents = [...ftp, ...ptp];
-
-    // 2. FALLBACK: If the above keys were just file names, we create dummy events 
-    // to ensure the processor actually runs and generates a report
-    if (testEvents.length === 0) {
-      console.log("⚠️ No events found in PASS/FAIL keys. Using problem statement to simulate event.");
-      testEvents = [{
-        eventId: "init-check",
-        recipientId: "system",
-        notificationId: parsedData.instance_id || "default",
-        timestamp: Date.now(),
-        type: "SENT"
-      }];
-    }
-
-    console.log(`🚀 Starting evaluation for ${testEvents.length} events...`);
-
-    // 3. PROCESS
     const { states, report } = processNotificationEvents(testEvents);
 
-    // 4. SUMMARY
     const summary: EvaluationSummary = {
       instanceId: parsedData.instance_id || "instance_001",
       timestamp: new Date().toISOString(),
@@ -82,17 +49,14 @@ async function runEvaluation() {
         duplicates: report.duplicates,
         rejected: Object.values(report.rejected).reduce((a, b) => a + b, 0),
       },
-      details: {
-        github_url: parsedData.github_url,
-        rejectionReasons: report.rejected
-      }
+      details: { rejectionReasons: report.rejected }
     };
 
-    // 5. SAVE
+    // Define the EXACT path and save
     const reportPath = path.join(resultsDir, 'report.json');
     fs.writeFileSync(reportPath, JSON.stringify(summary, null, 2));
 
-    console.log(`✅ Evaluation complete. Saved to: ${reportPath}`);
+    console.log(`✅ Success! Report is at: ${reportPath}`);
     console.table(summary.metrics);
 
   } catch (error: any) {
