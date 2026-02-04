@@ -1,0 +1,11 @@
+{
+            "instance_id": "R1MH7W",
+            "problem_statement": "In microservices platforms, synchronous job execution can lead to timeouts, blocked requests, and lost background work. The objective of this project is to design and implement a Go-based background job processing system that queues jobs, distributes them to worker pools, handles retries with exponential backoff, and moves unrecoverable jobs to a dead letter queue. This system must ensure asynchronous job execution, reliable failure handling, and avoid job loss, acting as a backbone for processing background workloads across various services.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/r1mh7w-job-queue-worker-system",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
