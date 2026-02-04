@@ -1,0 +1,11 @@
+{
+            "instance_id": "3JU0GK",
+            "problem_statement": "In web applications, the database is the source of truth. A common failure mode in e-commerce logic is fetching an object (stock = item.quantity), modifying it in Python (stock -= 1), and saving it (item.save()). Between the fetch and the save, another request can modify the underlying row. In a concurrency test with 50 threads and 1 item, a naive script will sell 50 items. The solution requires telling the Database to lock the row for the duration of the transaction using select_for_update(), preventing other transactions from reading the stale stock value until the first transaction commits. Additionally, the update to the User's Wallet and the Item's Stock must happen inside a single atomic block; if one fails, both must rollback.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/3ju0gk-atomic-inventory-management-with-row-level-locking",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
