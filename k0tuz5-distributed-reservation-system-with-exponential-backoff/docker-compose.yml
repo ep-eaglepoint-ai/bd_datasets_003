@@ -7,24 +7,29 @@ services:
     container_name: reservation-server
     ports:
       - "8080:8080"
-    command: sh -c "./server"
+    command: ./server
+
   client:
     build: .
     container_name: reservation-client
     depends_on:
       - server
     environment:
-      - SERVER_URL=http://server:8080 
-    command: sh -c "./client"
+      - SERVER_URL=http://server:8080
+    command: ./client
+
+  evaluator:
+    build: .
+    container_name: reservation-evaluator
+    depends_on:
+      - server
+    volumes:
+      - ./evaluation/reports:/app/evaluation/reports
+    command: ./evaluator
+
   tests:
     build: .
     container_name: reservation-tests
     depends_on:
       - server
-    command: sh -c "go test -v ./tests/..."
-  evaluator:
-    build: .
-    container_name: reservation-evaluator
-    volumes:
-      - ./evaluation/reports:/app/evaluation/reports
-    command: ./evaluator
+    command: go test -v ./tests/...

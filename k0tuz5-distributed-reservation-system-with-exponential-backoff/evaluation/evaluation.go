@@ -8,19 +8,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 )
-
-// --- Types for the Report ---
-
-type EnvInfo struct {
-	GoVersion string `json:"go_version"`
-	Platform  string `json:"platform"`
-	Arch      string `json:"arch"`
-	CPUs      int    `json:"cpus"`
-}
 
 type TestResult struct {
 	Passed     bool   `json:"passed"`
@@ -33,17 +25,17 @@ type Report struct {
 	StartedAt       string      `json:"started_at"`
 	FinishedAt      string      `json:"finished_at"`
 	DurationSeconds float64     `json:"duration_seconds"`
-	Environment     EnvInfo     `json:"environment"`
-	Before          StateResult `json:"before"`
-	After           StateResult `json:"after"`
+	Environment     Environment `json:"environment"`
+	Before          PhaseResult `json:"before"`
+	After           PhaseResult `json:"after"`
 	Comparison      Comparison  `json:"comparison"`
 	Success         bool        `json:"success"`
-	Error           interface{} `json:"error"`
+	Error           string      `json:"error,omitempty"`
 }
 
-type StateResult struct {
-	Tests   TestResult             `json:"tests"`
-	Metrics map[string]interface{} `json:"metrics"`
+type PhaseResult struct {
+	Tests   TestResult        `json:"tests"`
+	Metrics map[string]string `json:"metrics"`
 }
 
 type Comparison struct {
@@ -51,143 +43,146 @@ type Comparison struct {
 	ImprovementSummary string `json:"improvement_summary"`
 }
 
-// --- Logic ---
+type Environment struct {
+	GoVersion string `json:"go_version"`
+	OS        string `json:"os"`
+	Arch      string `json:"arch"`
+	CPUs      int    `json:"cpus"`
+}
 
-func getEnvironmentInfo() EnvInfo {
-	return EnvInfo{
+func getEnvironmentInfo() Environment {
+	return Environment{
 		GoVersion: runtime.Version(),
-		Platform:  runtime.GOOS,
+		OS:        runtime.GOOS,
 		Arch:      runtime.GOARCH,
 		CPUs:      runtime.NumCPU(),
 	}
 }
 
-func runTests(root string, repoPath string) TestResult {
-    // 1. Change command to 'go test'
-    // We target the ./tests/... package relative to the root
-	// In evaluation.go before cmd.Run()
-	exec.Command("go", "mod", "edit", "-replace", "reservation-system/client=./"+repoPath+"/client").Run()
-    cmd := exec.Command("go", "test", "-v", "-json", "./tests/...")
-    cmd.Dir = root
+func runTests(target string) TestResult {
+	cmd := exec.Command("go", "test", "./tests", "-v", "-count=1")
 
-    // 2. Set the environment variable so the tests know which folder to target
-    cmd.Env = append(os.Environ(),
-        "CI=true",
-        "REPO_PATH="+repoPath,
-    )
+	if target == "before" {
+		fmt.Println("setting test target: before")
+		os.Setenv("TEST_TARGET", "before")
+	} else if target == "after" {
+		os.Setenv("TEST_TARGET", "after")
+	}
 
-    var stdout, stderr bytes.Buffer
-    cmd.Stdout = &stdout
-    cmd.Stderr = &stderr
+	wd, _ := os.Getwd()
+	var RepoRoot string
+	if strings.HasSuffix(wd, "tests") {
+		RepoRoot = filepath.Dir(wd)
+	} else {
+		RepoRoot = wd
+	}
+	cmd.Dir = filepath.Join(RepoRoot)
 
-    err := cmd.Run()
+	cmd.Env = append(os.Environ(),
+		"CI=true",
+		"TEST_TARGET="+target,
+		fmt.Sprintf("REPO_PATH=%s", target),
+	)
 
-    // Determine success based on exit code
-    returnCode := 0
-    if err != nil {
-        if exitError, ok := err.(*exec.ExitError); ok {
-            returnCode = exitError.ExitCode()
-        } else {
-            returnCode = 1
-        }
-    }
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
 
-    passed := returnCode == 0
-    outputStr := stdout.String()
+	fmt.Println("Running tests in", cmd.Dir)
+	err := cmd.Run()
 
-    // Go test -json output is a bit noisy. 
-    // If you just want to see if the final result was 'pass':
-    if passed && outputStr == "" {
-        outputStr = "All Go tests passed."
-    }
+	output := stdout.String()
+	if stderr.Len() > 0 {
+		output += "\n" + stderr.String()
+	}
 
-    // Truncate for the report
-    finalOutput := outputStr
-    if len(finalOutput) > 1000 {
-        finalOutput = finalOutput[:1000]
-    }
+	passed := err == nil
+	exitCode := 0
 
-    return TestResult{
-        Passed:     passed,
-        ReturnCode: returnCode,
-        Output:     finalOutput,
-    }
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			fmt.Println("Error running tests:", err)
+			exitCode = 1
+		}
+	}
+
+	return TestResult{
+		Passed:     passed,
+		ReturnCode: exitCode,
+		Output: func() string {
+			if passed {
+				return "All tests passed."
+			}
+			return output
+		}(),
+	}
 }
 
 func main() {
-	// 1. Setup paths
-	root, err := os.Getwd()
+	root, err := filepath.Abs("")
 	if err != nil {
-		fmt.Printf("Error getting working directory: %v\n", err)
-		os.Exit(1)
+		panic(err)
 	}
 
-	// We want /app/evaluation/reports
 	reportsDir := filepath.Join(root, "evaluation", "reports")
-
-	// Ensure directory exists with full permissions
-	if _, err := os.Stat(reportsDir); os.IsNotExist(err) {
-		err := os.MkdirAll(reportsDir, 0777) // Very permissive for Docker volumes
-		if err != nil {
-			fmt.Printf("Error creating directory: %v\n", err)
-		}
+	if err := os.MkdirAll(reportsDir, 0755); err != nil {
+		panic(err)
 	}
+
 	runID := uuid.New().String()
 	startTime := time.Now()
 
-	fmt.Printf("Starting evaluation (Run ID: %s)...\n", runID)
+	fmt.Println("Starting evaluation:", runID)
 
-	fmt.Println("Running tests (before)...")
-	beforeTests := runTests(root, "repository_before")
+	fmt.Println("Running baseline tests (before)...")
+	before := runTests("before")
 
-	fmt.Println("Running baseline tests (after)...")
-	afterTests := runTests(root, "repository_after")
+	fmt.Println("Running Full stack implementation tests (after)...")
+	after := runTests("after")
 
-	improvement := "No improvement detected."
-	if !beforeTests.Passed && afterTests.Passed {
-		improvement = "full stack dev tests passed and met distributed requirements."
-	} else if beforeTests.Passed && afterTests.Passed {
-		improvement = "Tests passed in both states (Verify baseline expectation)."
-	} else if !afterTests.Passed {
-		improvement = "Implementated code failed to pass requirements."
+	endTime := time.Now()
+
+	summary := "No improvement detected."
+	if !before.Passed && after.Passed {
+		summary = "Implementation passed tests and met requirements."
+	} else if before.Passed && after.Passed {
+		summary = "Tests passed in both states (verify baseline expectation)."
+	} else if !after.Passed {
+		summary = "Implementation failed to pass requirements."
 	}
 
-	// 4. Construct Report
-	endTime := time.Now()
 	report := Report{
 		RunID:           runID,
 		StartedAt:       startTime.Format(time.RFC3339),
 		FinishedAt:      endTime.Format(time.RFC3339),
 		DurationSeconds: endTime.Sub(startTime).Seconds(),
 		Environment:     getEnvironmentInfo(),
-		Before: StateResult{
-			Tests:   beforeTests,
-			Metrics: make(map[string]interface{}),
+		Before: PhaseResult{
+			Tests:   before,
+			Metrics: map[string]string{},
 		},
-		After: StateResult{
-			Tests:   afterTests,
-			Metrics: make(map[string]interface{}),
+		After: PhaseResult{
+			Tests:   after,
+			Metrics: map[string]string{},
 		},
 		Comparison: Comparison{
-			PassedGate:         afterTests.Passed,
-			ImprovementSummary: improvement,
+			PassedGate:         after.Passed,
+			ImprovementSummary: summary,
 		},
-		Success: afterTests.Passed,
+		Success: after.Passed,
 	}
 
-	// 5. Write to File
-	reportJSON, _ := json.MarshalIndent(report, "", "  ")
 	reportPath := filepath.Join(reportsDir, "report.json")
-	err = os.WriteFile(reportPath, reportJSON, 0666)
-	if err != nil {
-		fmt.Printf("Error writing report: %v\n", err)
-		os.Exit(1)
-	}
+	data, _ := json.MarshalIndent(report, "", "  ")
+	_ = os.WriteFile(reportPath, data, 0644)
 
-	fmt.Printf("Evaluation complete. Success: %v\n", report.Success)
-	fmt.Printf("Report written to: %s\n", reportPath)
+	fmt.Println("Evaluation complete. Success:", report.Success)
+	fmt.Println("Report written to:", reportPath)
 
-	if !report.Success {
-		os.Exit(1)
+	if report.Success {
+		os.Exit(0)
 	}
+	os.Exit(1)
 }

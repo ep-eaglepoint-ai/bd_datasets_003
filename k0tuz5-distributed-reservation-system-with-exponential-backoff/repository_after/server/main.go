@@ -11,11 +11,11 @@ import (
 func main() {
 	inventory := &model.Inventory{
 		Items: map[string]int{
-			"item-1": 100,
+			"item-1": 50,
 		},
 	}
 
-	rateLimiter := model.NewRateLimiter(100)
+	rateLimiter := model.NewRateLimiter(50)
 
 	http.HandleFunc("/reserve", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
