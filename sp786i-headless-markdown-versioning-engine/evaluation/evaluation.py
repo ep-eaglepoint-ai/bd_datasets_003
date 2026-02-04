@@ -169,10 +169,6 @@ def run_evaluation():
     """  
     Returns dict with test results from after implementation.
     """
-    print(f"\n{'=' * 100}")
-    print("HEADLESS MARKDOWN VERSIONING ENGINE")
-    print(f"{'=' * 100}")
-    
     project_root = Path(__file__).parent.parent
     tests_dir = project_root / "tests"
     
