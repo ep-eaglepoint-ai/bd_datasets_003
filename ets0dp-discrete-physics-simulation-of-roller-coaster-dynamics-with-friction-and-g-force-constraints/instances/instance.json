@@ -1,0 +1,11 @@
+{
+            "instance_id": "ETS0DP",
+            "problem_statement": "Most mid-tier models approach roller coaster problems using the Conservation of Energy principle where potential energy at the top equals kinetic energy at the bottom. This is a static snapshot approach that fails to account for time-dependent forces like Air Resistance which grows with the square of velocity, or complex G-force constraints inside a loop. The core trap is the Normal Force calculation. On a flat track, Normal Force equals Mass times Gravity. Inside a loop at the bottom, Normal Force equals Mass times the sum of Gravity and Centripetal Acceleration. Inside a loop at the top, Normal Force equals Mass times the difference between Centripetal Acceleration and Gravity. If Centripetal Force is less than Gravity at the top of the loop, the Normal Force becomes negative mathematically, meaning the train falls off the track. Seed 1.6 models often miss this Derailment check or simplify friction to a constant value, ignoring that rolling friction increases when G-forces increase.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ets0dp-discrete-physics-simulation-of-roller-coaster-dynamics-with-friction-and-g-force-constraints",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
