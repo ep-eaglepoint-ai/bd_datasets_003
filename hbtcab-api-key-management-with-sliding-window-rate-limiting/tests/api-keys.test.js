@@ -24,6 +24,58 @@ async function ensureMockSchema(pool) {
   );
   const exists = check.rows[0];
   if (exists && exists.users && exists.api_keys && exists.api_key_usage && exists.resources) {
+    // Tables exist already (e.g. from a previous container run). Ensure required columns exist.
+    await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS webhook_url TEXT");
+    await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS tier TEXT NOT NULL DEFAULT 'free'");
+    await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'user'");
+    await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()");
+    await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()");
+    await pool.query("UPDATE users SET created_at = NOW() WHERE created_at IS NULL");
+    await pool.query("UPDATE users SET updated_at = NOW() WHERE updated_at IS NULL");
+
+    await pool.query("ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS grace_expires_at TIMESTAMP WITHOUT TIME ZONE");
+    await pool.query("ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMP WITHOUT TIME ZONE");
+    await pool.query("ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMP WITHOUT TIME ZONE");
+    await pool.query("ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS secret_last4 TEXT");
+    await pool.query("ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS key_prefix TEXT");
+    await pool.query("ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()");
+    await pool.query("ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()");
+    await pool.query("UPDATE api_keys SET created_at = NOW() WHERE created_at IS NULL");
+    await pool.query("UPDATE api_keys SET updated_at = NOW() WHERE updated_at IS NULL");
+
+    // api_key_usage migrations: handle legacy schemas (e.g. column 'day' + PK on day)
+    const usageCols = await pool.query(
+      "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'api_key_usage'"
+    );
+    const colSet = new Set(usageCols.rows.map((r) => r.column_name));
+    const hasDay = colSet.has('day');
+    const hasUsageDate = colSet.has('usage_date');
+
+    if (!hasUsageDate) {
+      await pool.query("ALTER TABLE api_key_usage ADD COLUMN usage_date DATE");
+    }
+
+    if (hasDay) {
+      await pool.query("UPDATE api_key_usage SET usage_date = COALESCE(usage_date, day)");
+      // Remove legacy PK/constraints so inserts don't fail on the old day-based uniqueness
+      await pool.query("ALTER TABLE api_key_usage DROP CONSTRAINT IF EXISTS api_key_usage_pkey");
+      // Drop legacy column (and dependent indexes) once copied
+      await pool.query("ALTER TABLE api_key_usage DROP COLUMN IF EXISTS day CASCADE");
+    }
+
+    await pool.query("ALTER TABLE api_key_usage ADD COLUMN IF NOT EXISTS request_count INTEGER NOT NULL DEFAULT 0");
+    await pool.query("ALTER TABLE api_key_usage ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()");
+    await pool.query("ALTER TABLE api_key_usage ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()");
+    await pool.query("UPDATE api_key_usage SET usage_date = CURRENT_DATE WHERE usage_date IS NULL");
+    await pool.query("ALTER TABLE api_key_usage ALTER COLUMN usage_date SET NOT NULL");
+    await pool.query("CREATE UNIQUE INDEX IF NOT EXISTS api_key_usage_pk ON api_key_usage (api_key_id, endpoint, method, usage_date)");
+
+    await pool.query("ALTER TABLE resources ADD COLUMN IF NOT EXISTS user_id INTEGER");
+    await pool.query("ALTER TABLE resources ADD COLUMN IF NOT EXISTS data JSONB DEFAULT '{}'::jsonb");
+    await pool.query("ALTER TABLE resources ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()");
+    await pool.query("ALTER TABLE resources ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()");
+    await pool.query("UPDATE resources SET created_at = NOW() WHERE created_at IS NULL");
+    await pool.query("UPDATE resources SET updated_at = NOW() WHERE updated_at IS NULL");
     return;
   }
   
@@ -301,8 +353,8 @@ class TestRunner {
 
     await this.pool.query("DELETE FROM api_key_usage WHERE api_key_id IN (SELECT id FROM api_keys WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'test_%'))");
     await this.pool.query("DELETE FROM api_keys WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'test_%')");
-    await this.pool.query("DELETE FROM resources WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'test_%'))");
-    await this.pool.query("DELETE FROM users WHERE email LIKE 'test_%')");
+    await this.pool.query("DELETE FROM resources WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'test_%')");
+    await this.pool.query("DELETE FROM users WHERE email LIKE 'test_%'");
     
     await this.redis.flushall();
 
@@ -336,6 +388,26 @@ class TestRunner {
     if (!condition) {
       throw new Error(message || 'Assertion failed');
     }
+  }
+
+  async waitForServer() {
+    if (USE_MOCKS) {
+      return;
+    }
+
+    const maxAttempts = 40;
+    for (let i = 0; i < maxAttempts; i++) {
+      try {
+        const r = await fetch(`${API_BASE_URL}/health`);
+        if (r && r.ok) {
+          return;
+        }
+      } catch (_) {
+        // ignore
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    throw new Error('Server did not become available');
   }
 
   async fetch(path, options = {}) {
@@ -798,6 +870,306 @@ class TestRunner {
     this.assert(!keys[0].key.includes(fullKey.split('_')[2]), 'Full secret should not be visible');
   }
 
+  async testAuthErrorPaths() {
+    const noAuth = await this.fetch('/api/resources');
+    this.assert(noAuth.status === 401, 'Missing auth should be 401');
+
+    const invalidBearer = await this.fetch('/api/keys', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer not-a-real-token' },
+      body: JSON.stringify({ environment: 'test', scope: 'read' }),
+    });
+    this.assert(invalidBearer.status === 401, 'Invalid JWT should be 401');
+
+    const invalidApiKeyFormat = await this.fetch('/api/resources', {
+      headers: { Authorization: 'ApiKey bad_format_key' },
+    });
+    this.assert(invalidApiKeyFormat.status === 401, 'Invalid ApiKey format should be 401');
+  }
+
+  async testKeyManagementValidationErrors() {
+    const badEnv = await this.fetch('/api/keys', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.testToken}` },
+      body: JSON.stringify({ environment: 'staging', scope: 'read' }),
+    });
+    this.assert(badEnv.status === 400, 'Invalid environment should be 400');
+
+    const badScope = await this.fetch('/api/keys', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.testToken}` },
+      body: JSON.stringify({ environment: 'test', scope: 'owner' }),
+    });
+    this.assert(badScope.status === 400, 'Invalid scope should be 400');
+  }
+
+  async testWebhookValidationErrors() {
+    const missing = await this.fetch('/api/users/webhook', {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${this.testToken}` },
+      body: JSON.stringify({}),
+    });
+    this.assert(missing.status === 400, 'Missing webhook_url should be 400');
+
+    const nonString = await this.fetch('/api/users/webhook', {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${this.testToken}` },
+      body: JSON.stringify({ webhook_url: 123 }),
+    });
+    this.assert(nonString.status === 400, 'Non-string webhook_url should be 400');
+  }
+
+  async testResourceValidationAndNotFound() {
+    const missingName = await this.fetch('/api/resources', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.testToken}` },
+      body: JSON.stringify({ data: { a: 1 } }),
+    });
+    this.assert(missingName.status === 400, 'Missing name should be 400');
+
+    const notFoundPut = await this.fetch('/api/resources/999999', {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${this.testToken}` },
+      body: JSON.stringify({ name: 'x' }),
+    });
+    this.assert(notFoundPut.status === 404, 'PUT missing resource should be 404');
+
+    const notFoundDelete = await this.fetch('/api/resources/999999', {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${this.testToken}` },
+    });
+    this.assert(notFoundDelete.status === 404, 'DELETE missing resource should be 404');
+  }
+
+  async testUsageNotFoundAndDateFiltering() {
+    const missingKeyUsage = await this.fetch('/api/keys/999999/usage', {
+      headers: { Authorization: `Bearer ${this.testToken}` },
+    });
+    this.assert(missingKeyUsage.status === 404, 'Usage for missing key should be 404');
+
+    const create = await this.fetch('/api/keys', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.testToken}` },
+      body: JSON.stringify({ environment: 'test', scope: 'read' }),
+    });
+    const data = await create.json();
+
+    // generate usage on resources endpoint
+    await this.fetch('/api/resources', { headers: { Authorization: `ApiKey ${data.api_key}` } });
+
+    const today = new Date().toISOString().slice(0, 10);
+    const filtered = await this.fetch(`/api/keys/${data.id}/usage?from=${today}&to=${today}`, {
+      headers: { Authorization: `Bearer ${this.testToken}` },
+    });
+    this.assert(filtered.status === 200, 'Usage with from/to filters should be 200');
+    const body = await filtered.json();
+    this.assert(Array.isArray(body.usage), 'Filtered usage should return usage array');
+  }
+
+  async testKeyRevocationDisablesApiKey() {
+    const create = await this.fetch('/api/keys', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.testToken}` },
+      body: JSON.stringify({ environment: 'test', scope: 'read' }),
+    });
+    this.assert(create.status === 201, 'Precondition: key created');
+    const data = await create.json();
+
+    const del = await this.fetch(`/api/keys/${data.id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${this.testToken}` },
+    });
+    this.assert(del.status === 204, 'DELETE /api/keys/:id should be 204');
+
+    const should401 = await this.fetch('/api/resources', {
+      headers: { Authorization: `ApiKey ${data.api_key}` },
+    });
+    this.assert(should401.status === 401, 'Revoked key should not authorize API requests');
+  }
+
+  // JWT-only access for key management endpoints (Requirement 11 - negative tests)
+  async testJwtOnlyKeyManagementEndpoints() {
+    // Create an API key first (with JWT)
+    const create = await this.fetch('/api/keys', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.testToken}` },
+      body: JSON.stringify({ environment: 'test', scope: 'read' }),
+    });
+    this.assert(create.status === 201, 'Precondition: JWT can create key');
+    const { api_key, id } = await create.json();
+
+    // Try to list keys using API key auth -> should be 401
+    const listWithApiKey = await this.fetch('/api/keys', {
+      headers: { Authorization: `ApiKey ${api_key}` },
+    });
+    this.assert(listWithApiKey.status === 401, 'Listing /api/keys with ApiKey must be 401');
+
+    // Try to create key using API key auth -> should be 401
+    const createWithApiKey = await this.fetch('/api/keys', {
+      method: 'POST',
+      headers: { Authorization: `ApiKey ${api_key}` },
+      body: JSON.stringify({ environment: 'test', scope: 'read' }),
+    });
+    this.assert(createWithApiKey.status === 401, 'Creating /api/keys with ApiKey must be 401');
+
+    // Try to get usage using API key auth -> should be 401
+    const usageWithApiKey = await this.fetch(`/api/keys/${id}/usage`, {
+      headers: { Authorization: `ApiKey ${api_key}` },
+    });
+    this.assert(usageWithApiKey.status === 401, 'GET /api/keys/:id/usage with ApiKey must be 401');
+  }
+
+  // Backward compatibility: JWT-only resource CRUD still works (DoD existing tests)
+  async testJwtResourceCrud() {
+    // Create
+    const created = await this.fetch('/api/resources', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.testToken}` },
+      body: JSON.stringify({ name: 'r1', data: { a: 1 } }),
+    });
+    this.assert(created.status === 201, `JWT POST /api/resources should be 201, got ${created.status}`);
+    const createdBody = await created.json();
+    const id = createdBody.id;
+
+    // Read
+    const list1 = await this.fetch('/api/resources', {
+      headers: { Authorization: `Bearer ${this.testToken}` },
+    });
+    this.assert(list1.status === 200, `JWT GET /api/resources should be 200, got ${list1.status}`);
+    const rows1 = await list1.json();
+    this.assert(rows1.find((r) => r.id === id), 'Created resource should be listed');
+
+    // Update
+    const updated = await this.fetch(`/api/resources/${id}`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${this.testToken}` },
+      body: JSON.stringify({ name: 'r1-upd' }),
+    });
+    this.assert(updated.status === 200, `JWT PUT /api/resources/:id should be 200, got ${updated.status}`);
+    const updBody = await updated.json();
+    this.assert(updBody.name === 'r1-upd', 'Resource name should be updated');
+
+    // Delete
+    const del = await this.fetch(`/api/resources/${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${this.testToken}` },
+    });
+    this.assert(del.status === 204, `JWT DELETE /api/resources/:id should be 204, got ${del.status}`);
+
+    // Verify deletion
+    const list2 = await this.fetch('/api/resources', {
+      headers: { Authorization: `Bearer ${this.testToken}` },
+    });
+    const rows2 = await list2.json();
+    this.assert(!rows2.find((r) => r.id === id), 'Deleted resource should not be listed');
+  }
+
+  // Integration: Grace expiry after 24h (Requirement 8 - non-mock verification)
+  async testGraceExpiryIntegrationIfAvailable() {
+    if (USE_MOCKS) {
+      this.assert(true, 'Skipped integration grace expiry in mock mode');
+      return;
+    }
+    // Create key and rotate to set grace on old key
+    const first = await this.fetch('/api/keys', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.testToken}` },
+      body: JSON.stringify({ environment: 'test', scope: 'read' }),
+    });
+    this.assert(first.status === 201, 'Precondition: key created');
+    const old = await first.json();
+    const rotated = await this.fetch('/api/keys', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.testToken}` },
+      body: JSON.stringify({ environment: 'test', scope: 'read', rotate: true }),
+    });
+    this.assert(rotated.status === 201, 'Precondition: rotation succeeded');
+
+    // Force grace_expires_at in the past for the old key
+    await this.pool.query("UPDATE api_keys SET grace_expires_at = NOW() - INTERVAL '1 second' WHERE id = $1", [old.id]);
+
+    const should401 = await this.fetch('/api/resources', {
+      headers: { Authorization: `ApiKey ${old.api_key}` },
+    });
+    this.assert(should401.status === 401, `Old key after grace should be 401, got ${should401.status}`);
+  }
+
+  // Integration: Webhook 80% path in production mode using real Redis/DB
+  async testWebhookThresholdIntegrationIfAvailable() {
+    if (USE_MOCKS) {
+      this.assert(true, 'Skipped integration webhook test in mock mode');
+      return;
+    }
+    let called = 0;
+    let payload = null;
+    let sig = null;
+    const originalFetch = global.fetch;
+    global.fetch = async (url, options) => {
+      if (String(url).includes('example.com/webhook')) {
+        called += 1;
+        payload = JSON.parse(options.body);
+        sig = options.headers['X-Webhook-Signature'];
+        return {
+          ok: true,
+          status: 200,
+          text: async () => '',
+          json: async () => ({}),
+        };
+      }
+      return originalFetch(url, options);
+    };
+
+    try {
+      const setW = await this.fetch('/api/users/webhook', {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${this.testToken}` },
+        body: JSON.stringify({ webhook_url: 'https://example.com/webhook' }),
+      });
+      this.assert(setW.status === 200, 'Set webhook in integration');
+
+      const resp = await this.fetch('/api/keys', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${this.testToken}` },
+        body: JSON.stringify({ environment: 'test', scope: 'read' }),
+      });
+      const data = await resp.json();
+      for (let i = 0; i < 80; i++) {
+        await this.fetch('/api/resources', { headers: { Authorization: `ApiKey ${data.api_key}` } });
+      }
+      this.assert(called >= 1, 'Webhook should be called at least once');
+      this.assert(payload && payload.api_key_id === data.id, 'Payload should include API key id');
+      this.assert(sig && sig.length > 0, 'Signature should be present');
+    } finally {
+      if (originalFetch) global.fetch = originalFetch; else delete global.fetch;
+    }
+  }
+
+  // Usage aggregation correctness: 10 requests -> one row with request_count = 10 (Requirement 9)
+  async testUsageAggregationTenRequests() {
+    const response = await this.fetch('/api/keys', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.testToken}` },
+      body: JSON.stringify({ environment: 'test', scope: 'read' }),
+    });
+    const data = await response.json();
+    const apiKey = data.api_key;
+    const keyId = data.id;
+
+    for (let i = 0; i < 10; i++) {
+      const r = await this.fetch('/api/resources', { headers: { Authorization: `ApiKey ${apiKey}` } });
+      this.assert(r.status === 200, `Request ${i + 1} should succeed`);
+    }
+
+    const usageResponse = await this.fetch(`/api/keys/${keyId}/usage`, {
+      headers: { Authorization: `Bearer ${this.testToken}` },
+    });
+    this.assert(usageResponse.status === 200, 'Usage endpoint should respond 200');
+    const usage = await usageResponse.json();
+    this.assert(Array.isArray(usage.usage) && usage.usage.length >= 1, 'Usage should contain records');
+    const row = usage.usage.find((u) => u.endpoint.includes('/api/resources') && u.method === 'GET');
+    this.assert(row && row.request_count === 10, `Expected one aggregated row with count 10, got ${row ? row.request_count : 'none'}`);
+  }
+
   async runAllTests() {
     console.log('\n=== API Key Management Test Suite ===\n');
     
@@ -817,6 +1189,20 @@ class TestRunner {
       await this.runTest('Webhook at 80% Threshold (R10)', () => this.testWebhookThreshold());
       await this.runTest('Dual Auth Methods (R11)', () => this.testDualAuthMethods());
       await this.runTest('Masked Key List (R12)', () => this.testMaskedKeyList());
+
+      // Additional DoD/verification tests
+      await this.runTest('JWT-only Key Management Endpoints (R11 negative)', () => this.testJwtOnlyKeyManagementEndpoints());
+      await this.runTest('Backward Compatibility: JWT Resource CRUD', () => this.testJwtResourceCrud());
+      await this.runTest('Usage Aggregation 10 Requests (R9 exact)', () => this.testUsageAggregationTenRequests());
+      await this.runTest('Grace Expiry Integration (R8 non-mock)', () => this.testGraceExpiryIntegrationIfAvailable());
+      await this.runTest('Webhook 80% Integration (R10 non-mock)', () => this.testWebhookThresholdIntegrationIfAvailable());
+
+      await this.runTest('Auth Error Paths', () => this.testAuthErrorPaths());
+      await this.runTest('Key Management Validation Errors', () => this.testKeyManagementValidationErrors());
+      await this.runTest('Webhook Validation Errors', () => this.testWebhookValidationErrors());
+      await this.runTest('Resource Validation + Not Found', () => this.testResourceValidationAndNotFound());
+      await this.runTest('Usage Not Found + Date Filtering', () => this.testUsageNotFoundAndDateFiltering());
+      await this.runTest('Key Revocation Disables ApiKey', () => this.testKeyRevocationDisablesApiKey());
 
       const passed = this.results.filter(r => r.status === 'PASS').length;
       const failed = this.results.filter(r => r.status === 'FAIL').length;

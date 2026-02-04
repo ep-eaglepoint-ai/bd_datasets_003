@@ -6,7 +6,8 @@
   "type": "commonjs",
   "scripts": {
     "start": "node app.js",
-    "test": "node tests/api-keys.test.js",
+    "test": "rm -rf .nyc_output && mkdir -p coverage && USE_MOCKS=1 nyc --silent --no-clean --temp-dir .nyc_output node tests/api-keys.test.js && USE_MOCKS=0 nyc --silent --no-clean --temp-dir .nyc_output node tests/api-keys.test.js && nyc report --temp-dir .nyc_output --reporter=text --reporter=text-summary --reporter=html --report-dir coverage --check-coverage --lines 80 --branches 70 --functions 80 --statements 80",
+    "coverage": "npm test",
     "eval": "node evaluation/evaluation.js"
   },
   "dependencies": {
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "jest": "^29.7.0",
+    "nyc": "^15.1.0",
     "supertest": "^7.0.0",
     "uuid": "^9.0.1"
   }

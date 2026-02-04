@@ -56,8 +56,14 @@ if (USE_MOCKS) {
         store.apiKeys = store.apiKeys.filter(() => false);
         return { rows: [] };
       }
-      if (sql.startsWith('DELETE FROM resources')) {
-        store.resources = store.resources.filter(() => false);
+      if (sql.startsWith('DELETE FROM resources WHERE user_id')) {
+        // Cleanup helper used by tests to delete by user_id
+        const userId = params && params[0] ? Number(params[0]) : null;
+        if (userId != null) {
+          store.resources = store.resources.filter((r) => Number(r.user_id) !== userId);
+        } else {
+          store.resources = [];
+        }
         return { rows: [] };
       }
       if (sql.startsWith('DELETE FROM users')) {
@@ -108,7 +114,23 @@ if (USE_MOCKS) {
       }
 
       if (sql.startsWith('UPDATE api_keys SET revoked_at')) {
-        const userId = params[0];
+        // Two variants:
+        // - rotation: ... WHERE user_id = $1 AND revoked_at IS NULL
+        // - revoke by id: ... WHERE id = $1 AND user_id = $2 RETURNING id
+        if (sql.includes('WHERE id =')) {
+          const keyId = Number(params[0]);
+          const userId = Number(params[1]);
+          const k = store.apiKeys.find((x) => x.id === keyId && x.user_id === userId);
+          if (!k) {
+            return { rows: [] };
+          }
+          k.revoked_at = now;
+          k.grace_expires_at = now;
+          k.updated_at = now;
+          return { rows: [{ id: k.id }] };
+        }
+
+        const userId = Number(params[0]);
         for (const k of store.apiKeys) {
           if (k.user_id === userId && !k.revoked_at) {
             k.revoked_at = now;
@@ -183,6 +205,38 @@ if (USE_MOCKS) {
         };
         store.resources.push(row);
         return { rows: [row] };
+      }
+
+      if (sql.startsWith('UPDATE resources SET')) {
+        const name = params[0];
+        const data = params[1];
+        const id = Number(params[2]);
+        const userId = Number(params[3]);
+        const idx = store.resources.findIndex((r) => r.id === id && r.user_id === userId);
+        if (idx === -1) {
+          return { rows: [] };
+        }
+        const existing = store.resources[idx];
+        const updatedRow = {
+          ...existing,
+          name: name ?? existing.name,
+          data: data ?? existing.data,
+          updated_at: now,
+        };
+        store.resources[idx] = updatedRow;
+        return { rows: [updatedRow] };
+      }
+
+      if (sql.startsWith('DELETE FROM resources WHERE id =')) {
+        const id = Number(params[0]);
+        const userId = Number(params[1]);
+        const idx = store.resources.findIndex((r) => Number(r.id) === id && (params.length < 2 || Number(r.user_id) === userId));
+        if (idx === -1) {
+          return { rows: [] };
+        }
+        const deleted = store.resources[idx];
+        store.resources.splice(idx, 1);
+        return { rows: [deleted] };
       }
 
       // Usage tracking upsert
