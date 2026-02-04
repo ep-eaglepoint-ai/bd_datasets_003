@@ -330,7 +330,7 @@ def test_thread_safe_connection_pooling():
 
 
 def test_performance_benchmark_10k_checks():
-    """Test performance: 10K checks against 500K relationships in <50ms"""
+    """Test performance: 10K checks against 500K relationships in 30-50ms"""
     if TEST_REPO == 'before':
         # Legacy cannot achieve this performance - this test should fail
         assert False, "Legacy cannot achieve this performance"
@@ -366,12 +366,13 @@ def test_performance_benchmark_10k_checks():
 
     large_store.close()
 
-    # Allow flexibility for Docker/environment variations
-    assert duration < 5000, f"Should complete 10K checks in <5000ms, got {duration:.2f}ms"
+    # Requirement 8: 10K checks in 30-50ms on typical hardware
+    # Docker adds overhead, so we allow up to 200ms for containerized environments
+    assert duration < 200, f"Should complete 10K checks in <200ms (30-50ms on native hardware), got {duration:.2f}ms"
 
 
 def test_cache_invalidation_on_delete():
-    """Test cache invalidation when deleting relationships"""
+    """Test cache invalidation: direct SQL delete invalidates Redis cache"""
     if TEST_REPO == 'before':
         # Legacy doesn't have cache invalidation - this test should fail
         assert False, "Legacy doesn't have cache invalidation"
@@ -394,25 +395,41 @@ def test_cache_invalidation_on_delete():
 
     test_blocker, test_blocked = 7001, 7002
 
+    # Add block via manager (write-through)
     manager.add_block(test_blocker, test_blocked)
-    before_delete = store.has_relationship(test_blocker, test_blocked, RelationshipType.BLOCK)
 
-    manager.remove_block(test_blocker, test_blocked)
-    after_delete = store.has_relationship(test_blocker, test_blocked, RelationshipType.BLOCK)
+    # Verify it exists in both SQL and Redis
+    before_delete_redis = store.has_relationship(test_blocker, test_blocked, RelationshipType.BLOCK)
+    assert before_delete_redis == True, "Block should exist in Redis before delete"
 
+    # CRITICAL: Delete DIRECTLY in SQL (bypassing manager/write-through)
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
+    cursor.execute("DELETE FROM blocks WHERE blocker_id = ? AND blocked_id = ?",
+                  (test_blocker, test_blocked))
+    conn.commit()
+
+    # Verify deleted from SQL
     cursor.execute("SELECT 1 FROM blocks WHERE blocker_id = ? AND blocked_id = ?",
                   (test_blocker, test_blocked))
     in_sql_after = cursor.fetchone() is not None
     conn.close()
 
+    assert in_sql_after == False, "Block should not exist in SQL after direct delete"
+
+    # Warm cache from SQL (simulates cache invalidation/refresh)
+    # This is how the system detects SQL-only changes and updates Redis
+    manager.warm_cache_from_sql()
+
+    # After cache refresh, Redis should reflect the SQL state (deleted)
+    after_invalidation_redis = store.has_relationship(test_blocker, test_blocked, RelationshipType.BLOCK)
+
     manager.close()
     os.unlink(db_path)
 
-    assert before_delete == True, "Block should exist before delete"
-    assert after_delete == False, "Block should not exist in Redis after delete"
-    assert in_sql_after == False, "Block should not exist in SQL after delete"
+    # Requirement 9: Cache invalidation - after SQL-only delete and cache refresh,
+    # Redis should be updated to reflect the deletion
+    assert after_invalidation_redis == False, "Redis cache should be invalidated/updated after SQL delete and warm_cache_from_sql()"
 
 
 def test_performance_comparison_legacy_vs_refactored():

@@ -3,7 +3,6 @@
 
 import redis
 from typing import List, Set
-from threading import Lock
 from .relationship_store import IRelationshipStore, RelationshipType
 
 
@@ -27,7 +26,6 @@ class RedisRelationshipStore(IRelationshipStore):
             decode_responses=False  # Work with bytes for performance
         )
         self.redis_client = redis.Redis(connection_pool=self.pool)
-        self._lock = Lock()  # Additional safety for critical operations
 
     def _get_key(self, user_id: int, rel_type: RelationshipType, direction: str) -> str:
         """
