@@ -16,7 +16,8 @@ public class Order {
     private String status;
     private Map<String, OrderItem> items = new HashMap<>();
     private long version = 0; // Current version of the aggregate
-    private List<Event> newEvents = new ArrayList<>();
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private final List<Event> newEvents = new ArrayList<>();
 
     public Order() {
         this.status = "DRAFT";

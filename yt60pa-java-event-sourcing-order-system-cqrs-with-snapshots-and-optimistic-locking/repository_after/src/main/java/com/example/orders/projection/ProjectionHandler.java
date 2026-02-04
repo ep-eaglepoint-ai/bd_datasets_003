@@ -17,18 +17,6 @@ import java.util.List;
 public class ProjectionHandler {
 
     private final JdbcTemplate jdbcTemplate;
-    private final EventStore eventStore; // Needed for replay, circular dependency if injected directly?
-    // EventStore depends on ProjectionHandler? No, CommandHandler depends on both.
-    // ProjectionHandler only handles events.
-    // Replay logic needs to read from EventStore. Maybe we pass EventStore to rebuild method or use a separate ReplayService.
-    // For simplicity, let's inject JdbcTemplate and we'll access EventStore differently or inject it.
-    
-    // CommandHandler -> ProjectionHandler (handle)
-    // ReplayService -> EventStore, ProjectionHandler
-    // Let's put rebuild logic here but we need access to events. 
-    // I'll make a helper method in EventStore or just use jdbcTemplate to read all events here for replay?
-    // Better: Inject EventStore.
-
     private final ObjectMapper objectMapper;
     
     // We cannot inject EventStore if CommandHandler depends on ProjectionHandler and CommandHandler depends on EventStore... wait.
