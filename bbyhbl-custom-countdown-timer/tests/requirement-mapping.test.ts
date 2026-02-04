@@ -1,7 +1,5 @@
-// tests/requirement-mapping.test.ts
 import { describe, it, expect } from '@jest/globals';
 
-// This test file verifies that ALL requirements from the prompt are tested
 describe('Requirement Coverage Verification', () => {
   const requirements = [
     {
@@ -25,7 +23,7 @@ describe('Requirement Coverage Verification', () => {
     {
       id: 4,
       description: 'For logged-in users, display all countdowns in grid view',
-      testFiles: ['countdowns.test.ts'], // Note: This requires auth tests
+      testFiles: ['countdowns.test.ts'], 
       verified: false,
     },
     {
@@ -44,7 +42,6 @@ describe('Requirement Coverage Verification', () => {
 
   requirements.forEach(req => {
     it(`should have tests for Requirement ${req.id}: ${req.description}`, () => {
-      // This is a meta-test that checks requirement coverage
       expect(req.testFiles.length).toBeGreaterThan(0);
       console.log(`✓ Requirement ${req.id} covered by: ${req.testFiles.join(', ')}`);
     });
