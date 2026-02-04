@@ -1,0 +1,11 @@
+{
+            "instance_id": "VOVB0F",
+            "problem_statement": "Build a color palette web application using Next.js 14 App Router with TypeScript and Tailwind CSS that allows designers to generate harmonious palettes via Colord, extract colors from images with node‑vibrant, and manually create palettes with a color picker. Implement MongoDB/Mongoose for data persistence, NextAuth.js for authentication, and provide organization via collections/tags, format exports (CSS, Tailwind, JSON, PNG via html2canvas), and a community gallery. The tool must support robust palette management, public sharing, and efficient search while delivering a smooth, professional design workflow.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/vovb0f-color-pallete-tool",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
