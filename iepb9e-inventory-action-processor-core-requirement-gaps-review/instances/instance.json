@@ -1,0 +1,14 @@
+{
+            "instance_id": "IEPB9E",
+            "problem_statement": "
+Three independent implementations of an in-memory inventory action processor were reviewed against a shared core acceptance criteria. While each version correctly handles most action-level logic (reserve, release, consume, ordering, and audit generation), they exhibit overlapping gaps in core validation and invariant enforcement. These gaps allow invalid starting state or malformed identifiers to undermine determinism and correctness guarantees. This report summarizes the shared and overlapping misses so they can be addressed systematically and verified by tests.
+
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/iepb9e-inventory-action-processor-core-requirement-gaps-review",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
