@@ -12,10 +12,9 @@ Builds the Python application containers, runs tests against the baseline and re
 
 ```bash
 # Run tests against the baseline implementation in repository_before (allowed to fail)
-docker compose run --rm -e REPO_PATH=repository_before backend pytest -q tests && docker compose run --rm frontend pnpm test
 
 # Run tests against the refactored implementation in repository_after
-docker compose run --rm -e REPO_PATH=repository_after backend pytest -q tests && docker compose run --rm frontend pnpm test 
+docker compose run --rm -e REPO_PATH=repository_after backend pytest -q tests && docker compose run --rm -d frontend pnpm test 
 
 # Run the evaluation script to produce a JSON report under evaluation/reports/
 docker compose run --rm backend python evaluation/evaluation.py
