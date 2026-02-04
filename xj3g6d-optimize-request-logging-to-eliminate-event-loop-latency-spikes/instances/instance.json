@@ -1,0 +1,11 @@
+{
+            "instance_id": "XJ3G6D",
+            "problem_statement": "The production Node.js API intermittently experiences latency spikes, with request handling time increasing from a baseline of approximately 30ms to over 400ms under moderate concurrent load. Profiling shows that synchronous logging inside the request handler contributes significantly to event loop stalls and increased garbage collection activity during traffic bursts.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/xj3g6d-optimize-request-logging-to-eliminate-event-loop-latency-spikes",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
