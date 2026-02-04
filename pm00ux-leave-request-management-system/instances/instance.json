@@ -1,0 +1,11 @@
+{
+            "instance_id": "PM00UX",
+            "problem_statement": "Organizations often rely on manual or email-based processes to manage employee leave requests, leading to delays, overlapping leaves, inconsistent approvals, and poor auditability. These approaches are error-prone, difficult to scale, and vulnerable to invalid state changes especially when multiple managers act on the same request simultaneously.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/pm00ux-leave-request-management-system",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
