@@ -1,0 +1,14 @@
+{
+  "name": "vcz3ss-react-quote-generator-tests",
+  "version": "1.0.0",
+  "description": "Tests for React Quote Generator",
+  "scripts": {
+    "test": "jest --testPathPattern=tests/",
+    "test:before": "REPO_PATH=./repository_before jest --testPathPattern=tests/",
+    "test:after": "REPO_PATH=./repository_after jest --testPathPattern=tests/",
+    "evaluate": "node evaluation/evaluation.js"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}

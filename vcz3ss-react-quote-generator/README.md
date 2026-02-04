@@ -1,11 +1,16 @@
 # VCZ3SS - React Quote Generator
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Before Test Docker Command
+```bash
+docker compose run --rm test-before
+```
 
-    ## After Test Docker Command
-    <docker after command here>
+## After Test Docker Command
+```bash
+docker compose run --rm test-after
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## Evaluation Docker Command
+```bash
+docker compose run --rm evaluation
+```
