@@ -1,0 +1,15 @@
+{
+            "instance_id": "P33MIS",
+            "problem_statement": "The existing Node.js backend uses JWT authentication with PostgreSQL-backed role-based access control (RBAC). Roles are currently permanent and manually assigned, which does not meet operational needs such as temporary administrative access for customer support, incident response, or deployments.
+
+A new requirement mandates support for temporary, expiring roles (e.g., admin access for 2 hours). These roles must automatically expire without relying on cron jobs, background workers, or frontend enforcement. Authorization must remain correct even when JWTs outlive temporary roles, and backward compatibility with existing permanent roles must be preserved.
+
+The refactored system must ensure deterministic authorization under concurrency, guarantee immutable audit trails, and prevent privilege escalation or misuse.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/p33mis-extend-rbac-to-support-temporary-roles-with-deterministic-expiry-and-auditability",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
