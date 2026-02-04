@@ -1,0 +1,11 @@
+{
+            "instance_id": "GKH0NY",
+            "problem_statement": "Cryptocurrency prices often differ across data providers due to market fragmentation and timing differences, making it difficult for users to identify potential arbitrage opportunities efficiently. This project aims to build a React-based Cryptocurrency Arbitrage Detector that aggregates prices for the top cryptocurrencies from multiple public APIs, normalizes inconsistent data, calculates price deviations, and presents actionable insights through a clear tabular view and visual comparisons.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/gkh0ny-cryptocurrency-arbitrage-detector",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
