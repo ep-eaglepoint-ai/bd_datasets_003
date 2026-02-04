@@ -1,0 +1,11 @@
+{
+            "instance_id": "SLCOFL",
+            "problem_statement": "The PriorityStack is a stack-like data structure with two modes of operation: LIFO (Last In, First Out) and PRIORITY (popping the highest-priority element first). Elements can be pushed onto the stack with or without a specified priority, and the mode can be switched dynamically. The goal of this task is to write a Python test file that validates all key behaviors of the PriorityStack, ensuring that it handles both modes correctly, manages errors, and behaves as expected under various conditions.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/slcofl-prioritystack-test",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
