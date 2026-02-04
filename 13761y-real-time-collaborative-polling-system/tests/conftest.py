@@ -1,11 +1,15 @@
 import pytest
 import pytest_asyncio
 from repository_after.backend.redis_client import redis_client
+from repository_after.backend.main import polls_db
 
 
 @pytest_asyncio.fixture(scope="function", autouse=True)
 async def cleanup_redis():
-    """Clean up Redis before and after each test to avoid state pollution"""
+    """Clean up Redis and in-memory state before and after each test to avoid state pollution"""
+    # Clear in-memory polls_db to avoid state pollution between tests
+    polls_db.clear()
+
     # Ensure we have a fresh Redis connection for each test
     if redis_client.redis is not None:
         try:
@@ -13,7 +17,7 @@ async def cleanup_redis():
         except Exception:
             pass
         redis_client.redis = None
-    
+
     # Cleanup before test
     try:
         r = await redis_client._get_redis()
@@ -22,9 +26,9 @@ async def cleanup_redis():
             await r.delete(*keys)
     except Exception:
         pass
-    
+
     yield
-    
+
     # Cleanup after test
     try:
         r = await redis_client._get_redis()
@@ -33,7 +37,10 @@ async def cleanup_redis():
             await r.delete(*keys)
     except Exception:
         pass
-    
+
+    # Clear in-memory state after test
+    polls_db.clear()
+
     # Close connection after test
     if redis_client.redis is not None:
         try:
