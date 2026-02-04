@@ -1,0 +1,11 @@
+{
+            "instance_id": "QQD8T1",
+            "problem_statement": "The platform requires a foundational authorization and role‑based access control (RBAC) system to ensure secure and predictable enforcement of permissions across both API endpoints and user interface routes. This system is a core business requirement to protect sensitive operations and differentiate user capabilities based on assigned roles. Current functionality in the JavaScript/Node.js application lacks structured access enforcement, leaving critical workflows exposed to unauthorized use and inconsistent behavior.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/qqd8t1-authorization-and-role-based-access-control",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
