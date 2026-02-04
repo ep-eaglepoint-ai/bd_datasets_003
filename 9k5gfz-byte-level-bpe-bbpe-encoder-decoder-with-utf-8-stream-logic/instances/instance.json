@@ -1,0 +1,11 @@
+{
+            "instance_id": "9K5GFZ",
+            "problem_statement": "The fundamental distinction between standard BPE and Byte-Level BPE is the shift from character-based processing to raw UTF-8 byte stream manipulation. Mid-tier models frequently fail to decompose multi-byte Unicode characters (such as Emojis) into their constituent integers, treating them instead as atomic string tokens, which violates the zero-UNK requirement. Additionally, the encoding process demands a strict, priority-driven greedy merge strategy; failing to respect the exact order of the merge list results in nondeterministic tokenization that breaks the lossless reversibility guarantee required by the decoder.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/9k5gfz-byte-level-bpe-bbpe-encoder-decoder-with-utf-8-stream-logic",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
