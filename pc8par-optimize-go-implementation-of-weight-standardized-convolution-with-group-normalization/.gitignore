@@ -9,4 +9,12 @@ node_modules/
 
 # OS
 .DS_Store
-evaluation/*.json
+
+# Evaluation reports
+evaluation/*/
+*.json
+
+# Go
+*.exe
+*.test
+*.out
