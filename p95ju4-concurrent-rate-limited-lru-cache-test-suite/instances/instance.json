@@ -1,0 +1,11 @@
+{
+            "instance_id": "P95JU4",
+            "problem_statement": "The Concurrent Rate-Limited LRU Cache is a key-value store with an eviction policy that removes the least recently used (LRU) items when the cache exceeds its capacity. It also limits the rate of Get operations for each key to prevent overloading the cache. This cache implementation is safe for concurrent access, using synchronization mechanisms like sync.Mutex. The task is to write a Go test file (cache_test.go) that tests all core functionalities of the RateLimitedLRUCache, ensuring proper cache behavior under typical and edge case scenarios, with correct handling of eviction, rate-limiting, concurrent access, and key order maintenance.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/p95ju4-concurrent-rate-limited-lru-cache-test-suite",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
