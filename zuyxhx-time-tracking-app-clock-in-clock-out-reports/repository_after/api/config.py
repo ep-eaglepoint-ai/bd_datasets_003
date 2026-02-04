@@ -20,4 +20,5 @@ class Settings:
 @lru_cache()
 def get_settings() -> Settings:
     """Get cached settings instance."""
+    print(f"settings: ", Settings().DATABASE_URL)
     return Settings()
