@@ -1,11 +1,19 @@
-# WIZ33L - Deep Optimization of Elastic Net Regressor Codebase
+## Commands
 
-    ## Before Test Docker Command
-    <docker before command here>
+### 1. Test BEFORE (Unoptimized Version)
+```bash
+docker compose run --rm -e TEST_VERSION=before evaluation pytest -v tests/test_optimization.py
+```
 
-    ## After Test Docker Command
-    <docker after command here>
+### 2. Test AFTER (Optimized Version)
+```bash
+docker compose run --rm -e TEST_VERSION=after evaluation pytest -v tests/test_optimization.py
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+### 3. Run Evaluation (Generate JSON Report)
+```bash
+docker compose run --rm evaluation
+```
+
+---
+
