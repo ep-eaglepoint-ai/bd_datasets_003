@@ -1,0 +1,13 @@
+{
+            "instance_id": "K7IG3W",
+            "problem_statement": "The refresh_inventory_status stored procedure maintains stock levels across warehouses. Its current implementation uses nested loops and repetitive scans over warehouses, products, and stock movements, which do not scale well as inventory size and update frequency grow. It lacks concurrency safeguards, risking data corruption or inconsistent inventory states under concurrent load. Error handling is minimal, limiting troubleshooting effectiveness.
+
+The refactored procedure must improve throughput, ensure atomic updates under concurrent access, and provide robust error reporting and logging suitable for production. The solution must preserve correctness and backward compatibility with existing integrations.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/k7ig3w-refresh-inventory-status-procedure-for-scalability-concurrency-safety-and-error-handling",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
