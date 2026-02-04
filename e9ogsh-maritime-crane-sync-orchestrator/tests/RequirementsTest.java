@@ -68,23 +68,19 @@ class RequirementsTest {
     void test_2() {
         service.start();
         
-        // Safe data first
         long baseTs = System.nanoTime();
         service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 1000.0, baseTs));
         service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_B, 1000.0, baseTs));
         assertEquals(LiftState.LIFTING, service.getState());
         
-        // Trigger fault (150mm > 100mm threshold)
         long faultTs = baseTs + 50_000_000L;
         service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 550.0, faultTs));
         service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_B, 400.0, faultTs));
         
-        // Verify state transition
         assertEquals(LiftState.FAULT, service.getState());
         assertTrue(controllerA.hasReceivedHaltAll());
         assertTrue(controllerB.hasReceivedHaltAll());
         
-        // CRITICAL: Assert the 10ms window using the service's timing methods
         long thresholdCrossed = service.getThresholdCrossedTimestamp();
         long haltIssued = service.getHaltIssuedTimestamp();
         
@@ -97,7 +93,6 @@ class RequirementsTest {
         assertTrue(processingTimeNs <= 10_000_000L,
             String.format("Processing time %.3fms exceeds 10ms limit", processingTimeNs / 1_000_000.0));
         
-        // Use the dedicated method
         assertTrue(service.wasProcessingWithinWindow(), 
             "wasProcessingWithinWindow() must return true for valid safety interlock");
         
@@ -124,15 +119,19 @@ class RequirementsTest {
             .anyMatch(c -> Command.MOVE.equals(c.type())), 
             "No MOVE command should reach controller in FAULT state");
         
-        // Step 3: Manual reset
+        // Step 3: Manual reset (full clean slate)
         service.reset();
         assertEquals(LiftState.IDLE, service.getState(), "System should be IDLE after reset");
+        
+        // Verify reset clears clock calibration too
+        assertFalse(service.isClockOffsetCalibrated(), "Clock calibration should be cleared by reset");
+        assertEquals(0, service.getClockOffsetNs(), "Clock offset should be zero after reset");
         
         // Step 4: Restart the service
         service.start();
         assertEquals(LiftState.LIFTING, service.getState(), "System should be LIFTING after restart");
         
-        // Step 5: Add synchronized telemetry (required for non-stale state)
+        // Step 5: Add synchronized telemetry
         long ts2 = System.nanoTime();
         service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 1000.0, ts2));
         service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_B, 1000.0, ts2));
@@ -194,16 +193,12 @@ class RequirementsTest {
         service.start();
         
         // Send pulses that appear misaligned by 50ms but are actually synchronized
-        // Without drift compensation, these would be marked as stale (50ms > tolerance without adjustment)
-        // With compensation, they should align properly
         service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 1000.0, 2_050_000_000L));
         service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_B, 1010.0, 2_000_000_000L));
         
-        // Should NOT be stale because drift compensation aligns the timestamps
         assertEquals(LiftState.LIFTING, service.getState());
         assertFalse(service.isStaleDataDetected(), "Should not be stale after clock drift calibration");
         
-        // Verify the adjusted timestamp
         TelemetryPulse pulseA = service.getLatestPulse(TelemetryPulse.CRANE_A);
         long adjustedA = service.getAdjustedTimestamp(pulseA);
         assertEquals(2_000_000_000L, adjustedA, "Adjusted timestamp should match Crane-B's reference");

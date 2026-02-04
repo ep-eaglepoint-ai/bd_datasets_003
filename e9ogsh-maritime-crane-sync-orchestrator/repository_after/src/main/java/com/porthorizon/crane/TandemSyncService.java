@@ -78,7 +78,35 @@ public class TandemSyncService {
         state.set(LiftState.IDLE);
     }
     
+    /**
+     * Full manual reset - clears ALL state including clock calibration.
+     * This provides a complete clean slate requiring recalibration.
+     */
     public void reset() {
+        watchdog.stop();
+        watchdog.reset();
+        state.set(LiftState.IDLE);
+        staleDataDetected.set(false);
+        thresholdCrossedTimestampNs.set(0);
+        haltIssuedTimestampNs.set(0);
+        latestCraneA.set(null);
+        latestCraneB.set(null);
+        
+        // Clear clock calibration state for full clean slate
+        clockOffsetNs.set(0);
+        clockOffsetCalibrated.set(false);
+        lastCalibrationTimeNs.set(0);
+        clockDriftRateNsPerSec.set(0);
+        
+        clearBuffers();
+        commandHistory.clear();
+    }
+    
+    /**
+     * Soft reset - clears operational state but preserves clock calibration.
+     * Use this when you want to restart without recalibrating clocks.
+     */
+    public void softReset() {
         watchdog.stop();
         watchdog.reset();
         state.set(LiftState.IDLE);
@@ -89,6 +117,7 @@ public class TandemSyncService {
         latestCraneB.set(null);
         clearBuffers();
         commandHistory.clear();
+        // Clock calibration preserved
     }
     
     private void clearBuffers() {
@@ -124,7 +153,6 @@ public class TandemSyncService {
             long elapsedNs = now - calibrationTime;
             long offsetChange = currentOffset - previousOffset;
             
-            // Drift rate in nanoseconds per second
             if (elapsedNs > 0) {
                 long driftRate = (offsetChange * 1_000_000_000L) / elapsedNs;
                 clockDriftRateNsPerSec.set(driftRate);
@@ -149,7 +177,6 @@ public class TandemSyncService {
         long calibrationTime = lastCalibrationTimeNs.get();
         long now = System.nanoTime();
         
-        // Apply drift compensation if we have drift rate
         if (driftRate != 0 && calibrationTime > 0) {
             long elapsedSec = (now - calibrationTime) / 1_000_000_000L;
             offset += driftRate * elapsedSec;

@@ -472,10 +472,10 @@ index 0000000..c38835d
 \ No newline at end of file
 diff --git a/repository_after/src/main/java/com/porthorizon/crane/TandemSyncService.java b/repository_after/src/main/java/com/porthorizon/crane/TandemSyncService.java
 new file mode 100644
-index 0000000..761ec88
+index 0000000..c55e267
 --- /dev/null
 +++ b/repository_after/src/main/java/com/porthorizon/crane/TandemSyncService.java
-@@ -0,0 +1,382 @@
+@@ -0,0 +1,409 @@
 +package com.porthorizon.crane;
 +
 +import java.util.concurrent.*;
@@ -556,7 +556,35 @@ index 0000000..761ec88
 +        state.set(LiftState.IDLE);
 +    }
 +    
++    /**
++     * Full manual reset - clears ALL state including clock calibration.
++     * This provides a complete clean slate requiring recalibration.
++     */
 +    public void reset() {
++        watchdog.stop();
++        watchdog.reset();
++        state.set(LiftState.IDLE);
++        staleDataDetected.set(false);
++        thresholdCrossedTimestampNs.set(0);
++        haltIssuedTimestampNs.set(0);
++        latestCraneA.set(null);
++        latestCraneB.set(null);
++        
++        // Clear clock calibration state for full clean slate
++        clockOffsetNs.set(0);
++        clockOffsetCalibrated.set(false);
++        lastCalibrationTimeNs.set(0);
++        clockDriftRateNsPerSec.set(0);
++        
++        clearBuffers();
++        commandHistory.clear();
++    }
++    
++    /**
++     * Soft reset - clears operational state but preserves clock calibration.
++     * Use this when you want to restart without recalibrating clocks.
++     */
++    public void softReset() {
 +        watchdog.stop();
 +        watchdog.reset();
 +        state.set(LiftState.IDLE);
@@ -567,6 +595,7 @@ index 0000000..761ec88
 +        latestCraneB.set(null);
 +        clearBuffers();
 +        commandHistory.clear();
++        // Clock calibration preserved
 +    }
 +    
 +    private void clearBuffers() {
@@ -602,7 +631,6 @@ index 0000000..761ec88
 +            long elapsedNs = now - calibrationTime;
 +            long offsetChange = currentOffset - previousOffset;
 +            
-+            // Drift rate in nanoseconds per second
 +            if (elapsedNs > 0) {
 +                long driftRate = (offsetChange * 1_000_000_000L) / elapsedNs;
 +                clockDriftRateNsPerSec.set(driftRate);
@@ -627,7 +655,6 @@ index 0000000..761ec88
 +        long calibrationTime = lastCalibrationTimeNs.get();
 +        long now = System.nanoTime();
 +        
-+        // Apply drift compensation if we have drift rate
 +        if (driftRate != 0 && calibrationTime > 0) {
 +            long elapsedSec = (now - calibrationTime) / 1_000_000_000L;
 +            offset += driftRate * elapsedSec;
@@ -950,7 +977,7 @@ index 0000000..26474af
 Binary files /dev/null and b/repository_after/target/classes/com/porthorizon/crane/MotorController.class differ
 diff --git a/repository_after/target/classes/com/porthorizon/crane/TandemSyncService.class b/repository_after/target/classes/com/porthorizon/crane/TandemSyncService.class
 new file mode 100644
-index 0000000..4cf99c1
+index 0000000..61d47c9
 Binary files /dev/null and b/repository_after/target/classes/com/porthorizon/crane/TandemSyncService.class differ
 diff --git a/repository_after/target/classes/com/porthorizon/crane/TelemetryPulse.class b/repository_after/target/classes/com/porthorizon/crane/TelemetryPulse.class
 new file mode 100644
@@ -958,7 +985,7 @@ index 0000000..a50b1d9
 Binary files /dev/null and b/repository_after/target/classes/com/porthorizon/crane/TelemetryPulse.class differ
 diff --git a/repository_after/target/crane-sync-orchestrator-1.0.0.jar b/repository_after/target/crane-sync-orchestrator-1.0.0.jar
 new file mode 100644
-index 0000000..f9d2531
+index 0000000..01a9264
 Binary files /dev/null and b/repository_after/target/crane-sync-orchestrator-1.0.0.jar differ
 diff --git a/repository_after/target/eval-classes/Evaluation$TestEntry.class b/repository_after/target/eval-classes/Evaluation$TestEntry.class
 new file mode 100644
@@ -1013,7 +1040,7 @@ index 0000000..4a02ff7
 Binary files /dev/null and b/repository_after/target/test-classes/DriftSimulationTest.class differ
 diff --git a/repository_after/target/test-classes/JitterResilienceTest.class b/repository_after/target/test-classes/JitterResilienceTest.class
 new file mode 100644
-index 0000000..8bdc992
+index 0000000..b87b41e
 Binary files /dev/null and b/repository_after/target/test-classes/JitterResilienceTest.class differ
 diff --git a/repository_after/target/test-classes/LivenessWatchdogTest.class b/repository_after/target/test-classes/LivenessWatchdogTest.class
 new file mode 100644
@@ -1021,7 +1048,7 @@ index 0000000..f500a27
 Binary files /dev/null and b/repository_after/target/test-classes/LivenessWatchdogTest.class differ
 diff --git a/repository_after/target/test-classes/RequirementsTest.class b/repository_after/target/test-classes/RequirementsTest.class
 new file mode 100644
-index 0000000..6d42535
+index 0000000..22f3e36
 Binary files /dev/null and b/repository_after/target/test-classes/RequirementsTest.class differ
 diff --git a/repository_after/target/test-classes/TandemSyncServiceTest.class b/repository_after/target/test-classes/TandemSyncServiceTest.class
 new file mode 100644
