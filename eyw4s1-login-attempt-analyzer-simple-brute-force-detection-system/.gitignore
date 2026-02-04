@@ -65,6 +65,7 @@ nosetests.xml
 coverage.xml
 *.cover
 .hypothesis/
+*/.vite
 
 # Temporary files
 *.tmp

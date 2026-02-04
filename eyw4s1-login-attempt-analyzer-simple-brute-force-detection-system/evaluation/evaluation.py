@@ -53,7 +53,7 @@ class TestEvaluator:
             
             # Run frontend tests directly
             frontend_process = subprocess.Popen(
-                ["./node_modules/.bin/vitest", "run", "--reporter=verbose"],
+                ["./node_modules/.bin/vitest", "run", "-c", "../../tests/vitest.config.ts", "--reporter=verbose"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
