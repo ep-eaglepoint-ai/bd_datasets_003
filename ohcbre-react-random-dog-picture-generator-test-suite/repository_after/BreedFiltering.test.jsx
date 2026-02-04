@@ -1,6 +1,6 @@
 /**
  * Breed Filtering Tests
- * Requirements 8-10: Breed dropdown, breed selection, and breed-specific fetching
+ * Requirements 8-10: Breed dropdown, breed selection, breed-specific fetching
  */
 import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
@@ -33,121 +33,34 @@ describe('Breed Filtering Tests', () => {
     });
   });
 
+  // Requirement 10: Breed dropdown populates from API on mount
   test('breed dropdown populates from API on mount', async () => {
     await act(async () => {
       render(<Dog />);
     });
 
+    // STRICT ASSERTION: API called for breeds list
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
         expect.stringContaining('breeds/list/all')
       );
     });
 
+    // STRICT ASSERTION: Dropdown contains breed options
     await waitFor(() => {
       const select = screen.getByRole('combobox');
       expect(select).toBeInTheDocument();
-
-      const options = screen.getAllByRole('option');
-      // Should have default option + actual breeds
-      expect(options.length).toBeGreaterThan(1);
+      
+      // Check for specific breeds in dropdown
+      expect(screen.getByRole('option', { name: /labrador/i })).toBeInTheDocument();
+      expect(screen.getByRole('option', { name: /poodle/i })).toBeInTheDocument();
     });
   });
 
+  // Requirement 8: Selecting a breed fetches random image of that breed only
   test('selecting a breed fetches random image of that breed only', async () => {
     const user = userEvent.setup();
-
-    await act(async () => {
-      render(<Dog />);
-    });
-
-    await waitFor(() => {
-      expect(screen.getByRole('combobox')).toBeInTheDocument();
-    });
-
-    const select = screen.getByRole('combobox');
-
-    await act(async () => {
-      await user.selectOptions(select, 'labrador');
-    });
-
-    const generateButton = screen.getByRole('button', { name: /generate dog/i });
-
-    await act(async () => {
-      fireEvent.click(generateButton);
-    });
-
-    await waitFor(() => {
-      const breedCall = global.fetch.mock.calls.find(
-        call => call[0].includes('/breed/labrador/')
-      );
-      expect(breedCall).toBeTruthy();
-    });
-  });
-
-  test('"All Breeds" option fetches from general random endpoint', async () => {
-    const user = userEvent.setup();
-
-    await act(async () => {
-      render(<Dog />);
-    });
-
-    await waitFor(() => {
-      expect(screen.getByRole('combobox')).toBeInTheDocument();
-    });
-
-    const select = screen.getByRole('combobox');
-
-    // Ensure default/empty option is selected (All Breeds)
-    await act(async () => {
-      await user.selectOptions(select, '');
-    });
-
-    const generateButton = screen.getByRole('button', { name: /generate dog/i });
-
-    await act(async () => {
-      fireEvent.click(generateButton);
-    });
-
-    await waitFor(() => {
-      const randomCall = global.fetch.mock.calls.find(
-        call => call[0].includes('breeds/image/random') || 
-               (call[0].includes('image/random') && !call[0].includes('/breed/'))
-      );
-      expect(randomCall).toBeTruthy();
-    });
-  });
-
-  test('breed list fetch error shows fallback message', async () => {
-    global.fetch = jest.fn((url) => {
-      if (url.includes('breeds/list/all')) {
-        return Promise.reject(new Error('Failed to fetch breeds'));
-      }
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve(mockRandomDogResponse)
-      });
-    });
-
-    await act(async () => {
-      render(<Dog />);
-    });
-
-    // Component should handle gracefully - either show error or have empty dropdown
-    await waitFor(() => {
-      const select = screen.getByRole('combobox');
-      expect(select).toBeInTheDocument();
-    });
-
-    // Check for error message or fallback behavior
-    const errorMessage = screen.queryByText(/failed/i) || 
-                        screen.queryByText(/error/i) ||
-                        screen.queryByText(/select/i);
-    expect(errorMessage).toBeTruthy();
-  });
-
-  test('breed-specific image URL contains breed name', async () => {
-    const poodleImageUrl = 'https://images.dog.ceo/breeds/poodle/test.jpg';
+    const poodleImageUrl = 'https://images.dog.ceo/breeds/poodle/specific.jpg';
 
     global.fetch = jest.fn((url) => {
       if (url.includes('breeds/list/all')) {
@@ -171,8 +84,6 @@ describe('Breed Filtering Tests', () => {
       });
     });
 
-    const user = userEvent.setup();
-
     await act(async () => {
       render(<Dog />);
     });
@@ -182,23 +93,36 @@ describe('Breed Filtering Tests', () => {
     });
 
     const select = screen.getByRole('combobox');
+
     await act(async () => {
       await user.selectOptions(select, 'poodle');
     });
 
     const generateButton = screen.getByRole('button', { name: /generate dog/i });
+
     await act(async () => {
       fireEvent.click(generateButton);
     });
 
+    // STRICT ASSERTION: API called with breed-specific endpoint
+    await waitFor(() => {
+      const breedCall = global.fetch.mock.calls.find(
+        call => call[0].includes('/breed/poodle/')
+      );
+      expect(breedCall).toBeTruthy();
+    });
+
+    // STRICT ASSERTION: Image URL contains breed name
     await waitFor(() => {
       const images = screen.getAllByRole('img');
-      const poodleImage = images.find(img => img.src && img.src.includes('poodle'));
-      expect(poodleImage).toBeTruthy();
+      const poodleImage = images.find(img => img.src.includes('poodle'));
+      expect(poodleImage).toBeInTheDocument();
+      expect(poodleImage.src).toBe(poodleImageUrl);
     });
   });
 
-  test('breed selection updates state correctly', async () => {
+  // Requirement 9: "All Breeds" option fetches from general random endpoint
+  test('"All Breeds" option fetches from general random endpoint', async () => {
     const user = userEvent.setup();
 
     await act(async () => {
@@ -211,16 +135,57 @@ describe('Breed Filtering Tests', () => {
 
     const select = screen.getByRole('combobox');
 
+    // First select a breed
     await act(async () => {
-      await user.selectOptions(select, 'poodle');
+      await user.selectOptions(select, 'labrador');
     });
 
-    expect(select.value).toBe('poodle');
-
+    // Then select "All Breeds" (empty value or default option)
     await act(async () => {
-      await user.selectOptions(select, 'beagle');
+      await user.selectOptions(select, '');
     });
 
-    expect(select.value).toBe('beagle');
+    // Clear previous fetch calls
+    global.fetch.mockClear();
+
+    const generateButton = screen.getByRole('button', { name: /generate dog/i });
+
+    await act(async () => {
+      fireEvent.click(generateButton);
+    });
+
+    // STRICT ASSERTION: General random endpoint called, NOT breed-specific
+    await waitFor(() => {
+      const generalCall = global.fetch.mock.calls.find(
+        call => call[0].includes('breeds/image/random') && !call[0].includes('/breed/')
+      );
+      expect(generalCall).toBeTruthy();
+    });
+  });
+
+  // Breed list fetch error shows fallback message
+  test('breed list fetch error shows fallback message', async () => {
+    global.fetch = jest.fn((url) => {
+      if (url.includes('breeds/list/all')) {
+        return Promise.reject(new Error('Failed to fetch breeds'));
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(mockRandomDogResponse)
+      });
+    });
+
+    await act(async () => {
+      render(<Dog />);
+    });
+
+    // STRICT ASSERTION: Fallback/error message for breeds should be shown
+    await waitFor(() => {
+      const fallbackMessage = screen.queryByText(/failed.*breed/i) ||
+                              screen.queryByText(/error.*breed/i) ||
+                              screen.queryByText(/couldn.*load.*breed/i) ||
+                              screen.queryByTestId('breeds-error');
+      expect(fallbackMessage).toBeInTheDocument();
+    });
   });
 });

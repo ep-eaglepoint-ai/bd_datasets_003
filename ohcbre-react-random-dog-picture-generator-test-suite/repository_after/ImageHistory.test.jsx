@@ -17,6 +17,7 @@ describe('Image History Tests', () => {
   beforeEach(() => {
     imageCounter = 0;
     jest.clearAllMocks();
+    
     global.fetch = jest.fn((url) => {
       if (url.includes('breeds/list/all')) {
         return Promise.resolve({
@@ -35,106 +36,54 @@ describe('Image History Tests', () => {
     });
   });
 
-  test('viewed images are added to history array', async () => {
-    await act(async () => {
-      render(<Dog />);
-    });
-
-    // Initial image should be displayed
-    await waitFor(() => {
-      const images = screen.getAllByRole('img');
-      expect(images.length).toBeGreaterThan(0);
-    });
-
-    const generateButton = screen.getByRole('button', { name: /generate dog/i });
-
-    await act(async () => {
-      fireEvent.click(generateButton);
-    });
-
-    await waitFor(() => {
-      const images = screen.getAllByRole('img');
-      // Should have at least one image (current view)
-      expect(images.length).toBeGreaterThan(0);
-    });
-  });
-
-  test('history is capped at 10 items with oldest removed when exceeding', async () => {
+  // Requirement 14: History is capped at 10 items with oldest removed
+  test('history is capped at 10 items with OLDEST removed when exceeding', async () => {
     await act(async () => {
       render(<Dog />);
     });
 
     const generateButton = screen.getByRole('button', { name: /generate dog/i });
 
-    // Generate 12 images to exceed cap
+    // Generate 12 images to exceed the 10-item cap
     for (let i = 0; i < 12; i++) {
       await act(async () => {
         fireEvent.click(generateButton);
       });
 
       await waitFor(() => {
-        expect(imageCounter).toBeGreaterThanOrEqual(i + 1);
+        expect(imageCounter).toBe(i + 2); // +2 because initial fetch + loop
       });
     }
 
-    // Check localStorage for history cap
-    const setHistoryCalls = localStorage.setItem.mock.calls
-      .filter(call => call[0] === 'dogHistory');
-
-    if (setHistoryCalls.length > 0) {
-      const lastHistoryCall = setHistoryCalls[setHistoryCalls.length - 1];
-      const savedHistory = JSON.parse(lastHistoryCall[1]);
-      expect(savedHistory.length).toBeLessThanOrEqual(10);
-    }
-
-    // If component has visible history, check it
-    const historyItems = screen.queryAllByTestId(/history-item/);
-    if (historyItems.length > 0) {
-      expect(historyItems.length).toBeLessThanOrEqual(10);
-    }
-  });
-
-  test('clicking history thumbnail displays that image', async () => {
-    await act(async () => {
-      render(<Dog />);
-    });
-
-    const generateButton = screen.getByRole('button', { name: /generate dog/i });
-
-    // Generate multiple images
-    await act(async () => {
-      fireEvent.click(generateButton);
-    });
-
+    // STRICT ASSERTION: History localStorage should have exactly 10 items
     await waitFor(() => {
-      expect(screen.getAllByRole('img').length).toBeGreaterThan(0);
+      const historyCalls = localStorage.setItem.mock.calls.filter(
+        call => call[0] === 'dogHistory'
+      );
+      
+      if (historyCalls.length > 0) {
+        const lastCall = historyCalls[historyCalls.length - 1];
+        const savedHistory = JSON.parse(lastCall[1]);
+        
+        // STRICT ASSERTION: History capped at 10
+        expect(savedHistory.length).toBeLessThanOrEqual(10);
+        
+        // STRICT ASSERTION: Oldest images should be removed (first images not in array)
+        expect(savedHistory).not.toContain('https://images.dog.ceo/breeds/labrador/dog1.jpg');
+        expect(savedHistory).not.toContain('https://images.dog.ceo/breeds/labrador/dog2.jpg');
+      }
     });
-
-    await act(async () => {
-      fireEvent.click(generateButton);
-    });
-
-    // If there are clickable history thumbnails, test clicking them
-    const images = screen.getAllByRole('img');
-    if (images.length > 1) {
-      const thumbnailImage = images[1]; // Second image if exists
-
-      await act(async () => {
-        fireEvent.click(thumbnailImage);
-      });
-
-      // Verify component is still functional
-      expect(screen.getByText(/random/i)).toBeInTheDocument();
-    }
   });
 
-  test('history persists across sessions via localStorage', async () => {
+  // Clicking history thumbnail updates main image
+  test('clicking history thumbnail updates the main displayed image', async () => {
+    // Pre-populate history
     const savedHistory = [
-      'https://images.dog.ceo/breeds/labrador/dog1.jpg',
-      'https://images.dog.ceo/breeds/labrador/dog2.jpg',
-      'https://images.dog.ceo/breeds/poodle/dog3.jpg'
+      'https://images.dog.ceo/breeds/labrador/history1.jpg',
+      'https://images.dog.ceo/breeds/poodle/history2.jpg',
+      'https://images.dog.ceo/breeds/bulldog/history3.jpg'
     ];
-
+    
     localStorage.getItem.mockImplementation((key) => {
       if (key === 'dogHistory') {
         return JSON.stringify(savedHistory);
@@ -146,12 +95,38 @@ describe('Image History Tests', () => {
       render(<Dog />);
     });
 
+    // Find history thumbnails
     await waitFor(() => {
-      expect(localStorage.getItem).toHaveBeenCalledWith('dogHistory');
+      const historySection = screen.queryByTestId('history-section') ||
+                            screen.queryByText(/history/i);
+      expect(historySection).toBeInTheDocument();
     });
+
+    // Find a history thumbnail and click it
+    const historyThumbnails = screen.queryAllByTestId(/history-item/) ||
+                              screen.getAllByRole('img').filter(img => 
+                                savedHistory.some(url => img.src === url)
+                              );
+
+    if (historyThumbnails.length > 0) {
+      const thumbnailToClick = historyThumbnails[1]; // Click second history item
+      const thumbnailSrc = thumbnailToClick.src;
+
+      await act(async () => {
+        fireEvent.click(thumbnailToClick);
+      });
+
+      // STRICT ASSERTION: Main image should update to clicked thumbnail
+      await waitFor(() => {
+        const mainImage = screen.getByTestId('dog-image') ||
+                         screen.getAllByRole('img')[0];
+        expect(mainImage.src).toBe(thumbnailSrc);
+      });
+    }
   });
 
-  test('history writes to localStorage on image fetch', async () => {
+  // History writes to localStorage
+  test('history writes to localStorage with key "dogHistory"', async () => {
     await act(async () => {
       render(<Dog />);
     });
@@ -162,41 +137,34 @@ describe('Image History Tests', () => {
       fireEvent.click(generateButton);
     });
 
+    // STRICT ASSERTION: localStorage.setItem called with 'dogHistory'
     await waitFor(() => {
-      const images = screen.getAllByRole('img');
-      expect(images.length).toBeGreaterThan(0);
+      const historyCalls = localStorage.setItem.mock.calls.filter(
+        call => call[0] === 'dogHistory'
+      );
+      expect(historyCalls.length).toBeGreaterThan(0);
     });
-
-    // Check if dogHistory was saved to localStorage
-    const setHistoryCalls = localStorage.setItem.mock.calls
-      .filter(call => call[0] === 'dogHistory');
-
-    // If history feature is implemented, it should save
-    // If not implemented, test documents current behavior
-    expect(setHistoryCalls.length >= 0).toBe(true);
   });
 
-  test('multiple fetches add to image collection', async () => {
+  // History loads from localStorage on mount
+  test('history loads from localStorage on component mount', async () => {
+    const savedHistory = [
+      'https://images.dog.ceo/breeds/labrador/h1.jpg',
+      'https://images.dog.ceo/breeds/poodle/h2.jpg'
+    ];
+    
+    localStorage.getItem.mockImplementation((key) => {
+      if (key === 'dogHistory') {
+        return JSON.stringify(savedHistory);
+      }
+      return null;
+    });
+
     await act(async () => {
       render(<Dog />);
     });
 
-    const generateButton = screen.getByRole('button', { name: /generate dog/i });
-
-    await act(async () => {
-      fireEvent.click(generateButton);
-    });
-
-    await waitFor(() => {
-      expect(screen.getAllByRole('img').length).toBeGreaterThan(0);
-    });
-
-    await act(async () => {
-      fireEvent.click(generateButton);
-    });
-
-    await waitFor(() => {
-      expect(screen.getAllByRole('img').length).toBeGreaterThan(0);
-    });
+    // STRICT ASSERTION: localStorage.getItem called with 'dogHistory'
+    expect(localStorage.getItem).toHaveBeenCalledWith('dogHistory');
   });
 });

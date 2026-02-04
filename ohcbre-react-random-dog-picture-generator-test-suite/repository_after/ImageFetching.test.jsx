@@ -1,6 +1,6 @@
 /**
  * Image Fetching Tests
- * Requirement 1-4: API calls, loading states, image display, and error handling
+ * Requirements 1-4: API calls, loading states, image display, error handling
  */
 import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
@@ -26,17 +26,71 @@ describe('Image Fetching Tests', () => {
           json: () => Promise.resolve(mockBreedsResponse)
         });
       }
-      if (url.includes('image/random') || url.includes('images/random')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve(mockRandomDogResponse)
-        });
-      }
-      return Promise.reject(new Error('Unknown endpoint'));
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(mockRandomDogResponse)
+      });
     });
   });
 
-  test('clicking "Get Random Dog" button triggers API call and displays loading state', async () => {
+  // Requirement 1: Test that clicking "Get Random Dog" triggers API call and displays loading state
+  test('clicking generate button triggers API call and displays loading state', async () => {
+    let resolveImageFetch;
+    const imagePromise = new Promise((resolve) => {
+      resolveImageFetch = resolve;
+    });
+
+    global.fetch = jest.fn((url) => {
+      if (url.includes('breeds/list/all')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(mockBreedsResponse)
+        });
+      }
+      return imagePromise;
+    });
+
+    await act(async () => {
+      render(<Dog />);
+    });
+
+    // Find generate button (component uses "Generate Dog")
+    const generateButton = screen.getByRole('button', { name: /generate dog/i });
+    const fetchCallsBefore = global.fetch.mock.calls.length;
+
+    await act(async () => {
+      fireEvent.click(generateButton);
+    });
+
+    // STRICT ASSERTION: Loading indicator MUST be visible during fetch
+    const loadingIndicator = screen.queryByTestId('loading-indicator') ||
+                             screen.queryByTestId('loading-spinner') ||
+                             screen.queryByTestId('loading') ||
+                             screen.queryByText(/loading/i) ||
+                             screen.queryByRole('status');
+    
+    // Assert loading indicator is shown
+    expect(loadingIndicator).toBeInTheDocument();
+
+    // Assert API was called
+    expect(global.fetch.mock.calls.length).toBeGreaterThan(fetchCallsBefore);
+    
+    const imageApiCall = global.fetch.mock.calls.find(
+      call => call[0].includes('image/random') || call[0].includes('images/random')
+    );
+    expect(imageApiCall).toBeTruthy();
+
+    // Resolve fetch
+    await act(async () => {
+      resolveImageFetch({
+        ok: true,
+        json: () => Promise.resolve(mockRandomDogResponse)
+      });
+    });
+  });
+
+  // Requirement 2: Test that successful fetch displays image and clears loading state
+  test('successful fetch displays image and clears loading state', async () => {
     let resolveImageFetch;
     const imagePromise = new Promise((resolve) => {
       resolveImageFetch = resolve;
@@ -57,23 +111,12 @@ describe('Image Fetching Tests', () => {
     });
 
     const generateButton = screen.getByRole('button', { name: /generate dog/i });
-    const initialFetchCount = global.fetch.mock.calls.length;
 
     await act(async () => {
       fireEvent.click(generateButton);
     });
 
-    // Verify API was called
-    await waitFor(() => {
-      expect(global.fetch.mock.calls.length).toBeGreaterThan(initialFetchCount);
-    });
-
-    // Check for loading state - look for loading indicator or disabled button
-    const loadingIndicator = screen.queryByTestId('loading') || 
-                             screen.queryByTestId('loading-spinner') ||
-                             screen.queryByText(/loading/i);
-    
-    // Resolve the fetch
+    // Complete the fetch
     await act(async () => {
       resolveImageFetch({
         ok: true,
@@ -81,54 +124,39 @@ describe('Image Fetching Tests', () => {
       });
     });
 
-    // Test passes if API was called (loading state may or may not be visible based on component implementation)
-    expect(global.fetch).toHaveBeenCalled();
-  });
-
-  test('successful fetch displays image and clears loading state', async () => {
-    await act(async () => {
-      render(<Dog />);
+    // STRICT ASSERTION: Loading indicator MUST be gone after fetch completes
+    await waitFor(() => {
+      const loadingIndicator = screen.queryByTestId('loading-indicator') ||
+                               screen.queryByTestId('loading-spinner') ||
+                               screen.queryByTestId('loading') ||
+                               screen.queryByText(/loading/i);
+      expect(loadingIndicator).not.toBeInTheDocument();
     });
 
-    // Wait for initial image to load
+    // STRICT ASSERTION: Image MUST be displayed with correct URL
     await waitFor(() => {
       const images = screen.getAllByRole('img');
-      expect(images.length).toBeGreaterThan(0);
+      const dogImage = images.find(img => img.src === mockDogImageUrl);
+      expect(dogImage).toBeInTheDocument();
     });
-
-    const generateButton = screen.getByRole('button', { name: /generate dog/i });
-
-    await act(async () => {
-      fireEvent.click(generateButton);
-    });
-
-    // After fetch, image should be displayed
-    await waitFor(() => {
-      const images = screen.getAllByRole('img');
-      const dogImage = images.find(img => img.src && img.src.includes('dog.ceo'));
-      expect(dogImage).toBeTruthy();
-    });
-
-    // Loading state should be cleared (no loading indicator visible)
-    const loadingIndicator = screen.queryByTestId('loading') || 
-                             screen.queryByText(/loading/i);
-    expect(loadingIndicator).toBeFalsy();
   });
 
-  test('image src is set to the fetched URL', async () => {
+  // Requirement 3: Test that image src is set to the fetched URL
+  test('image src is set correctly to the fetched URL', async () => {
     await act(async () => {
       render(<Dog />);
     });
 
     await waitFor(() => {
       const images = screen.getAllByRole('img');
-      const dogImage = images.find(img => img.src && img.src.includes('dog.ceo'));
+      const dogImage = images.find(img => img.src === mockDogImageUrl);
       expect(dogImage).toBeTruthy();
       expect(dogImage.src).toBe(mockDogImageUrl);
     });
   });
 
-  test('fetch error displays error message and retry button', async () => {
+  // Requirement 4: Test that fetch error displays error message and retry button
+  test('fetch error displays error message AND dedicated retry button', async () => {
     global.fetch = jest.fn((url) => {
       if (url.includes('breeds/list/all')) {
         return Promise.resolve({
@@ -143,22 +171,26 @@ describe('Image Fetching Tests', () => {
       render(<Dog />);
     });
 
-    // Wait for error state
+    // STRICT ASSERTION: Error message MUST be displayed
     await waitFor(() => {
-      // Check for error message
-      const errorElement = screen.queryByText(/failed/i) || 
+      const errorMessage = screen.queryByTestId('error-message') ||
+                          screen.queryByText(/failed/i) ||
                           screen.queryByText(/error/i);
-      expect(errorElement).toBeInTheDocument();
+      expect(errorMessage).toBeInTheDocument();
     });
 
-    // Check for retry button (may be the generate button itself or a dedicated retry button)
-    const retryButton = screen.queryByRole('button', { name: /retry/i }) ||
-                       screen.getByRole('button', { name: /generate dog/i });
-    expect(retryButton).toBeInTheDocument();
+    // STRICT ASSERTION: Dedicated retry button MUST appear on error
+    await waitFor(() => {
+      const retryButton = screen.queryByRole('button', { name: /retry/i }) ||
+                         screen.queryByTestId('retry-button');
+      expect(retryButton).toBeInTheDocument();
+    });
   });
 
-  test('retry button triggers new fetch attempt after error', async () => {
+  // Requirement 5: Test that retry button triggers new fetch attempt
+  test('clicking retry button triggers new fetch attempt', async () => {
     let callCount = 0;
+    
     global.fetch = jest.fn((url) => {
       if (url.includes('breeds/list/all')) {
         return Promise.resolve({
@@ -180,26 +212,63 @@ describe('Image Fetching Tests', () => {
       render(<Dog />);
     });
 
-    // First call fails, wait for error
+    // Wait for error state
     await waitFor(() => {
-      expect(callCount).toBeGreaterThanOrEqual(1);
+      expect(callCount).toBe(1);
     });
 
-    // Click retry/generate button
-    const retryButton = screen.queryByRole('button', { name: /retry/i }) ||
-                       screen.getByRole('button', { name: /generate dog/i });
+    // Find and click the DEDICATED retry button (not the generate button)
+    const retryButton = await waitFor(() => {
+      const btn = screen.queryByRole('button', { name: /retry/i }) ||
+                  screen.queryByTestId('retry-button');
+      expect(btn).toBeInTheDocument();
+      return btn;
+    });
+
+    const callCountBeforeRetry = callCount;
 
     await act(async () => {
       fireEvent.click(retryButton);
     });
 
-    // Verify new fetch was triggered
+    // STRICT ASSERTION: Clicking retry MUST trigger a NEW fetch
     await waitFor(() => {
-      expect(callCount).toBeGreaterThan(1);
+      expect(callCount).toBeGreaterThan(callCountBeforeRetry);
+    });
+
+    // After successful retry, image should be displayed
+    await waitFor(() => {
+      const images = screen.getAllByRole('img');
+      const dogImage = images.find(img => img.src === mockDogImageUrl);
+      expect(dogImage).toBeInTheDocument();
     });
   });
 
-  test('component handles API returning unexpected status', async () => {
+  // Additional: Network vs API error shows distinct messages
+  test('network error shows network-specific error message', async () => {
+    global.fetch = jest.fn((url) => {
+      if (url.includes('breeds/list/all')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(mockBreedsResponse)
+        });
+      }
+      return Promise.reject(new Error('Failed to fetch'));
+    });
+
+    await act(async () => {
+      render(<Dog />);
+    });
+
+    await waitFor(() => {
+      const errorText = screen.queryByText(/network/i) ||
+                       screen.queryByText(/connection/i) ||
+                       screen.queryByText(/failed to fetch/i);
+      expect(errorText).toBeInTheDocument();
+    });
+  });
+
+  test('API error (non-ok response) shows API-specific error message', async () => {
     global.fetch = jest.fn((url) => {
       if (url.includes('breeds/list/all')) {
         return Promise.resolve({
@@ -208,8 +277,9 @@ describe('Image Fetching Tests', () => {
         });
       }
       return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({ status: 'error', message: 'Error occurred' })
+        ok: false,
+        status: 500,
+        json: () => Promise.resolve({ status: 'error', message: 'Server error' })
       });
     });
 
@@ -217,12 +287,11 @@ describe('Image Fetching Tests', () => {
       render(<Dog />);
     });
 
-    // Component should handle gracefully - either show error or fallback
     await waitFor(() => {
-      const content = screen.queryByText(/failed/i) || 
-                     screen.queryByText(/error/i) || 
-                     screen.queryByText(/random/i);
-      expect(content).toBeInTheDocument();
+      const errorText = screen.queryByText(/api/i) ||
+                       screen.queryByText(/server/i) ||
+                       screen.queryByText(/failed/i);
+      expect(errorText).toBeInTheDocument();
     });
   });
 });

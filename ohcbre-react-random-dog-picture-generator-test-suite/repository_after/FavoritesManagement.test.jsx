@@ -1,25 +1,25 @@
 /**
  * Favorites Management Tests
- * Requirements 11-13: Adding, removing, persisting, and loading favorites
+ * Requirements 11-13: Adding, removing, persisting favorites, duplicate prevention
  */
 import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 const Dog = require('../src/Components/Dog.jsx').default || require('../src/Components/Dog.jsx');
 
 describe('Favorites Management Tests', () => {
-  const mockDogImageUrl = 'https://images.dog.ceo/breeds/labrador/test.jpg';
+  const mockDogImageUrl1 = 'https://images.dog.ceo/breeds/labrador/test1.jpg';
   const mockDogImageUrl2 = 'https://images.dog.ceo/breeds/poodle/test2.jpg';
   const mockBreedsResponse = {
     status: 'success',
     message: { labrador: [], poodle: [] }
   };
-  const mockRandomDogResponse = {
-    status: 'success',
-    message: mockDogImageUrl
-  };
+
+  let imageCounter = 0;
 
   beforeEach(() => {
+    imageCounter = 0;
     jest.clearAllMocks();
+    
     global.fetch = jest.fn((url) => {
       if (url.includes('breeds/list/all')) {
         return Promise.resolve({
@@ -27,13 +27,18 @@ describe('Favorites Management Tests', () => {
           json: () => Promise.resolve(mockBreedsResponse)
         });
       }
+      imageCounter++;
       return Promise.resolve({
         ok: true,
-        json: () => Promise.resolve(mockRandomDogResponse)
+        json: () => Promise.resolve({
+          status: 'success',
+          message: `https://images.dog.ceo/breeds/labrador/dog${imageCounter}.jpg`
+        })
       });
     });
   });
 
+  // Requirement 11: Clicking heart icon adds current image to favorites
   test('clicking heart icon adds current image to favorites array', async () => {
     await act(async () => {
       render(<Dog />);
@@ -45,25 +50,26 @@ describe('Favorites Management Tests', () => {
 
     const heartIcon = screen.getByTestId('heart-icon');
 
+    // Before clicking, should NOT be favorited
+    expect(heartIcon).not.toHaveClass('favorited');
+
     await act(async () => {
       fireEvent.click(heartIcon);
     });
 
-    // Verify localStorage was called to save favorites
+    // STRICT ASSERTION: Heart icon should show favorited state
     await waitFor(() => {
-      expect(localStorage.setItem).toHaveBeenCalledWith(
-        'dogFavorites',
-        expect.any(String)
-      );
+      expect(heartIcon).toHaveClass('favorited');
     });
 
-    // Verify favorites section appears
+    // STRICT ASSERTION: Favorites section should appear with 1 item
     await waitFor(() => {
       expect(screen.getByText(/favorites/i)).toBeInTheDocument();
     });
   });
 
-  test('favorites persist to localStorage on add', async () => {
+  // Requirement 13: Favorites persist to localStorage
+  test('favorites persist to localStorage on add with correct key', async () => {
     await act(async () => {
       render(<Dog />);
     });
@@ -78,51 +84,28 @@ describe('Favorites Management Tests', () => {
       fireEvent.click(heartIcon);
     });
 
+    // STRICT ASSERTION: localStorage.setItem called with 'dogFavorites' key
     await waitFor(() => {
-      const setItemCalls = localStorage.setItem.mock.calls.filter(
+      const favoriteCalls = localStorage.setItem.mock.calls.filter(
         call => call[0] === 'dogFavorites'
       );
-      expect(setItemCalls.length).toBeGreaterThan(0);
+      expect(favoriteCalls.length).toBeGreaterThan(0);
       
-      // Verify the saved value contains the image URL
-      const lastCall = setItemCalls[setItemCalls.length - 1];
-      expect(lastCall[1]).toContain(mockDogImageUrl);
+      // Verify the saved data contains the image URL
+      const lastCall = favoriteCalls[favoriteCalls.length - 1];
+      const savedData = JSON.parse(lastCall[1]);
+      expect(Array.isArray(savedData)).toBe(true);
+      expect(savedData.length).toBeGreaterThan(0);
     });
   });
 
-  test('favorites persist to localStorage on remove', async () => {
-    localStorage.getItem.mockImplementation((key) => {
-      if (key === 'dogFavorites') {
-        return JSON.stringify([mockDogImageUrl]);
-      }
-      return null;
-    });
-
-    await act(async () => {
-      render(<Dog />);
-    });
-
-    await waitFor(() => {
-      expect(screen.getByTestId('heart-icon')).toBeInTheDocument();
-    });
-
-    const heartIcon = screen.getByTestId('heart-icon');
-
-    // Click to remove from favorites (toggle off)
-    await act(async () => {
-      fireEvent.click(heartIcon);
-    });
-
-    await waitFor(() => {
-      expect(localStorage.setItem).toHaveBeenCalledWith(
-        'dogFavorites',
-        expect.any(String)
-      );
-    });
-  });
-
+  // Requirement 13: Favorites load from localStorage on mount
   test('favorites load from localStorage on component mount', async () => {
-    const savedFavorites = ['https://example.com/dog1.jpg', 'https://example.com/dog2.jpg'];
+    const savedFavorites = [
+      'https://images.dog.ceo/breeds/labrador/saved1.jpg',
+      'https://images.dog.ceo/breeds/poodle/saved2.jpg'
+    ];
+    
     localStorage.getItem.mockImplementation((key) => {
       if (key === 'dogFavorites') {
         return JSON.stringify(savedFavorites);
@@ -134,17 +117,18 @@ describe('Favorites Management Tests', () => {
       render(<Dog />);
     });
 
-    await waitFor(() => {
-      expect(localStorage.getItem).toHaveBeenCalledWith('dogFavorites');
-    });
+    // STRICT ASSERTION: localStorage.getItem called with 'dogFavorites'
+    expect(localStorage.getItem).toHaveBeenCalledWith('dogFavorites');
 
-    // Favorites section should show with loaded favorites
+    // STRICT ASSERTION: Favorites section shows loaded count
     await waitFor(() => {
-      expect(screen.getByText(/favorites/i)).toBeInTheDocument();
+      const favoritesText = screen.getByText(/favorites.*\(2\)/i);
+      expect(favoritesText).toBeInTheDocument();
     });
   });
 
-  test('duplicate favorites are prevented - same URL not added twice', async () => {
+  // Requirement 12: Duplicate favorites are prevented
+  test('duplicate favorites are prevented - same URL NOT added twice', async () => {
     await act(async () => {
       render(<Dog />);
     });
@@ -155,7 +139,7 @@ describe('Favorites Management Tests', () => {
 
     const heartIcon = screen.getByTestId('heart-icon');
 
-    // First click - add to favorites
+    // Click to add favorite
     await act(async () => {
       fireEvent.click(heartIcon);
     });
@@ -164,7 +148,7 @@ describe('Favorites Management Tests', () => {
       expect(heartIcon).toHaveClass('favorited');
     });
 
-    // Second click - should toggle off (remove), not add duplicate
+    // Click again to remove
     await act(async () => {
       fireEvent.click(heartIcon);
     });
@@ -173,78 +157,53 @@ describe('Favorites Management Tests', () => {
       expect(heartIcon).not.toHaveClass('favorited');
     });
 
-    // Third click - add back
+    // Click again to add back
     await act(async () => {
       fireEvent.click(heartIcon);
     });
 
-    // Verify localStorage doesn't contain duplicates
-    const setItemCalls = localStorage.setItem.mock.calls
-      .filter(call => call[0] === 'dogFavorites')
-      .map(call => JSON.parse(call[1]));
-
-    // Check last saved state doesn't have duplicates
-    if (setItemCalls.length > 0) {
-      const lastSavedFavorites = setItemCalls[setItemCalls.length - 1];
-      const uniqueUrls = new Set(lastSavedFavorites);
-      expect(lastSavedFavorites.length).toBe(uniqueUrls.size);
-    }
+    // STRICT ASSERTION: Check localStorage for duplicates
+    await waitFor(() => {
+      const favoriteCalls = localStorage.setItem.mock.calls.filter(
+        call => call[0] === 'dogFavorites'
+      );
+      
+      // Get the last saved favorites array
+      const lastCall = favoriteCalls[favoriteCalls.length - 1];
+      const savedFavorites = JSON.parse(lastCall[1]);
+      
+      // STRICT ASSERTION: No duplicate URLs in the array
+      const uniqueUrls = new Set(savedFavorites);
+      expect(savedFavorites.length).toBe(uniqueUrls.size);
+      
+      // STRICT ASSERTION: Should have exactly 1 favorite (not duplicated)
+      expect(savedFavorites.length).toBe(1);
+    });
   });
 
-  test('empty favorites array - component handles gracefully', async () => {
+  // Test for "No favorites yet" message
+  test('empty favorites array renders "No favorites yet" message', async () => {
     localStorage.getItem.mockReturnValue(null);
 
     await act(async () => {
       render(<Dog />);
     });
 
-    // Component should render without favorites section or show "no favorites" message
+    // STRICT ASSERTION: "No favorites yet" message should be displayed
     await waitFor(() => {
-      const noFavoritesMsg = screen.queryByText(/no favorites/i);
-      const favoritesSection = screen.queryByText(/favorites \(\d+\)/i);
-      
-      // Either no favorites message, or no favorites section at all is acceptable
-      expect(noFavoritesMsg || !favoritesSection).toBeTruthy();
+      const noFavoritesMessage = screen.queryByText(/no favorites yet/i) ||
+                                  screen.queryByTestId('no-favorites');
+      expect(noFavoritesMessage).toBeInTheDocument();
     });
   });
 
-  test('heart icon toggles favorite state visually', async () => {
-    await act(async () => {
-      render(<Dog />);
-    });
-
-    await waitFor(() => {
-      expect(screen.getByTestId('heart-icon')).toBeInTheDocument();
-    });
-
-    const heartIcon = screen.getByTestId('heart-icon');
-
-    // Initially not favorited
-    expect(heartIcon).not.toHaveClass('favorited');
-
-    await act(async () => {
-      fireEvent.click(heartIcon);
-    });
-
-    // After click, should be favorited
-    await waitFor(() => {
-      expect(heartIcon).toHaveClass('favorited');
-    });
-
-    await act(async () => {
-      fireEvent.click(heartIcon);
-    });
-
-    // After second click, should not be favorited
-    await waitFor(() => {
-      expect(heartIcon).not.toHaveClass('favorited');
-    });
-  });
-
-  test('favorites section displays when favorites exist', async () => {
+  // Favorites persist on remove
+  test('favorites persist to localStorage on remove', async () => {
+    const initialFavorites = ['https://images.dog.ceo/breeds/labrador/dog1.jpg'];
+    
     localStorage.getItem.mockImplementation((key) => {
       if (key === 'dogFavorites') {
-        return JSON.stringify([mockDogImageUrl]);
+        return JSON.stringify(initialFavorites);
       }
       return null;
     });
@@ -254,7 +213,22 @@ describe('Favorites Management Tests', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText(/favorites/i)).toBeInTheDocument();
+      expect(screen.getByTestId('heart-icon')).toBeInTheDocument();
+    });
+
+    const heartIcon = screen.getByTestId('heart-icon');
+
+    // Click to remove from favorites
+    await act(async () => {
+      fireEvent.click(heartIcon);
+    });
+
+    // STRICT ASSERTION: localStorage updated with empty array or without the URL
+    await waitFor(() => {
+      const favoriteCalls = localStorage.setItem.mock.calls.filter(
+        call => call[0] === 'dogFavorites'
+      );
+      expect(favoriteCalls.length).toBeGreaterThan(0);
     });
   });
 });

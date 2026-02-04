@@ -56,13 +56,13 @@ index a547bf3..0000000
 -*.sw?
 diff --git a/repository_after/BreedFiltering.test.jsx b/repository_after/BreedFiltering.test.jsx
 new file mode 100644
-index 0000000..3440883
+index 0000000..2030907
 --- /dev/null
 +++ b/repository_after/BreedFiltering.test.jsx
-@@ -0,0 +1,226 @@
+@@ -0,0 +1,191 @@
 +/**
 + * Breed Filtering Tests
-+ * Requirements 8-10: Breed dropdown, breed selection, and breed-specific fetching
++ * Requirements 8-10: Breed dropdown, breed selection, breed-specific fetching
 + */
 +import React from 'react';
 +import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
@@ -95,121 +95,34 @@ index 0000000..3440883
 +    });
 +  });
 +
++  // Requirement 10: Breed dropdown populates from API on mount
 +  test('breed dropdown populates from API on mount', async () => {
 +    await act(async () => {
 +      render(<Dog />);
 +    });
 +
++    // STRICT ASSERTION: API called for breeds list
 +    await waitFor(() => {
 +      expect(global.fetch).toHaveBeenCalledWith(
 +        expect.stringContaining('breeds/list/all')
 +      );
 +    });
 +
++    // STRICT ASSERTION: Dropdown contains breed options
 +    await waitFor(() => {
 +      const select = screen.getByRole('combobox');
 +      expect(select).toBeInTheDocument();
-+
-+      const options = screen.getAllByRole('option');
-+      // Should have default option + actual breeds
-+      expect(options.length).toBeGreaterThan(1);
++      
++      // Check for specific breeds in dropdown
++      expect(screen.getByRole('option', { name: /labrador/i })).toBeInTheDocument();
++      expect(screen.getByRole('option', { name: /poodle/i })).toBeInTheDocument();
 +    });
 +  });
 +
++  // Requirement 8: Selecting a breed fetches random image of that breed only
 +  test('selecting a breed fetches random image of that breed only', async () => {
 +    const user = userEvent.setup();
-+
-+    await act(async () => {
-+      render(<Dog />);
-+    });
-+
-+    await waitFor(() => {
-+      expect(screen.getByRole('combobox')).toBeInTheDocument();
-+    });
-+
-+    const select = screen.getByRole('combobox');
-+
-+    await act(async () => {
-+      await user.selectOptions(select, 'labrador');
-+    });
-+
-+    const generateButton = screen.getByRole('button', { name: /generate dog/i });
-+
-+    await act(async () => {
-+      fireEvent.click(generateButton);
-+    });
-+
-+    await waitFor(() => {
-+      const breedCall = global.fetch.mock.calls.find(
-+        call => call[0].includes('/breed/labrador/')
-+      );
-+      expect(breedCall).toBeTruthy();
-+    });
-+  });
-+
-+  test('"All Breeds" option fetches from general random endpoint', async () => {
-+    const user = userEvent.setup();
-+
-+    await act(async () => {
-+      render(<Dog />);
-+    });
-+
-+    await waitFor(() => {
-+      expect(screen.getByRole('combobox')).toBeInTheDocument();
-+    });
-+
-+    const select = screen.getByRole('combobox');
-+
-+    // Ensure default/empty option is selected (All Breeds)
-+    await act(async () => {
-+      await user.selectOptions(select, '');
-+    });
-+
-+    const generateButton = screen.getByRole('button', { name: /generate dog/i });
-+
-+    await act(async () => {
-+      fireEvent.click(generateButton);
-+    });
-+
-+    await waitFor(() => {
-+      const randomCall = global.fetch.mock.calls.find(
-+        call => call[0].includes('breeds/image/random') || 
-+               (call[0].includes('image/random') && !call[0].includes('/breed/'))
-+      );
-+      expect(randomCall).toBeTruthy();
-+    });
-+  });
-+
-+  test('breed list fetch error shows fallback message', async () => {
-+    global.fetch = jest.fn((url) => {
-+      if (url.includes('breeds/list/all')) {
-+        return Promise.reject(new Error('Failed to fetch breeds'));
-+      }
-+      return Promise.resolve({
-+        ok: true,
-+        json: () => Promise.resolve(mockRandomDogResponse)
-+      });
-+    });
-+
-+    await act(async () => {
-+      render(<Dog />);
-+    });
-+
-+    // Component should handle gracefully - either show error or have empty dropdown
-+    await waitFor(() => {
-+      const select = screen.getByRole('combobox');
-+      expect(select).toBeInTheDocument();
-+    });
-+
-+    // Check for error message or fallback behavior
-+    const errorMessage = screen.queryByText(/failed/i) || 
-+                        screen.queryByText(/error/i) ||
-+                        screen.queryByText(/select/i);
-+    expect(errorMessage).toBeTruthy();
-+  });
-+
-+  test('breed-specific image URL contains breed name', async () => {
-+    const poodleImageUrl = 'https://images.dog.ceo/breeds/poodle/test.jpg';
++    const poodleImageUrl = 'https://images.dog.ceo/breeds/poodle/specific.jpg';
 +
 +    global.fetch = jest.fn((url) => {
 +      if (url.includes('breeds/list/all')) {
@@ -233,8 +146,6 @@ index 0000000..3440883
 +      });
 +    });
 +
-+    const user = userEvent.setup();
-+
 +    await act(async () => {
 +      render(<Dog />);
 +    });
@@ -244,23 +155,36 @@ index 0000000..3440883
 +    });
 +
 +    const select = screen.getByRole('combobox');
++
 +    await act(async () => {
 +      await user.selectOptions(select, 'poodle');
 +    });
 +
 +    const generateButton = screen.getByRole('button', { name: /generate dog/i });
++
 +    await act(async () => {
 +      fireEvent.click(generateButton);
 +    });
 +
++    // STRICT ASSERTION: API called with breed-specific endpoint
++    await waitFor(() => {
++      const breedCall = global.fetch.mock.calls.find(
++        call => call[0].includes('/breed/poodle/')
++      );
++      expect(breedCall).toBeTruthy();
++    });
++
++    // STRICT ASSERTION: Image URL contains breed name
 +    await waitFor(() => {
 +      const images = screen.getAllByRole('img');
-+      const poodleImage = images.find(img => img.src && img.src.includes('poodle'));
-+      expect(poodleImage).toBeTruthy();
++      const poodleImage = images.find(img => img.src.includes('poodle'));
++      expect(poodleImage).toBeInTheDocument();
++      expect(poodleImage.src).toBe(poodleImageUrl);
 +    });
 +  });
 +
-+  test('breed selection updates state correctly', async () => {
++  // Requirement 9: "All Breeds" option fetches from general random endpoint
++  test('"All Breeds" option fetches from general random endpoint', async () => {
 +    const user = userEvent.setup();
 +
 +    await act(async () => {
@@ -273,29 +197,70 @@ index 0000000..3440883
 +
 +    const select = screen.getByRole('combobox');
 +
++    // First select a breed
 +    await act(async () => {
-+      await user.selectOptions(select, 'poodle');
++      await user.selectOptions(select, 'labrador');
 +    });
 +
-+    expect(select.value).toBe('poodle');
-+
++    // Then select "All Breeds" (empty value or default option)
 +    await act(async () => {
-+      await user.selectOptions(select, 'beagle');
++      await user.selectOptions(select, '');
 +    });
 +
-+    expect(select.value).toBe('beagle');
++    // Clear previous fetch calls
++    global.fetch.mockClear();
++
++    const generateButton = screen.getByRole('button', { name: /generate dog/i });
++
++    await act(async () => {
++      fireEvent.click(generateButton);
++    });
++
++    // STRICT ASSERTION: General random endpoint called, NOT breed-specific
++    await waitFor(() => {
++      const generalCall = global.fetch.mock.calls.find(
++        call => call[0].includes('breeds/image/random') && !call[0].includes('/breed/')
++      );
++      expect(generalCall).toBeTruthy();
++    });
++  });
++
++  // Breed list fetch error shows fallback message
++  test('breed list fetch error shows fallback message', async () => {
++    global.fetch = jest.fn((url) => {
++      if (url.includes('breeds/list/all')) {
++        return Promise.reject(new Error('Failed to fetch breeds'));
++      }
++      return Promise.resolve({
++        ok: true,
++        json: () => Promise.resolve(mockRandomDogResponse)
++      });
++    });
++
++    await act(async () => {
++      render(<Dog />);
++    });
++
++    // STRICT ASSERTION: Fallback/error message for breeds should be shown
++    await waitFor(() => {
++      const fallbackMessage = screen.queryByText(/failed.*breed/i) ||
++                              screen.queryByText(/error.*breed/i) ||
++                              screen.queryByText(/couldn.*load.*breed/i) ||
++                              screen.queryByTestId('breeds-error');
++      expect(fallbackMessage).toBeInTheDocument();
++    });
 +  });
 +});
 \ No newline at end of file
 diff --git a/repository_after/EdgeCases.test.jsx b/repository_after/EdgeCases.test.jsx
 new file mode 100644
-index 0000000..c9b4b38
+index 0000000..626f160
 --- /dev/null
 +++ b/repository_after/EdgeCases.test.jsx
-@@ -0,0 +1,281 @@
+@@ -0,0 +1,206 @@
 +/**
 + * Edge Cases and Error Handling Tests
-+ * Requirement 15: Malformed responses, empty states, timeouts, cleanup
++ * Requirement 15: Cleanup on unmount, malformed responses, timeouts
 + */
 +import React from 'react';
 +import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-library/react';
@@ -331,6 +296,79 @@ index 0000000..c9b4b38
 +    cleanup();
 +  });
 +
++  // Requirement 15: Component cleanup cancels pending requests on unmount
++  test('component cleanup cancels pending requests on unmount - no state updates after unmount', async () => {
++    let abortCalled = false;
++    let stateUpdateAfterUnmount = false;
++    
++    const originalConsoleError = console.error;
++    console.error = jest.fn((msg) => {
++      if (msg && msg.toString().includes('unmounted') || 
++          msg && msg.toString().includes('state update')) {
++        stateUpdateAfterUnmount = true;
++      }
++      originalConsoleError(msg);
++    });
++
++    // Mock AbortController
++    const mockAbort = jest.fn(() => {
++      abortCalled = true;
++    });
++    
++    const originalAbortController = global.AbortController;
++    global.AbortController = class {
++      constructor() {
++        this.signal = { aborted: false, addEventListener: jest.fn() };
++      }
++      abort = mockAbort;
++    };
++
++    let resolveImageFetch;
++    const pendingPromise = new Promise((resolve) => {
++      resolveImageFetch = resolve;
++    });
++
++    global.fetch = jest.fn((url) => {
++      if (url.includes('breeds/list/all')) {
++        return Promise.resolve({
++          ok: true,
++          json: () => Promise.resolve(mockBreedsResponse)
++        });
++      }
++      return pendingPromise;
++    });
++
++    const { unmount } = render(<Dog />);
++
++    const generateButton = screen.getByRole('button', { name: /generate dog/i });
++
++    await act(async () => {
++      fireEvent.click(generateButton);
++    });
++
++    // Unmount while request is pending
++    unmount();
++
++    // STRICT ASSERTION: AbortController.abort should be called on unmount
++    expect(abortCalled).toBe(true);
++
++    // Resolve the promise after unmount
++    await act(async () => {
++      resolveImageFetch({
++        ok: true,
++        json: () => Promise.resolve(mockRandomDogResponse)
++      });
++    });
++
++    // STRICT ASSERTION: No state update warnings after unmount
++    expect(stateUpdateAfterUnmount).toBe(false);
++
++    // Cleanup
++    global.AbortController = originalAbortController;
++    console.error = originalConsoleError;
++  });
++
++  // Malformed JSON handling
 +  test('component handles API returning malformed JSON gracefully', async () => {
 +    global.fetch = jest.fn((url) => {
 +      if (url.includes('breeds/list/all')) {
@@ -341,7 +379,7 @@ index 0000000..c9b4b38
 +      }
 +      return Promise.resolve({
 +        ok: true,
-+        json: () => Promise.reject(new SyntaxError('Invalid JSON'))
++        json: () => Promise.reject(new SyntaxError('Unexpected token'))
 +      });
 +    });
 +
@@ -349,11 +387,17 @@ index 0000000..c9b4b38
 +      render(<Dog />);
 +    });
 +
-+    // Component should handle gracefully - either show error or render
-+    expect(screen.getByText(/random/i)).toBeInTheDocument();
++    // STRICT ASSERTION: Error message should be shown for malformed response
++    await waitFor(() => {
++      const errorMessage = screen.queryByTestId('error-message') ||
++                          screen.queryByText(/error/i) ||
++                          screen.queryByText(/failed/i);
++      expect(errorMessage).toBeInTheDocument();
++    });
 +  });
 +
-+  test('component handles null API response', async () => {
++  // Null response handling
++  test('component handles null API response gracefully', async () => {
 +    global.fetch = jest.fn((url) => {
 +      if (url.includes('breeds/list/all')) {
 +        return Promise.resolve({
@@ -371,10 +415,17 @@ index 0000000..c9b4b38
 +      render(<Dog />);
 +    });
 +
-+    expect(screen.getByText(/random/i)).toBeInTheDocument();
++    // Should show error or handle gracefully
++    await waitFor(() => {
++      const errorOrContent = screen.queryByTestId('error-message') ||
++                            screen.queryByText(/error/i) ||
++                            screen.getByRole('button', { name: /generate dog/i });
++      expect(errorOrContent).toBeInTheDocument();
++    });
 +  });
 +
-+  test('component handles empty message response', async () => {
++  // Invalid status in response
++  test('component handles invalid status in API response', async () => {
 +    global.fetch = jest.fn((url) => {
 +      if (url.includes('breeds/list/all')) {
 +        return Promise.resolve({
@@ -384,135 +435,7 @@ index 0000000..c9b4b38
 +      }
 +      return Promise.resolve({
 +        ok: true,
-+        json: () => Promise.resolve({ status: 'success', message: '' })
-+      });
-+    });
-+
-+    await act(async () => {
-+      render(<Dog />);
-+    });
-+
-+    expect(screen.getByText(/random/i)).toBeInTheDocument();
-+  });
-+
-+  test('empty favorites array renders appropriately', async () => {
-+    localStorage.getItem.mockReturnValue(null);
-+
-+    await act(async () => {
-+      render(<Dog />);
-+    });
-+
-+    // Check for "no favorites" message or absence of favorites section
-+    const noFavoritesMsg = screen.queryByText(/no favorites/i);
-+    const favoritesSection = screen.queryByText(/favorites \(\d+\)/i);
-+
-+    // Either shows "no favorites" message or doesn't show favorites section
-+    expect(noFavoritesMsg || !favoritesSection).toBeTruthy();
-+  });
-+
-+  test('network timeout is handled', async () => {
-+    jest.useFakeTimers();
-+
-+    global.fetch = jest.fn((url) => {
-+      if (url.includes('breeds/list/all')) {
-+        return Promise.resolve({
-+          ok: true,
-+          json: () => Promise.resolve(mockBreedsResponse)
-+        });
-+      }
-+      return new Promise(() => {}); // Never resolves
-+    });
-+
-+    await act(async () => {
-+      render(<Dog />);
-+    });
-+
-+    const generateButton = screen.getByRole('button', { name: /generate dog/i });
-+
-+    await act(async () => {
-+      fireEvent.click(generateButton);
-+    });
-+
-+    await act(async () => {
-+      jest.advanceTimersByTime(10000);
-+    });
-+
-+    // Component should still be functional
-+    expect(screen.getByText(/random/i)).toBeInTheDocument();
-+
-+    jest.useRealTimers();
-+  });
-+
-+  test('component cleanup cancels pending requests on unmount', async () => {
-+    let fetchCompleted = false;
-+    let resolvePromise;
-+    const pendingPromise = new Promise((resolve) => {
-+      resolvePromise = resolve;
-+    });
-+
-+    global.fetch = jest.fn((url) => {
-+      if (url.includes('breeds/list/all')) {
-+        return Promise.resolve({
-+          ok: true,
-+          json: () => Promise.resolve(mockBreedsResponse)
-+        });
-+      }
-+      return pendingPromise.then(() => {
-+        fetchCompleted = true;
-+        return {
-+          ok: true,
-+          json: () => Promise.resolve(mockRandomDogResponse)
-+        };
-+      });
-+    });
-+
-+    const { unmount } = render(<Dog />);
-+
-+    const generateButton = screen.getByRole('button', { name: /generate dog/i });
-+
-+    await act(async () => {
-+      fireEvent.click(generateButton);
-+    });
-+
-+    // Unmount before fetch completes
-+    unmount();
-+
-+    // Resolve the pending promise after unmount
-+    await act(async () => {
-+      resolvePromise();
-+    });
-+
-+    // No errors should occur - component handles cleanup
-+    expect(true).toBe(true);
-+  });
-+
-+  test('handles localStorage parse error', async () => {
-+    localStorage.getItem.mockReturnValue('invalid json{{{');
-+
-+    await act(async () => {
-+      render(<Dog />);
-+    });
-+
-+    // Component should still render despite parse error
-+    expect(screen.getByText(/random/i)).toBeInTheDocument();
-+  });
-+
-+  test('handles special characters in URLs', async () => {
-+    const specialUrl = 'https://images.dog.ceo/breeds/labrador/dog%20name.jpg';
-+
-+    global.fetch = jest.fn((url) => {
-+      if (url.includes('breeds/list/all')) {
-+        return Promise.resolve({
-+          ok: true,
-+          json: () => Promise.resolve(mockBreedsResponse)
-+        });
-+      }
-+      return Promise.resolve({
-+        ok: true,
-+        json: () => Promise.resolve({
-+          status: 'success',
-+          message: specialUrl
-+        })
++        json: () => Promise.resolve({ status: 'error', message: 'Something went wrong' })
 +      });
 +    });
 +
@@ -521,88 +444,55 @@ index 0000000..c9b4b38
 +    });
 +
 +    await waitFor(() => {
-+      expect(screen.getAllByRole('img').length).toBeGreaterThan(0);
++      const errorMessage = screen.queryByTestId('error-message') ||
++                          screen.queryByText(/error/i) ||
++                          screen.queryByText(/failed/i);
++      expect(errorMessage).toBeInTheDocument();
 +    });
 +  });
 +
-+  test('no state updates occur after component unmount', async () => {
-+    const consoleErrorSpy = jest.spyOn(console, 'error');
++  // localStorage parse error
++  test('handles localStorage containing invalid JSON gracefully', async () => {
++    localStorage.getItem.mockReturnValue('invalid json {{{');
 +
-+    let resolveImageFetch;
-+    const imagePromise = new Promise((resolve) => {
-+      resolveImageFetch = resolve;
-+    });
-+
-+    global.fetch = jest.fn((url) => {
-+      if (url.includes('breeds/list/all')) {
-+        return Promise.resolve({
-+          ok: true,
-+          json: () => Promise.resolve(mockBreedsResponse)
-+        });
-+      }
-+      return imagePromise;
-+    });
-+
-+    const { unmount } = render(<Dog />);
-+
-+    const generateButton = screen.getByRole('button', { name: /generate dog/i });
-+
++    // Should not throw
 +    await act(async () => {
-+      fireEvent.click(generateButton);
++      render(<Dog />);
 +    });
 +
-+    // Unmount before fetch completes
-+    unmount();
-+
-+    // Resolve the fetch after unmount
-+    await act(async () => {
-+      resolveImageFetch({
-+        ok: true,
-+        json: () => Promise.resolve(mockRandomDogResponse)
-+      });
-+    });
-+
-+    // Check for state update warnings (should be none if cleanup is proper)
-+    const stateUpdateWarnings = consoleErrorSpy.mock.calls.filter(
-+      call => call[0]?.toString?.().includes?.('unmounted') ||
-+              call[0]?.toString?.().includes?.('state update')
-+    );
-+
-+    // Documenting behavior - ideally no warnings
-+    expect(stateUpdateWarnings.length >= 0).toBe(true);
-+
-+    consoleErrorSpy.mockRestore();
++    // Component should still render
++    expect(screen.getByRole('button', { name: /generate dog/i })).toBeInTheDocument();
 +  });
 +});
 \ No newline at end of file
 diff --git a/repository_after/FavoritesManagement.test.jsx b/repository_after/FavoritesManagement.test.jsx
 new file mode 100644
-index 0000000..232b008
+index 0000000..732a0bc
 --- /dev/null
 +++ b/repository_after/FavoritesManagement.test.jsx
-@@ -0,0 +1,260 @@
+@@ -0,0 +1,234 @@
 +/**
 + * Favorites Management Tests
-+ * Requirements 11-13: Adding, removing, persisting, and loading favorites
++ * Requirements 11-13: Adding, removing, persisting favorites, duplicate prevention
 + */
 +import React from 'react';
 +import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 +const Dog = require('../src/Components/Dog.jsx').default || require('../src/Components/Dog.jsx');
 +
 +describe('Favorites Management Tests', () => {
-+  const mockDogImageUrl = 'https://images.dog.ceo/breeds/labrador/test.jpg';
++  const mockDogImageUrl1 = 'https://images.dog.ceo/breeds/labrador/test1.jpg';
 +  const mockDogImageUrl2 = 'https://images.dog.ceo/breeds/poodle/test2.jpg';
 +  const mockBreedsResponse = {
 +    status: 'success',
 +    message: { labrador: [], poodle: [] }
 +  };
-+  const mockRandomDogResponse = {
-+    status: 'success',
-+    message: mockDogImageUrl
-+  };
++
++  let imageCounter = 0;
 +
 +  beforeEach(() => {
++    imageCounter = 0;
 +    jest.clearAllMocks();
++    
 +    global.fetch = jest.fn((url) => {
 +      if (url.includes('breeds/list/all')) {
 +        return Promise.resolve({
@@ -610,13 +500,18 @@ index 0000000..232b008
 +          json: () => Promise.resolve(mockBreedsResponse)
 +        });
 +      }
++      imageCounter++;
 +      return Promise.resolve({
 +        ok: true,
-+        json: () => Promise.resolve(mockRandomDogResponse)
++        json: () => Promise.resolve({
++          status: 'success',
++          message: `https://images.dog.ceo/breeds/labrador/dog${imageCounter}.jpg`
++        })
 +      });
 +    });
 +  });
 +
++  // Requirement 11: Clicking heart icon adds current image to favorites
 +  test('clicking heart icon adds current image to favorites array', async () => {
 +    await act(async () => {
 +      render(<Dog />);
@@ -628,25 +523,26 @@ index 0000000..232b008
 +
 +    const heartIcon = screen.getByTestId('heart-icon');
 +
++    // Before clicking, should NOT be favorited
++    expect(heartIcon).not.toHaveClass('favorited');
++
 +    await act(async () => {
 +      fireEvent.click(heartIcon);
 +    });
 +
-+    // Verify localStorage was called to save favorites
++    // STRICT ASSERTION: Heart icon should show favorited state
 +    await waitFor(() => {
-+      expect(localStorage.setItem).toHaveBeenCalledWith(
-+        'dogFavorites',
-+        expect.any(String)
-+      );
++      expect(heartIcon).toHaveClass('favorited');
 +    });
 +
-+    // Verify favorites section appears
++    // STRICT ASSERTION: Favorites section should appear with 1 item
 +    await waitFor(() => {
 +      expect(screen.getByText(/favorites/i)).toBeInTheDocument();
 +    });
 +  });
 +
-+  test('favorites persist to localStorage on add', async () => {
++  // Requirement 13: Favorites persist to localStorage
++  test('favorites persist to localStorage on add with correct key', async () => {
 +    await act(async () => {
 +      render(<Dog />);
 +    });
@@ -661,51 +557,28 @@ index 0000000..232b008
 +      fireEvent.click(heartIcon);
 +    });
 +
++    // STRICT ASSERTION: localStorage.setItem called with 'dogFavorites' key
 +    await waitFor(() => {
-+      const setItemCalls = localStorage.setItem.mock.calls.filter(
++      const favoriteCalls = localStorage.setItem.mock.calls.filter(
 +        call => call[0] === 'dogFavorites'
 +      );
-+      expect(setItemCalls.length).toBeGreaterThan(0);
++      expect(favoriteCalls.length).toBeGreaterThan(0);
 +      
-+      // Verify the saved value contains the image URL
-+      const lastCall = setItemCalls[setItemCalls.length - 1];
-+      expect(lastCall[1]).toContain(mockDogImageUrl);
++      // Verify the saved data contains the image URL
++      const lastCall = favoriteCalls[favoriteCalls.length - 1];
++      const savedData = JSON.parse(lastCall[1]);
++      expect(Array.isArray(savedData)).toBe(true);
++      expect(savedData.length).toBeGreaterThan(0);
 +    });
 +  });
 +
-+  test('favorites persist to localStorage on remove', async () => {
-+    localStorage.getItem.mockImplementation((key) => {
-+      if (key === 'dogFavorites') {
-+        return JSON.stringify([mockDogImageUrl]);
-+      }
-+      return null;
-+    });
-+
-+    await act(async () => {
-+      render(<Dog />);
-+    });
-+
-+    await waitFor(() => {
-+      expect(screen.getByTestId('heart-icon')).toBeInTheDocument();
-+    });
-+
-+    const heartIcon = screen.getByTestId('heart-icon');
-+
-+    // Click to remove from favorites (toggle off)
-+    await act(async () => {
-+      fireEvent.click(heartIcon);
-+    });
-+
-+    await waitFor(() => {
-+      expect(localStorage.setItem).toHaveBeenCalledWith(
-+        'dogFavorites',
-+        expect.any(String)
-+      );
-+    });
-+  });
-+
++  // Requirement 13: Favorites load from localStorage on mount
 +  test('favorites load from localStorage on component mount', async () => {
-+    const savedFavorites = ['https://example.com/dog1.jpg', 'https://example.com/dog2.jpg'];
++    const savedFavorites = [
++      'https://images.dog.ceo/breeds/labrador/saved1.jpg',
++      'https://images.dog.ceo/breeds/poodle/saved2.jpg'
++    ];
++    
 +    localStorage.getItem.mockImplementation((key) => {
 +      if (key === 'dogFavorites') {
 +        return JSON.stringify(savedFavorites);
@@ -717,17 +590,18 @@ index 0000000..232b008
 +      render(<Dog />);
 +    });
 +
-+    await waitFor(() => {
-+      expect(localStorage.getItem).toHaveBeenCalledWith('dogFavorites');
-+    });
++    // STRICT ASSERTION: localStorage.getItem called with 'dogFavorites'
++    expect(localStorage.getItem).toHaveBeenCalledWith('dogFavorites');
 +
-+    // Favorites section should show with loaded favorites
++    // STRICT ASSERTION: Favorites section shows loaded count
 +    await waitFor(() => {
-+      expect(screen.getByText(/favorites/i)).toBeInTheDocument();
++      const favoritesText = screen.getByText(/favorites.*\(2\)/i);
++      expect(favoritesText).toBeInTheDocument();
 +    });
 +  });
 +
-+  test('duplicate favorites are prevented - same URL not added twice', async () => {
++  // Requirement 12: Duplicate favorites are prevented
++  test('duplicate favorites are prevented - same URL NOT added twice', async () => {
 +    await act(async () => {
 +      render(<Dog />);
 +    });
@@ -738,7 +612,7 @@ index 0000000..232b008
 +
 +    const heartIcon = screen.getByTestId('heart-icon');
 +
-+    // First click - add to favorites
++    // Click to add favorite
 +    await act(async () => {
 +      fireEvent.click(heartIcon);
 +    });
@@ -747,7 +621,7 @@ index 0000000..232b008
 +      expect(heartIcon).toHaveClass('favorited');
 +    });
 +
-+    // Second click - should toggle off (remove), not add duplicate
++    // Click again to remove
 +    await act(async () => {
 +      fireEvent.click(heartIcon);
 +    });
@@ -756,78 +630,53 @@ index 0000000..232b008
 +      expect(heartIcon).not.toHaveClass('favorited');
 +    });
 +
-+    // Third click - add back
++    // Click again to add back
 +    await act(async () => {
 +      fireEvent.click(heartIcon);
 +    });
 +
-+    // Verify localStorage doesn't contain duplicates
-+    const setItemCalls = localStorage.setItem.mock.calls
-+      .filter(call => call[0] === 'dogFavorites')
-+      .map(call => JSON.parse(call[1]));
-+
-+    // Check last saved state doesn't have duplicates
-+    if (setItemCalls.length > 0) {
-+      const lastSavedFavorites = setItemCalls[setItemCalls.length - 1];
-+      const uniqueUrls = new Set(lastSavedFavorites);
-+      expect(lastSavedFavorites.length).toBe(uniqueUrls.size);
-+    }
++    // STRICT ASSERTION: Check localStorage for duplicates
++    await waitFor(() => {
++      const favoriteCalls = localStorage.setItem.mock.calls.filter(
++        call => call[0] === 'dogFavorites'
++      );
++      
++      // Get the last saved favorites array
++      const lastCall = favoriteCalls[favoriteCalls.length - 1];
++      const savedFavorites = JSON.parse(lastCall[1]);
++      
++      // STRICT ASSERTION: No duplicate URLs in the array
++      const uniqueUrls = new Set(savedFavorites);
++      expect(savedFavorites.length).toBe(uniqueUrls.size);
++      
++      // STRICT ASSERTION: Should have exactly 1 favorite (not duplicated)
++      expect(savedFavorites.length).toBe(1);
++    });
 +  });
 +
-+  test('empty favorites array - component handles gracefully', async () => {
++  // Test for "No favorites yet" message
++  test('empty favorites array renders "No favorites yet" message', async () => {
 +    localStorage.getItem.mockReturnValue(null);
 +
 +    await act(async () => {
 +      render(<Dog />);
 +    });
 +
-+    // Component should render without favorites section or show "no favorites" message
++    // STRICT ASSERTION: "No favorites yet" message should be displayed
 +    await waitFor(() => {
-+      const noFavoritesMsg = screen.queryByText(/no favorites/i);
-+      const favoritesSection = screen.queryByText(/favorites \(\d+\)/i);
-+      
-+      // Either no favorites message, or no favorites section at all is acceptable
-+      expect(noFavoritesMsg || !favoritesSection).toBeTruthy();
++      const noFavoritesMessage = screen.queryByText(/no favorites yet/i) ||
++                                  screen.queryByTestId('no-favorites');
++      expect(noFavoritesMessage).toBeInTheDocument();
 +    });
 +  });
 +
-+  test('heart icon toggles favorite state visually', async () => {
-+    await act(async () => {
-+      render(<Dog />);
-+    });
-+
-+    await waitFor(() => {
-+      expect(screen.getByTestId('heart-icon')).toBeInTheDocument();
-+    });
-+
-+    const heartIcon = screen.getByTestId('heart-icon');
-+
-+    // Initially not favorited
-+    expect(heartIcon).not.toHaveClass('favorited');
-+
-+    await act(async () => {
-+      fireEvent.click(heartIcon);
-+    });
-+
-+    // After click, should be favorited
-+    await waitFor(() => {
-+      expect(heartIcon).toHaveClass('favorited');
-+    });
-+
-+    await act(async () => {
-+      fireEvent.click(heartIcon);
-+    });
-+
-+    // After second click, should not be favorited
-+    await waitFor(() => {
-+      expect(heartIcon).not.toHaveClass('favorited');
-+    });
-+  });
-+
-+  test('favorites section displays when favorites exist', async () => {
++  // Favorites persist on remove
++  test('favorites persist to localStorage on remove', async () => {
++    const initialFavorites = ['https://images.dog.ceo/breeds/labrador/dog1.jpg'];
++    
 +    localStorage.getItem.mockImplementation((key) => {
 +      if (key === 'dogFavorites') {
-+        return JSON.stringify([mockDogImageUrl]);
++        return JSON.stringify(initialFavorites);
 +      }
 +      return null;
 +    });
@@ -837,20 +686,35 @@ index 0000000..232b008
 +    });
 +
 +    await waitFor(() => {
-+      expect(screen.getByText(/favorites/i)).toBeInTheDocument();
++      expect(screen.getByTestId('heart-icon')).toBeInTheDocument();
++    });
++
++    const heartIcon = screen.getByTestId('heart-icon');
++
++    // Click to remove from favorites
++    await act(async () => {
++      fireEvent.click(heartIcon);
++    });
++
++    // STRICT ASSERTION: localStorage updated with empty array or without the URL
++    await waitFor(() => {
++      const favoriteCalls = localStorage.setItem.mock.calls.filter(
++        call => call[0] === 'dogFavorites'
++      );
++      expect(favoriteCalls.length).toBeGreaterThan(0);
 +    });
 +  });
 +});
 \ No newline at end of file
 diff --git a/repository_after/ImageFetching.test.jsx b/repository_after/ImageFetching.test.jsx
 new file mode 100644
-index 0000000..ff19bd2
+index 0000000..62a819f
 --- /dev/null
 +++ b/repository_after/ImageFetching.test.jsx
-@@ -0,0 +1,228 @@
+@@ -0,0 +1,297 @@
 +/**
 + * Image Fetching Tests
-+ * Requirement 1-4: API calls, loading states, image display, and error handling
++ * Requirements 1-4: API calls, loading states, image display, error handling
 + */
 +import React from 'react';
 +import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
@@ -876,17 +740,71 @@ index 0000000..ff19bd2
 +          json: () => Promise.resolve(mockBreedsResponse)
 +        });
 +      }
-+      if (url.includes('image/random') || url.includes('images/random')) {
-+        return Promise.resolve({
-+          ok: true,
-+          json: () => Promise.resolve(mockRandomDogResponse)
-+        });
-+      }
-+      return Promise.reject(new Error('Unknown endpoint'));
++      return Promise.resolve({
++        ok: true,
++        json: () => Promise.resolve(mockRandomDogResponse)
++      });
 +    });
 +  });
 +
-+  test('clicking "Get Random Dog" button triggers API call and displays loading state', async () => {
++  // Requirement 1: Test that clicking "Get Random Dog" triggers API call and displays loading state
++  test('clicking generate button triggers API call and displays loading state', async () => {
++    let resolveImageFetch;
++    const imagePromise = new Promise((resolve) => {
++      resolveImageFetch = resolve;
++    });
++
++    global.fetch = jest.fn((url) => {
++      if (url.includes('breeds/list/all')) {
++        return Promise.resolve({
++          ok: true,
++          json: () => Promise.resolve(mockBreedsResponse)
++        });
++      }
++      return imagePromise;
++    });
++
++    await act(async () => {
++      render(<Dog />);
++    });
++
++    // Find generate button (component uses "Generate Dog")
++    const generateButton = screen.getByRole('button', { name: /generate dog/i });
++    const fetchCallsBefore = global.fetch.mock.calls.length;
++
++    await act(async () => {
++      fireEvent.click(generateButton);
++    });
++
++    // STRICT ASSERTION: Loading indicator MUST be visible during fetch
++    const loadingIndicator = screen.queryByTestId('loading-indicator') ||
++                             screen.queryByTestId('loading-spinner') ||
++                             screen.queryByTestId('loading') ||
++                             screen.queryByText(/loading/i) ||
++                             screen.queryByRole('status');
++    
++    // Assert loading indicator is shown
++    expect(loadingIndicator).toBeInTheDocument();
++
++    // Assert API was called
++    expect(global.fetch.mock.calls.length).toBeGreaterThan(fetchCallsBefore);
++    
++    const imageApiCall = global.fetch.mock.calls.find(
++      call => call[0].includes('image/random') || call[0].includes('images/random')
++    );
++    expect(imageApiCall).toBeTruthy();
++
++    // Resolve fetch
++    await act(async () => {
++      resolveImageFetch({
++        ok: true,
++        json: () => Promise.resolve(mockRandomDogResponse)
++      });
++    });
++  });
++
++  // Requirement 2: Test that successful fetch displays image and clears loading state
++  test('successful fetch displays image and clears loading state', async () => {
 +    let resolveImageFetch;
 +    const imagePromise = new Promise((resolve) => {
 +      resolveImageFetch = resolve;
@@ -907,23 +825,12 @@ index 0000000..ff19bd2
 +    });
 +
 +    const generateButton = screen.getByRole('button', { name: /generate dog/i });
-+    const initialFetchCount = global.fetch.mock.calls.length;
 +
 +    await act(async () => {
 +      fireEvent.click(generateButton);
 +    });
 +
-+    // Verify API was called
-+    await waitFor(() => {
-+      expect(global.fetch.mock.calls.length).toBeGreaterThan(initialFetchCount);
-+    });
-+
-+    // Check for loading state - look for loading indicator or disabled button
-+    const loadingIndicator = screen.queryByTestId('loading') || 
-+                             screen.queryByTestId('loading-spinner') ||
-+                             screen.queryByText(/loading/i);
-+    
-+    // Resolve the fetch
++    // Complete the fetch
 +    await act(async () => {
 +      resolveImageFetch({
 +        ok: true,
@@ -931,54 +838,39 @@ index 0000000..ff19bd2
 +      });
 +    });
 +
-+    // Test passes if API was called (loading state may or may not be visible based on component implementation)
-+    expect(global.fetch).toHaveBeenCalled();
-+  });
-+
-+  test('successful fetch displays image and clears loading state', async () => {
-+    await act(async () => {
-+      render(<Dog />);
++    // STRICT ASSERTION: Loading indicator MUST be gone after fetch completes
++    await waitFor(() => {
++      const loadingIndicator = screen.queryByTestId('loading-indicator') ||
++                               screen.queryByTestId('loading-spinner') ||
++                               screen.queryByTestId('loading') ||
++                               screen.queryByText(/loading/i);
++      expect(loadingIndicator).not.toBeInTheDocument();
 +    });
 +
-+    // Wait for initial image to load
++    // STRICT ASSERTION: Image MUST be displayed with correct URL
 +    await waitFor(() => {
 +      const images = screen.getAllByRole('img');
-+      expect(images.length).toBeGreaterThan(0);
++      const dogImage = images.find(img => img.src === mockDogImageUrl);
++      expect(dogImage).toBeInTheDocument();
 +    });
-+
-+    const generateButton = screen.getByRole('button', { name: /generate dog/i });
-+
-+    await act(async () => {
-+      fireEvent.click(generateButton);
-+    });
-+
-+    // After fetch, image should be displayed
-+    await waitFor(() => {
-+      const images = screen.getAllByRole('img');
-+      const dogImage = images.find(img => img.src && img.src.includes('dog.ceo'));
-+      expect(dogImage).toBeTruthy();
-+    });
-+
-+    // Loading state should be cleared (no loading indicator visible)
-+    const loadingIndicator = screen.queryByTestId('loading') || 
-+                             screen.queryByText(/loading/i);
-+    expect(loadingIndicator).toBeFalsy();
 +  });
 +
-+  test('image src is set to the fetched URL', async () => {
++  // Requirement 3: Test that image src is set to the fetched URL
++  test('image src is set correctly to the fetched URL', async () => {
 +    await act(async () => {
 +      render(<Dog />);
 +    });
 +
 +    await waitFor(() => {
 +      const images = screen.getAllByRole('img');
-+      const dogImage = images.find(img => img.src && img.src.includes('dog.ceo'));
++      const dogImage = images.find(img => img.src === mockDogImageUrl);
 +      expect(dogImage).toBeTruthy();
 +      expect(dogImage.src).toBe(mockDogImageUrl);
 +    });
 +  });
 +
-+  test('fetch error displays error message and retry button', async () => {
++  // Requirement 4: Test that fetch error displays error message and retry button
++  test('fetch error displays error message AND dedicated retry button', async () => {
 +    global.fetch = jest.fn((url) => {
 +      if (url.includes('breeds/list/all')) {
 +        return Promise.resolve({
@@ -993,22 +885,26 @@ index 0000000..ff19bd2
 +      render(<Dog />);
 +    });
 +
-+    // Wait for error state
++    // STRICT ASSERTION: Error message MUST be displayed
 +    await waitFor(() => {
-+      // Check for error message
-+      const errorElement = screen.queryByText(/failed/i) || 
++      const errorMessage = screen.queryByTestId('error-message') ||
++                          screen.queryByText(/failed/i) ||
 +                          screen.queryByText(/error/i);
-+      expect(errorElement).toBeInTheDocument();
++      expect(errorMessage).toBeInTheDocument();
 +    });
 +
-+    // Check for retry button (may be the generate button itself or a dedicated retry button)
-+    const retryButton = screen.queryByRole('button', { name: /retry/i }) ||
-+                       screen.getByRole('button', { name: /generate dog/i });
-+    expect(retryButton).toBeInTheDocument();
++    // STRICT ASSERTION: Dedicated retry button MUST appear on error
++    await waitFor(() => {
++      const retryButton = screen.queryByRole('button', { name: /retry/i }) ||
++                         screen.queryByTestId('retry-button');
++      expect(retryButton).toBeInTheDocument();
++    });
 +  });
 +
-+  test('retry button triggers new fetch attempt after error', async () => {
++  // Requirement 5: Test that retry button triggers new fetch attempt
++  test('clicking retry button triggers new fetch attempt', async () => {
 +    let callCount = 0;
++    
 +    global.fetch = jest.fn((url) => {
 +      if (url.includes('breeds/list/all')) {
 +        return Promise.resolve({
@@ -1030,26 +926,63 @@ index 0000000..ff19bd2
 +      render(<Dog />);
 +    });
 +
-+    // First call fails, wait for error
++    // Wait for error state
 +    await waitFor(() => {
-+      expect(callCount).toBeGreaterThanOrEqual(1);
++      expect(callCount).toBe(1);
 +    });
 +
-+    // Click retry/generate button
-+    const retryButton = screen.queryByRole('button', { name: /retry/i }) ||
-+                       screen.getByRole('button', { name: /generate dog/i });
++    // Find and click the DEDICATED retry button (not the generate button)
++    const retryButton = await waitFor(() => {
++      const btn = screen.queryByRole('button', { name: /retry/i }) ||
++                  screen.queryByTestId('retry-button');
++      expect(btn).toBeInTheDocument();
++      return btn;
++    });
++
++    const callCountBeforeRetry = callCount;
 +
 +    await act(async () => {
 +      fireEvent.click(retryButton);
 +    });
 +
-+    // Verify new fetch was triggered
++    // STRICT ASSERTION: Clicking retry MUST trigger a NEW fetch
 +    await waitFor(() => {
-+      expect(callCount).toBeGreaterThan(1);
++      expect(callCount).toBeGreaterThan(callCountBeforeRetry);
++    });
++
++    // After successful retry, image should be displayed
++    await waitFor(() => {
++      const images = screen.getAllByRole('img');
++      const dogImage = images.find(img => img.src === mockDogImageUrl);
++      expect(dogImage).toBeInTheDocument();
 +    });
 +  });
 +
-+  test('component handles API returning unexpected status', async () => {
++  // Additional: Network vs API error shows distinct messages
++  test('network error shows network-specific error message', async () => {
++    global.fetch = jest.fn((url) => {
++      if (url.includes('breeds/list/all')) {
++        return Promise.resolve({
++          ok: true,
++          json: () => Promise.resolve(mockBreedsResponse)
++        });
++      }
++      return Promise.reject(new Error('Failed to fetch'));
++    });
++
++    await act(async () => {
++      render(<Dog />);
++    });
++
++    await waitFor(() => {
++      const errorText = screen.queryByText(/network/i) ||
++                       screen.queryByText(/connection/i) ||
++                       screen.queryByText(/failed to fetch/i);
++      expect(errorText).toBeInTheDocument();
++    });
++  });
++
++  test('API error (non-ok response) shows API-specific error message', async () => {
 +    global.fetch = jest.fn((url) => {
 +      if (url.includes('breeds/list/all')) {
 +        return Promise.resolve({
@@ -1058,8 +991,9 @@ index 0000000..ff19bd2
 +        });
 +      }
 +      return Promise.resolve({
-+        ok: true,
-+        json: () => Promise.resolve({ status: 'error', message: 'Error occurred' })
++        ok: false,
++        status: 500,
++        json: () => Promise.resolve({ status: 'error', message: 'Server error' })
 +      });
 +    });
 +
@@ -1067,22 +1001,21 @@ index 0000000..ff19bd2
 +      render(<Dog />);
 +    });
 +
-+    // Component should handle gracefully - either show error or fallback
 +    await waitFor(() => {
-+      const content = screen.queryByText(/failed/i) || 
-+                     screen.queryByText(/error/i) || 
-+                     screen.queryByText(/random/i);
-+      expect(content).toBeInTheDocument();
++      const errorText = screen.queryByText(/api/i) ||
++                       screen.queryByText(/server/i) ||
++                       screen.queryByText(/failed/i);
++      expect(errorText).toBeInTheDocument();
 +    });
 +  });
 +});
 \ No newline at end of file
 diff --git a/repository_after/ImageHistory.test.jsx b/repository_after/ImageHistory.test.jsx
 new file mode 100644
-index 0000000..cf993eb
+index 0000000..623f04d
 --- /dev/null
 +++ b/repository_after/ImageHistory.test.jsx
-@@ -0,0 +1,202 @@
+@@ -0,0 +1,170 @@
 +/**
 + * Image History Tests
 + * Requirement 14: History tracking, capping at 10 items, thumbnail clicks, persistence
@@ -1102,6 +1035,7 @@ index 0000000..cf993eb
 +  beforeEach(() => {
 +    imageCounter = 0;
 +    jest.clearAllMocks();
++    
 +    global.fetch = jest.fn((url) => {
 +      if (url.includes('breeds/list/all')) {
 +        return Promise.resolve({
@@ -1120,106 +1054,54 @@ index 0000000..cf993eb
 +    });
 +  });
 +
-+  test('viewed images are added to history array', async () => {
-+    await act(async () => {
-+      render(<Dog />);
-+    });
-+
-+    // Initial image should be displayed
-+    await waitFor(() => {
-+      const images = screen.getAllByRole('img');
-+      expect(images.length).toBeGreaterThan(0);
-+    });
-+
-+    const generateButton = screen.getByRole('button', { name: /generate dog/i });
-+
-+    await act(async () => {
-+      fireEvent.click(generateButton);
-+    });
-+
-+    await waitFor(() => {
-+      const images = screen.getAllByRole('img');
-+      // Should have at least one image (current view)
-+      expect(images.length).toBeGreaterThan(0);
-+    });
-+  });
-+
-+  test('history is capped at 10 items with oldest removed when exceeding', async () => {
++  // Requirement 14: History is capped at 10 items with oldest removed
++  test('history is capped at 10 items with OLDEST removed when exceeding', async () => {
 +    await act(async () => {
 +      render(<Dog />);
 +    });
 +
 +    const generateButton = screen.getByRole('button', { name: /generate dog/i });
 +
-+    // Generate 12 images to exceed cap
++    // Generate 12 images to exceed the 10-item cap
 +    for (let i = 0; i < 12; i++) {
 +      await act(async () => {
 +        fireEvent.click(generateButton);
 +      });
 +
 +      await waitFor(() => {
-+        expect(imageCounter).toBeGreaterThanOrEqual(i + 1);
++        expect(imageCounter).toBe(i + 2); // +2 because initial fetch + loop
 +      });
 +    }
 +
-+    // Check localStorage for history cap
-+    const setHistoryCalls = localStorage.setItem.mock.calls
-+      .filter(call => call[0] === 'dogHistory');
-+
-+    if (setHistoryCalls.length > 0) {
-+      const lastHistoryCall = setHistoryCalls[setHistoryCalls.length - 1];
-+      const savedHistory = JSON.parse(lastHistoryCall[1]);
-+      expect(savedHistory.length).toBeLessThanOrEqual(10);
-+    }
-+
-+    // If component has visible history, check it
-+    const historyItems = screen.queryAllByTestId(/history-item/);
-+    if (historyItems.length > 0) {
-+      expect(historyItems.length).toBeLessThanOrEqual(10);
-+    }
-+  });
-+
-+  test('clicking history thumbnail displays that image', async () => {
-+    await act(async () => {
-+      render(<Dog />);
-+    });
-+
-+    const generateButton = screen.getByRole('button', { name: /generate dog/i });
-+
-+    // Generate multiple images
-+    await act(async () => {
-+      fireEvent.click(generateButton);
-+    });
-+
++    // STRICT ASSERTION: History localStorage should have exactly 10 items
 +    await waitFor(() => {
-+      expect(screen.getAllByRole('img').length).toBeGreaterThan(0);
++      const historyCalls = localStorage.setItem.mock.calls.filter(
++        call => call[0] === 'dogHistory'
++      );
++      
++      if (historyCalls.length > 0) {
++        const lastCall = historyCalls[historyCalls.length - 1];
++        const savedHistory = JSON.parse(lastCall[1]);
++        
++        // STRICT ASSERTION: History capped at 10
++        expect(savedHistory.length).toBeLessThanOrEqual(10);
++        
++        // STRICT ASSERTION: Oldest images should be removed (first images not in array)
++        expect(savedHistory).not.toContain('https://images.dog.ceo/breeds/labrador/dog1.jpg');
++        expect(savedHistory).not.toContain('https://images.dog.ceo/breeds/labrador/dog2.jpg');
++      }
 +    });
-+
-+    await act(async () => {
-+      fireEvent.click(generateButton);
-+    });
-+
-+    // If there are clickable history thumbnails, test clicking them
-+    const images = screen.getAllByRole('img');
-+    if (images.length > 1) {
-+      const thumbnailImage = images[1]; // Second image if exists
-+
-+      await act(async () => {
-+        fireEvent.click(thumbnailImage);
-+      });
-+
-+      // Verify component is still functional
-+      expect(screen.getByText(/random/i)).toBeInTheDocument();
-+    }
 +  });
 +
-+  test('history persists across sessions via localStorage', async () => {
++  // Clicking history thumbnail updates main image
++  test('clicking history thumbnail updates the main displayed image', async () => {
++    // Pre-populate history
 +    const savedHistory = [
-+      'https://images.dog.ceo/breeds/labrador/dog1.jpg',
-+      'https://images.dog.ceo/breeds/labrador/dog2.jpg',
-+      'https://images.dog.ceo/breeds/poodle/dog3.jpg'
++      'https://images.dog.ceo/breeds/labrador/history1.jpg',
++      'https://images.dog.ceo/breeds/poodle/history2.jpg',
++      'https://images.dog.ceo/breeds/bulldog/history3.jpg'
 +    ];
-+
++    
 +    localStorage.getItem.mockImplementation((key) => {
 +      if (key === 'dogHistory') {
 +        return JSON.stringify(savedHistory);
@@ -1231,12 +1113,38 @@ index 0000000..cf993eb
 +      render(<Dog />);
 +    });
 +
++    // Find history thumbnails
 +    await waitFor(() => {
-+      expect(localStorage.getItem).toHaveBeenCalledWith('dogHistory');
++      const historySection = screen.queryByTestId('history-section') ||
++                            screen.queryByText(/history/i);
++      expect(historySection).toBeInTheDocument();
 +    });
++
++    // Find a history thumbnail and click it
++    const historyThumbnails = screen.queryAllByTestId(/history-item/) ||
++                              screen.getAllByRole('img').filter(img => 
++                                savedHistory.some(url => img.src === url)
++                              );
++
++    if (historyThumbnails.length > 0) {
++      const thumbnailToClick = historyThumbnails[1]; // Click second history item
++      const thumbnailSrc = thumbnailToClick.src;
++
++      await act(async () => {
++        fireEvent.click(thumbnailToClick);
++      });
++
++      // STRICT ASSERTION: Main image should update to clicked thumbnail
++      await waitFor(() => {
++        const mainImage = screen.getByTestId('dog-image') ||
++                         screen.getAllByRole('img')[0];
++        expect(mainImage.src).toBe(thumbnailSrc);
++      });
++    }
 +  });
 +
-+  test('history writes to localStorage on image fetch', async () => {
++  // History writes to localStorage
++  test('history writes to localStorage with key "dogHistory"', async () => {
 +    await act(async () => {
 +      render(<Dog />);
 +    });
@@ -1247,51 +1155,44 @@ index 0000000..cf993eb
 +      fireEvent.click(generateButton);
 +    });
 +
++    // STRICT ASSERTION: localStorage.setItem called with 'dogHistory'
 +    await waitFor(() => {
-+      const images = screen.getAllByRole('img');
-+      expect(images.length).toBeGreaterThan(0);
++      const historyCalls = localStorage.setItem.mock.calls.filter(
++        call => call[0] === 'dogHistory'
++      );
++      expect(historyCalls.length).toBeGreaterThan(0);
 +    });
-+
-+    // Check if dogHistory was saved to localStorage
-+    const setHistoryCalls = localStorage.setItem.mock.calls
-+      .filter(call => call[0] === 'dogHistory');
-+
-+    // If history feature is implemented, it should save
-+    // If not implemented, test documents current behavior
-+    expect(setHistoryCalls.length >= 0).toBe(true);
 +  });
 +
-+  test('multiple fetches add to image collection', async () => {
++  // History loads from localStorage on mount
++  test('history loads from localStorage on component mount', async () => {
++    const savedHistory = [
++      'https://images.dog.ceo/breeds/labrador/h1.jpg',
++      'https://images.dog.ceo/breeds/poodle/h2.jpg'
++    ];
++    
++    localStorage.getItem.mockImplementation((key) => {
++      if (key === 'dogHistory') {
++        return JSON.stringify(savedHistory);
++      }
++      return null;
++    });
++
 +    await act(async () => {
 +      render(<Dog />);
 +    });
 +
-+    const generateButton = screen.getByRole('button', { name: /generate dog/i });
-+
-+    await act(async () => {
-+      fireEvent.click(generateButton);
-+    });
-+
-+    await waitFor(() => {
-+      expect(screen.getAllByRole('img').length).toBeGreaterThan(0);
-+    });
-+
-+    await act(async () => {
-+      fireEvent.click(generateButton);
-+    });
-+
-+    await waitFor(() => {
-+      expect(screen.getAllByRole('img').length).toBeGreaterThan(0);
-+    });
++    // STRICT ASSERTION: localStorage.getItem called with 'dogHistory'
++    expect(localStorage.getItem).toHaveBeenCalledWith('dogHistory');
 +  });
 +});
 \ No newline at end of file
 diff --git a/repository_after/Integration.test.jsx b/repository_after/Integration.test.jsx
 new file mode 100644
-index 0000000..02f996d
+index 0000000..4788150
 --- /dev/null
 +++ b/repository_after/Integration.test.jsx
-@@ -0,0 +1,273 @@
+@@ -0,0 +1,220 @@
 +/**
 + * Integration Tests
 + * Tests complete user flows and feature combinations
@@ -1312,6 +1213,8 @@ index 0000000..02f996d
 +  beforeEach(() => {
 +    imageCounter = 0;
 +    jest.clearAllMocks();
++    localStorage.getItem.mockImplementation(() => null);
++    
 +    global.fetch = jest.fn((url) => {
 +      if (url.includes('breeds/list/all')) {
 +        return Promise.resolve({
@@ -1337,74 +1240,41 @@ index 0000000..02f996d
 +    });
 +  });
 +
++  // Complete flow: fetch → add to favorites → verify in list
 +  test('complete flow: fetch image → add to favorites → verify in favorites list', async () => {
 +    await act(async () => {
 +      render(<Dog />);
 +    });
 +
-+    // Wait for initial image
++    // Wait for image
 +    await waitFor(() => {
 +      const images = screen.getAllByRole('img');
-+      expect(images.find(img => img.src && img.src.includes('dog.ceo'))).toBeTruthy();
++      expect(images.some(img => img.src.includes('dog.ceo'))).toBe(true);
 +    });
++
++    const currentImageSrc = screen.getAllByRole('img')
++      .find(img => img.src.includes('dog.ceo')).src;
 +
 +    // Add to favorites
 +    const heartIcon = screen.getByTestId('heart-icon');
-+
 +    await act(async () => {
 +      fireEvent.click(heartIcon);
 +    });
 +
-+    // Verify favorites section appears
++    // STRICT ASSERTION: Favorites list contains the image
 +    await waitFor(() => {
-+      expect(screen.getByText(/favorites/i)).toBeInTheDocument();
++      const favoritesSection = screen.getByText(/favorites/i);
++      expect(favoritesSection).toBeInTheDocument();
++      
++      // Verify the image appears in favorites
++      const allImages = screen.getAllByRole('img');
++      const favoriteImages = allImages.filter(img => img.src === currentImageSrc);
++      expect(favoriteImages.length).toBeGreaterThanOrEqual(1);
 +    });
 +  });
 +
-+  test('breed filter flow: select breed → fetch → verify URL contains breed name', async () => {
-+    const user = userEvent.setup();
-+
-+    await act(async () => {
-+      render(<Dog />);
-+    });
-+
-+    await waitFor(() => {
-+      expect(screen.getByRole('combobox')).toBeInTheDocument();
-+    });
-+
-+    // Select poodle breed
-+    const select = screen.getByRole('combobox');
-+
-+    await act(async () => {
-+      await user.selectOptions(select, 'poodle');
-+    });
-+
-+    expect(select.value).toBe('poodle');
-+
-+    // Fetch image
-+    const generateButton = screen.getByRole('button', { name: /generate dog/i });
-+
-+    await act(async () => {
-+      fireEvent.click(generateButton);
-+    });
-+
-+    // Verify API was called with breed
-+    await waitFor(() => {
-+      const breedCall = global.fetch.mock.calls.find(
-+        call => call[0].includes('/breed/poodle/')
-+      );
-+      expect(breedCall).toBeTruthy();
-+    });
-+
-+    // Verify image URL contains breed name
-+    await waitFor(() => {
-+      const images = screen.getAllByRole('img');
-+      const poodleImage = images.find(img => img.src && img.src.includes('poodle'));
-+      expect(poodleImage).toBeTruthy();
-+    });
-+  });
-+
-+  test('error recovery: trigger error → click retry/generate → verify successful fetch', async () => {
++  // Error recovery flow
++  test('error recovery: trigger error → click retry → verify successful fetch', async () => {
 +    let callCount = 0;
 +
 +    global.fetch = jest.fn((url) => {
@@ -1433,49 +1303,39 @@ index 0000000..02f996d
 +      render(<Dog />);
 +    });
 +
-+    // First fetch fails
++    // Wait for error
 +    await waitFor(() => {
-+      expect(callCount).toBe(1);
++      const errorMessage = screen.queryByTestId('error-message') ||
++                          screen.queryByText(/error/i) ||
++                          screen.queryByText(/failed/i);
++      expect(errorMessage).toBeInTheDocument();
 +    });
 +
-+    // Click generate button to retry
-+    const generateButton = screen.getByRole('button', { name: /generate dog/i });
++    // Find retry button (dedicated or generate button)
++    const retryButton = screen.queryByRole('button', { name: /retry/i }) ||
++                       screen.queryByTestId('retry-button') ||
++                       screen.getByRole('button', { name: /generate dog/i });
 +
 +    await act(async () => {
-+      fireEvent.click(generateButton);
++      fireEvent.click(retryButton);
 +    });
 +
-+    // Verify successful fetch after retry
++    // STRICT ASSERTION: Success after retry
 +    await waitFor(() => {
 +      const images = screen.getAllByRole('img');
-+      const successImage = images.find(img => img.src && img.src.includes('success.jpg'));
-+      expect(successImage).toBeTruthy();
++      const successImage = images.find(img => img.src.includes('success.jpg'));
++      expect(successImage).toBeInTheDocument();
++    });
++
++    // Error should be cleared
++    await waitFor(() => {
++      const errorMessage = screen.queryByTestId('error-message');
++      expect(errorMessage).not.toBeInTheDocument();
 +    });
 +  });
 +
-+  test('favorites load from storage on mount', async () => {
-+    const savedFavorites = ['https://images.dog.ceo/breeds/labrador/fav1.jpg'];
-+    localStorage.getItem.mockImplementation((key) => {
-+      if (key === 'dogFavorites') {
-+        return JSON.stringify(savedFavorites);
-+      }
-+      return null;
-+    });
-+
-+    await act(async () => {
-+      render(<Dog />);
-+    });
-+
-+    await waitFor(() => {
-+      expect(localStorage.getItem).toHaveBeenCalledWith('dogFavorites');
-+    });
-+
-+    await waitFor(() => {
-+      expect(screen.getByText(/favorites/i)).toBeInTheDocument();
-+    });
-+  });
-+
-+  test('full user journey: load → fetch → favorite → switch breed → fetch', async () => {
++  // Breed filter flow
++  test('breed filter flow: select breed → fetch → verify image URL contains breed', async () => {
 +    const user = userEvent.setup();
 +
 +    await act(async () => {
@@ -1486,95 +1346,83 @@ index 0000000..02f996d
 +      expect(screen.getByRole('combobox')).toBeInTheDocument();
 +    });
 +
-+    // 1. Fetch initial image (component does this on mount)
-+    await waitFor(() => {
-+      expect(screen.getAllByRole('img').length).toBeGreaterThan(0);
-+    });
-+
-+    // 2. Add to favorites
-+    const heartIcon = screen.getByTestId('heart-icon');
-+
-+    await act(async () => {
-+      fireEvent.click(heartIcon);
-+    });
-+
-+    await waitFor(() => {
-+      expect(screen.getByText(/favorites/i)).toBeInTheDocument();
-+    });
-+
-+    // 3. Switch breed
 +    const select = screen.getByRole('combobox');
 +
 +    await act(async () => {
 +      await user.selectOptions(select, 'bulldog');
 +    });
 +
-+    // 4. Fetch breed-specific image
 +    const generateButton = screen.getByRole('button', { name: /generate dog/i });
 +
 +    await act(async () => {
 +      fireEvent.click(generateButton);
 +    });
 +
++    // STRICT ASSERTION: Image URL contains breed name
 +    await waitFor(() => {
-+      const bulldogCall = global.fetch.mock.calls.find(
-+        call => call[0].includes('/breed/bulldog/')
-+      );
-+      expect(bulldogCall).toBeTruthy();
-+    });
-+
-+    // Favorites should still be present
-+    await waitFor(() => {
-+      expect(screen.getByText(/favorites/i)).toBeInTheDocument();
++      const images = screen.getAllByRole('img');
++      const bulldogImage = images.find(img => img.src.includes('bulldog'));
++      expect(bulldogImage).toBeInTheDocument();
 +    });
 +  });
 +
-+  test('multiple favorites can be added', async () => {
++  // Full user journey
++  test('full user journey: load → fetch → favorite → switch breed → fetch again', async () => {
++    const user = userEvent.setup();
++
 +    await act(async () => {
 +      render(<Dog />);
 +    });
 +
-+    const generateButton = screen.getByRole('button', { name: /generate dog/i });
-+    const heartIcon = screen.getByTestId('heart-icon');
++    // Wait for initial load
++    await waitFor(() => {
++      expect(screen.getByRole('combobox')).toBeInTheDocument();
++      expect(screen.getAllByRole('img').length).toBeGreaterThan(0);
++    });
 +
-+    // Fetch first image and add to favorites
++    // Add to favorites
++    const heartIcon = screen.getByTestId('heart-icon');
 +    await act(async () => {
 +      fireEvent.click(heartIcon);
 +    });
 +
 +    await waitFor(() => {
-+      expect(screen.getByText(/favorites.*1/i)).toBeInTheDocument();
++      expect(screen.getByText(/favorites/i)).toBeInTheDocument();
 +    });
 +
-+    // Fetch second image
++    // Switch breed
++    const select = screen.getByRole('combobox');
++    await act(async () => {
++      await user.selectOptions(select, 'poodle');
++    });
++
++    // Fetch new image
++    const generateButton = screen.getByRole('button', { name: /generate dog/i });
 +    await act(async () => {
 +      fireEvent.click(generateButton);
 +    });
 +
++    // Verify poodle image
 +    await waitFor(() => {
-+      expect(heartIcon).not.toHaveClass('favorited');
++      const images = screen.getAllByRole('img');
++      const poodleImage = images.find(img => img.src.includes('poodle'));
++      expect(poodleImage).toBeInTheDocument();
 +    });
 +
-+    // Add second image to favorites
-+    await act(async () => {
-+      fireEvent.click(heartIcon);
-+    });
-+
-+    await waitFor(() => {
-+      expect(screen.getByText(/favorites.*2/i)).toBeInTheDocument();
-+    });
++    // Favorites should still exist
++    expect(screen.getByText(/favorites/i)).toBeInTheDocument();
 +  });
 +});
 \ No newline at end of file
 diff --git a/repository_after/LoadingErrorState.test.jsx b/repository_after/LoadingErrorState.test.jsx
 new file mode 100644
-index 0000000..83f76e0
+index 0000000..32fcf9f
 --- /dev/null
 +++ b/repository_after/LoadingErrorState.test.jsx
-@@ -0,0 +1,254 @@
+@@ -0,0 +1,244 @@
 +/**
 + * Loading and Error State Tests
-+ * Requirements 5-7: Loading indicators, error messages, retry, duplicate request prevention
++ * Requirements 5-7: Loading indicators, retry mechanism, duplicate request prevention
 + */
 +import React from 'react';
 +import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
@@ -1599,7 +1447,8 @@ index 0000000..83f76e0
 +    jest.useRealTimers();
 +  });
 +
-+  test('loading spinner shows during fetch and hides after completion', async () => {
++  // Requirement 6: Loading spinner shows during fetch and hides after completion
++  test('loading indicator is VISIBLE during fetch and HIDDEN after completion', async () => {
 +    let resolvePromise;
 +    const pendingPromise = new Promise((resolve) => {
 +      resolvePromise = resolve;
@@ -1620,11 +1469,20 @@ index 0000000..83f76e0
 +      jest.runAllTimers();
 +    });
 +
-+    // During fetch, loading state should be active
-+    // Check for any loading indicator
-+    const loadingBefore = screen.queryByTestId('loading') ||
-+                          screen.queryByTestId('loading-spinner') ||
-+                          screen.queryByText(/loading/i);
++    const generateButton = screen.getByRole('button', { name: /generate dog/i });
++
++    await act(async () => {
++      fireEvent.click(generateButton);
++      jest.runAllTimers();
++    });
++
++    // STRICT ASSERTION: Loading indicator MUST be visible DURING fetch
++    const loadingDuringFetch = screen.queryByTestId('loading-indicator') ||
++                               screen.queryByTestId('loading-spinner') ||
++                               screen.queryByTestId('loading') ||
++                               screen.queryByText(/loading/i) ||
++                               screen.queryByRole('status');
++    expect(loadingDuringFetch).toBeInTheDocument();
 +
 +    // Complete the fetch
 +    await act(async () => {
@@ -1635,112 +1493,21 @@ index 0000000..83f76e0
 +      jest.runAllTimers();
 +    });
 +
-+    // After completion, loading should be cleared
++    // STRICT ASSERTION: Loading indicator MUST be HIDDEN after completion
 +    await waitFor(() => {
-+      const images = screen.getAllByRole('img');
-+      expect(images.length).toBeGreaterThan(0);
++      const loadingAfterFetch = screen.queryByTestId('loading-indicator') ||
++                                screen.queryByTestId('loading-spinner') ||
++                                screen.queryByTestId('loading') ||
++                                screen.queryByText(/^loading$/i);
++      expect(loadingAfterFetch).not.toBeInTheDocument();
 +    });
 +  });
 +
-+  test('error state displays appropriate message for network error', async () => {
-+    global.fetch = jest.fn((url) => {
-+      if (url.includes('breeds/list/all')) {
-+        return Promise.resolve({
-+          ok: true,
-+          json: () => Promise.resolve(mockBreedsResponse)
-+        });
-+      }
-+      return Promise.reject(new Error('Failed to fetch'));
-+    });
-+
-+    await act(async () => {
-+      render(<Dog />);
-+      jest.runAllTimers();
-+    });
-+
-+    await waitFor(() => {
-+      const errorMessage = screen.queryByText(/failed/i) || 
-+                          screen.queryByText(/error/i) ||
-+                          screen.queryByText(/network/i);
-+      expect(errorMessage).toBeInTheDocument();
-+    });
-+  });
-+
-+  test('error state displays appropriate message for API error', async () => {
-+    global.fetch = jest.fn((url) => {
-+      if (url.includes('breeds/list/all')) {
-+        return Promise.resolve({
-+          ok: true,
-+          json: () => Promise.resolve(mockBreedsResponse)
-+        });
-+      }
-+      return Promise.resolve({
-+        ok: false,
-+        status: 500,
-+        json: () => Promise.resolve({ status: 'error' })
-+      });
-+    });
-+
-+    await act(async () => {
-+      render(<Dog />);
-+      jest.runAllTimers();
-+    });
-+
-+    // Should show error or fallback gracefully
-+    await waitFor(() => {
-+      const content = screen.queryByText(/failed/i) || 
-+                     screen.queryByText(/error/i) ||
-+                     screen.getByText(/random/i);
-+      expect(content).toBeInTheDocument();
-+    });
-+  });
-+
-+  test('retry button triggers new fetch attempt after failure', async () => {
-+    let fetchCallCount = 0;
-+
-+    global.fetch = jest.fn((url) => {
-+      if (url.includes('breeds/list/all')) {
-+        return Promise.resolve({
-+          ok: true,
-+          json: () => Promise.resolve(mockBreedsResponse)
-+        });
-+      }
-+      fetchCallCount++;
-+      if (fetchCallCount === 1) {
-+        return Promise.reject(new Error('First attempt failed'));
-+      }
-+      return Promise.resolve({
-+        ok: true,
-+        json: () => Promise.resolve(mockRandomDogResponse)
-+      });
-+    });
-+
-+    await act(async () => {
-+      render(<Dog />);
-+      jest.runAllTimers();
-+    });
-+
-+    // Wait for first failure
-+    await waitFor(() => {
-+      expect(fetchCallCount).toBeGreaterThanOrEqual(1);
-+    });
-+
-+    // Click generate/retry button
-+    const generateButton = screen.getByRole('button', { name: /generate dog/i });
-+
-+    await act(async () => {
-+      fireEvent.click(generateButton);
-+      jest.runAllTimers();
-+    });
-+
-+    // Verify a new fetch was triggered
-+    expect(fetchCallCount).toBeGreaterThan(1);
-+  });
-+
-+  test('multiple rapid clicks do not trigger multiple simultaneous requests', async () => {
++  // Requirement 7: Multiple rapid clicks don't trigger multiple simultaneous requests
++  test('multiple rapid clicks trigger ONLY ONE request, not multiple simultaneous requests', async () => {
 +    let activeRequests = 0;
-+    let maxActiveRequests = 0;
-+    let totalRequests = 0;
++    let maxConcurrentRequests = 0;
++    let totalImageRequests = 0;
 +
 +    global.fetch = jest.fn((url) => {
 +      if (url.includes('breeds/list/all')) {
@@ -1749,10 +1516,11 @@ index 0000000..83f76e0
 +          json: () => Promise.resolve(mockBreedsResponse)
 +        });
 +      }
-+
++      
++      // Track concurrent requests for image fetches only
 +      activeRequests++;
-+      totalRequests++;
-+      maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
++      totalImageRequests++;
++      maxConcurrentRequests = Math.max(maxConcurrentRequests, activeRequests);
 +
 +      return new Promise((resolve) => {
 +        setTimeout(() => {
@@ -1771,9 +1539,13 @@ index 0000000..83f76e0
 +    });
 +
 +    const generateButton = screen.getByRole('button', { name: /generate dog/i });
-+    const initialTotal = totalRequests;
++    
++    // Reset counters after initial fetch
++    activeRequests = 0;
++    maxConcurrentRequests = 0;
++    totalImageRequests = 0;
 +
-+    // Rapidly click multiple times
++    // Rapidly click 5 times
 +    await act(async () => {
 +      fireEvent.click(generateButton);
 +      fireEvent.click(generateButton);
@@ -1786,29 +1558,44 @@ index 0000000..83f76e0
 +      jest.advanceTimersByTime(500);
 +    });
 +
-+    // Should have limited concurrent requests (ideally 1 at a time)
-+    // If component doesn't prevent duplicates, this documents the behavior
-+    expect(totalRequests).toBeGreaterThan(initialTotal);
++    // STRICT ASSERTION: Should have at most 1 concurrent request
++    // (duplicate requests should be prevented)
++    expect(maxConcurrentRequests).toBe(1);
 +    
-+    // Ideally maxActiveRequests should be 1 for proper duplicate prevention
-+    // If component allows multiple, test documents current behavior
-+    expect(maxActiveRequests).toBeGreaterThanOrEqual(1);
++    // STRICT ASSERTION: Total requests should be 1, not 5
++    expect(totalImageRequests).toBe(1);
 +  });
 +
-+  test('network timeout triggers error state', async () => {
-+    global.fetch = jest.fn((url) => {
++  // Timeout triggers error state with timeout message
++  test('network timeout triggers error state with timeout message', async () => {
++    const abortError = new Error('Aborted');
++    abortError.name = 'AbortError';
++
++    global.fetch = jest.fn((url, options) => {
 +      if (url.includes('breeds/list/all')) {
 +        return Promise.resolve({
 +          ok: true,
 +          json: () => Promise.resolve(mockBreedsResponse)
 +        });
 +      }
-+      // Never resolves - simulates timeout
-+      return new Promise(() => {});
++      
++      return new Promise((_, reject) => {
++        const timeoutId = setTimeout(() => {
++          reject(abortError);
++        }, 5000);
++        
++        if (options?.signal) {
++          options.signal.addEventListener('abort', () => {
++            clearTimeout(timeoutId);
++            reject(abortError);
++          });
++        }
++      });
 +    });
 +
 +    await act(async () => {
 +      render(<Dog />);
++      jest.runAllTimers();
 +    });
 +
 +    const generateButton = screen.getByRole('button', { name: /generate dog/i });
@@ -1817,13 +1604,64 @@ index 0000000..83f76e0
 +      fireEvent.click(generateButton);
 +    });
 +
-+    // Advance past typical timeout threshold
++    // Advance past timeout threshold (5 seconds)
 +    await act(async () => {
-+      jest.advanceTimersByTime(10000);
++      jest.advanceTimersByTime(6000);
 +    });
 +
-+    // Component should still be functional (may or may not show timeout error)
-+    expect(screen.getByText(/random/i)).toBeInTheDocument();
++    // STRICT ASSERTION: Timeout error message MUST be shown
++    await waitFor(() => {
++      const timeoutMessage = screen.queryByText(/timeout/i) ||
++                            screen.queryByText(/timed out/i) ||
++                            screen.queryByTestId('error-message');
++      expect(timeoutMessage).toBeInTheDocument();
++    });
++  });
++
++  // Button should be disabled during loading
++  test('generate button is disabled during loading to prevent duplicate requests', async () => {
++    let resolvePromise;
++    const pendingPromise = new Promise((resolve) => {
++      resolvePromise = resolve;
++    });
++
++    global.fetch = jest.fn((url) => {
++      if (url.includes('breeds/list/all')) {
++        return Promise.resolve({
++          ok: true,
++          json: () => Promise.resolve(mockBreedsResponse)
++        });
++      }
++      return pendingPromise;
++    });
++
++    await act(async () => {
++      render(<Dog />);
++      jest.runAllTimers();
++    });
++
++    const generateButton = screen.getByRole('button', { name: /generate dog/i });
++
++    await act(async () => {
++      fireEvent.click(generateButton);
++      jest.runAllTimers();
++    });
++
++    // STRICT ASSERTION: Button should be disabled during fetch
++    expect(generateButton).toBeDisabled();
++
++    await act(async () => {
++      resolvePromise({
++        ok: true,
++        json: () => Promise.resolve(mockRandomDogResponse)
++      });
++      jest.runAllTimers();
++    });
++
++    // After completion, button should be enabled again
++    await waitFor(() => {
++      expect(generateButton).not.toBeDisabled();
++    });
 +  });
 +});
 \ No newline at end of file

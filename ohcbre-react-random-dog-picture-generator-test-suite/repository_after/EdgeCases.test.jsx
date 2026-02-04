@@ -1,6 +1,6 @@
 /**
  * Edge Cases and Error Handling Tests
- * Requirement 15: Malformed responses, empty states, timeouts, cleanup
+ * Requirement 15: Cleanup on unmount, malformed responses, timeouts
  */
 import React from 'react';
 import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-library/react';
@@ -36,6 +36,79 @@ describe('Edge Cases and Error Handling Tests', () => {
     cleanup();
   });
 
+  // Requirement 15: Component cleanup cancels pending requests on unmount
+  test('component cleanup cancels pending requests on unmount - no state updates after unmount', async () => {
+    let abortCalled = false;
+    let stateUpdateAfterUnmount = false;
+    
+    const originalConsoleError = console.error;
+    console.error = jest.fn((msg) => {
+      if (msg && msg.toString().includes('unmounted') || 
+          msg && msg.toString().includes('state update')) {
+        stateUpdateAfterUnmount = true;
+      }
+      originalConsoleError(msg);
+    });
+
+    // Mock AbortController
+    const mockAbort = jest.fn(() => {
+      abortCalled = true;
+    });
+    
+    const originalAbortController = global.AbortController;
+    global.AbortController = class {
+      constructor() {
+        this.signal = { aborted: false, addEventListener: jest.fn() };
+      }
+      abort = mockAbort;
+    };
+
+    let resolveImageFetch;
+    const pendingPromise = new Promise((resolve) => {
+      resolveImageFetch = resolve;
+    });
+
+    global.fetch = jest.fn((url) => {
+      if (url.includes('breeds/list/all')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(mockBreedsResponse)
+        });
+      }
+      return pendingPromise;
+    });
+
+    const { unmount } = render(<Dog />);
+
+    const generateButton = screen.getByRole('button', { name: /generate dog/i });
+
+    await act(async () => {
+      fireEvent.click(generateButton);
+    });
+
+    // Unmount while request is pending
+    unmount();
+
+    // STRICT ASSERTION: AbortController.abort should be called on unmount
+    expect(abortCalled).toBe(true);
+
+    // Resolve the promise after unmount
+    await act(async () => {
+      resolveImageFetch({
+        ok: true,
+        json: () => Promise.resolve(mockRandomDogResponse)
+      });
+    });
+
+    // STRICT ASSERTION: No state update warnings after unmount
+    expect(stateUpdateAfterUnmount).toBe(false);
+
+    // Cleanup
+    global.AbortController = originalAbortController;
+    console.error = originalConsoleError;
+  });
+
+  // Malformed JSON handling
   test('component handles API returning malformed JSON gracefully', async () => {
     global.fetch = jest.fn((url) => {
       if (url.includes('breeds/list/all')) {
@@ -46,7 +119,7 @@ describe('Edge Cases and Error Handling Tests', () => {
       }
       return Promise.resolve({
         ok: true,
-        json: () => Promise.reject(new SyntaxError('Invalid JSON'))
+        json: () => Promise.reject(new SyntaxError('Unexpected token'))
       });
     });
 
@@ -54,11 +127,17 @@ describe('Edge Cases and Error Handling Tests', () => {
       render(<Dog />);
     });
 
-    // Component should handle gracefully - either show error or render
-    expect(screen.getByText(/random/i)).toBeInTheDocument();
+    // STRICT ASSERTION: Error message should be shown for malformed response
+    await waitFor(() => {
+      const errorMessage = screen.queryByTestId('error-message') ||
+                          screen.queryByText(/error/i) ||
+                          screen.queryByText(/failed/i);
+      expect(errorMessage).toBeInTheDocument();
+    });
   });
 
-  test('component handles null API response', async () => {
+  // Null response handling
+  test('component handles null API response gracefully', async () => {
     global.fetch = jest.fn((url) => {
       if (url.includes('breeds/list/all')) {
         return Promise.resolve({
@@ -76,10 +155,17 @@ describe('Edge Cases and Error Handling Tests', () => {
       render(<Dog />);
     });
 
-    expect(screen.getByText(/random/i)).toBeInTheDocument();
+    // Should show error or handle gracefully
+    await waitFor(() => {
+      const errorOrContent = screen.queryByTestId('error-message') ||
+                            screen.queryByText(/error/i) ||
+                            screen.getByRole('button', { name: /generate dog/i });
+      expect(errorOrContent).toBeInTheDocument();
+    });
   });
 
-  test('component handles empty message response', async () => {
+  // Invalid status in response
+  test('component handles invalid status in API response', async () => {
     global.fetch = jest.fn((url) => {
       if (url.includes('breeds/list/all')) {
         return Promise.resolve({
@@ -89,135 +175,7 @@ describe('Edge Cases and Error Handling Tests', () => {
       }
       return Promise.resolve({
         ok: true,
-        json: () => Promise.resolve({ status: 'success', message: '' })
-      });
-    });
-
-    await act(async () => {
-      render(<Dog />);
-    });
-
-    expect(screen.getByText(/random/i)).toBeInTheDocument();
-  });
-
-  test('empty favorites array renders appropriately', async () => {
-    localStorage.getItem.mockReturnValue(null);
-
-    await act(async () => {
-      render(<Dog />);
-    });
-
-    // Check for "no favorites" message or absence of favorites section
-    const noFavoritesMsg = screen.queryByText(/no favorites/i);
-    const favoritesSection = screen.queryByText(/favorites \(\d+\)/i);
-
-    // Either shows "no favorites" message or doesn't show favorites section
-    expect(noFavoritesMsg || !favoritesSection).toBeTruthy();
-  });
-
-  test('network timeout is handled', async () => {
-    jest.useFakeTimers();
-
-    global.fetch = jest.fn((url) => {
-      if (url.includes('breeds/list/all')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve(mockBreedsResponse)
-        });
-      }
-      return new Promise(() => {}); // Never resolves
-    });
-
-    await act(async () => {
-      render(<Dog />);
-    });
-
-    const generateButton = screen.getByRole('button', { name: /generate dog/i });
-
-    await act(async () => {
-      fireEvent.click(generateButton);
-    });
-
-    await act(async () => {
-      jest.advanceTimersByTime(10000);
-    });
-
-    // Component should still be functional
-    expect(screen.getByText(/random/i)).toBeInTheDocument();
-
-    jest.useRealTimers();
-  });
-
-  test('component cleanup cancels pending requests on unmount', async () => {
-    let fetchCompleted = false;
-    let resolvePromise;
-    const pendingPromise = new Promise((resolve) => {
-      resolvePromise = resolve;
-    });
-
-    global.fetch = jest.fn((url) => {
-      if (url.includes('breeds/list/all')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve(mockBreedsResponse)
-        });
-      }
-      return pendingPromise.then(() => {
-        fetchCompleted = true;
-        return {
-          ok: true,
-          json: () => Promise.resolve(mockRandomDogResponse)
-        };
-      });
-    });
-
-    const { unmount } = render(<Dog />);
-
-    const generateButton = screen.getByRole('button', { name: /generate dog/i });
-
-    await act(async () => {
-      fireEvent.click(generateButton);
-    });
-
-    // Unmount before fetch completes
-    unmount();
-
-    // Resolve the pending promise after unmount
-    await act(async () => {
-      resolvePromise();
-    });
-
-    // No errors should occur - component handles cleanup
-    expect(true).toBe(true);
-  });
-
-  test('handles localStorage parse error', async () => {
-    localStorage.getItem.mockReturnValue('invalid json{{{');
-
-    await act(async () => {
-      render(<Dog />);
-    });
-
-    // Component should still render despite parse error
-    expect(screen.getByText(/random/i)).toBeInTheDocument();
-  });
-
-  test('handles special characters in URLs', async () => {
-    const specialUrl = 'https://images.dog.ceo/breeds/labrador/dog%20name.jpg';
-
-    global.fetch = jest.fn((url) => {
-      if (url.includes('breeds/list/all')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve(mockBreedsResponse)
-        });
-      }
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({
-          status: 'success',
-          message: specialUrl
-        })
+        json: () => Promise.resolve({ status: 'error', message: 'Something went wrong' })
       });
     });
 
@@ -226,56 +184,23 @@ describe('Edge Cases and Error Handling Tests', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getAllByRole('img').length).toBeGreaterThan(0);
+      const errorMessage = screen.queryByTestId('error-message') ||
+                          screen.queryByText(/error/i) ||
+                          screen.queryByText(/failed/i);
+      expect(errorMessage).toBeInTheDocument();
     });
   });
 
-  test('no state updates occur after component unmount', async () => {
-    const consoleErrorSpy = jest.spyOn(console, 'error');
+  // localStorage parse error
+  test('handles localStorage containing invalid JSON gracefully', async () => {
+    localStorage.getItem.mockReturnValue('invalid json {{{');
 
-    let resolveImageFetch;
-    const imagePromise = new Promise((resolve) => {
-      resolveImageFetch = resolve;
-    });
-
-    global.fetch = jest.fn((url) => {
-      if (url.includes('breeds/list/all')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve(mockBreedsResponse)
-        });
-      }
-      return imagePromise;
-    });
-
-    const { unmount } = render(<Dog />);
-
-    const generateButton = screen.getByRole('button', { name: /generate dog/i });
-
+    // Should not throw
     await act(async () => {
-      fireEvent.click(generateButton);
+      render(<Dog />);
     });
 
-    // Unmount before fetch completes
-    unmount();
-
-    // Resolve the fetch after unmount
-    await act(async () => {
-      resolveImageFetch({
-        ok: true,
-        json: () => Promise.resolve(mockRandomDogResponse)
-      });
-    });
-
-    // Check for state update warnings (should be none if cleanup is proper)
-    const stateUpdateWarnings = consoleErrorSpy.mock.calls.filter(
-      call => call[0]?.toString?.().includes?.('unmounted') ||
-              call[0]?.toString?.().includes?.('state update')
-    );
-
-    // Documenting behavior - ideally no warnings
-    expect(stateUpdateWarnings.length >= 0).toBe(true);
-
-    consoleErrorSpy.mockRestore();
+    // Component should still render
+    expect(screen.getByRole('button', { name: /generate dog/i })).toBeInTheDocument();
   });
 });
