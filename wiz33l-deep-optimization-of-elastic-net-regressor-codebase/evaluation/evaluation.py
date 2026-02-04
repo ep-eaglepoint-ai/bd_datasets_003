@@ -25,7 +25,7 @@ def run_tests(version: str):
     
     try:
         proc = subprocess.run(
-            ["pytest", "tests/test_optimization.py", "-q", "--tb=no"],
+            ["pytest", "tests", "-q", "--tb=no"],
             cwd=ROOT,
             env=env,
             capture_output=True,

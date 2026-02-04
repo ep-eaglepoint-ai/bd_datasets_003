@@ -1,7 +1,18 @@
 ## Commands
 
-*   **Command 1**: `docker compose run --rm -e TEST_VERSION=before evaluation pytest -v tests/test_optimization.py`
-*   **Command 2**: `docker compose run --rm -e TEST_VERSION=after evaluation pytest -v tests/test_optimization.py`
-*   **Command 3**: `docker compose run --rm evaluation`
+### 1. Test BEFORE (Baseline)
+```bash
+docker compose run --rm -e TEST_VERSION=before evaluation pytest -v tests/test_optimization.py || true
+```
+
+### 2. Test AFTER (Optimized)
+```bash
+docker compose run --rm -e TEST_VERSION=after evaluation pytest -v tests/test_optimization.py
+```
+
+### 3. Run Evaluation (Standard Report)
+```bash
+docker compose run --rm evaluation
+```
 
 
