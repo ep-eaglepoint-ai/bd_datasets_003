@@ -3,7 +3,7 @@
 Evaluation runner for Rate Limiting Library (OMY43L).
 
 This evaluation script:
-- Runs pytest tests on the tests/ folder for both before and after implementations
+- Runs pytest tests on the tests/ folder for after implementation
 - Collects individual test results with pass/fail status
 - Generates structured reports with environment metadata
 
@@ -21,52 +21,15 @@ from pathlib import Path
 
 
 def generate_run_id():
-    """Generate a short unique run ID."""
-    return uuid.uuid4().hex[:8]
+    """Generate a unique run ID."""
+    return str(uuid.uuid4())
 
-
-def get_git_info():
-    """Get git commit and branch information."""
-    git_info = {"git_commit": "unknown", "git_branch": "unknown"}
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        if result.returncode == 0:
-            git_info["git_commit"] = result.stdout.strip()[:8]
-    except Exception:
-        pass
-    
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        if result.returncode == 0:
-            git_info["git_branch"] = result.stdout.strip()
-    except Exception:
-        pass
-    
-    return git_info
 
 
 def get_environment_info():
-    git_info = get_git_info()
-    
     return {
         "python_version": platform.python_version(),
         "platform": platform.platform(),
-        "os": platform.system(),
-        "os_release": platform.release(),
-        "architecture": platform.machine(),
-        "hostname": platform.node(),
-        "git_commit": git_info["git_commit"],
-        "git_branch": git_info["git_branch"],
     }
 
 
@@ -83,7 +46,7 @@ def run_pytest_with_pythonpath(pythonpath, tests_dir, label):
         dict with test results
     """
     print(f"\n{'=' * 100}")
-    print(f"RUNNING TESTS AFTER FEATURE IMPLEMENTATION: {label.upper()}")
+    print(f"RUNNING TESTS FOR: {label.upper()}")
     print(f"{'=' * 100}")
     print(f"PYTHONPATH: {pythonpath}")
     print(f"Tests directory: {tests_dir}")
@@ -117,6 +80,11 @@ def run_pytest_with_pythonpath(pythonpath, tests_dir, label):
         stdout = result.stdout
         stderr = result.stderr
         
+        # Combine stdout and stderr for output
+        combined_output = stdout
+        if stderr:
+            combined_output += stderr
+        
         # Parse verbose output to get test results
         tests = parse_pytest_verbose_output(stdout)
         
@@ -139,40 +107,26 @@ def run_pytest_with_pythonpath(pythonpath, tests_dir, label):
             }.get(test.get("outcome"), "❓")
             print(f"  {status_icon} {test.get('nodeid', 'unknown')}: {test.get('outcome', 'unknown')}")
         
+        # Return format matching the sample
         return {
-            "success": result.returncode == 0 and total > 0,
-            "exit_code": result.returncode,
-            "tests": tests,
-            "summary": {
-                "total": total,
-                "passed": passed,
-                "failed": failed,
-                "errors": errors,
-                "skipped": skipped,
-            },
-            "stdout": stdout[-3000:] if len(stdout) > 3000 else stdout,
-            "stderr": stderr[-1000:] if len(stderr) > 1000 else stderr,
+            "passed": result.returncode == 0,
+            "return_code": result.returncode,
+            "output": combined_output,
         }
         
     except subprocess.TimeoutExpired:
         print("❌ Test execution timed out")
         return {
-            "success": False,
-            "exit_code": -1,
-            "tests": [],
-            "summary": {"error": "Test execution timed out"},
-            "stdout": "",
-            "stderr": "",
+            "passed": False,
+            "return_code": -1,
+            "output": "Test execution timed out",
         }
     except Exception as e:
         print(f"❌ Error running tests: {e}")
         return {
-            "success": False,
-            "exit_code": -1,
-            "tests": [],
-            "summary": {"error": str(e)},
-            "stdout": "",
-            "stderr": "",
+            "passed": False,
+            "return_code": -1,
+            "output": f"Error running tests: {str(e)}",
         }
 
 
@@ -213,7 +167,7 @@ def parse_pytest_verbose_output(output):
 
 def run_evaluation():
     """  
-    Returns dict with test results from after implementations.
+    Returns dict with test results from after implementation.
     """
     print(f"\n{'=' * 100}")
     print("HEADLESS MARKDOWN VERSIONING ENGINE")
@@ -222,9 +176,8 @@ def run_evaluation():
     project_root = Path(__file__).parent.parent
     tests_dir = project_root / "tests"
     
-    
     # PYTHONPATH for after implementation  
-    after_pythonpath = str(project_root)
+    after_pythonpath = str(project_root / "repository_after")
     
     # Run tests with AFTER implementation
     after_results = run_pytest_with_pythonpath(
@@ -239,20 +192,28 @@ def run_evaluation():
     print(f"{'=' * 100}")
     
     print(f"\nAfter Implementation (repository_after):")
-    print(f"  Overall: {'✅ PASSED' if after_results.get('success') else '❌ FAILED'}")
+    print(f"  Overall: {'✅ PASSED' if after_results.get('passed') else '❌ FAILED'}")
     
     # Determine expected behavior
-    print(f"\n{'=' * 100}")
-    print("EXPECTED BEHAVIOR CHECK")
-    print(f"{'=' * 100}")
+    after_passed = after_results.get("passed")
     
-    if after_results.get("success"):
+    if after_passed:
         print("✅ After implementation: All tests passed (expected)")
     else:
         print("❌ After implementation: Some tests failed (unexpected - should pass all)")
     
+    # Generate summary
+    if after_passed:
+        improvement_summary = "Repository after passes all correctness tests."
+    else:
+        improvement_summary = "Repository after failed some tests."
+        
+    passed_gate = after_passed
+    
     return {
         "after": after_results,
+        "passed_gate": passed_gate,
+        "improvement_summary": improvement_summary,
     }
 
 
@@ -283,29 +244,42 @@ def main():
     
     args = parser.parse_args()
     
-    # Generate run ID and timestamps
+    # Generate run ID and timestamps (UTC)
     run_id = generate_run_id()
-    started_at = datetime.now()
+    started_at = datetime.utcnow()
     
     print(f"Run ID: {run_id}")
-    print(f"Started at: {started_at.isoformat()}")
+    print(f"Started at: {started_at.isoformat()}Z")
     
     try:
         results = run_evaluation()
         
         # Success if after implementation passes all tests
-        success = results["after"].get("success", False)
-        error_message = None if success else "After implementation tests failed"
+        success = results["after"].get("passed", False)
+        error_message = None
+        
+        # Extract after results
+        after_tests = results["after"]
+        passed_gate = results["passed_gate"]
+        improvement_summary = results["improvement_summary"]
         
     except Exception as e:
         import traceback
         print(f"\nERROR: {str(e)}")
         traceback.print_exc()
-        results = None
+        
+        # Create default error results
+        after_tests = {
+            "passed": False,
+            "return_code": -1,
+            "output": f"Error during evaluation: {str(e)}"
+        }
+        passed_gate = False
+        improvement_summary = f"Evaluation failed with error: {str(e)}"
         success = False
         error_message = str(e)
     
-    finished_at = datetime.now()
+    finished_at = datetime.utcnow()
     duration = (finished_at - started_at).total_seconds()
     
     # Collect environment information
@@ -314,13 +288,20 @@ def main():
     # Build report
     report = {
         "run_id": run_id,
-        "started_at": started_at.isoformat(),
-        "finished_at": finished_at.isoformat(),
+        "started_at": started_at.isoformat() + "Z",
+        "finished_at": finished_at.isoformat() + "Z",
         "duration_seconds": round(duration, 6),
-        "success": success,
-        "error": error_message,
         "environment": environment,
-        "results": results,
+        "after": {
+            "tests": after_tests,
+            "metrics": {}
+        },
+        "comparison": {
+            "passed_gate": passed_gate,
+            "improvement_summary": improvement_summary
+        },
+        "success": success,
+        "error": error_message
     }
     
     # Determine output path
