@@ -38,7 +38,8 @@ def run_repo_tests(repo_dir_name, extra_args=None):
 def get_outcomes():
     repo_dir = os.environ.get('TEST_REPO_DIR', 'repository_after')
     if repo_dir not in _TEST_RESULTS_CACHE:
-        stdout, stderr = run_repo_tests(repo_dir, extra_args=["--cov=app", "--cov-report=term-missing"])
+        # Pass --random-order to verify isolation
+        stdout, stderr = run_repo_tests(repo_dir, extra_args=["--cov=app", "--cov-report=term-missing", "--random-order"])
         
         # If test file doesn't exist, fail immediately
         if stdout is None and stderr == "Test file not found":
@@ -85,6 +86,7 @@ def test_meta_auth_register_missing_fields(): assert_test_passed("test_auth_regi
 def test_meta_auth_register_duplicate_username(): assert_test_passed("test_auth_register_duplicate_username")
 def test_meta_auth_login_success(): assert_test_passed("test_auth_login_success")
 def test_meta_auth_login_invalid_password(): assert_test_passed("test_auth_login_invalid_password")
+def test_meta_auth_login_missing_fields(): assert_test_passed("test_auth_login_missing_fields")
 def test_meta_auth_login_disabled_user(): assert_test_passed("test_auth_login_disabled_user")
 def test_meta_auth_refresh_token(): assert_test_passed("test_auth_refresh_token")
 def test_meta_auth_me_endpoint(): assert_test_passed("test_auth_me_endpoint")
@@ -126,5 +128,14 @@ def test_meta_edge_case_negative_quantity_adjustment(): assert_test_passed("test
 def test_meta_edge_case_zero_quantity_reservation(): assert_test_passed("test_edge_case_zero_quantity_reservation")
 def test_meta_service_complex_sequential_movements(): assert_test_passed("test_service_complex_sequential_movements")
 def test_meta_service_reserve_insufficient(): assert_test_passed("test_service_reserve_insufficient")
+def test_meta_service_release_more_than_reserved(): assert_test_passed("test_service_release_more_than_reserved")
 
-
+def test_meta_coverage_threshold():
+    data = get_outcomes()
+    coverage_str = data.get("coverage", "0%")
+    try:
+        coverage_val = int(coverage_str.replace('%', ''))
+    except ValueError:
+        coverage_val = 0
+    
+    assert coverage_val > 80, f"Coverage {coverage_val}% is not greater than 80%. Output:\n{data['stdout']}"

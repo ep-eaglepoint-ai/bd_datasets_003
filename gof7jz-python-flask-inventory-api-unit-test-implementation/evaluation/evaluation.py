@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Evaluation runner
+Evaluation runner for Rate Limiting Library (OMY43L).
 
 This evaluation script:
 - Runs pytest tests on the tests/ folder for both before and after implementations
@@ -21,71 +21,34 @@ from pathlib import Path
 
 
 def generate_run_id():
-    """Generate a short unique run ID."""
-    return uuid.uuid4().hex[:8]
+    """Generate a unique run ID."""
+    return str(uuid.uuid4())
 
-
-def get_git_info():
-    """Get git commit and branch information."""
-    git_info = {"git_commit": "unknown", "git_branch": "unknown"}
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        if result.returncode == 0:
-            git_info["git_commit"] = result.stdout.strip()[:8]
-    except Exception:
-        pass
-    
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        if result.returncode == 0:
-            git_info["git_branch"] = result.stdout.strip()
-    except Exception:
-        pass
-    
-    return git_info
 
 
 def get_environment_info():
-    git_info = get_git_info()
-    
     return {
         "python_version": platform.python_version(),
         "platform": platform.platform(),
-        "os": platform.system(),
-        "os_release": platform.release(),
-        "architecture": platform.machine(),
-        "hostname": platform.node(),
-        "git_commit": git_info["git_commit"],
-        "git_branch": git_info["git_branch"],
     }
 
 
-def run_pytest_with_config(repo_dir_name, tests_dir, label):
+def run_pytest_with_pythonpath(pythonpath, tests_dir, label):
     """
-    Run pytest on the tests/ folder with specific configuration.
+    Run pytest on the tests/ folder with specific PYTHONPATH.
     
     Args:
-        repo_dir_name: The directory name of the repository (e.g. 'repository_before')
+        pythonpath: The PYTHONPATH to use for the tests
         tests_dir: Path to the tests directory
         label: Label for this test run (e.g., "before", "after")
     
     Returns:
         dict with test results
     """
-    print(f"\n{'=' * 60}")
-    print(f"RUNNING TESTS: {label.upper()}")
-    print(f"{'=' * 60}")
-    print(f"Target Repository Directory: {repo_dir_name}")
+    print(f"\n{'=' * 100}")
+    print(f"RUNNING TESTS FOR: {label.upper()}")
+    print(f"{'=' * 100}")
+    print(f"PYTHONPATH: {pythonpath}")
     print(f"Tests directory: {tests_dir}")
     
     # Build pytest command
@@ -97,32 +60,36 @@ def run_pytest_with_config(repo_dir_name, tests_dir, label):
     ]
     
     env = os.environ.copy()
-    # Set TEST_REPO_DIR for the test file to pick up the correct module
-    env["TEST_REPO_DIR"] = repo_dir_name
-    
-    # Also set PYTHONPATH to ensure the module is importable
-    project_root = Path(tests_dir).parent
-    repo_path = project_root / repo_dir_name
-    
+    # Prepend pythonpath to existing PYTHONPATH
     current_pythonpath = env.get("PYTHONPATH", "")
     if current_pythonpath:
-        env["PYTHONPATH"] = f"{str(repo_path)}{os.pathsep}{current_pythonpath}"
+        env["PYTHONPATH"] = f"{pythonpath}{os.pathsep}{current_pythonpath}"
     else:
-        env["PYTHONPATH"] = str(repo_path)
+        env["PYTHONPATH"] = pythonpath
+    
+    # Set TEST_REPO_DIR based on the pythonpath to tell meta-tests which repo to test
+    if "repository_before" in pythonpath:
+        env["TEST_REPO_DIR"] = "repository_before"
+    elif "repository_after" in pythonpath:
+        env["TEST_REPO_DIR"] = "repository_after"
     
     try:
-        # Run from project root
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
-            cwd=str(project_root),
+            cwd=str(Path(tests_dir).parent),
             env=env,
             timeout=120
         )
         
         stdout = result.stdout
         stderr = result.stderr
+        
+        # Combine stdout and stderr for output
+        combined_output = stdout
+        if stderr:
+            combined_output += stderr
         
         # Parse verbose output to get test results
         tests = parse_pytest_verbose_output(stdout)
@@ -146,40 +113,26 @@ def run_pytest_with_config(repo_dir_name, tests_dir, label):
             }.get(test.get("outcome"), "❓")
             print(f"  {status_icon} {test.get('nodeid', 'unknown')}: {test.get('outcome', 'unknown')}")
         
+        # Return format matching the sample
         return {
-            "success": result.returncode == 0 and total > 0,
-            "exit_code": result.returncode,
-            "tests": tests,
-            "summary": {
-                "total": total,
-                "passed": passed,
-                "failed": failed,
-                "errors": errors,
-                "skipped": skipped,
-            },
-            "stdout": stdout[-3000:] if len(stdout) > 3000 else stdout,
-            "stderr": stderr[-1000:] if len(stderr) > 1000 else stderr,
+            "passed": result.returncode == 0,
+            "return_code": result.returncode,
+            "output": combined_output,
         }
         
     except subprocess.TimeoutExpired:
         print("❌ Test execution timed out")
         return {
-            "success": False,
-            "exit_code": -1,
-            "tests": [],
-            "summary": {"error": "Test execution timed out"},
-            "stdout": "",
-            "stderr": "",
+            "passed": False,
+            "return_code": -1,
+            "output": "Test execution timed out",
         }
     except Exception as e:
         print(f"❌ Error running tests: {e}")
         return {
-            "success": False,
-            "exit_code": -1,
-            "tests": [],
-            "summary": {"error": str(e)},
-            "stdout": "",
-            "stderr": "",
+            "passed": False,
+            "return_code": -1,
+            "output": f"Error running tests: {str(e)}",
         }
 
 
@@ -190,6 +143,7 @@ def parse_pytest_verbose_output(output):
     
     for line in lines:
         line_stripped = line.strip()
+        
         if '::' in line_stripped:
             outcome = None
             if ' PASSED' in line_stripped:
@@ -221,51 +175,76 @@ def run_evaluation():
     """  
     Returns dict with test results from before and after implementations.
     """
-    print(f"\n{'=' * 60}")
-    print("Inventory API Unit Test Evaluation")
-    print(f"{'=' * 60}")
     
     project_root = Path(__file__).parent.parent
     tests_dir = project_root / "tests"
     
+    # PYTHONPATH for before implementation
+    before_pythonpath = str(project_root / "repository_before")
+    
+    # PYTHONPATH for after implementation  
+    after_pythonpath = str(project_root / "repository_after")
+    
     # Run tests with BEFORE implementation
-    before_results = run_pytest_with_config(
-        "repository_before",
+    before_results = run_pytest_with_pythonpath(
+        before_pythonpath,
         tests_dir,
         "before (repository_before)"
     )
     
     # Run tests with AFTER implementation
-    after_results = run_pytest_with_config(
-        "repository_after",
+    after_results = run_pytest_with_pythonpath(
+        after_pythonpath,
         tests_dir,
         "after (repository_after)"
     )
     
     # Print summary
-    print(f"\n{'=' * 60}")
+    print(f"\n{'=' * 100}")
     print("EVALUATION SUMMARY")
-    print(f"{'=' * 60}")
+    print(f"{'=' * 100}")
     
     print(f"\nBefore Implementation (repository_before):")
-    print(f"  Overall: {'✅ PASSED' if before_results.get('success') else '❌ FAILED'}")
+    print(f"  Overall: {'✅ PASSED' if before_results.get('passed') else '❌ FAILED'}")
     
     print(f"\nAfter Implementation (repository_after):")
-    print(f"  Overall: {'✅ PASSED' if after_results.get('success') else '❌ FAILED'}")
+    print(f"  Overall: {'✅ PASSED' if after_results.get('passed') else '❌ FAILED'}")
     
     # Determine expected behavior
-    print(f"\n{'=' * 60}")
+    print(f"\n{'=' * 100}")
     print("EXPECTED BEHAVIOR CHECK")
-    print(f"{'=' * 60}")
+    print(f"{'=' * 100}")
     
-    if after_results.get("success"):
+    before_failed = not before_results.get("passed")
+    after_passed = after_results.get("passed")
+    
+    if before_failed:
+        print("✅ Before implementation: Tests failed (expected)")
+    else:
+        print("⚠️  Before implementation: Tests passed (unexpected - should fail)")
+    
+    if after_passed:
         print("✅ After implementation: All tests passed (expected)")
     else:
         print("❌ After implementation: Some tests failed (unexpected - should pass all)")
     
+    # Generate comparison summary
+    passed_gate = before_failed and after_passed
+    
+    if passed_gate:
+        improvement_summary = "Repository after passes all correctness tests while repository before fails as expected."
+    elif after_passed and not before_failed:
+        improvement_summary = "Repository after passes all tests, but repository before also passes (unexpected)."
+    elif not after_passed and before_failed:
+        improvement_summary = "Repository before fails as expected, but repository after also fails (unexpected)."
+    else:
+        improvement_summary = "Both repository before and after pass all tests (unexpected)."
+    
     return {
         "before": before_results,
         "after": after_results,
+        "passed_gate": passed_gate,
+        "improvement_summary": improvement_summary,
     }
 
 
@@ -286,7 +265,7 @@ def main():
     """Main entry point for evaluation."""
     import argparse
     
-    parser = argparse.ArgumentParser(description="Run Inventory API unit test evaluation")
+    parser = argparse.ArgumentParser(description="Run rate limiter evaluation")
     parser.add_argument(
         "--output", 
         type=str, 
@@ -296,29 +275,48 @@ def main():
     
     args = parser.parse_args()
     
-    # Generate run ID and timestamps
+    # Generate run ID and timestamps (UTC)
     run_id = generate_run_id()
-    started_at = datetime.now()
+    started_at = datetime.utcnow()
     
     print(f"Run ID: {run_id}")
-    print(f"Started at: {started_at.isoformat()}")
+    print(f"Started at: {started_at.isoformat()}Z")
     
     try:
         results = run_evaluation()
         
         # Success if after implementation passes all tests
-        success = results["after"].get("success", False)
-        error_message = None if success else "After implementation tests failed"
+        success = results["after"].get("passed", False)
+        error_message = None
+        
+        # Extract before and after results
+        before_tests = results["before"]
+        after_tests = results["after"]
+        passed_gate = results["passed_gate"]
+        improvement_summary = results["improvement_summary"]
         
     except Exception as e:
         import traceback
         print(f"\nERROR: {str(e)}")
         traceback.print_exc()
-        results = None
+        
+        # Create default error results
+        before_tests = {
+            "passed": False,
+            "return_code": -1,
+            "output": f"Error during evaluation: {str(e)}"
+        }
+        after_tests = {
+            "passed": False,
+            "return_code": -1,
+            "output": f"Error during evaluation: {str(e)}"
+        }
+        passed_gate = False
+        improvement_summary = f"Evaluation failed with error: {str(e)}"
         success = False
         error_message = str(e)
     
-    finished_at = datetime.now()
+    finished_at = datetime.utcnow()
     duration = (finished_at - started_at).total_seconds()
     
     # Collect environment information
@@ -327,13 +325,24 @@ def main():
     # Build report
     report = {
         "run_id": run_id,
-        "started_at": started_at.isoformat(),
-        "finished_at": finished_at.isoformat(),
+        "started_at": started_at.isoformat() + "Z",
+        "finished_at": finished_at.isoformat() + "Z",
         "duration_seconds": round(duration, 6),
-        "success": success,
-        "error": error_message,
         "environment": environment,
-        "results": results,
+        "before": {
+            "tests": before_tests,
+            "metrics": {}
+        },
+        "after": {
+            "tests": after_tests,
+            "metrics": {}
+        },
+        "comparison": {
+            "passed_gate": passed_gate,
+            "improvement_summary": improvement_summary
+        },
+        "success": success,
+        "error": error_message
     }
     
     # Determine output path
@@ -341,9 +350,6 @@ def main():
         output_path = Path(args.output)
     else:
         output_path = generate_output_path()
-        if os.environ.get("REPORT_PATH"):
-             output_path = Path(os.environ.get("REPORT_PATH"))
-
     
     output_path.parent.mkdir(parents=True, exist_ok=True)
     
@@ -351,9 +357,9 @@ def main():
         json.dump(report, f, indent=2)
     print(f"\n✅ Report saved to: {output_path}")
     
-    print(f"\n{'=' * 60}")
+    print(f"\n{'=' * 100}")
     print(f"EVALUATION COMPLETE")
-    print(f"{'=' * 60}")
+    print(f"{'=' * 100}")
     print(f"Run ID: {run_id}")
     print(f"Duration: {duration:.2f}s")
     print(f"Success: {'✅ YES' if success else '❌ NO'}")
