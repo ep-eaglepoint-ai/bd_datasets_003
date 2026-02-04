@@ -1,0 +1,11 @@
+{
+            "instance_id": "WSDPR0",
+            "problem_statement": "The freelancer platform's current invoicing workflow relies on manual spreadsheet-based invoice creation, leading to calculation errors when applying taxes and discounts in different orders. Users report incorrect totals when working with multiple currencies because exchange rates change between invoice creation and payment. PDF exports block the UI for several seconds on large invoices, and concurrent invoice creation by the same user sometimes produces duplicate invoice numbers. Sent invoices have been accidentally modified, causing audit compliance failures during client disputes.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/wsdpr0-invoice-generator-with-pdf-export",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
