@@ -1,0 +1,11 @@
+{
+            "instance_id": "A2LH06",
+            "problem_statement": "Engineering a diagnostic test suite to identify why a permission synchronization function fails to update the caller's session state. The objective is to prove that internal parameter reassignment prevents the "successfully" updated state from propagating to downstream middleware, despite a valid registry write.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/a2lh06-writing-a-test-to-validate-the-referential-integrity-of-auth-middleware",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
