@@ -36,7 +36,7 @@ def run_tests(repo_path):
     env["CI"] = "true"
     env["REPO_PATH"] = repo_path  # Dynamically set which folder to test
 
-    cmd = ["pytest", "tests/test_rmsnorm.py", "--json-report", "--json-report-file=/tmp/pytest-report.json", "-v"]
+    cmd = ["pytest", "tests/test_rmsnorm.py", "-v"]
 
     try:
         result = subprocess.run(
@@ -48,36 +48,40 @@ def run_tests(repo_path):
             timeout=300,
         )
 
+        # Parse stdout for test summary
+        import re
+        output_text = result.stdout + "\n" + result.stderr
+        
+        # Primary indicator: pytest returns 0 if all tests pass
         passed = result.returncode == 0
-        output_details = result.stderr or result.stdout
-        json_output = None
-
-        # Attempt to parse pytest JSON output if available
-        try:
-            # Try to read pytest JSON report if plugin is available
-            json_report_path = Path("/tmp/pytest-report.json")
-            if json_report_path.exists():
-                with open(json_report_path, "r") as f:
-                    json_output = json.load(f)
-                    passed = json_output.get("exitcode", result.returncode) == 0
-                    output_details = "All tests passed." if passed else (result.stderr or "Tests failed")
-        except Exception as e:
-            # Fallback: parse stdout for test summary
-            import re
-            summary_pattern = r'(\d+)\s+passed.*?(\d+)\s+failed'
-            match = re.search(summary_pattern, result.stdout, re.IGNORECASE)
-            if match:
-                passed_count = int(match.group(1))
-                failed_count = int(match.group(2))
-                passed = failed_count == 0
-                output_details = f"{passed_count} passed, {failed_count} failed" if not passed else "All tests passed."
+        
+        # Parse test summary from output to get details
+        # Look for patterns like "18 passed, 5 warnings" or "18 passed, 1 failed"
+        summary_pattern = r'(\d+)\s+passed'
+        failed_pattern = r'(\d+)\s+failed'
+        
+        passed_match = re.search(summary_pattern, output_text, re.IGNORECASE)
+        failed_match = re.search(failed_pattern, output_text, re.IGNORECASE)
+        
+        if passed_match:
+            passed_count = int(passed_match.group(1))
+            failed_count = int(failed_match.group(1)) if failed_match else 0
+            
+            # Generate output message
+            if passed and failed_count == 0:
+                output_details = f"All {passed_count} tests passed."
+            elif failed_count > 0:
+                output_details = f"{passed_count} passed, {failed_count} failed"
             else:
-                # Check for "passed" without failures
-                if re.search(r'(\d+)\s+passed(?!.*failed)', result.stdout, re.IGNORECASE):
-                    passed = True
-                    output_details = "All tests passed."
-                else:
-                    output_details = result.stderr or result.stdout or "Tests failed"
+                output_details = f"{passed_count} tests completed"
+        else:
+            # Fallback: use return code
+            if passed:
+                output_details = "All tests passed."
+            else:
+                # Try to extract error message
+                error_lines = (result.stderr or result.stdout or "Tests failed").split('\n')
+                output_details = '\n'.join(error_lines[:10])  # First 10 lines of error
 
         return {
             "passed": passed,
@@ -110,10 +114,12 @@ def run_evaluation():
     # We assume this might fail because the original code doesn't have the implementation
     print("Running baseline tests (before)...")
     before_result = run_tests("repository_before")
+    print(f"Before result: passed={before_result['passed']}, return_code={before_result['return_code']}")
 
     # 2. Run Tests against "repository_after" (Refactor)
     print("Running refactor tests (after)...")
     after_result = run_tests("repository_after")
+    print(f"After result: passed={after_result['passed']}, return_code={after_result['return_code']}")
 
     end_time = datetime.now()
     end_time_iso = end_time.isoformat()
