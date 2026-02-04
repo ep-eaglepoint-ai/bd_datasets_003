@@ -41,7 +41,18 @@ class Pep8ValidatorTestCase(unittest.TestCase):
         style_guide = pep8.StyleGuide(quiet=False)
         result = style_guide.check_files([self.file_path])
 
-        error_count = result.get_count()
+        # Handle both pep8 and pycodestyle APIs
+        # pep8 uses get_count() method
+        # pycodestyle uses total_errors attribute
+        if hasattr(result, 'get_count'):
+            error_count = result.get_count()
+        elif hasattr(result, 'total_errors'):
+            error_count = result.total_errors
+        else:
+            self.fail(
+                "Unable to determine error count from PEP 8 checker. "
+                "The pep8/pycodestyle module API may have changed."
+            )
 
         self.assertEqual(
             error_count,

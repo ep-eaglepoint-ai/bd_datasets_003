@@ -122,10 +122,16 @@ class TestPep8ValidatorRequirements(unittest.TestCase):
 
         source = inspect.getsource(Pep8ValidatorTestCase.test_pep8_compliance)
 
+        # Check that it uses assertEqual and compares to 0
         self.assertIn('assertEqual', source)
         self.assertIn('error_count', source)
         self.assertIn('0', source)
 
+        # Verify it handles both pep8 and pycodestyle APIs
+        self.assertIn('get_count', source)
+        self.assertIn('total_errors', source)
+
+        # Verify it actually works with a compliant file
         compliant_code = '"""Compliant."""\n\n\ndef hello():\n    """Hello."""\n    print("Hello")\n'
         file_path = self.create_temp_file(compliant_code)
 
@@ -216,6 +222,34 @@ class TestPep8ValidatorFunctionality(unittest.TestCase):
         with self.assertRaises(AssertionError) as context:
             test.test_pep8_compliance()
         self.assertIn("File path must be configured", str(context.exception))
+
+    def test_api_compatibility_handling(self):
+        """Test that the validator handles both pep8 and pycodestyle APIs."""
+        # This test verifies that error counting works correctly
+        # regardless of which API is available
+        compliant_code = '"""Test."""\n\n\nX = 1\n'
+        file_path = self.create_temp_file(compliant_code)
+
+        test_class = create_pep8_test(file_path)
+        test = test_class()
+
+        # Should not raise any errors for compliant code
+        test.test_pep8_compliance()
+
+        # Test with non-compliant code
+        non_compliant_code = 'x=1\n'
+        file_path2 = self.create_temp_file(non_compliant_code, "bad.py")
+
+        test_class2 = create_pep8_test(file_path2)
+        test2 = test_class2()
+
+        # Should raise AssertionError, not AttributeError
+        with self.assertRaises(AssertionError) as context:
+            test2.test_pep8_compliance()
+
+        # Verify it's not an AttributeError
+        self.assertIsInstance(context.exception, AssertionError)
+        self.assertNotIsInstance(context.exception, AttributeError)
 
 
 def load_tests(loader, tests, pattern):

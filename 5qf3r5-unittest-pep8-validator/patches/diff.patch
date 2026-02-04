@@ -3,10 +3,10 @@ deleted file mode 100644
 index e69de29..0000000
 diff --git a/repository_after/pep8_validator.py b/repository_after/pep8_validator.py
 new file mode 100644
-index 0000000..8afc75a
+index 0000000..2afd5a5
 --- /dev/null
 +++ b/repository_after/pep8_validator.py
-@@ -0,0 +1,86 @@
+@@ -0,0 +1,97 @@
 +"""
 +PEP 8 Style Validator Test Module.
 +
@@ -50,7 +50,18 @@ index 0000000..8afc75a
 +        style_guide = pep8.StyleGuide(quiet=False)
 +        result = style_guide.check_files([self.file_path])
 +
-+        error_count = result.get_count()
++        # Handle both pep8 and pycodestyle APIs
++        # pep8 uses get_count() method
++        # pycodestyle uses total_errors attribute
++        if hasattr(result, 'get_count'):
++            error_count = result.get_count()
++        elif hasattr(result, 'total_errors'):
++            error_count = result.total_errors
++        else:
++            self.fail(
++                "Unable to determine error count from PEP 8 checker. "
++                "The pep8/pycodestyle module API may have changed."
++            )
 +
 +        self.assertEqual(
 +            error_count,
