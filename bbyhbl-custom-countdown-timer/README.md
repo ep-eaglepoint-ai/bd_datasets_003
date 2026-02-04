@@ -1,11 +1,12 @@
-# BBYHBL - custom countdown timer
+# Backend API tests only
+docker-compose run --rm test-runner npm run test:backend
 
-    ## Before Test Docker Command
-    <docker before command here>
+# Frontend component tests only  
+docker-compose up -d db api frontend
 
-    ## After Test Docker Command
-    <docker after command here>
+# Integration/E2E tests only
+docker-compose run --rm test-runner npm run test:integration
 
-    ## Evaluation Docker Command
-    <evaluation command here>
+# Evaluation
+docker-compose run --rm test-runner node evaluation/evaluation.js
     

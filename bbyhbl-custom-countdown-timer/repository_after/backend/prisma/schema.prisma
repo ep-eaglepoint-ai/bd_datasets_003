@@ -1,0 +1,44 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  username  String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  countdowns Countdown[]
+}
+
+model Countdown {
+  id          String   @id @default(cuid())
+  slug        String   @unique @default(uuid())
+  title       String
+  description String?
+  targetDate  DateTime
+  timezone    String   @default("UTC")
+  backgroundColor String @default("#000000")
+  textColor   String   @default("#FFFFFF")
+  accentColor String   @default("#3B82F6")
+  theme       String   @default("minimal")
+  backgroundImage String?
+  isPublic    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relationships
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([slug])
+  @@index([userId])
+  @@index([targetDate])
+}
