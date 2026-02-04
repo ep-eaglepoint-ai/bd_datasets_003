@@ -1,9 +1,14 @@
-
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
-  app:
+services:
+  after:
     build: .
-    command: pytest -q tests
+    image: localization-resolver
+    command: /app/node_modules/.bin/ts-node --project tsconfig.json tests/localizationResolver.test.ts
+    volumes:
+      - .:/app
+
+  evaluation:
+    build: .
+    image: localization-resolver
+    command: python3 evaluation/evaluation.py
     volumes:
       - .:/app
