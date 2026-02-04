@@ -3,7 +3,12 @@ services:
   # Run meta tests (tests/) + repository_after/ from root using root Jest and Babel.
   test:
     build: .
-    command: npx --yes jest tests/ repository_after/ --config=jest.config.js --watchAll=false --runInBand
+    command:
+      - sh
+      - -c
+      - |
+        npm ci --silent && \
+        npx --yes jest tests/ repository_after/ --config=jest.config.js --watchAll=false --runInBand
     volumes:
       - .:/app
     environment:
@@ -19,6 +24,7 @@ services:
       - sh
       - -c
       - |
+        npm ci --silent && \
         cp repository_after/TemperatureConverter.test.js repository_before/ && \
         (REPO=repository_before npx --yes jest tests/ repository_before/ --config=jest.config.js --watchAll=false --runInBand --testMatch='**/*.test.js' --testPathIgnorePatterns='App.test.js' || true) && \
         rm repository_before/TemperatureConverter.test.js && \
@@ -35,7 +41,12 @@ services:
 
   evaluate:
     build: .
-    command: node evaluation/evaluation.js
+    command:
+      - sh
+      - -c
+      - |
+        npm ci --silent && \
+        node evaluation/evaluation.js
     volumes:
       - .:/app
     environment:
