@@ -1,0 +1,11 @@
+{
+            "instance_id": "CGN920",
+            "problem_statement": "Implement a high-efficiency memory-marshalling utility to compress 6-bit telemetry data into a contiguous 8-bit storage stream. This is critical for bandwidth-constrained satellite/low-power radio transmission where every bit of overhead must be eliminated.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/cgn920-bit-packed-telemetry-marshaller",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
