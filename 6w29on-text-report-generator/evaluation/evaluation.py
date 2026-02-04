@@ -9,47 +9,49 @@ import datetime
 import xml.etree.ElementTree as ET
 import sys
 
-def run_tests_and_generate_report():
-    start_time = datetime.datetime.now(datetime.timezone.utc)
-    start_time_monotonic = time.monotonic()
+def run_tests(target_file, output_xml):
+    """Run pytest with specific target file and output XML."""
+    env = os.environ.copy()
+    env['TARGET_FILE'] = target_file
     
-    # Run pytest and generate JUnit XML for robust parsing
-    # Use -q for quiet output in console, but depend on xml for data
-    cmd = ["pytest", "--junitxml=report.xml", "tests"]
+    cmd = ["pytest", "--junitxml=" + output_xml, "tests"]
     
-    print(f"Running command: {' '.join(cmd)}")
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    
-    end_time_monotonic = time.monotonic()
-    finished_at = datetime.datetime.now(datetime.timezone.utc)
-    duration_seconds = end_time_monotonic - start_time_monotonic
-    
-    test_results = []
-    summary = {
-        "total": 0,
-        "passed": 0,
-        "failed": 0,
-        "xfailed": 0,
-        "errors": 0,
-        "skipped": 0
+    # We don't check return code here, we interpret results from XML
+    subprocess.run(cmd, env=env, capture_output=True, text=True)
+
+def parse_test_results(xml_file, suite_label):
+    """Parse JUnit XML and return standardized results structure."""
+    results = {
+        "success": False, # Determined later
+        "exit_code": 0,    # Placeholder, derived from stats
+        "tests": [],
+        "summary": {
+            "total": 0, "passed": 0, "failed": 0, "xfailed": 0, "errors": 0, "skipped": 0
+        }
     }
     
-    # Helper to process test suite XML
-    def process_testsuite(ts):
-        nonlocal summary
-        for case in ts.findall('testcase'):
-            summary['total'] += 1
+    if not os.path.exists(xml_file):
+        return results
+
+    try:
+        tree = ET.parse(xml_file)
+        root = tree.getroot()
+        
+        testcases = []
+        if root.tag == 'testsuites':
+            for ts in root:
+                testcases.extend(ts.findall('testcase'))
+        elif root.tag == 'testsuite':
+            testcases.extend(root.findall('testcase'))
             
-            # Construct name nicely
-            classname = case.get('classname', '')
+        for case in testcases:
+            results['summary']['total'] += 1
+            
+            classname = case.get('classname', '').replace('tests.', '')
             name = case.get('name', '')
-            # Clean up classname to relieve path clutter if present
-            classname = classname.replace('tests.', '')
             full_name = f"{classname}::{name}"
             
-            duration_s = float(case.get('time', 0))
-            duration_ms = int(duration_s * 1000)
-            
+            # Default status
             status = "passed"
             failure_messages = []
             
@@ -58,64 +60,114 @@ def run_tests_and_generate_report():
             error = case.find('error')
             
             if skipped is not None:
-                status = "skipped" # Could be xfail depending on message, but simple skipped is safe
-                summary['skipped'] += 1
+                # Check if it was an xfail (often logged as skipped with message)
                 msg = skipped.get('message', '')
-                if msg:
-                    failure_messages.append(msg)
+                type_attr = skipped.get('type', '')
+                if type_attr == "pytest.xfail" or "xfail" in msg.lower():
+                    status = "xfailed"
+                    results['summary']['xfailed'] += 1
+                    # Special handling: user wants 'before' failures to look like failures in specific contexts,
+                    # but technically they are xfailed.
+                    # The prompt example showed "status": "failed" for the 'before' suite.
+                    # If this is 'before' suite, we might remap 'xfailed' to 'failed' for visual consistency if requested.
+                    # For now, we report truth: 'xfailed'.
+                else:
+                    status = "skipped"
+                    results['summary']['skipped'] += 1
+                if msg: failure_messages.append(msg)
             elif failure is not None:
                 status = "failed"
-                summary['failed'] += 1
+                results['summary']['failed'] += 1
                 msg = failure.get('message', '')
-                if not msg and failure.text:
-                    msg = failure.text.strip()
+                if not msg and failure.text: msg = failure.text.strip()
                 failure_messages.append(msg)
             elif error is not None:
-                status = "error"
-                summary['errors'] += 1
+                status = "failed" # Errors treat as failures for simplicity
+                results['summary']['errors'] += 1
                 msg = error.get('message', '')
-                if not msg and error.text:
-                    msg = error.text.strip()
+                if not msg and error.text: msg = error.text.strip()
                 failure_messages.append(msg)
             else:
-                summary['passed'] += 1
-                
-            test_results.append({
-                "name": full_name,
+                results['summary']['passed'] += 1
+            
+            # Map xfail to failed for "before" suite per user example? 
+            # User example: "before": { "success": false, "exit_code": 1, "tests": [ ... status: failed ... ] }
+            # But we engineered it to be xfail -> exit 0.
+            # If we want the JSON to match the logic "before code is bad", we can keep xfailed.
+            # However, prompt requirements said "since we want repository_before to fail use xfail ... and let it fail with exit code 0".
+            # The report should reflect the truth.
+            
+            results['tests'].append({
+                "class": classname,
+                "name": name,
                 "status": status,
-                "duration": duration_ms,
+                "full_name": full_name,
                 "failureMessages": failure_messages
             })
-
-    # Parse XML
-    try:
-        if os.path.exists("report.xml"):
-            tree = ET.parse("report.xml")
-            root = tree.getroot()
-            if root.tag == 'testsuites':
-                for ts in root:
-                    process_testsuite(ts)
-            elif root.tag == 'testsuite':
-                process_testsuite(root)
-        else:
-            print("Warning: report.xml was not generated.")
-            summary['errors'] = 1 # Treat as error
+            
     except Exception as e:
-        print(f"Error parsing XML report: {e}")
-        summary['errors'] += 1
+        print(f"Error parsing {xml_file}: {e}")
+        
+    # Determine synthetic success
+    # Success = (failed == 0 and errors == 0). passed, xfailed, skipped don't fail build.
+    results['success'] = (results['summary']['failed'] == 0 and results['summary']['errors'] == 0)
+    results['exit_code'] = 0 if results['success'] else 1
+    
+    return results
 
-    # Cleanup XML
-    if os.path.exists("report.xml"):
-        os.remove("report.xml")
-
-    # Construct Report Dictionary
+def run_evaluation():
+    start_time = datetime.datetime.now(datetime.timezone.utc)
+    start_time_monotonic = time.monotonic()
+    
+    # Run Comparison
+    # 1. Before
+    run_tests("repository_before/main.py", "before.xml")
+    before_results = parse_test_results("before.xml", "before")
+    
+    # 2. After
+    run_tests("repository_after/report_generator.py", "after.xml")
+    after_results = parse_test_results("after.xml", "after")
+    
+    end_time_monotonic = time.monotonic()
+    finished_at = datetime.datetime.now(datetime.timezone.utc)
+    duration_seconds = end_time_monotonic - start_time_monotonic
+    
+    # Clean up
+    if os.path.exists("before.xml"): os.remove("before.xml")
+    if os.path.exists("after.xml"): os.remove("after.xml")
+    
+    # Construct Comparison Stats
+    comparison = {
+        "before_tests_passed": before_results['success'],
+        "after_tests_passed": after_results['success'],
+        
+        "before_total": before_results['summary']['total'],
+        "before_passed": before_results['summary']['passed'],
+        "before_failed": before_results['summary']['failed'],
+        "before_xfailed": before_results['summary']['xfailed'],
+        "before_skipped": before_results['summary']['skipped'],
+        "before_errors": before_results['summary']['errors'],
+        
+        "after_total": after_results['summary']['total'],
+        "after_passed": after_results['summary']['passed'],
+        "after_failed": after_results['summary']['failed'],
+        "after_xfailed": after_results['summary']['xfailed'],
+        "after_skipped": after_results['summary']['skipped'],
+        "after_errors": after_results['summary']['errors'],
+        
+        "improvement": {
+            "tests_fixed": after_results['summary']['passed'] - before_results['summary']['passed'], # Rough metric
+            "features_added": 0
+        }
+    }
+    
     report_data = {
         "run_id": str(uuid.uuid4()),
         "started_at": start_time.isoformat().replace("+00:00", "Z"),
         "finished_at": finished_at.isoformat().replace("+00:00", "Z"),
         "duration_seconds": round(duration_seconds, 3),
-        "success": result.returncode == 0,
-        "error": None if result.returncode == 0 else "Test execution failed",
+        "success": after_results['success'], # Overall success depends on 'after'
+        "error": None,
         "environment": {
             "python_version": platform.python_version(),
             "platform": platform.system().lower(),
@@ -124,26 +176,16 @@ def run_tests_and_generate_report():
             "hostname": socket.gethostname()
         },
         "results": {
-            "after": {
-                "success": result.returncode == 0,
-                "exit_code": result.returncode,
-                "tests": test_results,
-                "summary": summary
-            },
-            "comparison": {
-                "after_tests_passed": result.returncode == 0,
-                "after_total": summary["total"],
-                "after_passed": summary["passed"],
-                "after_failed": summary["failed"],
-                "after_xfailed": summary["xfailed"]
-            }
+            "before": before_results,
+            "after": after_results,
+            "comparison": comparison
         }
     }
     
     return report_data
 
 if __name__ == "__main__":
-    report = run_tests_and_generate_report()
+    report = run_evaluation()
     
     # Save to evaluation/yyyy-mm-dd/hh-mm-ss/report.json
     now = datetime.datetime.now()
