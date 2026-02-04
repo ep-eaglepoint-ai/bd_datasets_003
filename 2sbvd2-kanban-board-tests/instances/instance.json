@@ -1,0 +1,12 @@
+{
+            "instance_id": "2SBVD2",
+            "problem_statement": "A development team has built a simple Kanban board application using Next.js that displays project tasks organized into columns representing different workflow stages. The app reads task data from a JSON file and renders columns with cards showing task details including title, description, priority level, assignee, and due date. Before deploying to production, the team needs comprehensive test coverage to ensure the UI renders correctly and all components display the expected data.
+The application is used by project managers to track team progress, so any rendering bugs or missing data would cause confusion and reduce trust in the tool. The team wants tests that verify the board structure, card content, and visual elements are displaying properly without requiring manual visual inspection after every code change.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/2sbvd2-kanban-board-tests",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
