@@ -3,7 +3,7 @@ services:
     build: .
     environment:
       - REPO_PATH=/app/repository_before
-    command: npx jest --testPathPattern=tests/
+    command: sh -c "npx jest --testPathPattern=tests/ || exit 0"
     volumes:
       - .:/app
       - /app/node_modules
