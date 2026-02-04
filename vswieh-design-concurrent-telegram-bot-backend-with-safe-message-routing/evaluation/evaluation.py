@@ -1,13 +1,4 @@
 #!/usr/bin/env python3
-"""
-Evaluation Script for Telegram Bot Concurrency Tests
-
-This script evaluates the repository_after/ implementation,
-generating a standardized report per the ByteDance evaluation guide.
-
-For Feature Generation tasks, repository_before is empty (scaffold only).
-"""
-
 import sys
 import json
 import uuid
@@ -73,7 +64,8 @@ def run_metrics(repo_path: Path) -> Dict[str, Any]:
     """Collect concurrency-specific metrics."""
     return {
         "concurrency_model": "asyncio",
-        "state_isolation": "per_user_locks"
+        "state_isolation": "per_user_locks",
+        "repo_path": str(repo_path)
     }
 
 

@@ -6,7 +6,7 @@ import os
 REPO_PATH = os.environ.get("TEST_REPO_PATH", "repository_after")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", REPO_PATH))
 
-from bot import Update, Response, create_bot, TelegramBot
+from bot import Update, create_bot, TelegramBot
 
 
 @pytest.fixture
