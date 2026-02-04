@@ -1,0 +1,12 @@
+{
+            "instance_id": "5WWPLD",
+            "problem_statement": "A data analytics startup is building an educational platform that teaches machine learning fundamentals through interactive examples. The team wants students to understand how linear regression works at a mathematical level before using high-level libraries like scikit-learn or TensorFlow. They need a simple implementation that clearly shows the gradient descent optimization process, cost function calculation, and how the model learns weights through iterative training.
+The educational goal is for students to trace through each step of the algorithm: see how predictions are made, understand why the cost function measures error, and observe how weights update to minimize that error over time. The implementation should be clear enough to serve as a teaching tool while still being functional for simple regression tasks on small datasets.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/5wwpld-linear-regression-implementation",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
