@@ -1,0 +1,11 @@
+{
+            "instance_id": "37TSK9",
+            "problem_statement": "Write a test using gTest (Google Test suite) to check why the fast_copy function is corrupting the data during the overlapping shift. While writing the test code, it should account for the 2 byte shift and the memory simulation should actually follow the strict constraint of src + 1. The test code should assume the code is a black box.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/37tsk9-writing-a-test-for-high-performance-byte-copy-function-for-embedded-signal-processing",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
