@@ -1,0 +1,11 @@
+{
+            "instance_id": "GAIK96",
+            "problem_statement": "The social media platform's GraphQL API experiences severe performance degradation when fetching feed data. Database monitoring shows that feed requests generate excessive individual SQL queries, with each post triggering separate queries for its author, comments, and like counts. Response times cause client timeouts on larger feeds. The database connection pool frequently exhausts under moderate load, and the same user data is fetched repeatedly within a single request when authors appear on multiple posts.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/gaik96-graphql-n-1-query-resolution-with-dataloader",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
