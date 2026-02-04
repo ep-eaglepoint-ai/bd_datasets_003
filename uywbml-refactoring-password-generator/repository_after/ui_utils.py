@@ -6,7 +6,6 @@ including clipboard management and widget creation helpers.
 """
 
 import tkinter as tk
-from tkinter import ttk
 from typing import Callable, Optional
 
 

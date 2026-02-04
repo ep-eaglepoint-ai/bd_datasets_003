@@ -2,9 +2,41 @@
 Pytest configuration and fixtures for password generator tests.
 """
 
+import importlib
 import os
 import sys
+import subprocess
 import pytest
+
+
+def pytest_configure(config):
+    """Configure pytest - setup xvfb for headless testing."""
+    # Set DISPLAY environment variable
+    os.environ["DISPLAY"] = ":99"
+    
+    # Try to start Xvfb
+    try:
+        xvfb_process = subprocess.Popen(
+            ["Xvfb", ":99", "-screen", "0", "1024x768x24"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        # Give Xvfb time to start
+        import time
+        time.sleep(0.5)
+        
+        # Store process for cleanup
+        config.xvfb_process = xvfb_process
+    except FileNotFoundError:
+        # Xvfb not available - tests will skip
+        config.xvfb_process = None
+
+
+def pytest_unconfigure(config):
+    """Cleanup xvfb after tests."""
+    if hasattr(config, 'xvfb_process') and config.xvfb_process:
+        config.xvfb_process.terminate()
+        config.xvfb_process.wait()
 
 
 def pytest_addoption(parser):
@@ -48,18 +80,36 @@ class _LegacyPasswordGeneratorWrapper:
     @staticmethod
     def get_password_history():
         """Get password history."""
-        from Password_Generator import password_history
-        return list(password_history)
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "Password_Generator",
+            os.path.join(os.path.dirname(__file__), '..', 'repository_before', 'Password-Generator.py')
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return list(module.password_history)
     
     @staticmethod
     def get_clipboard_history():
         """Get clipboard history."""
-        from Password_Generator import clipboard_data
-        return list(clipboard_data)
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "Password_Generator",
+            os.path.join(os.path.dirname(__file__), '..', 'repository_before', 'Password-Generator.py')
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return list(module.clipboard_data)
     
     @staticmethod
     def clear_histories():
         """Clear histories."""
-        from Password_Generator import password_history, clipboard_data
-        password_history.clear()
-        clipboard_data.clear()
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "Password_Generator",
+            os.path.join(os.path.dirname(__file__), '..', 'repository_before', 'Password-Generator.py')
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        module.password_history.clear()
+        module.clipboard_data.clear()

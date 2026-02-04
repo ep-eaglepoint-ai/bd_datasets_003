@@ -10,7 +10,19 @@
                 "tests/test_password_generator.py::TestRefactoredFeatures::test_core_instance_has_required_methods",
                 "tests/test_password_generator.py::TestRefactoredFeatures::test_synchronous_password_generation",
                 "tests/test_password_generator.py::TestRefactoredFeatures::test_no_thread_pool_leak",
-                "tests/test_password_generator.py::TestRefactoredFeatures::test_history_is_bounded"
+                "tests/test_password_generator.py::TestRefactoredFeatures::test_history_is_bounded",
+                "tests/test_password_generator.py::TestUIInteractions::test_generate_button_disabled_when_no_character_type_selected",
+                "tests/test_password_generator.py::TestUIInteractions::test_generate_button_enabled_when_character_type_selected",
+                "tests/test_password_generator.py::TestUIInteractions::test_slider_label_updates_on_length_change",
+                "tests/test_password_generator.py::TestUIInteractions::test_generated_password_displayed_correctly",
+                "tests/test_password_generator.py::TestUIInteractions::test_copy_to_clipboard_functionality",
+                "tests/test_password_generator.py::TestUIInteractions::test_no_copy_of_placeholder_text",
+                "tests/test_password_generator.py::TestRapidGeneration::test_rapid_password_generation",
+                "tests/test_password_generator.py::TestRapidGeneration::test_no_race_conditions_in_rapid_generation",
+                "tests/test_password_generator.py::TestRapidGeneration::test_button_text_reset_after_copy",
+                "tests/test_password_generator.py::TestMainThreadUIUpdates::test_ui_updates_use_after_method",
+                "tests/test_password_generator.py::TestMainThreadUIUpdates::test_no_tcl_errors_during_operations",
+                "tests/test_password_generator.py::TestThreadSafety::test_no_thread_growth_during_extended_operation"
             ],
             "PASS_TO_PASS": [
                 "tests/test_password_generator.py::TestPasswordGeneratorCore::test_password_length_match",
@@ -23,6 +35,10 @@
                 "tests/test_password_generator.py::TestPasswordGeneratorHistory::test_password_history_stored",
                 "tests/test_password_generator.py::TestPasswordGeneratorHistory::test_clipboard_history_stored",
                 "tests/test_password_generator.py::TestPasswordGeneratorIntegration::test_complete_generate_workflow",
-                "tests/test_password_generator.py::TestPasswordGeneratorIntegration::test_rapid_generation"
+                "tests/test_password_generator.py::TestPasswordGeneratorIntegration::test_rapid_generation",
+                "tests/test_password_generator.py::TestPerformanceAndMemory::test_history_stays_bounded_after_many_generations",
+                "tests/test_password_generator.py::TestPerformanceAndMemory::test_clipboard_history_stays_bounded",
+                "tests/test_password_generator.py::TestPerformanceAndMemory::test_memory_stable_after_many_generations",
+                "tests/test_password_generator.py::TestPerformanceAndMemory::test_no_resource_leaks_after_many_operations"
             ]
         }
