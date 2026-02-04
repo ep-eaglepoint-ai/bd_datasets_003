@@ -1,0 +1,11 @@
+{
+            "instance_id": "ZJ6D5F",
+            "problem_statement": "The e-commerce platform's checkout flow has no automated test coverage, and manual testing before each release is time-consuming. Recent deployments have broken guest checkout without detection, and price calculation bugs reached production when shipping costs were not added to totals. The checkout flow spans multiple pages with complex state management using Zustand, and previous test attempts failed because MSW service worker mocking does not work correctly in Playwright's browser context. Tests that depend on real backend APIs are flaky and fail randomly in CI environments.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/zj6d5f-e2e-testing-for-e-commerce-checkout-flow",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
