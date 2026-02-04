@@ -1,7 +1,15 @@
-# Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
+# Dockerfile for JavaScript/Jest testing
 
-FROM python:3.11-slim
+FROM node:18-alpine
+
 WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+# Copy package files first for better caching
+COPY package*.json ./
+COPY repository_after/package*.json repository_after/
+
+# Install dependencies
+RUN npm install && cd repository_after && npm install
+
+# Copy rest of the files
+COPY . .

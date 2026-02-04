@@ -1,11 +1,13 @@
 # DDSGJ4 - Counter Component Test Suite
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Docker Commands
 
-    ## After Test Docker Command
-    <docker after command here>
+### Counter Component Tests (repository_after)
+```bash
+docker compose run test
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+### Meta-Tests (tests/)
+```bash
+docker compose run meta-test
+```

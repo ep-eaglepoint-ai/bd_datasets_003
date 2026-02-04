@@ -19,13 +19,13 @@ const Counter = () => {
   const resetVal = () => setCount(0);
   return (
     <div>
-      <h1>{count}</h1>
-      <button className="buttonStyle" onClick={countPlus}>Count+</button>
-      <button className="buttonStyle" onClick={resetVal}>Reset</button>
-      <button className="buttonStyle" onClick={countMinus}>Count-</button>
+      <h1 data-testid="count">{count}</h1>
+      <button className="buttonStyle" data-testid="increment" onClick={countPlus}>Count+</button>
+      <button className="buttonStyle" data-testid="reset" onClick={resetVal}>Reset</button>
+      <button className="buttonStyle" data-testid="decrement" onClick={countMinus}>Count-</button>
     </div>
   )
 }
 
-
+export { Counter };
 export default App;
