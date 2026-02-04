@@ -1,0 +1,11 @@
+{
+            "instance_id": "A1MXO1",
+            "problem_statement": "Construct a high-efficiency Markdown-to-HTML parser in Go that operates as a pure stream processor. The parser must read from an `io.Reader` and write to an `io.Writer` byte-by-byte, enforcing a strict 'Single Pass' constraint. It cannot buffer full lines or seek backwards. The challenge is to maintain a sophisticated internal state machine that resolves contextual formatting (like bold `**` vs italic `*` vs lists) without knowing what the next character is until it is read.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/a1mxo1-zero-lookahead-markdown-streamer",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
