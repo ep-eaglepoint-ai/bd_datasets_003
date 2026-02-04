@@ -1,0 +1,12 @@
+{
+            "instance_id": "MN6K1C",
+            "problem_statement": "Write code that assigns delivery jobs to a fixed fleet of vehicles and produces an ordered route (stop sequence) for each vehicle. Each job has a location, demand, and a delivery time window. Each vehicle has a capacity limit and a start/end depot. The code must always return the same output for the same input, must never violate constraints, and must return a clear structured failure response when no valid solution exists
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/mn6k1c-deterministic-fleet-routing-with-time-windows-waiting-allowed-and-audit-ready-output",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
