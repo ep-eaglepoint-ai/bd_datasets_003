@@ -1,0 +1,11 @@
+{
+            "instance_id": "HPW6ZA",
+            "problem_statement": "The current Node.js HTTP server experiences event loop saturation during burst traffic on the /broadcast endpoint. While /subscribe correctly establishes Server-Sent Event (SSE) connections, broadcasting messages to many connected clients causes latency spikes and stalls under load. This degrades real-time delivery guarantees and limits scalability.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/hpw6za-optimize-sse-broadcast-path-to-prevent-event-loop-saturation",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
