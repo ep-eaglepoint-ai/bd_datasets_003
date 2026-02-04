@@ -1,0 +1,12 @@
+{
+            "instance_id": "0QJIN4",
+            "problem_statement": "A small cinema needs a booking system to manage their movie screenings and seat reservations. The cinema has multiple screens, each with a fixed seating arrangement. Staff need to add new movies with their showtimes, customers need to view available seats and book them, and the system must prevent double-booking of seats. All movie and booking data should be stored in a JSON file that persists between program runs.
+The current paper-based system leads to overbooking issues and difficulty tracking which seats are available for each showing. The team wants a C++ console application that handles adding movies, displaying seat maps, booking seats, and saving all data to JSON. Engineers implementing this should create their own sample JSON data file to test with.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/0qjin4-cinema-booking-system",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
