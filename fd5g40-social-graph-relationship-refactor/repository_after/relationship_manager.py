@@ -133,11 +133,23 @@ class RelationshipManager:
         """
         return self.store.bulk_filter(viewer_id, creator_ids)
 
-    def warm_cache_from_sql(self) -> int:
+    def warm_cache_from_sql(self, flush_first: bool = True) -> int:
         """
-        Initial cache warming: load all relationships from SQLite into Redis.
+        Cache warming: load all relationships from SQLite into Redis.
+
+        Args:
+            flush_first: If True, flushes Redis before loading (for cache invalidation).
+                        If False, only adds (for initial warming).
+
         Returns number of relationships loaded.
+
+        Requirement 9: Cache invalidation - when SQL is modified directly,
+        calling warm_cache_from_sql(flush_first=True) rebuilds Redis from SQL source of truth.
         """
+        # Flush Redis if requested (cache invalidation scenario)
+        if flush_first and hasattr(self.store, 'redis_client'):
+            self.store.redis_client.flushdb()
+
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
