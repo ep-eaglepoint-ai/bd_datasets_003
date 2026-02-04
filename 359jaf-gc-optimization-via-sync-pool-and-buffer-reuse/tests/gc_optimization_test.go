@@ -8,6 +8,12 @@ import (
 	"testing"
 )
 
+type errorWriter struct{}
+
+func (e *errorWriter) Write(p []byte) (n int, err error) {
+	return 0, io.ErrClosedPipe
+}
+
 func TestAllRequirements(t *testing.T) {
 
 	t.Run("DataIntegrity_NoLeakage", func(t *testing.T) {
@@ -54,6 +60,28 @@ func TestAllRequirements(t *testing.T) {
 			}()
 		}
 		wg.Wait()
+	})
+
+	t.Run("BufferPoolReturnOnFailure", func(t *testing.T) {
+		// TEST: Verify buffer is returned to pool even on failure.
+		bid := Impl.BidResponse("fail-test", "", 0)
+		ew := &errorWriter{}
+
+		// Warm up the pool
+		for i := 0; i < 10; i++ {
+			_ = Impl.SerializeBidResponse(io.Discard, bid)
+		}
+
+		result := testing.Benchmark(func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_ = Impl.SerializeBidResponse(ew, bid)
+			}
+		})
+
+		// On failure, if the buffer is NOT returned, every call would allocate.
+		if result.AllocsPerOp() > 1 {
+			t.Errorf("Pool leakage on failure: expected <= 1 alloc/op, got %d", result.AllocsPerOp())
+		}
 	})
 }
 
