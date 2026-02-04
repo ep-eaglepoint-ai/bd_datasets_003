@@ -1,0 +1,11 @@
+{
+            "instance_id": "LHOHKI",
+            "problem_statement": "Using floating-point arithmetic for financial calculations leads to precision errors that prevent accounts from reaching a true zero state. Leading to arbitrary numbers in clients accounts.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/lhohki-writing-a-test-for-financial-reconciliation-logic",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
