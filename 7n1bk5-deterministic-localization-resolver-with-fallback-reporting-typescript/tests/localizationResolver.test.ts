@@ -1,12 +1,12 @@
 
+
 import { strict as assert } from 'assert';
 import { resolveLocalizedString, ResolveInput, ResolveResult } from '../repository_after/localizationResolver.ts';
 
-// Simple types for testing
 type TestCase = {
     name: string;
     input: ResolveInput;
-    expected: Partial<ResolveResult>;
+    expected: ResolveResult;
 };
 
 function runTests() {
@@ -80,7 +80,9 @@ function runTests() {
             expected: {
                 ok: false,
                 fallbackPath: ['en-US'],
-                // Partial match on reasons
+                reasons: [
+                    { type: 'MISSING_TRANSLATION', locale: 'en-US', path: ['en-US'] }
+                ]
             },
         },
         {
@@ -94,6 +96,10 @@ function runTests() {
             expected: {
                 ok: false,
                 fallbackPath: ['fr-FR', 'en-US'],
+                reasons: [
+                    { type: 'UNKNOWN_LOCALE', locale: 'fr-FR', path: ['fr-FR'] },
+                    { type: 'UNKNOWN_LOCALE', locale: 'en-US', path: ['fr-FR', 'en-US'] }
+                ]
             },
         },
         {
@@ -106,7 +112,10 @@ function runTests() {
             },
             expected: {
                 ok: false,
-                fallbackPath: ['en-US'], // Should not be ['en-US', 'en-US', 'en-US']
+                fallbackPath: ['en-US'],
+                reasons: [
+                    { type: 'MISSING_TRANSLATION', locale: 'en-US', path: ['en-US'] }
+                ]
             },
         },
         {
@@ -119,7 +128,10 @@ function runTests() {
             },
             expected: {
                 ok: false,
-                fallbackPath: ['en-US'], // Should be ['en-US'] not ['en-US', 'en-US']
+                fallbackPath: ['en-US'],
+                reasons: [
+                    { type: 'MISSING_TRANSLATION', locale: 'en-US', path: ['en-US'] }
+                ]
             },
         },
         {
@@ -133,6 +145,9 @@ function runTests() {
             expected: {
                 ok: false,
                 fallbackPath: ['en-US'],
+                reasons: [
+                    { type: 'UNKNOWN_LOCALE', locale: 'en-US', path: ['en-US'] }
+                ]
             },
         },
         {
@@ -146,8 +161,11 @@ function runTests() {
                 defaultLocale: 'en-US',
             },
             expected: {
-                ok: false, // Should fail because 'en-US' !== 'en-us'
+                ok: false,
                 fallbackPath: ['en-US'],
+                reasons: [
+                    { type: 'UNKNOWN_LOCALE', locale: 'en-US', path: ['en-US'] }
+                ]
             },
         },
         {
@@ -178,6 +196,9 @@ function runTests() {
             expected: {
                 ok: false,
                 fallbackPath: ['en-US'],
+                reasons: [
+                    { type: 'UNKNOWN_LOCALE', locale: 'en-US', path: ['en-US'] }
+                ]
             },
         }
     ];
@@ -189,22 +210,27 @@ function runTests() {
             // Basic assertions
             assert.equal(actual.ok, test.expected.ok, `Expected ok=${test.expected.ok}, got ${actual.ok}`);
 
-            if (test.expected.ok) {
-                // @ts-ignore
-                assert.equal(actual.value, test.expected.value, `Expected value='${test.expected.value}', got '${actual.value}'`);
-                // @ts-ignore
-                assert.equal(actual.localeUsed, test.expected.localeUsed, `Expected localeUsed='${test.expected.localeUsed}', got '${actual.localeUsed}'`);
-            }
-
             assert.deepStrictEqual(actual.fallbackPath, test.expected.fallbackPath, `Expected fallbackPath=[${test.expected.fallbackPath}], got [${actual.fallbackPath}]`);
+
+            if (actual.ok && test.expected.ok) {
+                // Both are success: Narrowing applies
+                assert.equal(actual.value, test.expected.value, `Expected value='${test.expected.value}', got '${actual.value}'`);
+                assert.equal(actual.localeUsed, test.expected.localeUsed, `Expected localeUsed='${test.expected.localeUsed}', got '${actual.localeUsed}'`);
+            } else if (!actual.ok && !test.expected.ok) {
+                // Both are failure: Narrowing applies
+                assert.deepStrictEqual(actual.reasons, test.expected.reasons, `Expected reasons to match`);
+            } else {
+                // Mismatch in 'ok' status, already caught by assert.equal(actual.ok, ...) but effectively unreacable or double reporting
+            }
 
             console.log(`PASS: ${test.name}`);
             passed++;
         } catch (e: any) {
             console.error(`FAIL: ${test.name}`);
             console.error(`  ${e.message}`);
+            // Use type assertion for logging if needed or simple stringify since expected is strong typed now
             console.error(`  Expected: ${JSON.stringify(test.expected, null, 2)}`);
-            console.error(`  Actual:   ${JSON.stringify(e.actual || 'error', null, 2)}`); // Try to log actual if available
+            console.error(`  Actual:   ${JSON.stringify(e.actual || 'error', null, 2)}`);
             failed++;
         }
     }
@@ -214,5 +240,4 @@ function runTests() {
         process.exit(1);
     }
 }
-
 runTests();

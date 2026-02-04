@@ -12,13 +12,13 @@ The core requirement was to build a fail-safe, deterministic localization resolv
 
 ### A. Deterministic Resolution Algorithm
 To ensure consistent fallback order, duplicates between `userLocales` and `defaultLocale` needed to be handled without altering priority.
-- **Solution**: Used `Array.from(new Set([...preferences, default]))`. This preserves insertion order while guaranteeing uniqueness.
+- **Solution**: Used `Array.from(new Set([...userLocales, defaultLocale]))`. This preserves insertion order while guaranteeing uniqueness.
 - **Reference**: [MDN Web Docs: Set](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Set)
 
 ### B. Security & Prototype Pollution
 Directly accessing properties (e.g., `map[key]`) is unsafe when keys come from user input, as it can trigger prototype pollution (e.g., `__proto__`).
 - **Solution**: Implemented `Object.prototype.hasOwnProperty.call(map, key)` for safe lookups. This follows secure coding standards for processing untrusted input.
-- **Reference**: [OWAASP: Prototype Pollution Prevention](https://cheatsheetseries.owasp.org/cheatsheets/Prototype_Pollution_Prevention_Cheat_Sheet.html)
+- **Reference**: [OWASP: Prototype Pollution Prevention](https://cheatsheetseries.owasp.org/cheatsheets/Prototype_Pollution_Prevention_Cheat_Sheet.html)
 
 ### C. Unified Configuration (DRY Principle)
 Initially, the project had fragmented configs (`repository_after/package.json` vs root). I refactored this to a "Monorepo-lite" structure with a single root `package.json` and `tsconfig.json`.

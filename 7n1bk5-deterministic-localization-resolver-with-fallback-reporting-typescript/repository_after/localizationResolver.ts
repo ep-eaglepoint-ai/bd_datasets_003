@@ -26,6 +26,36 @@ export type ResolveResult =
     };
 
 export function resolveLocalizedString(input: ResolveInput): ResolveResult {
+    // Example: Successful resolution using preferred locale
+    // resolveLocalizedString({
+    //   key: 'hello',
+    //   translationMap: { 'fr-FR': { hello: 'Bonjour' }, 'en-US': { hello: 'Hello' } },
+    //   userLocales: ['fr-FR'],
+    //   defaultLocale: 'en-US'
+    // }) -> { ok: true, value: 'Bonjour', localeUsed: 'fr-FR', fallbackPath: ['fr-FR'] }
+
+    // Example: Successful resolution using fallback locale
+    // resolveLocalizedString({
+    //   key: 'hello',
+    //   translationMap: { 'en-US': { hello: 'Hello' } },
+    //   userLocales: ['fr-FR'],
+    //   defaultLocale: 'en-US'
+    // }) -> { ok: true, value: 'Hello', localeUsed: 'en-US', fallbackPath: ['fr-FR', 'en-US'] }
+
+    // Example: Failure when no translation is available
+    // resolveLocalizedString({
+    //   key: 'hello',
+    //   translationMap: { 'en-US': { goodbye: 'Bye' } },
+    //   userLocales: ['fr-FR'],
+    //   defaultLocale: 'en-US'
+    // }) -> {
+    //   ok: false,
+    //   fallbackPath: ['fr-FR', 'en-US'],
+    //   reasons: [
+    //     { type: 'UNKNOWN_LOCALE', locale: 'fr-FR', path: ['fr-FR'] },
+    //     { type: 'MISSING_TRANSLATION', locale: 'en-US', path: ['fr-FR', 'en-US'] }
+    //   ]
+    // }
 
     const { key, translationMap, userLocales, defaultLocale } = input;
     const fallbackPath: string[] = [];
