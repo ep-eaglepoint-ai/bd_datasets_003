@@ -1,9 +1,6 @@
-
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
+services:
   app:
     build: .
-    command: pytest -q tests
+    command: ts-node tests/test_audit.ts
     volumes:
       - .:/app

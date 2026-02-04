@@ -1,11 +1,12 @@
 # QN5PVS - Deterministic Audit Trail Builder for Admin Actions
 
-    ## Before Test Docker Command
-    <docker before command here>
 
-    ## After Test Docker Command
-    <docker after command here>
+### After Command 
+```bash
+docker compose run --rm app ts-node tests/test_audit.ts
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+### Evaluator Command
+```bash
+docker compose run --rm app ts-node evaluation/evaluator.ts
+```
