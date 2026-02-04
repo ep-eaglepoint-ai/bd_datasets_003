@@ -58,23 +58,25 @@ function createServerDb() {
           'INSERT OR IGNORE INTO processed_events (id, timestamp, volume) VALUES (?, ?, ?)'
         );
 
-        for (const ev of events) {
-          insertStmt.run(
-            [ev.id, ev.timestamp, ev.volume],
-            (err) => {
-              if (err) {
-                // Abort transaction on error.
-                insertStmt.finalize(() => {
-                  db.run('ROLLBACK', () => reject(err));
-                });
+        // Track all insert callbacks
+        const insertPromises = events.map((ev) => {
+          return new Promise((innerResolve) => {
+            insertStmt.run(
+              [ev.id, ev.timestamp, ev.volume],
+              function (err) {
+                if (err) {
+                  innerResolve({ success: false, error: err });
+                  return;
+                }
+                if (!existing.has(ev.id)) {
+                  insertedCount += 1;
+                  addedVolume += ev.volume;
+                }
+                innerResolve({ success: true });
               }
-            }
-          );
-          if (!existing.has(ev.id)) {
-            insertedCount += 1;
-            addedVolume += ev.volume;
-          }
-        }
+            );
+          });
+        });
 
         insertStmt.finalize((err) => {
           if (err) {
@@ -82,23 +84,36 @@ function createServerDb() {
             return;
           }
 
-          db.run(
-            'UPDATE stats SET value = value + ? WHERE key = ?',
-            [addedVolume, 'total_volume'],
-            (updateErr) => {
-              if (updateErr) {
-                db.run('ROLLBACK', () => reject(updateErr));
+          // Wait for all inserts to complete
+          Promise.all(insertPromises)
+            .then((results) => {
+              const failedInsert = results.find((r) => !r.success);
+              if (failedInsert) {
+                db.run('ROLLBACK', () => reject(failedInsert.error));
                 return;
               }
-              db.run('COMMIT', (commitErr) => {
-                if (commitErr) {
-                  reject(commitErr);
-                } else {
-                  resolve({ insertedCount, addedVolume });
+
+              db.run(
+                'UPDATE stats SET value = value + ? WHERE key = ?',
+                [addedVolume, 'total_volume'],
+                (updateErr) => {
+                  if (updateErr) {
+                    db.run('ROLLBACK', () => reject(updateErr));
+                    return;
+                  }
+                  db.run('COMMIT', (commitErr) => {
+                    if (commitErr) {
+                      reject(commitErr);
+                    } else {
+                      resolve({ insertedCount, addedVolume });
+                    }
+                  });
                 }
-              });
-            }
-          );
+              );
+            })
+            .catch((batchErr) => {
+              db.run('ROLLBACK', () => reject(batchErr));
+            });
         });
       });
     });

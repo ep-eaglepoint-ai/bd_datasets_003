@@ -16,7 +16,9 @@
                 "should persist events to disk before sending",
                 "should aggregate multiple events into single HTTP request",
                 "sensor loop should not be blocked by network sync",
-                "should handle connection errors gracefully without crashing"
+                "should handle connection errors gracefully without crashing",
+                "should handle ECONNRESET errors gracefully",
+                "should handle 500 errors gracefully and retry"
             ],
             "PASS_TO_PASS": []
         }
