@@ -76,6 +76,7 @@ func (a *Aggregator) AddMessage(msg *Message) {
 		// For slices of 1000, this is extremely fast compared to an OOM crash.
 		copy(msgs, msgs[1:])
 		msgs[len(msgs)-1] = msg
+		s.buffers[msg.RoomID] = msgs
 	} else {
 		// Pre-allocate first time to reduce allocation frequency
 		if msgs == nil {
@@ -97,9 +98,12 @@ func (a *Aggregator) Flush() map[string][]*Message {
 		s.mu.Lock()
 		for roomID, msgs := range s.buffers {
 			if len(msgs) > 0 {
-				batches[roomID] = msgs
-				// Removing the key ensures memory reclamation for ephemeral rooms.
-				delete(s.buffers, roomID)
+				// Create a copy of the slice to avoid data races
+				msgsCopy := make([]*Message, len(msgs))
+				copy(msgsCopy, msgs)
+				batches[roomID] = msgsCopy
+				// Reset the buffer for this room, keeping the underlying array for reuse
+				s.buffers[roomID] = msgs[:0]
 			}
 		}
 		s.mu.Unlock()
