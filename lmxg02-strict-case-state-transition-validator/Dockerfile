@@ -1,8 +1,12 @@
+FROM node:20-slim
 
-        # Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
 
-        FROM python:3.11-slim
 WORKDIR /app
+
+COPY package.json ./
+RUN npm install
+
 COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+CMD ["npm", "test"]
