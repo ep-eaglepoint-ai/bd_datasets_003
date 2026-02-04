@@ -1,0 +1,7 @@
+[
+    {
+        "filename": "malware_v1.exe",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "payload_delivery_url": "http://malicious-site.com/download/malware_v1.exe"
+    }
+]
