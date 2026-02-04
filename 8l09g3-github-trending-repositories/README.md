@@ -4,7 +4,7 @@
 
 ### 1. Before Test (runs tests on the 'before' repository)
 ```bash
-docker build -t github-trending . && docker run --rm --entrypoint python github-trending tests/test.py repository_before
+docker build -t github-trending . && docker run --rm --entrypoint python github-trending tests/test.py repository_before || true
 ```
 
 ### 2. After Test (runs tests on the 'after' repository)
