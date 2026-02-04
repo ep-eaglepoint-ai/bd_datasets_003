@@ -1,7 +1,17 @@
-# Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
+# Simplified Dockerfile for single container
+FROM golang:1.21-alpine
 
-FROM python:3.11-slim
+RUN apk --no-cache add ca-certificates nodejs npm
+
 WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+# Copy all source files
+COPY . .
+
+# Install frontend dependencies
+RUN cd repository_after/frontend && npm install
+RUN cd tests/ui && npm install
+
+EXPOSE 8080
+
+CMD ["sh", "-c", "cd repository_after/backend && go run main.go"]
