@@ -2,40 +2,27 @@
  * Evaluation Script for Circuit Breaker Implementation
  */
 
-import { writeFileSync } from "fs";
+import { writeFileSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import { execSync } from "child_process";
 import { randomUUID } from "crypto";
 import * as os from "os";
-import { join } from "path";
-import { mkdirSync } from "fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const ROOT = join(__dirname, "..");
+const REPORTS = join(ROOT, "evaluation");
 
-interface TestResult {
-  nodeid: string;
-  name: string;
-  outcome: "passed" | "failed" | "error" | "skipped";
-  error?: string;
-  duration?: number;
+const BASE_URL = process.env.TEST_URL || "http://localhost:3000";
+
+interface TestsResult {
+  passed: boolean;
+  return_code: number;
+  output: string;
 }
 
-interface TestSummary {
-  total: number;
-  passed: number;
-  failed: number;
-  errors: number;
-  skipped: number;
-}
-
-interface RepositoryResults {
-  success: boolean;
-  exit_code: number;
-  tests: TestResult[];
-  summary: TestSummary;
-  stdout: string;
-  stderr: string;
+interface RepoResult {
+  tests: TestsResult;
+  metrics: Record<string, unknown>;
 }
 
 interface EvaluationReport {
@@ -43,75 +30,24 @@ interface EvaluationReport {
   started_at: string;
   finished_at: string;
   duration_seconds: number;
-  success: boolean;
-  error: string | null;
   environment: {
     node_version: string;
     platform: string;
-    os: string;
-    os_release: string;
-    architecture: string;
-    hostname: string;
-    git_commit: string;
-    git_branch: string;
   };
-  results: {
-    before: RepositoryResults | null;
-    after: RepositoryResults;
-    comparison: {
-      before_tests_passed: boolean;
-      after_tests_passed: boolean;
-      before_total: number;
-      before_passed: number;
-      before_failed: number;
-      after_total: number;
-      after_passed: number;
-      after_failed: number;
-    };
+  before: RepoResult;
+  after: RepoResult;
+  comparison: {
+    passed_gate: boolean;
+    improvement_summary: string;
   };
+  success: boolean;
+  error: string | null;
 }
 
-const BASE_URL = process.env.TEST_URL || "http://localhost:3000";
-const INSTANCE_ID = process.env.INSTANCE_ID || "MUNJZ5";
-
-function generateRunId(): string {
-  return randomUUID().slice(0, 8);
-}
-
-function getGitInfo(): { git_commit: string; git_branch: string } {
-  let git_commit = "unknown";
-  let git_branch = "unknown";
-
-  try {
-    git_commit = execSync("git rev-parse HEAD", {
-      encoding: "utf-8",
-      timeout: 5000,
-    })
-      .trim()
-      .slice(0, 8);
-  } catch {}
-
-  try {
-    git_branch = execSync("git rev-parse --abbrev-ref HEAD", {
-      encoding: "utf-8",
-      timeout: 5000,
-    }).trim();
-  } catch {}
-
-  return { git_commit, git_branch };
-}
-
-function getEnvironment() {
-  const gitInfo = getGitInfo();
+function environmentInfo() {
   return {
     node_version: process.version,
     platform: `${os.type()}-${os.release()}-${os.arch()}`,
-    os: os.type(),
-    os_release: os.release(),
-    architecture: os.arch(),
-    hostname: os.hostname(),
-    git_commit: gitInfo.git_commit,
-    git_branch: gitInfo.git_branch,
   };
 }
 
@@ -321,6 +257,10 @@ const tests: Array<{ name: string; fn: TestFunction }> = [
       if (!("totalSuccesses" in m) || !("buckets" in m))
         throw new Error("Missing metrics fields");
       if (!Array.isArray(m.buckets)) throw new Error("Expected buckets array");
+      if (m.buckets.length === 0)
+        throw new Error("Expected buckets to contain data");
+      if (!("windowSuccesses" in m) || !("windowFailures" in m))
+        throw new Error("Missing rolling window fields");
     },
   },
   {
@@ -416,16 +356,14 @@ const tests: Array<{ name: string; fn: TestFunction }> = [
   },
 ];
 
-async function runTests(): Promise<RepositoryResults> {
+async function runTests(): Promise<RepoResult> {
   console.log(`\nRunning tests against ${BASE_URL}\n`);
 
-  const testResults: TestResult[] = [];
+  const outputLines: string[] = [];
   let passed = 0;
   let failed = 0;
-  const stdout: string[] = [];
 
   for (const test of tests) {
-    const testId = `${test.name.replace(/\s+/g, "_")}`;
     process.stdout.write(`${test.name}... `);
 
     const start = Date.now();
@@ -434,128 +372,118 @@ async function runTests(): Promise<RepositoryResults> {
       passed++;
       const duration = Date.now() - start;
       console.log(`PASSED (${duration}ms)`);
-      stdout.push(`${testId} PASSED`);
-      testResults.push({
-        nodeid: testId,
-        name: test.name,
-        outcome: "passed",
-        duration,
-      });
+      outputLines.push(`${test.name} PASSED (${duration}ms)`);
     } catch (error) {
       failed++;
       const duration = Date.now() - start;
       const errorMsg = error instanceof Error ? error.message : String(error);
       console.log(`FAILED: ${errorMsg}`);
-      stdout.push(`${testId} FAILED`);
-      testResults.push({
-        nodeid: testId,
-        name: test.name,
-        outcome: "failed",
-        error: errorMsg,
-        duration,
-      });
+      outputLines.push(`${test.name} FAILED: ${errorMsg}`);
     }
 
     await sleep(50);
   }
 
+  outputLines.push(`\n${passed} passed, ${failed} failed`);
+
   return {
-    success: failed === 0,
-    exit_code: failed === 0 ? 0 : 1,
-    tests: testResults,
-    summary: {
-      total: tests.length,
-      passed,
-      failed,
-      errors: 0,
-      skipped: 0,
+    tests: {
+      passed: failed === 0,
+      return_code: failed === 0 ? 0 : 1,
+      output: outputLines.join("\n").slice(-8000),
     },
-    stdout: stdout.join("\n"),
-    stderr: "",
+    metrics: {},
   };
 }
 
-async function evaluate(): Promise<EvaluationReport> {
-  const runId = generateRunId();
-  const startedAt = new Date();
+function runMetrics(): Record<string, unknown> {
+  // Optional – trainers implement if needed
+  return {};
+}
+
+async function runEvaluation(): Promise<EvaluationReport> {
+  const runId = randomUUID();
+  const start = new Date();
 
   console.log(`\n${"=".repeat(60)}`);
   console.log("CIRCUIT BREAKER EVALUATION");
   console.log(`${"=".repeat(60)}`);
   console.log(`Run ID: ${runId}`);
-  console.log(`Started at: ${startedAt.toISOString()}`);
+  console.log(`Started at: ${start.toISOString()}`);
 
-  let afterResults: RepositoryResults;
-  let success = false;
-  let errorMessage: string | null = null;
-
-  try {
-    afterResults = await runTests();
-    success = afterResults.success;
-    if (!success) {
-      errorMessage = "Some tests failed";
-    }
-  } catch (error) {
-    afterResults = {
-      success: false,
-      exit_code: 1,
-      tests: [],
-      summary: { total: 0, passed: 0, failed: 0, errors: 1, skipped: 0 },
-      stdout: "",
-      stderr: error instanceof Error ? error.message : String(error),
-    };
-    errorMessage = error instanceof Error ? error.message : String(error);
-  }
-
-  const finishedAt = new Date();
-  const durationSeconds = (finishedAt.getTime() - startedAt.getTime()) / 1000;
-
-  const report: EvaluationReport = {
-    run_id: runId,
-    started_at: startedAt.toISOString(),
-    finished_at: finishedAt.toISOString(),
-    duration_seconds: Math.round(durationSeconds * 1000000) / 1000000,
-    success,
-    error: errorMessage,
-    environment: getEnvironment(),
-    results: {
-      before: null,
-      after: afterResults,
-      comparison: {
-        before_tests_passed: false,
-        after_tests_passed: afterResults.success,
-        before_total: 0,
-        before_passed: 0,
-        before_failed: 0,
-        after_total: afterResults.summary.total,
-        after_passed: afterResults.summary.passed,
-        after_failed: afterResults.summary.failed,
-      },
+  // Before repository is empty, so we create a failed result
+  const beforeResult: RepoResult = {
+    tests: {
+      passed: false,
+      return_code: 1,
+      output: "repository_before is empty - no implementation",
     },
+    metrics: {},
   };
 
-  return report;
+  let afterResult: RepoResult;
+  try {
+    afterResult = await runTests();
+  } catch (error) {
+    afterResult = {
+      tests: {
+        passed: false,
+        return_code: 1,
+        output: error instanceof Error ? error.message : String(error),
+      },
+      metrics: {},
+    };
+  }
+
+  const end = new Date();
+  const durationSeconds = (end.getTime() - start.getTime()) / 1000;
+
+  const passedGate = afterResult.tests.passed;
+  let improvementSummary: string;
+  if (passedGate && !beforeResult.tests.passed) {
+    improvementSummary =
+      "Repository after passes all correctness tests while repository before fails as expected.";
+  } else if (passedGate) {
+    improvementSummary = "Repository after passes all correctness tests.";
+  } else {
+    improvementSummary = "Repository after failed correctness tests.";
+  }
+
+  const formatTimestamp = (date: Date) =>
+    date.toISOString().replace(/(\.\d{3})Z$/, "$1000Z");
+
+  return {
+    run_id: runId,
+    started_at: formatTimestamp(start),
+    finished_at: formatTimestamp(end),
+    duration_seconds: Math.round(durationSeconds * 1000000) / 1000000,
+    environment: environmentInfo(),
+    before: beforeResult,
+    after: afterResult,
+    comparison: {
+      passed_gate: passedGate,
+      improvement_summary: improvementSummary,
+    },
+    success: passedGate,
+    error: passedGate ? null : "After implementation tests failed",
+  };
 }
 
-function generateOutputDir(): string {
+function generateOutputPath(): string {
   const now = new Date();
+  const dateStr = now.toISOString().slice(0, 10);
+  const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, "-");
 
-  const dateStr = now.toISOString().slice(0, 10); // YYYY-MM-DD
-  const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, "-"); // HH-MM-SS
-
-  const projectRoot = join(__dirname, "..");
-  const outputDir = join(projectRoot, "evaluation", dateStr, timeStr);
-
+  const outputDir = join(REPORTS, dateStr, timeStr);
   mkdirSync(outputDir, { recursive: true });
 
-  return outputDir;
+  return join(outputDir, "report.json");
 }
 
 // Main execution
-evaluate()
+runEvaluation()
   .then((report) => {
-    const outputDir = generateOutputDir();
-    const outputPath = join(outputDir, "report.json");
+    const outputPath = generateOutputPath();
     writeFileSync(outputPath, JSON.stringify(report, null, 2));
 
     console.log(`\n${"=".repeat(60)}`);
@@ -564,9 +492,6 @@ evaluate()
     console.log(`Run ID: ${report.run_id}`);
     console.log(`Duration: ${report.duration_seconds.toFixed(2)}s`);
     console.log(`Success: ${report.success ? "YES" : "NO"}`);
-    console.log(
-      `Tests: ${report.results.after.summary.passed}/${report.results.after.summary.total} passed`,
-    );
     console.log(`\nReport written to: ${outputPath}`);
 
     process.exit(report.success ? 0 : 1);
@@ -576,4 +501,4 @@ evaluate()
     process.exit(1);
   });
 
-export { evaluate, EvaluationReport };
+export { runEvaluation, EvaluationReport };
