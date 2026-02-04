@@ -1,11 +1,9 @@
 # LBDGIU - PWA-Implement-Offline-First-Field-Service-Capability
 
-    ## Before Test Docker Command
-    <docker before command here>
+## After Test Docker Command
+docker-compose run --rm app npm test
 
-    ## After Test Docker Command
-    <docker after command here>
+## Evaluation Docker Command
+docker-compose run --rm app node evaluation/evaluation.js
 
-    ## Evaluation Docker Command
-    <evaluation command here>
     
