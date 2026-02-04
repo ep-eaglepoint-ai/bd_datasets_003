@@ -1,0 +1,11 @@
+{
+            "instance_id": "7DJMK7",
+            "problem_statement": "Develop a Python utility that can transform deeply nested, polymorphic JSON schemas into a flat key-value structure. The core challenge is to accurately traverse arbitrary schema depths, handle different data types (objects, arrays, references), and crucially, detect and prevent infinite recursion caused by circular references within the schema definition while preserving the full path to each leaf node. This requires a robust graph traversal algorithm with sophisticated cycle detection and path reconstruction.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/7djmk7-recursive-schema-flattener-with-circular-safety",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
