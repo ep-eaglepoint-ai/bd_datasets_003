@@ -1,8 +1,23 @@
-# Docker Compose file for running tests. You should customize this as needed.
-
 services:
   app:
     build: .
-    command: pytest -q tests
     volumes:
       - .:/app
+    environment:
+      - NODE_ENV=test
+
+  test-after:
+    build: .
+    volumes:
+      - .:/app
+    environment:
+      - NODE_ENV=test
+    command: tests-after
+
+  evaluation:
+    build: .
+    volumes:
+      - .:/app
+    environment:
+      - NODE_ENV=test
+    command: evaluation
