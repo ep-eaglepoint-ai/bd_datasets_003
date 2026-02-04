@@ -1,0 +1,11 @@
+{
+            "instance_id": "KTD0ZH",
+            "problem_statement": "The implementation of RFC 1035 presents a deceptive challenge due to its aggressive use of legacy binary optimization mechanisms, specifically Message Compression. The fundamental engineering failure mode is the mishandling of domain name serialization; the protocol dictates that recurring labels in the Answer section must not be duplicated but replaced by a 2-byte pointer (0xC0 prefix) referencing the byte offset of the original label in the Question section. Mid-tier solutions frequently ignore this requirement, producing bloated packets, or fail to implement the non-linear cursor logic required to dereference incoming pointers, leading to infinite loops or parsing crashes. Furthermore, the correct construction of the header requires precise bitwise manipulation to pack multiple disjoint flags (QR, Opcode, RCODE) into 16-bit integers, distinguishing a robust systems programming approach from a naive string-based script.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ktd0zh-dns-server-with-message-compression-and-pointer-logic",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
