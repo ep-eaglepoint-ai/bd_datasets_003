@@ -472,10 +472,10 @@ index 0000000..c38835d
 \ No newline at end of file
 diff --git a/repository_after/src/main/java/com/porthorizon/crane/TandemSyncService.java b/repository_after/src/main/java/com/porthorizon/crane/TandemSyncService.java
 new file mode 100644
-index 0000000..eb16a0d
+index 0000000..98e1af1
 --- /dev/null
 +++ b/repository_after/src/main/java/com/porthorizon/crane/TandemSyncService.java
-@@ -0,0 +1,270 @@
+@@ -0,0 +1,344 @@
 +package com.porthorizon.crane;
 +
 +import java.util.concurrent.*;
@@ -505,11 +505,18 @@ index 0000000..eb16a0d
 +    private final AtomicReference<TelemetryPulse> latestCraneA = new AtomicReference<>();
 +    private final AtomicReference<TelemetryPulse> latestCraneB = new AtomicReference<>();
 +    
++    // Clock drift offset tracking (CraneA's clock relative to CraneB)
++    private final AtomicLong clockOffsetNs = new AtomicLong(0);
++    private final AtomicBoolean clockOffsetCalibrated = new AtomicBoolean(false);
++    
 +    private final MotorController motorControllerA;
 +    private final MotorController motorControllerB;
 +    private final LivenessWatchdog watchdog;
 +    private final ExecutorService processingExecutor;
 +    private final ConcurrentLinkedQueue<Command> commandHistory = new ConcurrentLinkedQueue<>();
++    
++    // Latest-only flag for non-blocking evaluation (coalescing)
++    private final AtomicBoolean evaluationPending = new AtomicBoolean(false);
 +    
 +    private Consumer<Command> commandListener;
 +    private Consumer<String> faultListener;
@@ -536,7 +543,7 @@ index 0000000..eb16a0d
 +    
 +    public void start() {
 +        if (state.get() == LiftState.FAULT) {
-+            throw new IllegalStateException("Cannot start: System in FAULT state.");
++            throw new IllegalStateException("Cannot start: System in FAULT state. Call reset() first.");
 +        }
 +        if (state.compareAndSet(LiftState.IDLE, LiftState.LIFTING)) {
 +            watchdog.start();
@@ -557,6 +564,8 @@ index 0000000..eb16a0d
 +        haltIssuedTimestampNs.set(0);
 +        latestCraneA.set(null);
 +        latestCraneB.set(null);
++        clockOffsetNs.set(0);
++        clockOffsetCalibrated.set(false);
 +        clearBuffers();
 +        commandHistory.clear();
 +    }
@@ -570,28 +579,69 @@ index 0000000..eb16a0d
 +        indexB.set(0);
 +    }
 +    
++    /**
++     * Calibrate clock offset between two crane controllers for clock drift resilience.
++     */
++    public void calibrateClockOffset(long craneATimestampNs, long craneBTimestampNs) {
++        clockOffsetNs.set(craneATimestampNs - craneBTimestampNs);
++        clockOffsetCalibrated.set(true);
++    }
++    
++    private long getAdjustedTimestamp(TelemetryPulse pulse) {
++        if (TelemetryPulse.CRANE_A.equals(pulse.craneId()) && clockOffsetCalibrated.get()) {
++            return pulse.timestampNs() - clockOffsetNs.get();
++        }
++        return pulse.timestampNs();
++    }
++    
++    /**
++     * Non-blocking telemetry ingestion with latest-only coalescing.
++     * Prevents backlog from delaying evaluation of most recent safety frames.
++     */
 +    public void ingestTelemetry(TelemetryPulse pulse) {
-+        updatePulseState(pulse, System.nanoTime());
-+        CompletableFuture.runAsync(this::evaluateSafety, processingExecutor);
++        long arrivalTime = System.nanoTime();
++        updatePulseState(pulse, arrivalTime);
++        
++        // Latest-only coalescing: skip if evaluation already pending
++        if (evaluationPending.compareAndSet(false, true)) {
++            CompletableFuture.runAsync(() -> {
++                try {
++                    evaluationPending.set(false);
++                    evaluateSafety();
++                } catch (Exception e) {
++                    evaluationPending.set(false);
++                }
++            }, processingExecutor);
++        }
 +    }
 +    
 +    public void ingestTelemetrySync(TelemetryPulse pulse) {
-+        updatePulseState(pulse, System.nanoTime());
++        long arrivalTime = System.nanoTime();
++        updatePulseState(pulse, arrivalTime);
++        evaluateSafety();
++    }
++    
++    public void ingestTelemetryWithArrival(TelemetryPulse pulse, long arrivalTimeNs) {
++        updatePulseState(pulse, arrivalTimeNs);
 +        evaluateSafety();
 +    }
 +    
 +    private void updatePulseState(TelemetryPulse pulse, long arrivalTime) {
 +        if (state.get() == LiftState.FAULT) return;
 +        
++        TelemetryPulse pulseWithArrival = new TelemetryPulse(
++            pulse.craneId(), pulse.zAxisMm(), pulse.timestampNs(), arrivalTime
++        );
++        
 +        if (TelemetryPulse.CRANE_A.equals(pulse.craneId())) {
 +            int idx = indexA.getAndIncrement() % BUFFER_SIZE;
-+            bufferA.set(idx, pulse);
-+            updateIfNewer(latestCraneA, pulse);
++            bufferA.set(idx, pulseWithArrival);
++            updateIfNewer(latestCraneA, pulseWithArrival);
 +            watchdog.recordUpdate(TelemetryPulse.CRANE_A, arrivalTime);
 +        } else if (TelemetryPulse.CRANE_B.equals(pulse.craneId())) {
 +            int idx = indexB.getAndIncrement() % BUFFER_SIZE;
-+            bufferB.set(idx, pulse);
-+            updateIfNewer(latestCraneB, pulse);
++            bufferB.set(idx, pulseWithArrival);
++            updateIfNewer(latestCraneB, pulseWithArrival);
 +            watchdog.recordUpdate(TelemetryPulse.CRANE_B, arrivalTime);
 +        }
 +    }
@@ -606,7 +656,7 @@ index 0000000..eb16a0d
 +        TelemetryPulse bestA = null;
 +        TelemetryPulse bestB = null;
 +        long smallestGap = Long.MAX_VALUE;
-+        long newestTimestamp = -1; // Break ties with newest data
++        long newestTimestamp = -1;
 +        
 +        for (int i = 0; i < BUFFER_SIZE; i++) {
 +            TelemetryPulse pulseA = bufferA.get(i);
@@ -616,10 +666,11 @@ index 0000000..eb16a0d
 +                TelemetryPulse pulseB = bufferB.get(j);
 +                if (pulseB == null) continue;
 +                
-+                long gap = Math.abs(pulseA.timestampNs() - pulseB.timestampNs());
++                long adjA = getAdjustedTimestamp(pulseA);
++                long adjB = getAdjustedTimestamp(pulseB);
++                long gap = Math.abs(adjA - adjB);
 +                long pairTimestamp = Math.max(pulseA.timestampNs(), pulseB.timestampNs());
 +                
-+                // Prefer smaller gap. If gaps equal, prefer newer data.
 +                if (gap < smallestGap || (gap == smallestGap && pairTimestamp > newestTimestamp)) {
 +                    smallestGap = gap;
 +                    newestTimestamp = pairTimestamp;
@@ -632,13 +683,25 @@ index 0000000..eb16a0d
 +        return (bestA != null && bestB != null) ? new AlignedTelemetryPair(bestA, bestB) : null;
 +    }
 +    
++    public boolean hasStaleArrivalData() {
++        TelemetryPulse a = latestCraneA.get();
++        TelemetryPulse b = latestCraneB.get();
++        if (a == null || b == null) return false;
++        
++        long arrivalDelta = Math.abs(a.arrivalTimeNs() - b.arrivalTimeNs());
++        return arrivalDelta > MAX_ALIGNMENT_DELTA_NS;
++    }
++    
 +    private void evaluateSafety() {
 +        if (state.get() == LiftState.FAULT) return;
 +        
 +        AlignedTelemetryPair pair = findClosestAlignedPair();
 +        if (pair == null) return;
 +        
-+        if (!pair.isWellAligned(MAX_ALIGNMENT_DELTA_NS)) {
++        boolean timestampStale = !pair.isWellAligned(MAX_ALIGNMENT_DELTA_NS);
++        boolean arrivalStale = hasStaleArrivalData();
++        
++        if (timestampStale || arrivalStale) {
 +            staleDataDetected.set(true);
 +            if (alignmentListener != null) alignmentListener.accept(pair);
 +            return;
@@ -663,13 +726,12 @@ index 0000000..eb16a0d
 +        
 +        if (previous != LiftState.FAULT) {
 +            Command haltAll = Command.haltAll();
++            motorControllerA.sendCommand(haltAll);
++            motorControllerB.sendCommand(haltAll);
 +            long haltTime = System.nanoTime();
 +            haltIssuedTimestampNs.set(haltTime);
 +            
 +            commandHistory.add(haltAll);
-+            motorControllerA.sendCommand(haltAll);
-+            motorControllerB.sendCommand(haltAll);
-+            
 +            watchdog.stop();
 +            
 +            if (commandListener != null) commandListener.accept(haltAll);
@@ -682,8 +744,15 @@ index 0000000..eb16a0d
 +    }
 +    
 +    public boolean executeCommand(Command command) {
-+        if (state.get() == LiftState.FAULT && Command.MOVE.equals(command.type())) return false;
-+        if (staleDataDetected.get() && Command.MOVE.equals(command.type())) return false;
++        LiftState currentState = state.get();
++        
++        if (currentState == LiftState.FAULT && Command.MOVE.equals(command.type())) {
++            return false;
++        }
++        
++        if (staleDataDetected.get() && Command.MOVE.equals(command.type())) {
++            return false;
++        }
 +        
 +        commandHistory.add(command);
 +        if (command.isHaltAll() || command.targetCraneId() == null) {
@@ -724,6 +793,11 @@ index 0000000..eb16a0d
 +        long t = getProcessingTimeNs();
 +        return t > 0 && t <= MAX_PROCESSING_WINDOW_NS;
 +    }
++    
++    public long getThresholdCrossedTimestamp() { return thresholdCrossedTimestampNs.get(); }
++    public long getHaltIssuedTimestamp() { return haltIssuedTimestampNs.get(); }
++    public boolean isClockOffsetCalibrated() { return clockOffsetCalibrated.get(); }
++    public long getClockOffsetNs() { return clockOffsetNs.get(); }
 +    
 +    public List<Command> getCommandHistory() { return new ArrayList<>(commandHistory); }
 +    public LivenessWatchdog getWatchdog() { return watchdog; }
@@ -838,7 +912,7 @@ index 0000000..26474af
 Binary files /dev/null and b/repository_after/target/classes/com/porthorizon/crane/MotorController.class differ
 diff --git a/repository_after/target/classes/com/porthorizon/crane/TandemSyncService.class b/repository_after/target/classes/com/porthorizon/crane/TandemSyncService.class
 new file mode 100644
-index 0000000..8007c2d
+index 0000000..f81dd12
 Binary files /dev/null and b/repository_after/target/classes/com/porthorizon/crane/TandemSyncService.class differ
 diff --git a/repository_after/target/classes/com/porthorizon/crane/TelemetryPulse.class b/repository_after/target/classes/com/porthorizon/crane/TelemetryPulse.class
 new file mode 100644
@@ -846,19 +920,19 @@ index 0000000..a50b1d9
 Binary files /dev/null and b/repository_after/target/classes/com/porthorizon/crane/TelemetryPulse.class differ
 diff --git a/repository_after/target/crane-sync-orchestrator-1.0.0.jar b/repository_after/target/crane-sync-orchestrator-1.0.0.jar
 new file mode 100644
-index 0000000..af8908c
+index 0000000..95f7aca
 Binary files /dev/null and b/repository_after/target/crane-sync-orchestrator-1.0.0.jar differ
 diff --git a/repository_after/target/eval-classes/Evaluation$TestEntry.class b/repository_after/target/eval-classes/Evaluation$TestEntry.class
 new file mode 100644
-index 0000000..b289fa9
+index 0000000..f4a4efa
 Binary files /dev/null and b/repository_after/target/eval-classes/Evaluation$TestEntry.class differ
 diff --git a/repository_after/target/eval-classes/Evaluation$TestResults.class b/repository_after/target/eval-classes/Evaluation$TestResults.class
 new file mode 100644
-index 0000000..3fa4827
+index 0000000..6f28a86
 Binary files /dev/null and b/repository_after/target/eval-classes/Evaluation$TestResults.class differ
 diff --git a/repository_after/target/eval-classes/Evaluation.class b/repository_after/target/eval-classes/Evaluation.class
 new file mode 100644
-index 0000000..b1c3aa0
+index 0000000..c927819
 Binary files /dev/null and b/repository_after/target/eval-classes/Evaluation.class differ
 diff --git a/repository_after/target/maven-archiver/pom.properties b/repository_after/target/maven-archiver/pom.properties
 new file mode 100644
@@ -897,25 +971,25 @@ index 0000000..3f19738
 +/app/repository_after/src/main/java/com/porthorizon/crane/LiftState.java
 diff --git a/repository_after/target/test-classes/DriftSimulationTest.class b/repository_after/target/test-classes/DriftSimulationTest.class
 new file mode 100644
-index 0000000..7a4bac7
+index 0000000..d6bc7f7
 Binary files /dev/null and b/repository_after/target/test-classes/DriftSimulationTest.class differ
 diff --git a/repository_after/target/test-classes/JitterResilienceTest.class b/repository_after/target/test-classes/JitterResilienceTest.class
 new file mode 100644
-index 0000000..12410c8
+index 0000000..20799b4
 Binary files /dev/null and b/repository_after/target/test-classes/JitterResilienceTest.class differ
 diff --git a/repository_after/target/test-classes/LivenessWatchdogTest.class b/repository_after/target/test-classes/LivenessWatchdogTest.class
 new file mode 100644
-index 0000000..a42ecd8
+index 0000000..f500a27
 Binary files /dev/null and b/repository_after/target/test-classes/LivenessWatchdogTest.class differ
 diff --git a/repository_after/target/test-classes/RequirementsTest.class b/repository_after/target/test-classes/RequirementsTest.class
 new file mode 100644
-index 0000000..57cebf8
+index 0000000..4b631c7
 Binary files /dev/null and b/repository_after/target/test-classes/RequirementsTest.class differ
 diff --git a/repository_after/target/test-classes/TandemSyncServiceTest.class b/repository_after/target/test-classes/TandemSyncServiceTest.class
 new file mode 100644
-index 0000000..f79920a
+index 0000000..71519b1
 Binary files /dev/null and b/repository_after/target/test-classes/TandemSyncServiceTest.class differ
 diff --git a/repository_after/target/test-classes/com/porthorizon/crane/MockMotorController.class b/repository_after/target/test-classes/com/porthorizon/crane/MockMotorController.class
 new file mode 100644
-index 0000000..1ca2f31
+index 0000000..235aaae
 Binary files /dev/null and b/repository_after/target/test-classes/com/porthorizon/crane/MockMotorController.class differ

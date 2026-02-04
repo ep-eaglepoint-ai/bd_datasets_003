@@ -1,10 +1,9 @@
 import com.porthorizon.crane.*;
 import org.junit.jupiter.api.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * Core TandemSyncService tests.
- */
 class TandemSyncServiceTest {
     
     private TandemSyncService service;
@@ -35,8 +34,6 @@ class TandemSyncServiceTest {
         assertEquals(LiftState.FAULT, service.getState());
         assertTrue(controllerA.hasReceivedHaltAll());
         assertTrue(controllerB.hasReceivedHaltAll());
-        
-        // Verify command type
         assertTrue(controllerA.getReceivedCommands().stream().anyMatch(c -> Command.HALT_ALL.equals(c.type())));
     }
     
@@ -45,29 +42,61 @@ class TandemSyncServiceTest {
     void test_2() {
         long base = 1_000_000_000L;
         
-        // Add pulses with varying timestamps
         service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 100.0, base));
         service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 110.0, base + 100_000_000L));
         service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_B, 105.0, base + 95_000_000L));
         
         AlignedTelemetryPair pair = service.findClosestAlignedPair();
         assertNotNull(pair);
-        
-        // Closest pair: A@100ms and B@95ms (5ms gap)
-        assertTrue(pair.alignmentDeltaNs() <= 10_000_000L, "Should select closest pair");
+        assertTrue(pair.alignmentDeltaNs() <= 10_000_000L);
     }
     
     @Test
-    @DisplayName("Test 3: Out-of-order keeps newest by timestamp")
-    void test_3() {
+    @DisplayName("Test 3: Non-blocking backlog - latest evaluated promptly")
+    void test_3() throws Exception {
+        service.start();
+        
+        ExecutorService executor = Executors.newFixedThreadPool(4);
+        CountDownLatch startLatch = new CountDownLatch(1);
+        int backlogSize = 1000;
+        
+        for (int i = 0; i < backlogSize; i++) {
+            final int idx = i;
+            executor.submit(() -> {
+                try {
+                    startLatch.await();
+                    String craneId = idx % 2 == 0 ? TelemetryPulse.CRANE_A : TelemetryPulse.CRANE_B;
+                    service.ingestTelemetry(new TelemetryPulse(craneId, 1000.0, System.nanoTime()));
+                } catch (Exception e) {}
+            });
+        }
+        
+        startLatch.countDown();
+        Thread.sleep(50);
+        
+        long criticalTime = System.nanoTime();
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 1200.0, criticalTime));
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_B, 1000.0, criticalTime));
+        long afterCritical = System.nanoTime();
+        
+        executor.shutdown();
+        
+        assertEquals(LiftState.FAULT, service.getState());
+        
+        long processingTime = afterCritical - criticalTime;
+        assertTrue(processingTime <= 10_000_000L,
+            String.format("Backlog should not delay. Took %.3fms", processingTime / 1_000_000.0));
+    }
+    
+    @Test
+    @DisplayName("Test 4: Out-of-order keeps newest by timestamp")
+    void test_4() {
         long base = 1_000_000_000L;
         
-        // Send newer first
         service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 200.0, base + 50_000_000L));
-        // Send older later
         service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 100.0, base));
         
         TelemetryPulse latest = service.getLatestPulse(TelemetryPulse.CRANE_A);
-        assertEquals(200.0, latest.zAxisMm(), "Should keep newer by timestamp");
+        assertEquals(200.0, latest.zAxisMm());
     }
 }

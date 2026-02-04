@@ -15,6 +15,7 @@
         "TandemSyncServiceTest.test_1",
         "TandemSyncServiceTest.test_2",
         "TandemSyncServiceTest.test_3",
+        "TandemSyncServiceTest.test_4",
         "DriftSimulationTest.test_1",
         "DriftSimulationTest.test_2",
         "DriftSimulationTest.test_3",
@@ -25,7 +26,9 @@
         "JitterResilienceTest.test_5",
         "RequirementsTest.test_1",
         "RequirementsTest.test_2",
-        "RequirementsTest.test_3"
+        "RequirementsTest.test_3",
+        "RequirementsTest.test_4",
+        "RequirementsTest.test_5"
     ],
     "PASS_TO_PASS": []
 }

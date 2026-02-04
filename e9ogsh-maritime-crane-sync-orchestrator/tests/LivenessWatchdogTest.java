@@ -4,17 +4,13 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * Liveness Watchdog Tests - Requirement 3
- * Includes integration test verifying 150ms timeout triggers FAULT and HALT_ALL.
- */
 class LivenessWatchdogTest {
     
     private LivenessWatchdog watchdog;
     
     @BeforeEach
     void setUp() {
-        watchdog = new LivenessWatchdog(50_000_000L); // 50ms for fast unit tests
+        watchdog = new LivenessWatchdog(50_000_000L);
     }
     
     @AfterEach
@@ -47,7 +43,6 @@ class LivenessWatchdogTest {
         watchdog.recordUpdate(TelemetryPulse.CRANE_A);
         watchdog.recordUpdate(TelemetryPulse.CRANE_B);
         
-        // Only update Crane-B
         for (int i = 0; i < 10; i++) {
             Thread.sleep(15);
             watchdog.recordUpdate(TelemetryPulse.CRANE_B);
@@ -72,7 +67,6 @@ class LivenessWatchdogTest {
         watchdog.recordUpdate(TelemetryPulse.CRANE_A);
         watchdog.recordUpdate(TelemetryPulse.CRANE_B);
         
-        // Only update Crane-A
         for (int i = 0; i < 10; i++) {
             Thread.sleep(15);
             watchdog.recordUpdate(TelemetryPulse.CRANE_A);

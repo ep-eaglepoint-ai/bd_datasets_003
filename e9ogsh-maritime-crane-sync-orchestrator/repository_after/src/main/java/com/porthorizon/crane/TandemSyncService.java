@@ -27,11 +27,18 @@ public class TandemSyncService {
     private final AtomicReference<TelemetryPulse> latestCraneA = new AtomicReference<>();
     private final AtomicReference<TelemetryPulse> latestCraneB = new AtomicReference<>();
     
+    // Clock drift offset tracking (CraneA's clock relative to CraneB)
+    private final AtomicLong clockOffsetNs = new AtomicLong(0);
+    private final AtomicBoolean clockOffsetCalibrated = new AtomicBoolean(false);
+    
     private final MotorController motorControllerA;
     private final MotorController motorControllerB;
     private final LivenessWatchdog watchdog;
     private final ExecutorService processingExecutor;
     private final ConcurrentLinkedQueue<Command> commandHistory = new ConcurrentLinkedQueue<>();
+    
+    // Latest-only flag for non-blocking evaluation (coalescing)
+    private final AtomicBoolean evaluationPending = new AtomicBoolean(false);
     
     private Consumer<Command> commandListener;
     private Consumer<String> faultListener;
@@ -58,7 +65,7 @@ public class TandemSyncService {
     
     public void start() {
         if (state.get() == LiftState.FAULT) {
-            throw new IllegalStateException("Cannot start: System in FAULT state.");
+            throw new IllegalStateException("Cannot start: System in FAULT state. Call reset() first.");
         }
         if (state.compareAndSet(LiftState.IDLE, LiftState.LIFTING)) {
             watchdog.start();
@@ -79,6 +86,8 @@ public class TandemSyncService {
         haltIssuedTimestampNs.set(0);
         latestCraneA.set(null);
         latestCraneB.set(null);
+        clockOffsetNs.set(0);
+        clockOffsetCalibrated.set(false);
         clearBuffers();
         commandHistory.clear();
     }
@@ -92,28 +101,69 @@ public class TandemSyncService {
         indexB.set(0);
     }
     
+    /**
+     * Calibrate clock offset between two crane controllers for clock drift resilience.
+     */
+    public void calibrateClockOffset(long craneATimestampNs, long craneBTimestampNs) {
+        clockOffsetNs.set(craneATimestampNs - craneBTimestampNs);
+        clockOffsetCalibrated.set(true);
+    }
+    
+    private long getAdjustedTimestamp(TelemetryPulse pulse) {
+        if (TelemetryPulse.CRANE_A.equals(pulse.craneId()) && clockOffsetCalibrated.get()) {
+            return pulse.timestampNs() - clockOffsetNs.get();
+        }
+        return pulse.timestampNs();
+    }
+    
+    /**
+     * Non-blocking telemetry ingestion with latest-only coalescing.
+     * Prevents backlog from delaying evaluation of most recent safety frames.
+     */
     public void ingestTelemetry(TelemetryPulse pulse) {
-        updatePulseState(pulse, System.nanoTime());
-        CompletableFuture.runAsync(this::evaluateSafety, processingExecutor);
+        long arrivalTime = System.nanoTime();
+        updatePulseState(pulse, arrivalTime);
+        
+        // Latest-only coalescing: skip if evaluation already pending
+        if (evaluationPending.compareAndSet(false, true)) {
+            CompletableFuture.runAsync(() -> {
+                try {
+                    evaluationPending.set(false);
+                    evaluateSafety();
+                } catch (Exception e) {
+                    evaluationPending.set(false);
+                }
+            }, processingExecutor);
+        }
     }
     
     public void ingestTelemetrySync(TelemetryPulse pulse) {
-        updatePulseState(pulse, System.nanoTime());
+        long arrivalTime = System.nanoTime();
+        updatePulseState(pulse, arrivalTime);
+        evaluateSafety();
+    }
+    
+    public void ingestTelemetryWithArrival(TelemetryPulse pulse, long arrivalTimeNs) {
+        updatePulseState(pulse, arrivalTimeNs);
         evaluateSafety();
     }
     
     private void updatePulseState(TelemetryPulse pulse, long arrivalTime) {
         if (state.get() == LiftState.FAULT) return;
         
+        TelemetryPulse pulseWithArrival = new TelemetryPulse(
+            pulse.craneId(), pulse.zAxisMm(), pulse.timestampNs(), arrivalTime
+        );
+        
         if (TelemetryPulse.CRANE_A.equals(pulse.craneId())) {
             int idx = indexA.getAndIncrement() % BUFFER_SIZE;
-            bufferA.set(idx, pulse);
-            updateIfNewer(latestCraneA, pulse);
+            bufferA.set(idx, pulseWithArrival);
+            updateIfNewer(latestCraneA, pulseWithArrival);
             watchdog.recordUpdate(TelemetryPulse.CRANE_A, arrivalTime);
         } else if (TelemetryPulse.CRANE_B.equals(pulse.craneId())) {
             int idx = indexB.getAndIncrement() % BUFFER_SIZE;
-            bufferB.set(idx, pulse);
-            updateIfNewer(latestCraneB, pulse);
+            bufferB.set(idx, pulseWithArrival);
+            updateIfNewer(latestCraneB, pulseWithArrival);
             watchdog.recordUpdate(TelemetryPulse.CRANE_B, arrivalTime);
         }
     }
@@ -128,7 +178,7 @@ public class TandemSyncService {
         TelemetryPulse bestA = null;
         TelemetryPulse bestB = null;
         long smallestGap = Long.MAX_VALUE;
-        long newestTimestamp = -1; // Break ties with newest data
+        long newestTimestamp = -1;
         
         for (int i = 0; i < BUFFER_SIZE; i++) {
             TelemetryPulse pulseA = bufferA.get(i);
@@ -138,10 +188,11 @@ public class TandemSyncService {
                 TelemetryPulse pulseB = bufferB.get(j);
                 if (pulseB == null) continue;
                 
-                long gap = Math.abs(pulseA.timestampNs() - pulseB.timestampNs());
+                long adjA = getAdjustedTimestamp(pulseA);
+                long adjB = getAdjustedTimestamp(pulseB);
+                long gap = Math.abs(adjA - adjB);
                 long pairTimestamp = Math.max(pulseA.timestampNs(), pulseB.timestampNs());
                 
-                // Prefer smaller gap. If gaps equal, prefer newer data.
                 if (gap < smallestGap || (gap == smallestGap && pairTimestamp > newestTimestamp)) {
                     smallestGap = gap;
                     newestTimestamp = pairTimestamp;
@@ -154,13 +205,25 @@ public class TandemSyncService {
         return (bestA != null && bestB != null) ? new AlignedTelemetryPair(bestA, bestB) : null;
     }
     
+    public boolean hasStaleArrivalData() {
+        TelemetryPulse a = latestCraneA.get();
+        TelemetryPulse b = latestCraneB.get();
+        if (a == null || b == null) return false;
+        
+        long arrivalDelta = Math.abs(a.arrivalTimeNs() - b.arrivalTimeNs());
+        return arrivalDelta > MAX_ALIGNMENT_DELTA_NS;
+    }
+    
     private void evaluateSafety() {
         if (state.get() == LiftState.FAULT) return;
         
         AlignedTelemetryPair pair = findClosestAlignedPair();
         if (pair == null) return;
         
-        if (!pair.isWellAligned(MAX_ALIGNMENT_DELTA_NS)) {
+        boolean timestampStale = !pair.isWellAligned(MAX_ALIGNMENT_DELTA_NS);
+        boolean arrivalStale = hasStaleArrivalData();
+        
+        if (timestampStale || arrivalStale) {
             staleDataDetected.set(true);
             if (alignmentListener != null) alignmentListener.accept(pair);
             return;
@@ -185,13 +248,12 @@ public class TandemSyncService {
         
         if (previous != LiftState.FAULT) {
             Command haltAll = Command.haltAll();
+            motorControllerA.sendCommand(haltAll);
+            motorControllerB.sendCommand(haltAll);
             long haltTime = System.nanoTime();
             haltIssuedTimestampNs.set(haltTime);
             
             commandHistory.add(haltAll);
-            motorControllerA.sendCommand(haltAll);
-            motorControllerB.sendCommand(haltAll);
-            
             watchdog.stop();
             
             if (commandListener != null) commandListener.accept(haltAll);
@@ -204,8 +266,15 @@ public class TandemSyncService {
     }
     
     public boolean executeCommand(Command command) {
-        if (state.get() == LiftState.FAULT && Command.MOVE.equals(command.type())) return false;
-        if (staleDataDetected.get() && Command.MOVE.equals(command.type())) return false;
+        LiftState currentState = state.get();
+        
+        if (currentState == LiftState.FAULT && Command.MOVE.equals(command.type())) {
+            return false;
+        }
+        
+        if (staleDataDetected.get() && Command.MOVE.equals(command.type())) {
+            return false;
+        }
         
         commandHistory.add(command);
         if (command.isHaltAll() || command.targetCraneId() == null) {
@@ -246,6 +315,11 @@ public class TandemSyncService {
         long t = getProcessingTimeNs();
         return t > 0 && t <= MAX_PROCESSING_WINDOW_NS;
     }
+    
+    public long getThresholdCrossedTimestamp() { return thresholdCrossedTimestampNs.get(); }
+    public long getHaltIssuedTimestamp() { return haltIssuedTimestampNs.get(); }
+    public boolean isClockOffsetCalibrated() { return clockOffsetCalibrated.get(); }
+    public long getClockOffsetNs() { return clockOffsetNs.get(); }
     
     public List<Command> getCommandHistory() { return new ArrayList<>(commandHistory); }
     public LivenessWatchdog getWatchdog() { return watchdog; }

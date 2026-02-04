@@ -21,50 +21,75 @@ class DriftSimulationTest {
     }
     
     @Test
-    @DisplayName("Test 1: HALT triggered at 5 seconds with 100mm/s vs 80mm/s drift")
+    @DisplayName("Test 1: Continuous ascent - HALT at ~5s when 100mm drift exceeded")
     void test_1() {
         service.start();
         
-        // At t=5.0s: delta=100mm - NO FAULT
-        sendBothPulses(5_000_000_000L, 500.0, 400.0);
-        assertEquals(LiftState.LIFTING, service.getState());
+        double velocityA = 100.0;
+        double velocityB = 80.0;
+        long pulseIntervalNs = 50_000_000L;
         
-        // At t=5.05s: delta=101mm - FAULT!
-        sendBothPulses(5_050_000_000L, 505.0, 404.0);
+        long faultTimeNs = -1;
+        
+        for (long t = 0; t <= 6_000_000_000L; t += pulseIntervalNs) {
+            double timeSeconds = t / 1_000_000_000.0;
+            double posA = velocityA * timeSeconds;
+            double posB = velocityB * timeSeconds;
+            
+            service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, posA, t));
+            service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_B, posB, t));
+            
+            if (service.getState() == LiftState.FAULT) {
+                faultTimeNs = t;
+                break;
+            }
+        }
+        
         assertEquals(LiftState.FAULT, service.getState());
-        
         assertTrue(controllerA.hasReceivedHaltAll());
         assertTrue(controllerB.hasReceivedHaltAll());
+        
+        double faultTimeSeconds = faultTimeNs / 1_000_000_000.0;
+        assertTrue(faultTimeSeconds >= 5.0 && faultTimeSeconds <= 5.1,
+            String.format("Fault should occur around 5s, got %.3fs", faultTimeSeconds));
     }
     
     @Test
-    @DisplayName("Test 2: No HALT before threshold is reached")
+    @DisplayName("Test 2: No HALT before threshold - 4 seconds of safe operation")
     void test_2() {
         service.start();
         
-        sendBothPulses(4_000_000_000L, 400.0, 320.0);
+        double velocityA = 100.0;
+        double velocityB = 80.0;
+        long pulseIntervalNs = 50_000_000L;
+        
+        for (long t = 0; t <= 4_000_000_000L; t += pulseIntervalNs) {
+            double timeSeconds = t / 1_000_000_000.0;
+            double posA = velocityA * timeSeconds;
+            double posB = velocityB * timeSeconds;
+            
+            service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, posA, t));
+            service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_B, posB, t));
+        }
         
         assertEquals(LiftState.LIFTING, service.getState());
-        assertEquals(80.0, service.calculateTiltDelta(), 0.1);
+        assertFalse(controllerA.hasReceivedHaltAll());
+        assertEquals(80.0, service.calculateTiltDelta(), 1.0);
     }
     
     @Test
-    @DisplayName("Test 3: Verifies exact threshold boundary")
+    @DisplayName("Test 3: Exact threshold boundary - 100mm safe, 100.1mm faults")
     void test_3() {
         service.start();
         
-        // 100mm delta - NO FAULT
-        sendBothPulses(1_000_000_000L, 1000.0, 1100.0);
+        long ts1 = 5_000_000_000L;
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 500.0, ts1));
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_B, 400.0, ts1));
         assertEquals(LiftState.LIFTING, service.getState());
         
-        // 100.1mm delta - FAULT
-        // Must be newer than previous to ensure it's picked by buffer logic
-        sendBothPulses(1_050_000_000L, 1000.0, 1100.1);
+        long ts2 = 5_050_000_000L;
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 500.1, ts2));
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_B, 400.0, ts2));
         assertEquals(LiftState.FAULT, service.getState());
-    }
-    
-    private void sendBothPulses(long timestampNs, double posA, double posB) {
-        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_B, posB, timestampNs));
-        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, posA, timestampNs));
     }
 }

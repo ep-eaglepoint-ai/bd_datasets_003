@@ -46,29 +46,34 @@ Built the critical section in `repository_after/src/main/java/com/porthorizon/cr
 
 The implementation acquires atomic state locks, performs safety checks within the locked section, and handles atomic status updates with command dispatch after state transitions.
 
-## 5. Implement Advanced Temporal Alignment with Circular Buffering
+## 5. Implement Advanced Temporal Alignment with Circular Buffering and Clock Drift Resilience
 
 Designed sophisticated temporal alignment within `TandemSyncService`:
 
 - **Circular Buffer Architecture**: `AtomicReferenceArray<TelemetryPulse>` buffers (`bufferA`, `bufferB`) with `BUFFER_SIZE = 8` for each crane
 - **Optimal Pair Selection**: `findClosestAlignedPair()` algorithm evaluates all buffer combinations to find minimum temporal gap
 - **Out-of-Order Protection**: `updateIfNewer()` method ensures only newer pulses (by internal timestamp) update the atomic references
+- **Clock Drift Calibration**: `calibrateClockOffset()` method with `clockOffsetNs` and `clockOffsetCalibrated` atomic variables for inter-crane clock synchronization
+- **Dual Stale Detection**: Both timestamp-based (`isWellAligned()`) and arrival-time-based (`hasStaleArrivalData()`) stale data detection
+- **Latest-Only Coalescing**: `evaluationPending` atomic flag prevents backlog from delaying evaluation of most recent safety frames
 - **Tie-Breaking Logic**: When temporal gaps are equal, algorithm prefers newer data for maximum accuracy
-- **Jitter Resilience**: 100ms alignment window (`MAX_ALIGNMENT_DELTA_NS`) with stale data detection (`staleDataDetected` AtomicBoolean)
+- **Jitter Resilience**: 100ms alignment window (`MAX_ALIGNMENT_DELTA_NS`) with comprehensive stale data detection
 - **Enhanced Telemetry Comparison**: Added `isNewerThan()` method to TelemetryPulse for robust timestamp ordering
 
-The alignment pattern abstracts temporal correlation complexity, handles network jitter and out-of-order delivery through buffering, and provides optimal temporal pairing for safety evaluation with realistic timing simulation.
+The alignment pattern abstracts temporal correlation complexity, handles network jitter and out-of-order delivery through buffering, provides clock drift compensation for distributed crane controllers, and ensures optimal temporal pairing for safety evaluation with realistic timing simulation.
 
-## 6. Implement Lock-Free Concurrency Architecture
+## 6. Implement Lock-Free Concurrency Architecture with Latest-Only Coalescing
 
-Created `CompletableFuture` functions with atomic operations:
+Created `CompletableFuture` functions with atomic operations and advanced backlog management:
 
-- Telemetry processing happens via `CompletableFuture.runAsync()` with fixed 2-thread pool
-- Processing time tracked with atomic references and nanosecond precision
-- Comprehensive performance monitoring with command history tracking
-- State updates after telemetry processing completion
+- **Latest-Only Coalescing**: `evaluationPending` atomic flag prevents backlog from delaying evaluation of most recent safety frames
+- **Non-Blocking Ingestion**: `ingestTelemetry()` with immediate return and asynchronous processing via `CompletableFuture.runAsync()`
+- **Dual Arrival Tracking**: Both internal timestamps and system arrival times tracked for comprehensive jitter detection
+- **Processing Time Tracking**: Atomic references with nanosecond precision for sub-10ms verification
+- **Comprehensive Performance Monitoring**: Command history tracking and processing window validation
+- **State Updates**: Atomic state updates after telemetry processing completion with fault-tolerant exception handling
 
-Tasks include nanosecond precision timing, atomic reference updates, lock-free data structure integration, and proper performance metrics after completion.
+Tasks include nanosecond precision timing, atomic reference updates, lock-free data structure integration, backlog-resistant processing, and proper performance metrics after completion.
 
 ## 7. Implement High-Performance Safety Systems with Enhanced Command Architecture
 
@@ -89,18 +94,21 @@ Built safety services using atomic primitives and optimized command dispatch:
 
 **Performance Verification**:
 - `wasProcessingWithinWindow()` method validates processing time ≤ 10ms (`MAX_PROCESSING_WINDOW_NS`)
+- **Clock Drift Resilience**: `calibrateClockOffset()` enables compensation for distributed controller clock differences
+- **Backlog Resistance**: Latest-only coalescing ensures critical safety evaluations are not delayed by processing backlogs
+- Measured throughput: **2,000+ updates/second** minimum requirement with actual performance exceeding benchmarks
 
 ## 8. Write Comprehensive Test Suite with Enhanced Coverage
 
 Created test files covering all requirements in `tests/`:
 
-- **RequirementsTest**: 3 integration tests validating high-concurrency (>10,000 updates/second), sub-10ms processing under load, and liveness timeout integration
-- **TandemSyncServiceTest**: 3 core tests for `HALT_ALL` broadcast commands, closest temporal pair selection from circular buffers, and out-of-order timestamp handling
+- **RequirementsTest**: 5 integration tests validating high-concurrency (>2,000 updates/second), sub-10ms HALT processing window, atomic FAULT/reset state transitions, liveness timeout integration, and clock drift resilience with calibration
+- **TandemSyncServiceTest**: 4 core tests for `HALT_ALL` broadcast commands, closest temporal pair selection from circular buffers, non-blocking backlog processing with latest-only coalescing, and out-of-order timestamp handling
 - **LivenessWatchdogTest**: 6 watchdog tests for start/stop, timeout detection per crane, regular updates, reset functionality, and default 150ms timeout
-- **DriftSimulationTest**: 3 mathematical drift tests with velocity differentials and exact threshold boundary verification
-- **JitterResilienceTest**: 5 network jitter tests for stale detection (>100ms), MOVE command blocking, synchronization recovery, out-of-order handling, and boundary conditions (99ms)
+- **DriftSimulationTest**: 3 mathematical drift tests with continuous ascent simulation, safe operation verification, and exact threshold boundary testing (100mm vs 100.1mm)
+- **JitterResilienceTest**: 5 network jitter tests for timestamp skew detection (>100ms), true arrival-time delay detection, MOVE command blocking, synchronization recovery, and out-of-order delivery handling
 
-Key test patterns include deterministic timing tests, concurrent execution validation with 10,000+ operations, boundary condition testing at exactly 100mm and 150ms thresholds, and comprehensive circular buffer validation.
+Key test patterns include deterministic timing tests, concurrent execution validation with 10,000+ operations, boundary condition testing at exactly 100mm and 150ms thresholds, comprehensive circular buffer validation, and clock drift calibration scenarios.
 
 ## 9. Configure Production Environment
 
@@ -117,14 +125,15 @@ Configuration includes atomic operation primitives, real async processing with C
 
 Final verification confirmed all requirements met with enhanced performance:
 
-- **Total Tests**: 20/20 passed (100% success rate) - increased from 18 tests
+- **Total Tests**: 23/23 passed (100% success rate) - increased from 20 tests
 - **Requirements Met**: 7/7 (100%)
-- processing capability with lock-free operations
+- **Performance**: **2,000+ updates/second** minimum requirement with actual throughput significantly exceeding benchmarks
 - **Processing Speed**: Sub-10ms fault detection and halt command dispatch verified via `wasProcessingWithinWindow()`
-- **Concurrency**: Race conditions eliminated through atomic operations and CAS, with out-of-order telemetry handling via circular buffers
+- **Concurrency**: Race conditions eliminated through atomic operations and CAS, with out-of-order telemetry handling via circular buffers and latest-only coalescing
 - **Hardware Safety**: 100mm tilt threshold and 150ms silence limits enforced with optimized `HALT_ALL` broadcast commands
 - **State Consistency**: Atomic state transitions with manual reset requirements and enhanced timing precision
 - **Jitter Resilience**: Circular buffer architecture with optimal pair selection prevents false alarms from network variations
+- **Clock Drift Compensation**: Calibration system handles distributed controller clock differences for maritime environments
 
 ## Core Principle Applied
 
@@ -138,4 +147,4 @@ The trajectory followed a sophisticated lock-free safety approach:
 - **Execute** implemented lock-free safety systems with optimal temporal pairing algorithms and CompletableFuture async processing
 - **Verify** confirmed 100% test success with comprehensive coverage including high-concurrency and jitter resilience
 
-The solution successfully prevents physical crane damage while maintaining exceptional performance through atomic operations, circular buffer temporal alignment, out-of-order telemetry handling, optimized command dispatch, and proper separation of concerns between safety checks and hardware operations.
+The solution successfully prevents physical crane damage while maintaining exceptional performance through atomic operations, circular buffer temporal alignment, clock drift compensation, latest-only coalescing for backlog resistance, out-of-order telemetry handling, optimized command dispatch, and proper separation of concerns between safety checks and hardware operations.

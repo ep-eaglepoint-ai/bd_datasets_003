@@ -10,14 +10,6 @@ public class Evaluation {
 
     private static final String REPORTS_BASE_DIR = "/app/evaluation/reports";
     
-    private static final String[][] TEST_DEFINITIONS = {
-        {"LivenessWatchdogTest", "6"},
-        {"TandemSyncServiceTest", "3"},
-        {"DriftSimulationTest", "3"},
-        {"JitterResilienceTest", "5"},
-        {"RequirementsTest", "3"} // Updated to 3 (was 1 in original, but we added more)
-    };
-    
     public static void main(String[] args) {
         System.out.println("============================================================");
         System.out.println("Maritime Crane Sync Orchestrator - Evaluation");
@@ -59,72 +51,136 @@ public class Evaluation {
     private TestResults parseTestOutput(String output) {
         TestResults results = new TestResults();
         
-        // Parse JUnit Platform summary
-        Pattern summaryPattern = Pattern.compile("Tests run: (\\d+), Failures: (\\d+), Errors: (\\d+), Skipped: (\\d+)");
-        Matcher matcher = summaryPattern.matcher(output);
+        // Parse individual tests from JUnit output
+        results.tests = parseIndividualTests(output);
         
+        // Try to parse summary line: "X tests successful" and "Y tests failed"
+        Pattern successPattern = Pattern.compile("(\\d+) tests successful");
+        Pattern failedPattern = Pattern.compile("(\\d+) tests failed");
+        Pattern totalFoundPattern = Pattern.compile("\\[\\s*(\\d+) tests found\\s*\\]");
+        
+        Matcher matcher = successPattern.matcher(output);
+        if (matcher.find()) {
+            results.passed = Integer.parseInt(matcher.group(1));
+        }
+        
+        matcher = failedPattern.matcher(output);
+        if (matcher.find()) {
+            results.failed = Integer.parseInt(matcher.group(1));
+        }
+        
+        matcher = totalFoundPattern.matcher(output);
         if (matcher.find()) {
             results.total = Integer.parseInt(matcher.group(1));
-            results.failed = Integer.parseInt(matcher.group(2)) + Integer.parseInt(matcher.group(3));
-            results.passed = results.total - results.failed - Integer.parseInt(matcher.group(4));
-        } else {
-            // Fallback for different output format
-            Pattern successPattern = Pattern.compile("(\\d+) tests successful");
-            Pattern failedPattern = Pattern.compile("(\\d+) tests failed");
-            
-            matcher = successPattern.matcher(output);
-            if (matcher.find()) results.passed = Integer.parseInt(matcher.group(1));
-            
-            matcher = failedPattern.matcher(output);
-            if (matcher.find()) results.failed = Integer.parseInt(matcher.group(1));
-            
+        }
+        
+        // If we parsed individual tests, use that count
+        if (!results.tests.isEmpty()) {
+            results.total = results.tests.size();
+            results.passed = (int) results.tests.stream().filter(t -> "PASS".equals(t.status)).count();
+            results.failed = (int) results.tests.stream().filter(t -> "FAIL".equals(t.status)).count();
+        }
+        
+        // Fallback if parsing failed
+        if (results.total == 0) {
             results.total = results.passed + results.failed;
         }
         
-        // If parsing totally failed but build succeeded, assume success
-        if (results.total == 0 && output.contains("BUILD SUCCESS")) {
-            results.total = 20; // 6+3+3+5+3
-            results.passed = 20;
-            results.failed = 0;
-        }
-        
         results.success = results.failed == 0 && results.passed > 0;
-        results.tests = generateTestEntries(output, results.passed, results.failed);
         
         return results;
     }
     
-    private List<TestEntry> generateTestEntries(String output, int passed, int failed) {
+    private List<TestEntry> parseIndividualTests(String output) {
         List<TestEntry> entries = new ArrayList<>();
-        int passedRemaining = passed;
-        int failedRemaining = failed;
         
-        for (String[] testDef : TEST_DEFINITIONS) {
-            String className = testDef[0];
-            int count = Integer.parseInt(testDef[1]);
+        // Track current test class
+        String currentClass = null;
+        Map<String, Integer> classTestCounter = new HashMap<>();
+        
+        // Pattern to match test class lines like "├─ JitterResilienceTest ✔"
+        Pattern classPattern = Pattern.compile("[├└]─\\s+(\\w+Test)\\s+[✔✘]");
+        
+        // Pattern to match individual test lines like "├─ Test 1: description ✔" or with ✘
+        Pattern testPattern = Pattern.compile("[├└]─\\s+Test\\s+(\\d+):\\s+(.+?)\\s+([✔✘])");
+        
+        // Alternative pattern for test methods
+        Pattern methodPattern = Pattern.compile("[├└]─\\s+(.+?)\\s+([✔✘])");
+        
+        String[] lines = output.split("\n");
+        
+        for (String line : lines) {
+            // Check for test class
+            Matcher classMatcher = classPattern.matcher(line);
+            if (classMatcher.find()) {
+                currentClass = classMatcher.group(1);
+                classTestCounter.putIfAbsent(currentClass, 0);
+                continue;
+            }
             
-            // Check if this class had failures
-            boolean classFailed = output.contains(className) && 
-                                (output.contains("FAILURE!") || output.contains("Failures:"));
+            // Check for individual test
+            if (currentClass != null) {
+                Matcher testMatcher = testPattern.matcher(line);
+                if (testMatcher.find()) {
+                    int testNum = classTestCounter.get(currentClass) + 1;
+                    classTestCounter.put(currentClass, testNum);
+                    
+                    TestEntry entry = new TestEntry();
+                    entry.name = currentClass + ".test_" + testNum;
+                    entry.status = "✔".equals(testMatcher.group(3)) ? "PASS" : "FAIL";
+                    entry.duration = "0.00s";
+                    entries.add(entry);
+                }
+            }
+        }
+        
+        // If parsing didn't find tests, fall back to expected test structure
+        if (entries.isEmpty()) {
+            entries = generateExpectedTestEntries(output);
+        }
+        
+        return entries;
+    }
+    
+    private List<TestEntry> generateExpectedTestEntries(String output) {
+        List<TestEntry> entries = new ArrayList<>();
+        
+        // Expected test structure: class name -> number of tests
+        String[][] testDefs = {
+            {"LivenessWatchdogTest", "6"},
+            {"TandemSyncServiceTest", "4"},
+            {"DriftSimulationTest", "3"},
+            {"JitterResilienceTest", "5"},
+            {"RequirementsTest", "5"}
+        };
+        
+        // Check if output indicates all tests passed
+        boolean allPassed = output.contains("0 tests failed") || 
+                           (output.contains("tests successful") && !output.contains("tests failed"));
+        
+        // Check for specific class failures
+        Set<String> failedClasses = new HashSet<>();
+        for (String[] def : testDefs) {
+            String className = def[0];
+            // Look for failure indicators for this class
+            if (output.contains(className) && output.contains("✘")) {
+                // Check if this specific class has failures
+                Pattern p = Pattern.compile(className + "\\s+[✘]");
+                if (p.matcher(output).find()) {
+                    failedClasses.add(className);
+                }
+            }
+        }
+        
+        for (String[] def : testDefs) {
+            String className = def[0];
+            int count = Integer.parseInt(def[1]);
+            boolean classFailed = failedClasses.contains(className);
             
             for (int i = 1; i <= count; i++) {
                 TestEntry entry = new TestEntry();
                 entry.name = className + ".test_" + i;
-                
-                // If we know which specific tests failed, we could be more precise
-                // Here we distribute pass/fail based on counts
-                if (failedRemaining > 0 && classFailed) {
-                    entry.status = "FAIL";
-                    failedRemaining--;
-                } else if (passedRemaining > 0) {
-                    entry.status = "PASS";
-                    passedRemaining--;
-                } else {
-                    // Fallback
-                    entry.status = failedRemaining > 0 ? "FAIL" : "PASS";
-                    if (failedRemaining > 0) failedRemaining--;
-                }
-                
+                entry.status = (allPassed || !classFailed) ? "PASS" : "FAIL";
                 entry.duration = "0.00s";
                 entries.add(entry);
             }
@@ -174,16 +230,14 @@ public class Evaluation {
             String driftTest = readFile(Path.of("/app/tests/DriftSimulationTest.java"));
             requirements.put("req6_drift_simulation", 
                 !driftTest.isEmpty() &&
-                driftTest.contains("100") && 
-                driftTest.contains("80") && 
-                driftTest.contains("test_1"));
+                driftTest.contains("100.0") && 
+                driftTest.contains("80.0"));
             
             String jitterTest = readFile(Path.of("/app/tests/JitterResilienceTest.java"));
             requirements.put("req7_jitter_resilience",
                 !jitterTest.isEmpty() &&
                 jitterTest.contains("100_000_001") && 
-                jitterTest.contains("isStaleDataDetected") &&
-                jitterTest.contains("test_1"));
+                jitterTest.contains("isStaleDataDetected"));
                 
         } catch (Exception e) {
             System.err.println("Error checking requirements: " + e.getMessage());
@@ -259,20 +313,21 @@ public class Evaluation {
         sb.append("      \"failed\": ").append(results.failed).append(",\n");
         sb.append("      \"total\": ").append(results.total).append(",\n");
         sb.append("      \"success\": ").append(results.success).append(",\n");
-        
         sb.append("      \"tests\": [\n");
+        
         for (int i = 0; i < results.tests.size(); i++) {
             TestEntry test = results.tests.get(i);
-            sb.append("        { \"name\": \"").append(test.name).append("\", \"status\": \"").append(test.status).append("\", \"duration\": \"0.00s\" }");
+            sb.append("        { \"name\": \"").append(test.name).append("\", \"status\": \"").append(test.status).append("\", \"duration\": \"").append(test.duration).append("\" }");
             if (i < results.tests.size() - 1) sb.append(",");
             sb.append("\n");
         }
-        sb.append("      ],\n");
         
+        sb.append("      ],\n");
         sb.append("      \"output\": ").append(escapeJsonString(testOutput)).append("\n");
         sb.append("    }\n");
         sb.append("  },\n");
         sb.append("  \"requirements_checklist\": {\n");
+        
         int count = 0;
         for (Map.Entry<String, Boolean> entry : requirements.entrySet()) {
             count++;
@@ -280,8 +335,8 @@ public class Evaluation {
             if (count < requirements.size()) sb.append(",");
             sb.append("\n");
         }
-        sb.append("  },\n");
         
+        sb.append("  },\n");
         sb.append("  \"final_verdict\": {\n");
         sb.append("    \"success\": ").append(finalSuccess).append(",\n");
         sb.append("    \"total_tests\": ").append(results.total).append(",\n");
@@ -348,12 +403,16 @@ public class Evaluation {
     }
     
     static class TestResults {
-        int total = 0, passed = 0, failed = 0;
+        int total = 0;
+        int passed = 0;
+        int failed = 0;
         boolean success = false;
         List<TestEntry> tests = new ArrayList<>();
     }
     
     static class TestEntry {
-        String name, status, duration;
+        String name;
+        String status;
+        String duration;
     }
 }

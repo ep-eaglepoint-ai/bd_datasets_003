@@ -4,9 +4,6 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.List;
 import java.util.ArrayList;
 
-/**
- * Mock motor controller for testing.
- */
 public class MockMotorController implements MotorController {
     
     private final String craneId;

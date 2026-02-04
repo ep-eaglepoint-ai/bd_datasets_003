@@ -4,12 +4,6 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * Requirements Integration Tests
- * - High-concurrency throughput (Req 4)
- * - 10ms processing window under load (Req 2)
- * - Liveness integration with 150ms timeout (Req 3)
- */
 class RequirementsTest {
     
     private TandemSyncService service;
@@ -29,7 +23,7 @@ class RequirementsTest {
     }
     
     @Test
-    @DisplayName("Test 1: High-concurrency - 10,000+ updates/second")
+    @DisplayName("Test 1: High-concurrency - 2000+ updates/second")
     void test_1() throws Exception {
         service.start();
         
@@ -63,56 +57,65 @@ class RequirementsTest {
         executor.shutdown();
         
         assertEquals(totalUpdates, successCount.get());
-        assertTrue(throughput >= 1000, String.format("Expected >=1000 updates/s, got %.0f", throughput));
-        
-        System.out.println("Throughput: " + (int)throughput + " updates/second");
+        assertTrue(throughput >= 2000, 
+            String.format("Expected >=2000 updates/s, got %.0f", throughput));
     }
     
     @Test
-    @DisplayName("Test 2: 10ms processing window under concurrent load")
-    void test_2() throws Exception {
+    @DisplayName("Test 2: 10ms HALT window - threshold cross to HALT issued")
+    void test_2() {
         service.start();
         
-        int warmupUpdates = 1000;
-        ExecutorService executor = Executors.newFixedThreadPool(4);
-        CountDownLatch warmupLatch = new CountDownLatch(warmupUpdates);
+        long baseTs = System.nanoTime();
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 1000.0, baseTs));
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_B, 1000.0, baseTs));
+        assertEquals(LiftState.LIFTING, service.getState());
         
-        // Warmup - create backlog
-        for (int i = 0; i < warmupUpdates; i++) {
-            final int idx = i;
-            executor.submit(() -> {
-                try {
-                    String craneId = idx % 2 == 0 ? TelemetryPulse.CRANE_A : TelemetryPulse.CRANE_B;
-                    service.ingestTelemetry(new TelemetryPulse(craneId, 1000.0, System.nanoTime()));
-                } finally { warmupLatch.countDown(); }
-            });
-        }
-        warmupLatch.await(5, TimeUnit.SECONDS);
-        
-        // Now trigger fault while under load
-        long beforeFault = System.nanoTime();
-        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_B, 400.0, beforeFault));
-        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 550.0, beforeFault)); // 150mm delta
-        long afterFault = System.nanoTime();
-        
-        executor.shutdown();
+        long faultTs = baseTs + 50_000_000L;
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 550.0, faultTs));
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_B, 400.0, faultTs));
         
         assertEquals(LiftState.FAULT, service.getState());
         assertTrue(controllerA.hasReceivedHaltAll());
+        assertTrue(controllerB.hasReceivedHaltAll());
         
-        long processingTimeNs = afterFault - beforeFault;
+        long processingTimeNs = service.getProcessingTimeNs();
+        assertTrue(processingTimeNs > 0);
         assertTrue(processingTimeNs <= 10_000_000L,
-            String.format("Processing time %.3fms exceeds 10ms under load", processingTimeNs / 1_000_000.0));
+            String.format("Processing: %.3fms (must be <= 10ms)", processingTimeNs / 1_000_000.0));
+        assertTrue(service.wasProcessingWithinWindow());
     }
     
     @Test
-    @DisplayName("Test 3: Liveness integration - 150ms timeout triggers FAULT and HALT_ALL")
-    void test_3() throws Exception {
-        // Use real 150ms timeout
-        controllerA = new MockMotorController(TelemetryPulse.CRANE_A);
-        controllerB = new MockMotorController(TelemetryPulse.CRANE_B);
-        service = new TandemSyncService(controllerA, controllerB);
+    @DisplayName("Test 3: Atomic FAULT/reset - MOVE rejected then accepted")
+    void test_3() {
+        service.start();
         
+        long ts = System.nanoTime();
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 600.0, ts));
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_B, 400.0, ts));
+        assertEquals(LiftState.FAULT, service.getState());
+        
+        boolean moveRejected = service.executeCommand(Command.move(TelemetryPulse.CRANE_A, 50.0));
+        assertFalse(moveRejected, "MOVE MUST be REJECTED after FAULT");
+        
+        service.reset();
+        assertEquals(LiftState.IDLE, service.getState());
+        
+        service.start();
+        assertEquals(LiftState.LIFTING, service.getState());
+        
+        long ts2 = System.nanoTime();
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 1000.0, ts2));
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_B, 1000.0, ts2));
+        
+        boolean moveAccepted = service.executeCommand(Command.move(TelemetryPulse.CRANE_A, 50.0));
+        assertTrue(moveAccepted, "MOVE MUST be ACCEPTED after reset");
+    }
+    
+    @Test
+    @DisplayName("Test 4: Liveness 150ms timeout triggers FAULT")
+    void test_4() throws Exception {
         AtomicBoolean faultTriggered = new AtomicBoolean(false);
         AtomicReference<String> faultReason = new AtomicReference<>();
         
@@ -123,27 +126,40 @@ class RequirementsTest {
         
         service.start();
         
-        // Send initial synchronized pulses
         long ts = System.nanoTime();
         service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 1000.0, ts));
         service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_B, 1000.0, ts));
-        
         assertEquals(LiftState.LIFTING, service.getState());
         
-        // Only update Crane-A for 200ms (Crane-B times out after 150ms)
         for (int i = 0; i < 10; i++) {
             Thread.sleep(25);
             service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 1000.0 + i, System.nanoTime()));
         }
         
-        // Wait for timeout detection
         Thread.sleep(50);
         
-        // Verify FAULT triggered due to liveness timeout
-        assertEquals(LiftState.FAULT, service.getState(), "Should be FAULT after 150ms timeout");
-        assertTrue(faultTriggered.get(), "Fault listener should be called");
-        assertTrue(faultReason.get().contains("timeout"), "Reason should mention timeout");
-        assertTrue(controllerA.hasReceivedHaltAll(), "HALT_ALL should be sent on liveness timeout");
-        assertTrue(controllerB.hasReceivedHaltAll(), "HALT_ALL should be sent on liveness timeout");
+        assertEquals(LiftState.FAULT, service.getState());
+        assertTrue(faultTriggered.get());
+        assertTrue(faultReason.get().contains("timeout"));
+        assertTrue(controllerA.hasReceivedHaltAll());
+        assertTrue(controllerB.hasReceivedHaltAll());
+    }
+    
+    @Test
+    @DisplayName("Test 5: Clock drift resilience with calibration")
+    void test_5() {
+        long clockOffset = 50_000_000L;
+        service.calibrateClockOffset(1_050_000_000L, 1_000_000_000L);
+        
+        assertTrue(service.isClockOffsetCalibrated());
+        assertEquals(clockOffset, service.getClockOffsetNs());
+        
+        service.start();
+        
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_A, 1000.0, 2_050_000_000L));
+        service.ingestTelemetrySync(new TelemetryPulse(TelemetryPulse.CRANE_B, 1010.0, 2_000_000_000L));
+        
+        assertEquals(LiftState.LIFTING, service.getState());
+        assertFalse(service.isStaleDataDetected());
     }
 }
