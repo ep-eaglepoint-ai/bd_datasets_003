@@ -1,209 +1,279 @@
-# Trajectory: Text Report Generator
+# Trajectory: Text Report Generator Optimization
 
 ---
 
 ### 1. Phase 1: AUDIT / REQUIREMENTS ANALYSIS
 
-**Guiding Question**: *“What exactly needs to be built, and what are the constraints?”*
+**Guiding Question**: *"What exactly needs to be optimized, and what are the constraints?"*
 
 **Reasoning**:
-The goal of `text-report-generator` is to take structured input data and deterministically produce a human-readable text report. This is **not** a template engine, **not** a PDF generator, and **not** an AI-based summarizer. It is a **rules-driven transformation system** that converts validated input into a predictable textual output.
+The task is to optimize an **existing** Python text report generator (`repository_before/main.py`) that suffers from severe performance bottlenecks. This is **not** a greenfield project—it's a refactoring task where the output must remain **byte-identical** to the original.
 
-This matters because the core value is **reproducibility and correctness**, not creativity.
+The core challenge is eliminating O(n²) string concatenation, redundant string scans, and manual character iteration while preserving exact functional behavior.
 
 **Key Requirements**:
 
-* **Input Handling**: Accept structured input (JSON / CLI args / file-based data).
-* **Validation**: Inputs must be validated before report generation.
-* **Determinism**: Same input → same output, always.
-* **Text Output**: Output must be plain text (no HTML, no Markdown rendering assumptions).
-* **Extensibility**: Report sections must be composable, not hardcoded monoliths.
+* **Requirement 1**: Replace all `string += other_string` with list building + `''.join(parts)` (O(n²) → O(n))
+* **Requirement 2**: Replace manual concatenation like `"Name: " + name` with f-strings
+* **Requirement 3**: Combine multiple string scans into single-pass processing
+* **Requirement 4**: Use built-in methods (`str.replace()`, `str.count()`) instead of manual loops
+* **Critical Constraint**: Output must be **byte-identical** to original implementation
 
 **Constraints Analysis**:
 
-* **No AI / NLP**: This is not a language model task.
-* **No UI**: CLI / programmatic usage only.
-* **No External Reporting Engines**: Logic must live in-project.
-* **Focus**: Correctness over aesthetics.
+* **No Functional Changes**: Cannot alter logic, only performance characteristics
+* **No Output Deviation**: Even whitespace must match exactly
+* **Comprehensive Testing**: Must prove equivalence for all edge cases
+* **AST-Level Validation**: Must verify optimizations were actually applied
 
 ---
 
 ### 2. Phase 2: QUESTION ASSUMPTIONS (Challenge the Premise)
 
-**Guiding Question**: *“Are we overengineering this? What can be safely rejected?”*
+**Guiding Question**: *"Can we use built-in methods without breaking equivalence?"*
 
 **Reasoning**:
-Initial temptation was to think in terms of:
+Initial concern: Does `str.replace()` behave identically to the manual character-by-character replacement loop in `sanitize_text()`?
 
-* templates
-* dynamic layouts
-* formatting engines
-
-That would immediately increase complexity without increasing correctness.
+Analysis of original implementation (lines 125-146):
+- Manual loop finds first occurrence of pattern
+- Replaces it and continues from next position
+- This is **exactly** what `str.replace()` does
 
 **Scope Refinement**:
 
-* **Rejected**: Templating languages (Jinja, Mustache-style).
-* **Rejected**: Runtime formatting DSLs.
-* **Accepted**: Explicit section builders implemented as code.
+* **Rejected**: Rewriting logic to be "cleaner" (would break equivalence)
+* **Rejected**: Using regex for sanitization (different behavior on edge cases)
+* **Accepted**: Direct translation using Python's optimized built-ins
+* **Accepted**: Structural refactoring (list building) that preserves semantics
 
 **Rationale**:
-Explicit code paths make validation, testing, and debugging trivial. Templates hide logic; this system **must expose logic**.
+The original code's inefficiency comes from implementation choices, not algorithmic requirements. We can achieve the same results with better primitives.
 
 ---
 
 ### 3. Phase 3: DEFINE SUCCESS CRITERIA
 
-**Guiding Question**: *“What does ‘done’ mean in objective terms?”*
+**Guiding Question**: *"What does 'done' mean in objective terms?"*
 
 **Success Criteria**:
 
-1. Invalid input **never** produces a report.
-2. All report sections are generated through isolated functions.
-3. Output format is stable and snapshot-testable.
-4. Adding a new section does not require modifying existing ones.
-5. Execution works in a non-interactive CLI environment.
+1. **All** methods use list + `''.join()` instead of `+=` in loops
+2. **All** string templates use f-strings instead of manual concatenation
+3. `analyze_text()` has **exactly 1 loop** instead of 5 separate scans
+4. `sanitize_text()` uses `str.replace()` instead of manual character iteration
+5. **Byte-identical output** for all test cases (empty, standard, stress)
+6. AST-level tests confirm optimizations were applied (not just output equivalence)
 
-If any of these fail, the system is incomplete.
+If any of these fail, the optimization is incomplete.
 
 ---
 
 ### 4. Phase 4: MAP REQUIREMENTS TO VALIDATION
 
-**Guiding Question**: *“How do we prove this works?”*
+**Guiding Question**: *"How do we prove this works?"*
 
 **Test Strategy**:
 
-* **Unit Tests**:
+* **Functional Equivalence Tests** (24 tests):
+  * Compare optimized vs reference implementation byte-for-byte
+  * Cover all methods: `set_header()`, `set_footer()`, `build_table()`, `build_summary()`, `build_list()`, `analyze_text()`, `sanitize_text()`, `build_report()`
+  * Edge cases: empty strings, empty collections, special characters, overlapping patterns
 
-  * Input validation logic (required fields, types, constraints).
-  * Individual section generators.
-* **Integration Tests**:
+* **Optimization Validation Tests** (3 tests):
+  * AST parsing to count loops in `analyze_text()` (must be ≤1)
+  * AST parsing to detect `str.replace()` usage in `sanitize_text()`
+  * AST parsing to detect `+=` in loops (must be absent)
 
-  * Full input → full report snapshot comparison.
-* **Negative Tests**:
+* **Stress Tests** (3 tests):
+  * 1000-row tables to validate O(n) behavior
+  * 100KB text processing to expose quadratic bottlenecks
+  * Fuzz testing with random inputs (seed=42 for reproducibility)
 
-  * Missing fields.
-  * Malformed data.
-  * Empty inputs.
-
-Tests focus on **output determinism**, not style.
+Tests focus on **proving equivalence AND proving optimization**, not just one or the other.
 
 ---
 
 ### 5. Phase 5: SCOPE THE SOLUTION
 
-**Guiding Question**: *“What is the smallest correct system?”*
+**Guiding Question**: *"What is the minimal set of changes to meet all requirements?"*
 
-**Core Components**:
+**Core Changes**:
 
-* **Validator Layer**
+* **`set_header()` and `set_footer()`**
+  * Replace 8 and 6 `+=` operations with list building
+  * Use f-strings for date formatting and field interpolation
 
-  * Enforces schema-level correctness before execution.
-* **Section Builders**
+* **`build_table()`**
+  * Replace nested `+=` in loops (O(n²)) with list building
+  * Pre-compute separator line using `''.join()`
+  * Use `'|'.join(cells)` instead of manual concatenation
 
-  * Pure functions returning strings.
-* **Report Composer**
+* **`build_summary()` and `build_list()`**
+  * Replace loop-based `+=` with list building
+  * Use f-strings for key-value pairs and list prefixes
 
-  * Orders sections and joins them deterministically.
-* **CLI Entry Point**
+* **`analyze_text()`**
+  * **Critical optimization**: Merge 5 separate loops into 1
+  * Single pass counts: chars, letters, digits, spaces, newlines, words
+  * Preserve exact word-counting logic (state machine for `in_word`)
 
-  * Reads input, invokes validation, triggers generation.
+* **`sanitize_text()`**
+  * Replace 22 lines of manual substring matching with `str.replace()`
+  * Preserve sequential replacement order (matters for chained replacements)
 
-No shared mutable state. No hidden globals.
+* **`build_report()`**
+  * Replace section concatenation loop with list building
+
+No shared state changes. No algorithmic changes. Pure performance refactoring.
 
 ---
 
 ### 6. Phase 6: TRACE DATA / CONTROL FLOW
 
-**Guiding Question**: *“What happens from execution to output?”*
+**Guiding Question**: *"What changes in execution from original to optimized?"*
 
-**Flow**:
-CLI Invocation
-→ Load Input
-→ Validate Input
-→ Generate Section A
-→ Generate Section B
-→ Generate Section N
-→ Compose Final Text
-→ Write to stdout / file
+**Original Flow** (repository_before):
+```
+build_report() called
+→ result = ""
+→ For each section:
+    → result += header (O(n) copy)
+    → result += section_content (O(n) copy)
+    → result += footer (O(n) copy)
+→ Return result (total: O(n²) for n sections)
+```
 
-If validation fails, execution **halts immediately**.
+**Optimized Flow** (repository_after):
+```
+build_report() called
+→ parts = []
+→ For each section:
+    → parts.append(header) (O(1) pointer)
+    → parts.append(section_content) (O(1) pointer)
+    → parts.append(footer) (O(1) pointer)
+→ Return ''.join(parts) (O(n) single concatenation)
+```
+
+**Impact**: For 1000-section report, O(1,000,000) operations → O(1,000) operations.
 
 ---
 
 ### 7. Phase 7: ANTICIPATE OBJECTIONS
 
-**Guiding Question**: *“What would a reviewer push back on?”*
+**Guiding Question**: *"What would a reviewer push back on?"*
 
-**Objection 1**: “Why not just use templates?”
+**Objection 1**: "Does `str.replace()` really behave identically to the manual loop?"
 
-* **Counter**: Templates obscure logic and weaken testability.
+* **Counter**: Yes. The manual loop finds first occurrence, replaces, continues—exactly what `str.replace()` does. Validated by `test_sanitize_chain` and `test_sanitize_overlap`.
 
-**Objection 2**: “Why not generate Markdown or HTML?”
+**Objection 2**: "Single-pass `analyze_text()` is harder to read."
 
-* **Counter**: Plain text keeps output environment-agnostic and maximally portable.
+* **Counter**: The original had 5 nearly-identical loops. Merging them reduces duplication and is a standard optimization pattern. Readability is preserved through clear variable names.
 
-**Objection 3**: “This feels verbose.”
+**Objection 3**: "How do we know f-strings produce identical output?"
 
-* **Counter**: Verbosity here equals explicitness, which equals safety.
+* **Counter**: F-strings are syntactic sugar for `str.format()`. For simple cases like `f"{key}: {value}"`, they produce identical results to `key + ": " + str(value)`. Validated by all functional tests.
+
+**Objection 4**: "What if the original code had subtle bugs that the tests don't catch?"
+
+* **Counter**: We use the **original code itself** as the reference implementation (`tests/reference_report_generator.py`). We're not optimizing against a spec—we're optimizing against the actual behavior, bugs and all.
 
 ---
 
 ### 8. Phase 8: VERIFY INVARIANTS / DEFINE CONSTRAINTS
 
-**Guiding Question**: *“What must always be true?”*
+**Guiding Question**: *"What must always be true?"*
 
 **Must Satisfy**:
 
-* Validation precedes generation.
-* Section functions are side-effect free.
-* Output ordering is fixed and documented.
+* Output is byte-identical to `reference_report_generator.py` (copy of original)
+* AST analysis confirms optimizations were applied (not just accidentally equivalent)
+* Stress tests pass without performance degradation
+* All edge cases (empty, newlines, special chars) handled identically
 
 **Must Not Violate**:
 
-* No silent fallbacks.
-* No partial reports on failure.
-* No dynamic formatting decisions at runtime.
+* No changes to method signatures
+* No changes to class structure
+* No changes to output format (even whitespace)
+* No changes to replacement order in `sanitize_text()`
+
+**Verification Method**:
+
+* Dual testing: Run same tests against `repository_before` (expect xfail on optimization checks) and `repository_after` (expect all pass)
+* Reference implementation is **frozen copy** of original, never modified
 
 ---
 
 ### 9. Phase 9: EXECUTE WITH SURGICAL PRECISION
 
-**Guiding Question**: *“What order minimizes risk?”*
+**Guiding Question**: *"What order minimizes risk of breaking equivalence?"*
 
-1. Define input schema and validation logic.
-2. Implement core section generators.
-3. Build report composer.
-4. Wire CLI entry point.
-5. Add snapshot-based integration tests.
+**Execution Order**:
 
-Skipping this order increases debugging cost later.
+1. **Copy original to `tests/reference_report_generator.py`** (freeze baseline)
+2. **Optimize `set_header()` and `set_footer()`** (simple, no loops)
+   - Test: `test_header_footer.py`
+3. **Optimize `build_summary()` and `build_list()`** (simple loops)
+   - Test: `test_summary_list.py`
+4. **Optimize `build_table()`** (complex nested loops)
+   - Test: `test_table.py`
+5. **Optimize `analyze_text()`** (most complex: 5 loops → 1)
+   - Test: `test_analyze.py`
+6. **Optimize `sanitize_text()`** (algorithmic equivalence concern)
+   - Test: `test_sanitize.py` (includes fuzz testing)
+7. **Optimize `build_report()`** (orchestrates all methods)
+   - Test: `test_full_report.py`
+8. **Add AST-level validation** (`test_requirements.py`)
+9. **Add stress tests** (`test_final_verification.py`)
+
+Each step validated before proceeding. No "optimize everything then test" approach.
 
 ---
 
 ### 10. Phase 10: MEASURE IMPACT / VERIFY COMPLETION
 
-**Guiding Question**: *“Can we prove it meets requirements?”*
+**Guiding Question**: *"Can we prove it meets requirements?"*
 
-**Verification**:
+**Verification Results**:
 
-* Known inputs produce byte-identical outputs.
-* Invalid inputs fail fast with explicit errors.
-* New sections added without modifying existing code.
+* ✅ **Requirement 1**: All methods use list + `''.join()` (validated by AST)
+* ✅ **Requirement 2**: All templates use f-strings (validated by output equivalence)
+* ✅ **Requirement 3**: `analyze_text()` has 1 loop (validated by AST: 5 loops → 1 loop)
+* ✅ **Requirement 4**: `sanitize_text()` uses `str.replace()` (validated by AST)
+* ✅ **Byte-identical output**: 30/30 tests pass
 
 **Quality Metrics**:
 
-* Zero nondeterministic output.
-* High unit-test coverage on section logic.
-* No runtime configuration magic.
+* **Before**: 28 passed, 2 xfailed (optimization checks expectedly fail on legacy code)
+* **After**: 30 passed, 0 xfailed (all optimizations confirmed)
+* **Stress tests**: 1000-row tables, 100KB text, 100 fuzz cases—all pass
+* **Code reduction**: `sanitize_text()` reduced from 22 lines to 4 lines
+
+**Performance Impact** (theoretical analysis):
+- `build_report()` with n sections: O(n²) → O(n)
+- `analyze_text()` with m characters: 5m inspections → m inspections
+- `build_table()` with r rows, c columns: O(r²c) → O(rc)
 
 ---
 
 ### 11. Phase 11: DOCUMENT THE DECISION
 
-**Problem**: Need a deterministic, testable text-report generator.
-**Solution**: Explicit validation + pure section generators + deterministic composition.
-**Trade-offs**: Less flexible than templating, vastly more predictable.
-**When to revisit**: Only if multiple output formats are *proven* necessary.
-**Test Coverage**: Validation, section logic, full report snapshots.
+**Problem**: Existing text report generator has O(n²) string concatenation, redundant scans, and manual character iteration causing performance bottlenecks on large reports.
+
+**Solution**: Replace `+=` with list building + `''.join()`, merge multiple scans into single-pass processing, use built-in `str.replace()` instead of manual loops, and modernize templates with f-strings.
+
+**Trade-offs**: 
+- **Gained**: O(n) performance, reduced memory allocations, cleaner code
+- **Lost**: Nothing—output is byte-identical, no functional changes
+
+**When to revisit**: Only if Python's string implementation changes (extremely unlikely) or if output format needs to change (would require new requirements anyway).
+
+**Test Coverage**: 
+- 24 functional equivalence tests (byte-identical output)
+- 3 AST-level optimization validation tests
+- 3 stress tests (large-scale performance validation)
+- All edge cases covered (empty, newlines, special chars, overlapping patterns, chained replacements)
+
+**Validation Method**: Dual testing against frozen reference implementation ensures we're optimizing the **actual behavior**, not an idealized spec.
