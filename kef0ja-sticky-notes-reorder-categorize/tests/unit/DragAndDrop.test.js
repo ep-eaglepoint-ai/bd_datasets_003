@@ -2,20 +2,13 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 
-const resolveRepoFolder = () => {
-  const raw = (process.env.REPO_PATH || 'repository_after').trim();
-  if (raw.includes('repository_before')) return 'repository_before';
-  if (raw.includes('repository_after')) return 'repository_after';
-  return 'repository_after';
-};
-
 const getComponents = () => {
-  const repoPath = resolveRepoFolder();
+  const repoPath = process.env.REPO_PATH || 'repository_after';
   const App = require(`../../${repoPath}/src/App`).default;
   return { App };
 };
 
-const repoPath = resolveRepoFolder();
+const repoPath = process.env.REPO_PATH || 'repository_after';
 const describeAfter = repoPath === 'repository_after' ? describe : describe.skip;
 const describeBefore = repoPath === 'repository_before' ? describe : describe.skip;
 
@@ -99,7 +92,6 @@ describeAfter('Drag and Drop Functionality - repository_after', () => {
     fireEvent(dragHandle, dragStartEvent);
 
     const indicators = container.querySelectorAll('.drop-indicator');
-    // Insert after the second note => indicator index 3 (zones: 0,1,2,3)
     const dropEvent = createDragEvent('drop');
     dropEvent.dataTransfer.getData = () => '0';
     fireEvent(indicators[3], dropEvent);
