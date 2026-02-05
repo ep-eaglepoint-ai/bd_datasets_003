@@ -1,0 +1,13 @@
+{
+            "instance_id": "YHJ938",
+            "problem_statement": "The task evaluates two independently written Vitest test suites designed to validate a static analyzer for feature flag rules. The analyzer is expected to detect invalid rules, contradictions, redundancies, shadowed rules, and ambiguous overlaps while guaranteeing immutability, determinism, and stable ordering.
+ The goal of this evaluation is to assess whether the test suites correctly and robustly enforce the specified requirements without overfitting to a single implementation or relying on assumptions not explicitly required. The grading focuses on identifying gaps where tests either fail to validate critical invariants or enforce overly strict, implementation-specific behavior that would incorrectly fail valid solutions.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/yhj938-vitest-test-suite-evaluation-for-feature-flag-rule-analyzer",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
