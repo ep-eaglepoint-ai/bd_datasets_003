@@ -1,0 +1,11 @@
+{
+            "instance_id": "C1AB4X",
+            "problem_statement": "High-throughput systems often fail not due to algorithmic complexity (Big-O), but due to memory bandwidth and System Call overhead. The legacy code commits two cardinal sins: loading full files into RAM (io.ReadAll), which crashes on large inputs, and performing excessive heap allocations (string conversions and full JSON parsing) inside a tight loop. Mid-tier models will often fix the memory issue by switching to a loop but will fail to optimize the parsing, leaving the CPU bottlenecked by the Garbage Collector. The engineering solution requires a "Streaming" mindset: using bufio to batch I/O operations and manipulating raw []byte slices to avoid creating short-lived string objects.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/c1ab4x-high-throughput-log-stream-optimization",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
