@@ -8,3 +8,9 @@ services:
   meta-test:
     build: .
     command: node node_modules/.bin/jest --config jest.meta.config.js --watchAll=false
+
+  evaluation:
+    build: .
+    command: node evaluation/evaluation.js
+    volumes:
+      - ./evaluation/reports:/app/evaluation/reports

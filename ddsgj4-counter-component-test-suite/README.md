@@ -2,12 +2,17 @@
 
 ## Docker Commands
 
-### Counter Component Tests (repository_after)
+### Test (repository_after)
 ```bash
 docker compose run test
 ```
 
-### Meta-Tests (tests/)
+### Meta-Test (tests/)
 ```bash
 docker compose run meta-test
+```
+
+### Evaluation (comparison report)
+```bash
+docker compose run evaluation
 ```
