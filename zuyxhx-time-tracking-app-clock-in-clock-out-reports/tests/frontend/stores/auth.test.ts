@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
-import { useAuthStore } from '../../stores/auth'
+import { useAuthStore } from '../../../repository_after/frontend/stores/auth'
 
 global.fetch = vi.fn()
 global.localStorage = {

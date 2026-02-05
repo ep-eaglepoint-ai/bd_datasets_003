@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
-import { useApi } from '../../composables/useApi'
-import { useAuthStore } from '../../stores/auth'
+import { useApi } from '../../repository_after/frontend/composables/useApi'
+import { useAuthStore } from '../../repository_after/frontend/stores/auth'
 
 global.fetch = vi.fn()
 
@@ -116,5 +116,24 @@ describe('useApi Composable', () => {
     
     expect(result.data).toBeNull()
     expect(result.error).toBeNull()
+  })
+
+  it('handles 422 validation errors with array format', async () => {
+    ;(global.fetch as any).mockResolvedValueOnce({
+      ok: false,
+      json: async () => ({ 
+        detail: [
+          { loc: ['body', 'email'], msg: 'value is not a valid email address' },
+          { loc: ['body', 'password'], msg: 'field required' }
+        ] 
+      })
+    })
+
+    const { post } = useApi()
+    const result = await post('/register', { email: 'invalid' })
+    
+    expect(result.data).toBeNull()
+    expect(result.error).toContain('email')
+    expect(result.error).toContain('password')
   })
 })

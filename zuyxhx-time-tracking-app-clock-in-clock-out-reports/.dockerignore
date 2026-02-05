@@ -1,0 +1,9 @@
+**/node_modules
+**/.nuxt
+**/.output
+**/dist
+**/.git
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/evaluation/reports

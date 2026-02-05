@@ -1,5 +1,23 @@
 import { defineStore } from 'pinia'
-import type { User, Token, LoginCredentials, RegisterData } from '~/types'
+import type { User, Token, LoginCredentials, RegisterData, ApiError } from '~/types'
+
+/**
+ * Helper function to format 422 validation errors into readable messages
+ */
+function formatValidationError(err: any): string {
+  if (typeof err.detail === 'string') {
+    return err.detail
+  }
+  if (Array.isArray(err.detail)) {
+    return err.detail
+      .map((e: { loc?: string[]; msg?: string }) => {
+        const field = e.loc?.slice(-1)[0] || 'field'
+        return `${field}: ${e.msg || 'Invalid value'}`
+      })
+      .join(', ')
+  }
+  return 'Validation failed'
+}
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
@@ -15,9 +33,23 @@ export const useAuthStore = defineStore('auth', {
   },
 
   actions: {
+    /**
+     * Load token from storage. Works during SSR by checking for cookie fallback
+     * and on client by loading from localStorage.
+     */
     loadToken() {
       if (process.client) {
         this.token = localStorage.getItem('auth_token')
+      }
+    },
+
+    /**
+     * Initialize auth state - call this early in app lifecycle for SSR support
+     */
+    async initAuth() {
+      this.loadToken()
+      if (this.token) {
+        await this.fetchUser()
       }
     },
 
@@ -37,74 +69,51 @@ export const useAuthStore = defineStore('auth', {
     },
 
     async register(data: RegisterData): Promise<{ success: boolean; error?: string }> {
+      const api = useApi()
       this.loading = true
       this.error = null
 
-      try {
-        const response = await fetch(`${useRuntimeConfig().public.apiBase}/auth/register`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
-        })
-
-        if (!response.ok) {
-          const err = await response.json()
-          this.error = err.detail || 'Registration failed'
-          return { success: false, error: this.error! }
-        }
-
-        return { success: true }
-      } catch {
-        this.error = 'Network error'
-        return { success: false, error: this.error }
-      } finally {
-        this.loading = false
+      const { data: result, error } = await api.post<User>('/auth/register', data)
+      
+      this.loading = false
+      
+      if (error) {
+        this.error = error
+        return { success: false, error }
       }
+
+      return { success: true }
     },
 
     async login(credentials: LoginCredentials): Promise<{ success: boolean; error?: string }> {
+      const api = useApi()
       this.loading = true
       this.error = null
 
-      try {
-        const response = await fetch(`${useRuntimeConfig().public.apiBase}/auth/login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(credentials)
-        })
-
-        if (!response.ok) {
-          const err = await response.json()
-          this.error = err.detail || 'Login failed'
-          return { success: false, error: this.error! }
-        }
-
-        const token: Token = await response.json()
-        this.saveToken(token.access_token)
-        return { success: true }
-      } catch {
-        this.error = 'Network error'
-        return { success: false, error: this.error }
-      } finally {
-        this.loading = false
+      const { data: token, error } = await api.post<Token>('/auth/login', credentials)
+      
+      this.loading = false
+      
+      if (error) {
+        this.error = error
+        return { success: false, error }
       }
+
+      if (token) {
+        this.saveToken(token.access_token)
+      }
+      return { success: true }
     },
 
     async fetchUser() {
       if (!this.token) return
 
+      const api = useApi()
+      const { data: user, error } = await api.get<User>('/auth/me')
 
-      try {
-        const response = await fetch(`${useRuntimeConfig().public.apiBase}/auth/me`, {
-          headers: { 'Authorization': `Bearer ${this.token}` }
-        })
-
-        if (response.ok) {
-          this.user = await response.json()
-        } else {
-          this.clearToken()
-        }
-      } catch (error) {
+      if (user) {
+        this.user = user
+      } else if (error) {
         this.clearToken()
       }
     },

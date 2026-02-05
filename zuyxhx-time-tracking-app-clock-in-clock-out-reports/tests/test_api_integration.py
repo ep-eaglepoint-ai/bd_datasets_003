@@ -1,15 +1,11 @@
 import pytest
-from fastapi.testclient import TestClient
 from datetime import datetime, timedelta
-from api.main import app
-from api.database import Base, engine, get_db
-from api.models.user import User
-from api.models.time_entry import TimeEntry
-from api.utils.security import hash_password
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+# Setup test database BEFORE importing app components
+# This avoids PostgreSQL connection issues during test import
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
 test_engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
@@ -18,6 +14,15 @@ test_engine = create_engine(
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
 
+# Now import app components
+from fastapi.testclient import TestClient
+from api.main import app
+from api.database import Base, get_db
+from api.models.user import User
+from api.models.time_entry import TimeEntry
+from api.utils.security import hash_password
+
+# Create tables in test database
 Base.metadata.create_all(bind=test_engine)
 
 def override_get_db():

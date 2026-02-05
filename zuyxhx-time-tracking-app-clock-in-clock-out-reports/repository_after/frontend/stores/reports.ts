@@ -13,25 +13,23 @@ export const useReportsStore = defineStore('reports', {
       const authStore = useAuthStore()
       if (!authStore.token) return
 
+      const api = useApi()
       this.loading = true
-      try {
-        let url = `${useRuntimeConfig().public.apiBase}/reports/summary`
-        const params = []
-        if (startDate) params.push(`start_date=${startDate}`)
-        if (endDate) params.push(`end_date=${endDate}`)
-        if (params.length) url += `?${params.join('&')}`
+      
+      let endpoint = '/reports/summary'
+      const params = []
+      if (startDate) params.push(`start_date=${startDate}`)
+      if (endDate) params.push(`end_date=${endDate}`)
+      if (params.length) endpoint += `?${params.join('&')}`
 
-        const response = await fetch(url, {
-          headers: { 'Authorization': `Bearer ${authStore.token}` }
-        })
-
-        if (response.ok) {
-          this.summary = await response.json()
-        }
-      } catch {
-        this.error = 'Failed to fetch report'
-      } finally {
-        this.loading = false
+      const { data, error } = await api.get<ReportSummary>(endpoint)
+      
+      this.loading = false
+      
+      if (data) {
+        this.summary = data
+      } else if (error) {
+        this.error = error
       }
     },
 

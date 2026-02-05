@@ -18,104 +18,74 @@ export const useTimeStore = defineStore('time', {
       const authStore = useAuthStore()
       if (!authStore.token) return
 
-      try {
-        const response = await fetch(`${useRuntimeConfig().public.apiBase}/time/status`, {
-          headers: { 'Authorization': `Bearer ${authStore.token}` }
-        })
-
-        if (response.ok) {
-          const status: StatusResponse = await response.json()
-          this.isClockedIn = status.is_clocked_in
-          this.activeEntry = status.active_entry
-        }
-      } catch {
-        this.error = 'Failed to fetch status'
+      const api = useApi()
+      const { data: status, error } = await api.get<StatusResponse>('/time/status')
+      
+      if (status) {
+        this.isClockedIn = status.is_clocked_in
+        this.activeEntry = status.active_entry
+      } else if (error) {
+        this.error = error
       }
     },
 
     async clockIn(request?: ClockInRequest): Promise<{ success: boolean; error?: string }> {
-      const authStore = useAuthStore()
+      const api = useApi()
       this.loading = true
 
-      try {
-        const response = await fetch(`${useRuntimeConfig().public.apiBase}/time/clock-in`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${authStore.token}`
-          },
-          body: JSON.stringify(request || {})
-        })
+      const { data: entry, error } = await api.post<TimeEntry>('/time/clock-in', request || {})
+      
+      this.loading = false
+      
+      if (error) {
+        return { success: false, error }
+      }
 
-        if (!response.ok) {
-          const err = await response.json()
-          return { success: false, error: err.detail }
-        }
-
-        const entry: TimeEntry = await response.json()
+      if (entry) {
         this.activeEntry = entry
         this.isClockedIn = true
-        return { success: true }
-      } catch {
-        return { success: false, error: 'Network error' }
-      } finally {
-        this.loading = false
       }
+      return { success: true }
     },
 
     async clockOut(request?: ClockOutRequest): Promise<{ success: boolean; error?: string }> {
-      const authStore = useAuthStore()
+      const api = useApi()
       this.loading = true
 
-      try {
-        const response = await fetch(`${useRuntimeConfig().public.apiBase}/time/clock-out`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${authStore.token}`
-          },
-          body: JSON.stringify(request || {})
-        })
-
-        if (!response.ok) {
-          const err = await response.json()
-          return { success: false, error: err.detail }
-        }
-
-        this.activeEntry = null
-        this.isClockedIn = false
-        await this.fetchEntries()
-        return { success: true }
-      } catch {
-        return { success: false, error: 'Network error' }
-      } finally {
-        this.loading = false
+      const { data, error } = await api.post<TimeEntry>('/time/clock-out', request || {})
+      
+      this.loading = false
+      
+      if (error) {
+        return { success: false, error }
       }
+
+      this.activeEntry = null
+      this.isClockedIn = false
+      await this.fetchEntries()
+      return { success: true }
     },
 
     async fetchEntries(startDate?: string, endDate?: string) {
       const authStore = useAuthStore()
       if (!authStore.token) return
 
+      const api = useApi()
       this.loading = true
-      try {
-        let url = `${useRuntimeConfig().public.apiBase}/time?page=${this.page}&per_page=${this.perPage}`
-        if (startDate) url += `&start_date=${startDate}`
-        if (endDate) url += `&end_date=${endDate}`
+      
+      let endpoint = `/time?page=${this.page}&per_page=${this.perPage}`
+      if (startDate) endpoint += `&start_date=${startDate}`
+      if (endDate) endpoint += `&end_date=${endDate}`
 
-        const response = await fetch(url, {
-          headers: { 'Authorization': `Bearer ${authStore.token}` }
-        })
-
-        if (response.ok) {
-          const data: TimeEntryListResponse = await response.json()
-          this.entries = data.entries
-          this.total = data.total
-        }
-      } catch {
-        this.error = 'Failed to fetch entries'
-      } finally {
-        this.loading = false
+      const { data, error } = await api.get<TimeEntryListResponse>(endpoint)
+      
+      this.loading = false
+      
+      if (data) {
+        this.entries = data.entries
+        this.total = data.total
+      } else if (error) {
+        this.error = error
       }
     }
   }
