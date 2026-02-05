@@ -1,0 +1,32 @@
+[
+  {
+    "id": "P001",
+    "name": "Mechanical Keyboard",
+    "price": 89.99,
+    "quantity": 15
+  },
+  {
+    "id": "P002",
+    "name": "Wireless Mouse",
+    "price": 25.50,
+    "quantity": 30
+  },
+  {
+    "id": "P003",
+    "name": "27-inch Monitor",
+    "price": 199.99,
+    "quantity": 10
+  },
+  {
+    "id": "P004",
+    "name": "USB-C Hub",
+    "price": 45.00,
+    "quantity": 50
+  },
+  {
+    "id": "P005",
+    "name": "Webcam HD",
+    "price": 59.00,
+    "quantity": 20
+  }
+]
