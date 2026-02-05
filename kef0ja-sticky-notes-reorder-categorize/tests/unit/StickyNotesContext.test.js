@@ -6,7 +6,28 @@ const getContext = () => {
   return require(`../../${repoPath}/src/context/StickyNotesContext`);
 };
 
-describe('StickyNotesContext', () => {
+const repoPath = process.env.REPO_PATH || 'repository_after';
+const describeAfter = repoPath === 'repository_after' ? describe : describe.skip;
+const describeBefore = repoPath === 'repository_before' ? describe : describe.skip;
+
+describeBefore('StickyNotesContext - repository_before (baseline)', () => {
+  test('should allow adding a note', () => {
+    const context = getContext();
+    const StickyNotesProvider = context.default;
+    const useStickyNotes = context.useStickyNotes;
+    const wrapper = ({ children }) => React.createElement(StickyNotesProvider, null, children);
+    const { result } = renderHook(() => useStickyNotes(), { wrapper });
+
+    act(() => {
+      result.current.addNewNote();
+    });
+
+    expect(result.current.notes.length).toBe(1);
+    expect(result.current.notes[0].title).toBe('Click to edit title');
+  });
+});
+
+describeAfter('StickyNotesContext - repository_after', () => {
   let StickyNotesProvider, useStickyNotes;
   
   beforeEach(() => {
@@ -144,5 +165,35 @@ describe('StickyNotesContext', () => {
     result.current.notes.forEach((note, index) => {
       expect(note.order).toBe(index);
     });
+  });
+
+  test('should move notes within a filtered category without moving others', () => {
+    const { result } = renderHook(() => useStickyNotes(), { wrapper });
+
+    act(() => {
+      result.current.addNewNote();
+      result.current.addNewNote();
+      result.current.addNewNote();
+    });
+
+    const ids = result.current.notes.map(n => n.id);
+
+    act(() => {
+      result.current.updateNoteCategory(ids[0], 'work');
+      result.current.updateNoteCategory(ids[1], 'personal');
+      result.current.updateNoteCategory(ids[2], 'work');
+      result.current.setSelectedCategory('work');
+    });
+
+    const visibleIds = result.current.notes.map(n => n.id);
+    expect(visibleIds).toHaveLength(2);
+
+    act(() => {
+      // Swap within the filtered list
+      result.current.moveNote(0, 1);
+    });
+
+    const visibleIdsAfter = result.current.notes.map(n => n.id);
+    expect(visibleIdsAfter).toEqual([visibleIds[1], visibleIds[0]]);
   });
 });

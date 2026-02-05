@@ -8,7 +8,23 @@ const getComponents = () => {
   return { App };
 };
 
-describe('Drag and Drop Functionality', () => {
+const repoPath = process.env.REPO_PATH || 'repository_after';
+const describeAfter = repoPath === 'repository_after' ? describe : describe.skip;
+const describeBefore = repoPath === 'repository_before' ? describe : describe.skip;
+
+describeBefore('Baseline (no DnD) - repository_before', () => {
+  test('should render and allow adding notes', () => {
+    localStorage.clear();
+    const { App } = getComponents();
+    render(React.createElement(App));
+
+    const addButton = screen.getAllByRole('button', { name: /add new note/i })[0];
+    fireEvent.click(addButton);
+    expect(screen.getAllByText('Click to edit title').length).toBeGreaterThan(0);
+  });
+});
+
+describeAfter('Drag and Drop Functionality - repository_after', () => {
   let App;
   
   beforeEach(() => {
@@ -48,39 +64,42 @@ describe('Drag and Drop Functionality', () => {
     expect(mockDataTransfer.effectAllowed).toBe('move');
   });
 
-  test('should highlight drop zone on drag over', () => {
+  test('should highlight insertion drop indicator on drag enter', () => {
     renderGrid();
     const addButton = screen.getAllByRole('button', { name: /add new note/i })[0];
     fireEvent.click(addButton);
     fireEvent.click(addButton);
-    const dropZones = document.querySelectorAll('.note-container');
-    expect(dropZones.length).toBeGreaterThan(0);
+    const indicators = document.querySelectorAll('.drop-indicator');
+    expect(indicators.length).toBeGreaterThan(0);
     
-    const dragOverEvent = createDragEvent('dragover');
-    fireEvent(dropZones[0], dragOverEvent);
+    const dragEnterEvent = createDragEvent('dragenter');
+    fireEvent(indicators[1], dragEnterEvent);
 
-    expect(dragOverEvent.preventDefault).toHaveBeenCalled();
-    expect(mockDataTransfer.dropEffect).toBe('move');
+    expect(document.querySelectorAll('.drop-indicator.active').length).toBe(1);
   });
 
-  test('should handle drop and reorder notes', async () => {
+  test('dropping between notes inserts at that position', () => {
+    const seed = [
+      { id: 1, title: 'A', content: 'a', color: '#ffd500', category: 'uncategorized', order: 0 },
+      { id: 2, title: 'B', content: 'b', color: '#ffd500', category: 'uncategorized', order: 1 },
+      { id: 3, title: 'C', content: 'c', color: '#ffd500', category: 'uncategorized', order: 2 },
+    ];
+    localStorage.setItem('notes', JSON.stringify(seed));
     const { container } = renderGrid();
-    const addButton = screen.getAllByRole('button', { name: /add new note/i })[0];
-    fireEvent.click(addButton);
-    fireEvent.click(addButton);
-    fireEvent.click(addButton);
-    const initialNotes = screen.getAllByText('Click to edit title');
-    expect(initialNotes).toHaveLength(3);
-    const dragStartEvent = createDragEvent('dragstart');
+
     const dragHandle = screen.getAllByTitle('Drag to reorder')[0];
+    const dragStartEvent = createDragEvent('dragstart');
     fireEvent(dragHandle, dragStartEvent);
 
-    const dropZones = container.querySelectorAll('.note-container');
+    const indicators = container.querySelectorAll('.drop-indicator');
+    // Insert after the second note => indicator index 3 (zones: 0,1,2,3)
     const dropEvent = createDragEvent('drop');
-    dropEvent.dataTransfer.getData = () => '0'; 
-    
-    fireEvent(dropZones[2], dropEvent);
-    expect(dropEvent.preventDefault).toHaveBeenCalled();
+    dropEvent.dataTransfer.getData = () => '0';
+    fireEvent(indicators[3], dropEvent);
+
+    const titleEls = Array.from(container.querySelectorAll('.sticky-note-title'));
+    const titles = titleEls.map(el => el.textContent);
+    expect(titles).toEqual(['B', 'C', 'A']);
   });
 
   test('should show ghost image during drag', () => {
@@ -107,5 +126,37 @@ describe('Drag and Drop Functionality', () => {
     const dragEndEvent = createDragEvent('dragend');
     fireEvent(dragHandle, dragEndEvent);
     expect(document.querySelector('.sticky-note.dragging')).not.toBeInTheDocument();
+  });
+
+  test('should cancel drag on Escape key', () => {
+    const { container } = renderGrid();
+    const addButton = screen.getAllByRole('button', { name: /add new note/i })[0];
+    fireEvent.click(addButton);
+    fireEvent.click(addButton);
+
+    const dragHandle = screen.getAllByTitle('Drag to reorder')[0];
+    fireEvent(dragHandle, createDragEvent('dragstart'));
+
+    const indicators = container.querySelectorAll('.drop-indicator');
+    fireEvent(indicators[1], createDragEvent('dragenter'));
+    expect(document.querySelectorAll('.drop-indicator.active').length).toBe(1);
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(document.querySelectorAll('.drop-indicator.active').length).toBe(0);
+  });
+
+  test('should prevent dragging while editing title', () => {
+    renderGrid();
+    const addButton = screen.getAllByRole('button', { name: /add new note/i })[0];
+    fireEvent.click(addButton);
+
+    const title = screen.getAllByText('Click to edit title')[0];
+    fireEvent.click(title);
+
+    mockDataTransfer.setData.mockClear();
+    const dragHandle = screen.getAllByTitle('Drag to reorder')[0];
+    const dragStartEvent = createDragEvent('dragstart');
+    fireEvent(dragHandle, dragStartEvent);
+    expect(mockDataTransfer.setData).not.toHaveBeenCalled();
   });
 });

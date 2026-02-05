@@ -8,7 +8,42 @@ const getComponents = () => {
   return { App };
 };
 
-describe('LocalStorage Integration', () => {
+const repoPath = process.env.REPO_PATH || 'repository_after';
+const describeAfter = repoPath === 'repository_after' ? describe : describe.skip;
+const describeBefore = repoPath === 'repository_before' ? describe : describe.skip;
+
+describeBefore('LocalStorage Integration - repository_before (baseline)', () => {
+  let App;
+
+  beforeEach(() => {
+    localStorage.clear();
+    App = getComponents().App;
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.runOnlyPendingTimers();
+    jest.useRealTimers();
+  });
+
+  test('should persist notes to localStorage on add', () => {
+    render(React.createElement(App));
+    expect(JSON.parse(localStorage.getItem('notes') || '[]')).toHaveLength(0);
+
+    const addButton = screen.getAllByRole('button', { name: /add new note/i })[0];
+    fireEvent.click(addButton);
+
+    const savedNotes = JSON.parse(localStorage.getItem('notes') || '[]');
+    expect(savedNotes).toHaveLength(1);
+    expect(savedNotes[0]).toMatchObject({
+      title: 'Click to edit title',
+      content: 'Click to edit content',
+      color: '#ffd500'
+    });
+  });
+});
+
+describeAfter('LocalStorage Integration - repository_after', () => {
   let App;
   
   beforeEach(() => {
@@ -44,17 +79,40 @@ describe('LocalStorage Integration', () => {
   });
 
   test('should persist note order changes to localStorage', async () => {
+    const seed = [
+      { id: 1, title: 'A', content: 'a', color: '#ffd500', category: 'uncategorized', order: 0 },
+      { id: 2, title: 'B', content: 'b', color: '#ffd500', category: 'uncategorized', order: 1 },
+      { id: 3, title: 'C', content: 'c', color: '#ffd500', category: 'uncategorized', order: 2 },
+    ];
+    localStorage.setItem('notes', JSON.stringify(seed));
+
     const { container } = renderApp();
-    const addButton = screen.getAllByRole('button', { name: /add new note/i })[0];
-    fireEvent.click(addButton);
-    fireEvent.click(addButton);
-    fireEvent.click(addButton);
-    let savedNotes = JSON.parse(localStorage.getItem('notes'));
-    const initialOrder = savedNotes.map(note => note.id);
-    const { useStickyNotes } = require(`../../${process.env.REPO_PATH || 'repository_after'}/src/context/StickyNotesContext`);
-    savedNotes = JSON.parse(localStorage.getItem('notes'));
-    savedNotes.forEach((note, index) => {
-      expect(note.order).toBe(index);
+
+    const mockDataTransfer = {
+      setData: jest.fn(),
+      getData: jest.fn(() => '0'),
+      effectAllowed: '',
+      dropEffect: '',
+      setDragImage: jest.fn(),
+    };
+
+    const dragStartEvent = new Event('dragstart', { bubbles: true });
+    dragStartEvent.preventDefault = jest.fn();
+    dragStartEvent.dataTransfer = mockDataTransfer;
+
+    const dragHandle = screen.getAllByTitle('Drag to reorder')[0];
+    fireEvent(dragHandle, dragStartEvent);
+
+    const indicators = container.querySelectorAll('.drop-indicator');
+    const dropEvent = new Event('drop', { bubbles: true });
+    dropEvent.preventDefault = jest.fn();
+    dropEvent.dataTransfer = { ...mockDataTransfer, getData: () => '0' };
+    fireEvent(indicators[3], dropEvent);
+
+    await waitFor(() => {
+      const savedNotes = JSON.parse(localStorage.getItem('notes'));
+      const idsInOrder = savedNotes.sort((a, b) => a.order - b.order).map(n => n.id);
+      expect(idsInOrder).toEqual([2, 3, 1]);
     });
   });
 

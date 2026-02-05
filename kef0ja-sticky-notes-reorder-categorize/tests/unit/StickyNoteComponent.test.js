@@ -10,7 +10,31 @@ const getComponents = () => {
   return { StickyNote, StickyNotesProvider };
 };
 
-describe('StickyNote Component', () => {
+const repoPath = process.env.REPO_PATH || 'repository_after';
+const describeAfter = repoPath === 'repository_after' ? describe : describe.skip;
+const describeBefore = repoPath === 'repository_before' ? describe : describe.skip;
+
+describeBefore('StickyNote Component - repository_before (baseline)', () => {
+  test('should render basic sticky note', () => {
+    const { StickyNote, StickyNotesProvider } = getComponents();
+    const mockNote = {
+      id: 1,
+      title: 'Test Title',
+      content: 'Test Content',
+      color: '#ffd500'
+    };
+    const mockHandlers = { onNoteChange: jest.fn(), onDelete: jest.fn() };
+    render(
+      React.createElement(StickyNotesProvider, null,
+        React.createElement(StickyNote, { note: mockNote, ...mockHandlers })
+      )
+    );
+    expect(screen.getByText('Test Title')).toBeInTheDocument();
+    expect(screen.getByText('Test Content')).toBeInTheDocument();
+  });
+});
+
+describeAfter('StickyNote Component - repository_after', () => {
   let StickyNote, StickyNotesProvider;
   
   beforeEach(() => {
@@ -54,5 +78,24 @@ describe('StickyNote Component', () => {
     expect(screen.getByText('Test Title')).toBeInTheDocument();
     expect(screen.getByText('Test Content')).toBeInTheDocument();
     expect(screen.getByText('Uncategorized')).toBeInTheDocument();
+  });
+
+  test('keyboard: Enter edits title; Escape cancels', () => {
+    renderWithProvider(
+      React.createElement(StickyNote, { note: mockNote, ...mockHandlers })
+    );
+
+    const noteRoot = document.querySelector('.sticky-note');
+    expect(noteRoot).toBeTruthy();
+    noteRoot.focus();
+    fireEvent.keyDown(noteRoot, { key: 'Enter' });
+
+    const input = document.querySelector('.sticky-note-title-input');
+    expect(input).toBeInTheDocument();
+    fireEvent.change(input, { target: { value: 'Changed' } });
+    fireEvent.keyDown(input, { key: 'Escape' });
+
+    expect(document.querySelector('.sticky-note-title-input')).not.toBeInTheDocument();
+    expect(screen.getByText('Test Title')).toBeInTheDocument();
   });
 });

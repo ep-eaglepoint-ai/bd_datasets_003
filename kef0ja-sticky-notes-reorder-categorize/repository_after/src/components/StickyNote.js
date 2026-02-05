@@ -32,6 +32,7 @@ const StickyNote = (props) => {
         }
         
         setIsDragging(true);
+        props.onDragStartIndex?.(props.index);
         e.dataTransfer.setData('text/plain', String(props.index));
         e.dataTransfer.effectAllowed = 'move';
         if (noteRef.current && e.dataTransfer?.setDragImage) {
@@ -43,7 +44,6 @@ const StickyNote = (props) => {
             try {
                 e.dataTransfer.setDragImage(ghost, 0, 0);
             } finally {
-                // Remove synchronously so Jest fake timers don't leak DOM nodes between tests.
                 ghost.remove();
             }
         }
@@ -51,23 +51,22 @@ const StickyNote = (props) => {
 
     const handleDragEnd = () => {
         setIsDragging(false);
-        document.querySelectorAll('.drop-zone').forEach(el => {
-            el.classList.remove('drop-zone-active');
-        });
+        props.onDragEnd?.();
     };
 
-    const handleDragOver = (e) => {
+    const handlePointerDown = (e) => {
+        if (editingTitle || editingContent) return;
+        if (e.pointerType === 'mouse') return;
+        if (!noteRef.current) return;
+
         e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-        if (e.currentTarget.classList.contains('drop-zone')) {
-            e.currentTarget.classList.add('drop-zone-active');
-        }
-    };
-
-    const handleDragLeave = (e) => {
-        if (e.currentTarget.classList.contains('drop-zone')) {
-            e.currentTarget.classList.remove('drop-zone-active');
-        }
+        props.onTouchDragStart?.({
+            fromIndex: props.index,
+            noteElement: noteRef.current,
+            pointerId: e.pointerId,
+            clientX: e.clientX,
+            clientY: e.clientY,
+        });
     };
     function handleOnTitleChange(e) {
         setTitle(e.target.value);
@@ -137,8 +136,6 @@ const StickyNote = (props) => {
             className={`sticky-note ${isDragging ? 'dragging' : ''}`}
             style={{ backgroundColor: props.note.color }}
             draggable={false}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
             tabIndex={0}
             onKeyDown={handleNoteKeyDown}
         >
@@ -150,6 +147,7 @@ const StickyNote = (props) => {
                     draggable={!editingTitle && !editingContent}
                     onDragStart={handleDragStart}
                     onDragEnd={handleDragEnd}
+                    onPointerDown={handlePointerDown}
                 >
                     <DragSvgIcon />
                 </button>

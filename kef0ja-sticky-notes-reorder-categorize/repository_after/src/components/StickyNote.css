@@ -5,7 +5,7 @@
   margin: 8px;
   height: 300px;
   position: relative;
-  cursor: move;
+  cursor: default;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   outline: none;
   z-index: 1;
@@ -155,4 +155,8 @@
 .sticky-note-title-input,
 .sticky-note-content-input {
   user-select: text;
+}
+
+.touch-ghost {
+  transition: none;
 }
