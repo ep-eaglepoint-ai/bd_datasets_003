@@ -1,0 +1,16 @@
+{
+            "instance_id": "1N3F55",
+            "problem_statement": "An e-commerce platform needs a deterministic pricing engine after finance detected small but recurring discrepancies caused by rounding, tax handling, and operation ordering.
+ The engine must calculate order totals accurately while processing item prices, per-item discounts, order-level discounts, taxes (exclusive and inclusive), shipping, and refunds.
+ All monetary calculations must avoid binary floating-point arithmetic and use exact decimal math.
+ The pricing logic must follow a strict, documented sequence, and the output must include a human-readable audit trail explaining how every amount was calculated.
+ Given the same input, the engine must always produce the same output.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/1n3f55-deterministic-pricing-engine-for-e-commerce-orders-items-discounts-tax-shipping-refunds",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
