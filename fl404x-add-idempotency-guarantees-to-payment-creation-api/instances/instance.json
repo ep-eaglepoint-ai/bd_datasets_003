@@ -1,0 +1,11 @@
+{
+            "instance_id": "FL404X",
+            "problem_statement": "The payment-creation API currently has no idempotency support. When clients retry requests due to timeouts, network issues, or double submissions, duplicate requests can create duplicate charges and duplicate payment records. The system must support an optional idempotency mechanism that ensures duplicate requests result in at most one payment and a consistent response, without changing existing behavior for clients that do not use idempotency or introducing new infrastructure.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/fl404x-add-idempotency-guarantees-to-payment-creation-api",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
