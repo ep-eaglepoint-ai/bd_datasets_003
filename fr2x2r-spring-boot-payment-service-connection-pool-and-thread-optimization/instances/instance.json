@@ -1,0 +1,11 @@
+{
+            "instance_id": "FR2X2R",
+            "problem_statement": "A Spring Boot microservice handling payment processing becomes unresponsive under load. Database connections timeout with "Connection is not available, request timed out after 30000ms" errors, Redis operations hang indefinitely during traffic spikes, and thread dumps show hundreds of threads blocked waiting for resources. The payment service in src/main/java/com/payment/service/PaymentService.java uses an unbounded cached thread pool, holds database connections open during external API calls to bank and fraud services, and the health check endpoint stops responding when the main application is under stress. Failed payments are not recoverable and downstream service slowdowns cascade into complete service unavailability.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/fr2x2r-spring-boot-payment-service-connection-pool-and-thread-optimization",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
