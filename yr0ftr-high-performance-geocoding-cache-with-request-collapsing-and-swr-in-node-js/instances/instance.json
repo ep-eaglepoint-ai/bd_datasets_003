@@ -1,0 +1,11 @@
+{
+            "instance_id": "YR0FTR",
+            "problem_statement": "The existing GeocodingService performs a direct call to an expensive third-party provider for every location lookup, even when identical coordinates or addresses are requested concurrently or repeatedly within short time windows. This results in extreme latency, high operational costs, and cache stampedes during traffic spikes. The task is to refactor the service to introduce a high-performance caching layer using a Cache-Aside strategy with Stale-While-Revalidate (SWR) semantics and request collapsing. The solution must mitigate redundant upstream calls, handle provider failures gracefully, remain within a strict 512MB memory footprint, and preserve the existing external API contract while providing strong observability and TypeScript safety.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/yr0ftr-high-performance-geocoding-cache-with-request-collapsing-and-swr-in-node-js",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
