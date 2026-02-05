@@ -4,11 +4,12 @@
   "scripts": {
     "test:backend": "jest tests/backend --config jest.backend.config.js",
     "test:frontend": "jest tests/frontend --config jest.frontend.config.js",
-    "test:integration": "jest tests/integration --config jest.config.js",
-    "test:all": "jest tests/ --config jest.config.js"
+    "test:integration": "jest tests/integration --config jest.integration.config.js",
+    "test:all": "jest tests/ --config jest.config.cjs"
   },
   "dependencies": {
     "@prisma/client": "^7.3.0",
+    "dotenv": "^17.2.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^7.13.0"

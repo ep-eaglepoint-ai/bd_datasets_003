@@ -35,6 +35,11 @@ if (typeof window !== 'undefined') {
 // Mock fetch (works in both environments)
 global.fetch = jest.fn();
 
+// Add Node.js polyfills
+const { TextEncoder, TextDecoder } = require('util');
+global.TextEncoder = TextEncoder;
+global.TextDecoder = TextDecoder;
+
 beforeEach(() => {
   jest.clearAllMocks();
   

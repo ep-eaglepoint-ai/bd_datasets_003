@@ -1,6 +1,7 @@
 module.exports ={
   projects: [
-    '<rootDir>/tests/jest.backend.config.js',
-    '<rootDir>/tests/jest.frontend.config.js',
+    '<rootDir>/jest.backend.config.js',
+    '<rootDir>/jest.frontend.config.js',
+    '<rootDir>/jest.integration.config.js',
   ],
 };

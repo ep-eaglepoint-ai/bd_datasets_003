@@ -2,16 +2,14 @@ const { createDefaultPreset } = require("ts-jest");
 
 const tsJestTransformCfg = createDefaultPreset().transform;
 
-
-// tests/jest.config.js
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   
   roots: ['<rootDir>'],
   testMatch: [
-    '**/*.test.ts',
-    '**/*.test.tsx',
+    '**/integration/**/*.test.ts',
+    '**/integration/**/*.test.tsx',
   ],
   
    transform: {
