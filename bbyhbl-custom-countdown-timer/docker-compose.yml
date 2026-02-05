@@ -62,6 +62,7 @@ services:
     volumes:
       - ./tests:/app/tests
       - ./repository_after:/app/repository_after
+      - ./evaluation:/app/evaluation
 
 volumes:
   postgres_data:

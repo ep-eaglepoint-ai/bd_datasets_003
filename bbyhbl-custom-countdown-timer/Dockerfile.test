@@ -11,9 +11,14 @@ RUN apt-get update \
 COPY tests/package*.json ./tests/
 RUN cd tests && npm ci
 
+# When we run `npm --prefix tests ...` from /app, npm doesn't always
+# put /app/tests/node_modules/.bin on PATH in some CI shells.
+ENV PATH="/app/tests/node_modules/.bin:${PATH}"
+
 # Copy tests and the implementation-under-test
 COPY tests ./tests
 COPY repository_after ./repository_after
+COPY evaluation ./evaluation
 
 ENV NODE_ENV=test
 
