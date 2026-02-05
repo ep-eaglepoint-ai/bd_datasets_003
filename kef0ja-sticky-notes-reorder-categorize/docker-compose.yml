@@ -3,3 +3,4 @@ services:
     build: .
     environment:
       - REPO_PATH=repository_after
+    command: ["npm", "test"]
