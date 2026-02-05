@@ -1,0 +1,11 @@
+{
+            "instance_id": "KQ7U9U",
+            "problem_statement": "Design and implement a Python-based microservice for meeting scheduling that can interpret and resolve highly complex, relative temporal dependencies, including conditions based on historical events and dynamic environmental factors. The system must accurately sequence and validate meeting times, explicitly handling potential paradoxes and logical conflicts arising from overlapping, conditional, and relative scheduling requests. This requires sophisticated state management and a robust conflict resolution mechanism to ensure all temporal constraints are respected without introducing logical inconsistencies.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/kq7u9u-temporal-paradox-meeting-scheduler",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
