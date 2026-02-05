@@ -1,0 +1,11 @@
+{
+            "instance_id": "QDPODI",
+            "problem_statement": "The Project Pulse dashboard currently surfaces activity data across multiple disconnected widgets (Git commits, ticket updates, and internal system logs), preventing users from viewing a unified chronological timeline of work. This fragmentation reduces situational awareness and productivity. The task is to design and implement an ActivityAggregator service that concurrently fetches activity data from heterogeneous sources, normalizes all records into a unified schema, de-duplicates overlapping events, sorts them by recency, and returns a bounded feed. The service must tolerate partial upstream failures without blocking healthy data and expose clear status indicators for operational visibility.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/qdpodi-implement-unified-activity-aggregator-with-soft-failure-handling",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
