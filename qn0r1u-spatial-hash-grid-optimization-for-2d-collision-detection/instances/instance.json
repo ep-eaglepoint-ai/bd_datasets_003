@@ -1,0 +1,11 @@
+{
+            "instance_id": "QN0R1U",
+            "problem_statement": "The legacy O(N^2) brute-force detection causes severe latency at scale, necessitating a transition to a linear-time sparse spatial hash grid. The critical implementation challenge is the "Boundary Problem," where failing to query the 8 surrounding neighbor cells results in missed collisions for particles straddling grid edges.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/qn0r1u-spatial-hash-grid-optimization-for-2d-collision-detection",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        

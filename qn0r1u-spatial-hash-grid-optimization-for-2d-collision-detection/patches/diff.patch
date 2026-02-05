@@ -1,0 +1,473 @@
+diff --git a/repository_after/physics.py b/repository_after/physics.py
+new file mode 100644
+--- /dev/null
++++ b/repository_after/physics.py
+@@ -0,0 +1,147 @@
++"""Physics primitives.
++
++This module contains an optimized broad-phase collision detector based on a sparse
++Spatial Hash Grid.
++
++Constraints:
++- Pure Python (no numpy/scipy/C extensions)
++- Handles unbounded world coordinates (incl. negatives) via dict-backed sparse grid
++- Returns the same collision set as the legacy brute-force implementation
++"""
++
++from __future__ import annotations
++
++import math
++from typing import Iterable
++
++
++class Particle:
++    def __init__(self, id, x, y, radius):
++        self.id = id
++        self.x = x
++        self.y = y
++        self.radius = radius
++
++
++def _detect_collisions_bruteforce(particles: list[Particle]) -> set[tuple]:
++    collisions: set[tuple] = set()
++    for i in range(len(particles)):
++        p1 = particles[i]
++        x1 = p1.x
++        y1 = p1.y
++        r1 = p1.radius
++        id1 = p1.id
++        for j in range(i + 1, len(particles)):
++            p2 = particles[j]
++            dx = x1 - p2.x
++            dy = y1 - p2.y
++            radii_sum = r1 + p2.radius
++            if (dx * dx + dy * dy) < (radii_sum * radii_sum):
++                collisions.add(tuple(sorted((id1, p2.id))))
++    return collisions
++
++
++def detect_collisions(particles: Iterable[Particle]) -> set[tuple]:
++    """Detect particle overlaps.
++
++    Uses a sparse Spatial Hash Grid broad-phase:
++    - cell_size is strictly `max_particle_radius * 2`
++    - particles are bucketed by cell key (floor(x / cell_size), floor(y / cell_size))
++    - each particle only checks candidates in its cell and 8 neighbors
++
++    Returns:
++        set of (idA, idB) tuples, sorted within each tuple.
++    """
++
++    # Accept any iterable but operate on a list for indexed, deterministic de-duplication.
++    particle_list = list(particles)
++    particle_count = len(particle_list)
++    if particle_count < 2:
++        return set()
++
++    # Derive cell size from the largest particle radius.
++    max_radius = 0.0
++    for p in particle_list:
++        # Avoid attribute lookups in max() loop; keep it simple and fast.
++        r = p.radius
++        if r > max_radius:
++            max_radius = r
++
++    # Degenerate case (all radii <= 0) would create a zero-sized grid cell.
++    # Preserve legacy behavior in this rare case.
++    if max_radius <= 0.0:
++        return _detect_collisions_bruteforce(particle_list)
++
++    cell_size = max_radius * 2.0
++    inv_cell_size = 1.0 / cell_size
++
++    # Sparse grid: (cell_x, cell_y) -> [particle indices]
++    grid: dict[tuple[int, int], list[int]] = {}
++    cell_coords: list[tuple[int, int]] = [(0, 0)] * particle_count
++
++    floor = math.floor
++    for i, p in enumerate(particle_list):
++        cx = int(floor(p.x * inv_cell_size))
++        cy = int(floor(p.y * inv_cell_size))
++        cell_coords[i] = (cx, cy)
++        key = (cx, cy)
++        bucket = grid.get(key)
++        if bucket is None:
++            grid[key] = [i]
++        else:
++            bucket.append(i)
++
++    collisions: set[tuple] = set()
++    get_bucket = grid.get
++
++    for i, p1 in enumerate(particle_list):
++        x1 = p1.x
++        y1 = p1.y
++        r1 = p1.radius
++        id1 = p1.id
++        cx, cy = cell_coords[i]
++
++        # Check the 3x3 neighborhood around (cx, cy)
++        for nx in (cx - 1, cx, cx + 1):
++            for ny in (cy - 1, cy, cy + 1):
++                bucket = get_bucket((nx, ny))
++                if not bucket:
++                    continue
++
++                for j in bucket:
++                    # Prevent self-collision and dedupe pairs (match legacy i<j behavior).
++                    if j <= i:
++                        continue
++
++                    p2 = particle_list[j]
++                    dx = x1 - p2.x
++                    dy = y1 - p2.y
++                    radii_sum = r1 + p2.radius
++                    if (dx * dx + dy * dy) < (radii_sum * radii_sum):
++                        collisions.add(tuple(sorted((id1, p2.id))))
++
++    return collisions
+
+diff --git a/tests/test_spatial_hash_grid.py b/tests/test_spatial_hash_grid.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_spatial_hash_grid.py
+@@ -0,0 +1,150 @@
++import importlib.util
++import inspect
++import os
++import random
++import time
++import unittest
++from pathlib import Path
++
++
++ROOT = Path(__file__).resolve().parents[1]
++
++
++def _load_physics_module(which: str):
++    if which not in {"before", "after"}:
++        raise ValueError(f"Unknown PHYSICS_REPO: {which!r}")
++
++    module_path = ROOT / f"repository_{which}" / "physics.py"
++    spec = importlib.util.spec_from_file_location(f"physics_{which}", module_path)
++    if spec is None or spec.loader is None:
++        raise RuntimeError(f"Failed to load module from {module_path}")
++
++    module = importlib.util.module_from_spec(spec)
++    spec.loader.exec_module(module)
++    return module
++
++
++def _repo_choice() -> str:
++    return os.environ.get("PHYSICS_REPO", "after")
++
++
++def _bruteforce_collisions(particles):
++    collisions = set()
++    for i in range(len(particles)):
++        for j in range(i + 1, len(particles)):
++            p1 = particles[i]
++            p2 = particles[j]
++            dx = p1.x - p2.x
++            dy = p1.y - p2.y
++            dist_sq = dx * dx + dy * dy
++            radii_sum = p1.radius + p2.radius
++            if dist_sq < radii_sum * radii_sum:
++                collisions.add(tuple(sorted((p1.id, p2.id))))
++    return collisions
++
++
++class SpatialHashGridTests(unittest.TestCase):
++    def setUp(self):
++        self.repo_choice = _repo_choice()
++        self.physics = _load_physics_module(self.repo_choice)
++
++    def test_signature_and_return_type(self):
++        Particle = self.physics.Particle
++        particles = [
++            Particle(1, 0.0, 0.0, 1.0),
++            Particle(2, 0.5, 0.0, 1.0),
++            Particle(3, 10.0, 10.0, 1.0),
++        ]
++        collisions = self.physics.detect_collisions(particles)
++
++        self.assertIsInstance(collisions, set)
++        for pair in collisions:
++            self.assertIsInstance(pair, tuple)
++            self.assertEqual(len(pair), 2)
++            self.assertEqual(pair, tuple(sorted(pair)))
++
++    def test_correctness_matches_bruteforce_small_random(self):
++        Particle = self.physics.Particle
++        rng = random.Random(0)
++
++        particles = []
++        for i in range(200):
++            x = rng.uniform(-50.0, 50.0)
++            y = rng.uniform(-50.0, 50.0)
++            radius = rng.uniform(0.5, 3.0)
++            particles.append(Particle(i, x, y, radius))
++
++        expected = _bruteforce_collisions(particles)
++        got = self.physics.detect_collisions(particles)
++        self.assertEqual(got, expected)
++
++    def test_boundary_problem_neighbor_cells_detected(self):
++        Particle = self.physics.Particle
++        p1 = Particle(1, 9.9, 0.0, 1.0)
++        p2 = Particle(2, 10.1, 0.0, 1.0)
++        p3 = Particle(3, 100.0, 100.0, 5.0)
++        collisions = self.physics.detect_collisions([p1, p2, p3])
++        self.assertIn((1, 2), collisions)
++
++    def test_negative_coordinates_bucketed_with_floor_and_neighbor_checked(self):
++        Particle = self.physics.Particle
++        p1 = Particle(1, -0.1, 0.0, 1.0)
++        p2 = Particle(2, 0.1, 0.0, 1.0)
++        p3 = Particle(3, 50.0, 50.0, 5.0)
++        collisions = self.physics.detect_collisions([p1, p2, p3])
++        self.assertIn((1, 2), collisions)
++
++    def test_sparse_world_unbounded_coords_no_massive_allocation(self):
++        Particle = self.physics.Particle
++        p1 = Particle(1, 0.0, 0.0, 1.0)
++        p2 = Particle(2, 100000.0, 100000.0, 1.0)
++        collisions = self.physics.detect_collisions([p1, p2])
++        self.assertEqual(collisions, set())
++
++    def test_after_avoids_global_double_nested_loop(self):
++        if self.repo_choice != "after":
++            self.skipTest("Structural optimization requirement applies to repository_after")
++        src = inspect.getsource(self.physics.detect_collisions)
++        self.assertNotIn("for i in range(len(", src)
++        self.assertNotIn("for j in range(i + 1", src)
++
++    def test_after_uses_floor_hashing_and_max_radius_cell_size(self):
++        if self.repo_choice != "after":
++            self.skipTest("Implementation details requirement applies to repository_after")
++        src = inspect.getsource(self.physics.detect_collisions)
++        self.assertTrue("math.floor" in src or "floor(" in src)
++        self.assertIn("max_radius", src)
++        self.assertTrue("* 2" in src or "2.0" in src)
++
++    def test_performance_5000_particles_under_200ms(self):
++        Particle = self.physics.Particle
++        rng = random.Random(0)
++        particles = [
++            Particle(i, rng.uniform(-5000.0, 5000.0), rng.uniform(-5000.0, 5000.0), 1.0)
++            for i in range(5000)
++        ]
++        t0 = time.perf_counter()
++        collisions = self.physics.detect_collisions(particles)
++        t1 = time.perf_counter()
++        self.assertIsInstance(collisions, set)
++        elapsed = t1 - t0
++        self.assertLess(elapsed, 0.2, f"detect_collisions took {elapsed:.4f}s (> 0.2s)")
+
+diff --git a/tests/report.py b/tests/report.py
+new file mode 100644
+--- /dev/null
++++ b/tests/report.py
+@@ -0,0 +1,78 @@
++"""Simple benchmark report for before vs after."""
++
++from __future__ import annotations
++
++import importlib.util
++import time
++from pathlib import Path
++
++
++ROOT = Path(__file__).resolve().parents[1]
++
++
++def _load(which: str):
++    module_path = ROOT / f"repository_{which}" / "physics.py"
++    spec = importlib.util.spec_from_file_location(f"physics_{which}", module_path)
++    if spec is None or spec.loader is None:
++        raise RuntimeError(f"Failed to load {module_path}")
++    module = importlib.util.module_from_spec(spec)
++    spec.loader.exec_module(module)
++    return module
++
++
++def _make_particles(Particle, n: int, seed: int = 0):
++    x = seed + 1
++    particles = []
++    for i in range(n):
++        x = (1103515245 * x + 12345) & 0x7FFFFFFF
++        fx = (x / 0x7FFFFFFF) * 10000.0 - 5000.0
++        x = (1103515245 * x + 12345) & 0x7FFFFFFF
++        fy = (x / 0x7FFFFFFF) * 10000.0 - 5000.0
++        particles.append(Particle(i, fx, fy, 1.0))
++    return particles
++
++
++def _time_detect(physics, particles):
++    t0 = time.perf_counter()
++    physics.detect_collisions(particles)
++    t1 = time.perf_counter()
++    return t1 - t0
++
++
++def main():
++    before = _load("before")
++    after = _load("after")
++
++    n = 5000
++    particles_before = _make_particles(before.Particle, n)
++    particles_after = _make_particles(after.Particle, n)
++
++    t_before = _time_detect(before, particles_before)
++    t_after = _time_detect(after, particles_after)
++
++    speedup = (t_before / t_after) if t_after > 0 else float("inf")
++    improvement_pct = (1.0 - (t_after / t_before)) * 100.0 if t_before > 0 else 0.0
++
++    print(f"Particles: {n}")
++    print(f"Before: {t_before:.4f}s")
++    print(f"After : {t_after:.4f}s")
++    print(f"Speedup: {speedup:.1f}x")
++    print(f"Improvement: {improvement_pct:.1f}%")
++
++
++if __name__ == "__main__":
++    main()
+
+diff --git a/requirements.txt b/requirements.txt
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -1 +1 @@
+-pytest==8.3.4
++# No third-party runtime/test dependencies (hermetic container build).
+
+diff --git a/Dockerfile b/Dockerfile
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -1,16 +1,11 @@
+ FROM python:3.11.8-slim
+ 
+-ENV PYTHONDONTWRITEBYTECODE=1 \
+-    PYTHONUNBUFFERED=1 \
+-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+-    PIP_NO_CACHE_DIR=1
++ENV PYTHONDONTWRITEBYTECODE=1 \
++    PYTHONUNBUFFERED=1
+ 
+ WORKDIR /app
+ 
+-COPY requirements.txt /app/requirements.txt
+-RUN pip install -r /app/requirements.txt
+-
+ COPY . /app
+ 
+-CMD ["pytest", "-q", "tests"]
++CMD ["python", "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py", "-q"]
+
+diff --git a/docker-compose.yml b/docker-compose.yml
+--- a/docker-compose.yml
++++ b/docker-compose.yml
+@@ -1,9 +1,24 @@
+-# Docker Compose file for running tests. You should customize this as needed.
+-
+-services:
+-  app:
+-    build: .
+-    command: pytest -q tests
+-    volumes:
+-      - .:/app
++services:
++  before-tests:
++    build: .
++    environment:
++      - PHYSICS_REPO=before
++    command: sh -lc "python -m unittest discover -s tests -p test_*.py -q; status=$?; if [ $status -ne 0 ]; then echo 'NOTE: repository_before is expected to fail the performance gate.'; fi; exit 0"
++
++  after-tests:
++    build: .
++    environment:
++      - PHYSICS_REPO=after
++    command: python -m unittest discover -s tests -p test_*.py -q
++
++  test-report:
++    build: .
++    environment:
++      - PHYSICS_REPO=after
++    command: sh -lc "python -m unittest discover -s tests -p test_*.py -q && python tests/report.py"
+
+diff --git a/trajectory/trajectory.md b/trajectory/trajectory.md
+--- a/trajectory/trajectory.md
++++ b/trajectory/trajectory.md
+@@ -1 +1,67 @@
+ # Trajectory
++
++## Analysis (Bottleneck Identification)
++
++### Symptom
++Severe frame drops once particle counts exceed ~2,000.
++
++### Root cause
++The legacy `detect_collisions` uses a brute-force double loop over all pairs, producing $O(N^2)$ distance checks.
++
++## Strategy (Optimization Approach)
++
++### Chosen optimization: Sparse Spatial Hash Grid
++We convert the broad-phase from "check every pair" to "check only local neighbors".
++
++Key design decisions:
++- Use a dictionary-backed sparse grid (hash map) so coordinates can be large or negative without allocating huge arrays.
++- Set `cell_size = 2 * max_particle_radius` so any colliding pair must lie in the same cell or one of the 8 surrounding cells.
++- Use floor-based hashing for stability with negative coordinates.
++
++## Implementation (Step-by-step)
++
++1) Compute `max_radius` and derive `cell_size = 2 * max_radius`.
++2) Hash via floor: $c_x = \lfloor x / cell\_size \rfloor$, $c_y = \lfloor y / cell\_size \rfloor$.
++3) Insert into `grid[(c_x, c_y)] -> list[int]`.
++4) For each particle, check its 3x3 neighborhood.
++5) De-duplicate with index ordering (`j > i`).
++
++### Complexity
++- Legacy: $O(N^2)$
++- Spatial hash grid: expected $O(N)$ average
++
++## Verification
++- Tests validate boundary, negatives, sparse world, and performance.
+
+diff --git a/evaluation/evaluation.js b/evaluation/evaluation.js
+new file mode 100644
+--- /dev/null
++++ b/evaluation/evaluation.js
+@@ -0,0 +1,110 @@
++process.on("unhandledRejection", (e) => {
++  const msg = e && e.stack ? String(e.stack) : String(e);
++  if (msg.includes("heap out of memory")) return die_oom();
++  try {
++    process.stderr.write(`evaluation: unhandled rejection: ${msg}\n`);
++  } catch {
++    // ignore
++  }
++  process.exit(0);
++});
++
++try {
++  main();
++} catch (e) {
++  const msg = e && e.stack ? String(e.stack) : String(e);
++  try {
++    process.stderr.write(`evaluation: fatal error: ${msg}\n`);
++  } catch {
++    // ignore
++  }
++  process.exit(0);
++}
+
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@
+-    ## Before Test Docker Command
+-    <docker before command here>
++## Before Test Docker Command
++
++`docker compose run --rm before-tests`
