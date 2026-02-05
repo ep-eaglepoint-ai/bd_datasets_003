@@ -2,12 +2,12 @@
 
 ## Before Test Docker Command
 ```bash
-docker compose run --rm -w /app/repository_before app pytest test_*.py || true
+docker compose run --rm -w /app/repository_before app pytest || true
 ```
 
 ## After Test Docker Command
 ```bash
-docker compose run --rm -w /app/repository_after app pytest test_*.py -v
+docker compose run --rm -w /app/repository_after app pytest -v
 ```
 
 ## Evaluation Docker Command
