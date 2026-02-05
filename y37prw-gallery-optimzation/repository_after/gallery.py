@@ -1,26 +1,11 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import List, Optional, Dict, Any
-from collections import defaultdict
-from bisect import bisect_right
-import random
-import time
+from bisect import bisect_left, bisect_right, insort_left
 
-
-# =========================
-# Image Model
-# =========================
 
 class Image:
-    def __init__(
-        self,
-        id: str,
-        filename: str,
-        album_id: Optional[str],
-        uploaded_at: datetime,
-        size_bytes: int,
-        width: int,
-        height: int
-    ):
+    def __init__(self, id: str, filename: str, album_id: Optional[str],
+                 uploaded_at: datetime, size_bytes: int, width: int, height: int):
         self.id = id
         self.filename = filename
         self.album_id = album_id
@@ -31,129 +16,54 @@ class Image:
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "id": self.id,
-            "filename": self.filename,
-            "album_id": self.album_id,
-            "uploaded_at": self.uploaded_at.isoformat(),
-            "size_bytes": self.size_bytes,
-            "width": self.width,
-            "height": self.height,
+            'id': self.id,
+            'filename': self.filename,
+            'album_id': self.album_id,
+            'uploaded_at': self.uploaded_at.isoformat(),
+            'size_bytes': self.size_bytes,
+            'width': self.width,
+            'height': self.height
         }
 
 
-# =========================
-# Gallery Index (OPTIMIZATION CORE)
-# =========================
-
-class GalleryIndex:
-    """
-    PERFORMANCE ANALYSIS
-    --------------------
-    ORIGINAL IMPLEMENTATION:
-    - Copies all images per request → O(n) memory
-    - Filters all images per request → O(n)
-    - Sorts all images per request → O(n log n)
-    - Slices page → O(k)
-
-    OPTIMIZED IMPLEMENTATION:
-    - Pre-sort once during indexing
-    - Maintain per-album sorted lists
-    - Pagination uses slicing only
-    - Album lookup is O(1)
-    - Page retrieval is O(k)
-
-    Sorting cost paid once, not per request.
-    """
-
-    def __init__(self):
-        self._all_sorted: List[Image] = []
-        self._album_sorted: Dict[Optional[str], List[Image]] = defaultdict(list)
-
-    def build(self, images: List[Image]) -> None:
-        """
-        Build indexes once.
-        Python's sort is stable → preserves order for duplicate timestamps.
-        """
-        self._all_sorted = sorted(images, key=lambda img: img.uploaded_at)
-
-        self._album_sorted.clear()
-        for img in self._all_sorted:
-            self._album_sorted[img.album_id].append(img)
-
-    def insert(self, image: Image) -> None:
-        """
-        Efficient insertion support (O(log n)).
-        """
-        idx = bisect_right(
-            [img.uploaded_at for img in self._all_sorted],
-            image.uploaded_at
-        )
-        self._all_sorted.insert(idx, image)
-        self._album_sorted[image.album_id].insert(idx, image)
-
-    def count(self, album_id: Optional[str]) -> int:
-        if album_id is None:
-            return len(self._all_sorted)
-        return len(self._album_sorted.get(album_id, []))
-
-    def get_page(
-        self,
-        page: int,
-        page_size: int,
-        album_id: Optional[str],
-        sort_ascending: bool
-    ) -> List[Image]:
-        """
-        Returns ONLY the required page.
-        Complexity: O(k)
-        """
-        source = (
-            self._album_sorted.get(album_id, [])
-            if album_id is not None
-            else self._all_sorted
-        )
-
-        if not source:
-            return []
-
-        if not sort_ascending:
-            source = reversed(source)
-
-        start = (page - 1) * page_size
-        end = start + page_size
-
-        # Lazy enumeration ensures only k elements are materialized
-        return [
-            img for i, img in enumerate(source)
-            if start <= i < end
-        ]
-
-
-# =========================
-# Image Gallery (PUBLIC API)
-# =========================
-
 class ImageGallery:
     def __init__(self):
+       
         self.images: List[Image] = []
-        self._index = GalleryIndex()
-        self._dirty = True  # index invalidation flag
+
+      
+        self._sorted_all_asc: List[Image] = []
+
+       
+        self._sorted_all_desc: List[Image] = []
+
+       
+        self._sorted_by_album_asc: Dict[str, List[Image]] = {}
+
+       
+        self._sorted_by_album_desc: Dict[str, List[Image]] = {}
 
     def add_image(self, image: Image) -> None:
         self.images.append(image)
-        self._dirty = True
+
+       
+        insort_left(self._sorted_all_asc, image, key=lambda x: x.uploaded_at)
+        
+        insort_left(self._sorted_all_desc, image, key=lambda x: -x.uploaded_at.timestamp())
+
+        if image.album_id:
+            if image.album_id not in self._sorted_by_album_asc:
+                self._sorted_by_album_asc[image.album_id] = []
+                self._sorted_by_album_desc[image.album_id] = []
+
+            insort_left(self._sorted_by_album_asc[image.album_id], image,
+                        key=lambda x: x.uploaded_at)
+            insort_left(self._sorted_by_album_desc[image.album_id], image,
+                        key=lambda x: -x.uploaded_at.timestamp())
 
     def add_images(self, images: List[Image]) -> None:
-        self.images.extend(images)
-        self._dirty = True
-
-    def _ensure_index(self) -> None:
-        """
-        Builds index lazily only when needed.
-        """
-        if self._dirty:
-            self._index.build(self.images)
-            self._dirty = False
+        for img in images:
+            self.add_image(img)
 
     def get_paginated_images(
         self,
@@ -165,120 +75,97 @@ class ImageGallery:
         if page < 1:
             raise ValueError("Page number must be at least 1")
 
-        self._ensure_index()
+        
+        if album_id is not None:
+            if album_id not in self._sorted_by_album_asc:
+                sorted_images = []
+            else:
+                sorted_images = (
+                    self._sorted_by_album_asc[album_id]
+                    if sort_ascending else
+                    self._sorted_by_album_desc[album_id]
+                )
+        else:
+            sorted_images = (
+                self._sorted_all_asc
+                if sort_ascending else
+                self._sorted_all_desc
+            )
 
-        total_count = self._index.count(album_id)
-        total_pages = (
-            (total_count + page_size - 1) // page_size
-            if total_count > 0 else 1
-        )
+        total_count = len(sorted_images)
+        total_pages = max(1, (total_count + page_size - 1) // page_size)
 
-        page_images = self._index.get_page(
-            page=page,
-            page_size=page_size,
-            album_id=album_id,
-            sort_ascending=sort_ascending
-        )
+        start_index = (page - 1) * page_size
+        end_index = start_index + page_size
+
+        # Slice directly — O(k) where k = page_size
+        page_images = sorted_images[start_index:end_index]
+        result_images = [img.to_dict() for img in page_images]
 
         return {
-            "images": [img.to_dict() for img in page_images],
-            "total_count": total_count,
-            "page": page,
-            "page_size": page_size,
-            "total_pages": total_pages,
+            'images': result_images,
+            'total_count': total_count,
+            'page': page,
+            'page_size': page_size,
+            'total_pages': total_pages
         }
 
     def get_album_image_count(self, album_id: str) -> int:
-        self._ensure_index()
-        return self._index.count(album_id)
+      
+        return len(self._sorted_by_album_asc.get(album_id, []))
 
     def get_all_album_ids(self) -> List[str]:
-        album_ids = set()
-        for img in self.images:
-            if img.album_id is not None:
-                album_ids.add(img.album_id)
-        return list(album_ids)
+        return list(self._sorted_by_album_asc.keys())
 
 
-# =========================
-# Test Image Generator
-# =========================
 
 def generate_test_images(count: int, num_albums: int = 10) -> List[Image]:
+    import random
+    from datetime import timedelta
+
     images = []
     base_date = datetime(2020, 1, 1)
 
     for i in range(count):
-        images.append(
-            Image(
-                id=f"img_{i:06d}",
-                filename=f"photo_{i:06d}.jpg",
-                album_id=f"album_{i % num_albums:03d}" if i % 5 != 0 else None,
-                uploaded_at=base_date + timedelta(
-                    seconds=random.randint(0, 86400 * 365 * 4)
-                ),
-                size_bytes=random.randint(100_000, 5_000_000),
-                width=random.choice([1920, 3840, 4032, 1080]),
-                height=random.choice([1080, 2160, 3024, 1920]),
-            )
+        img = Image(
+            id=f"img_{i:06d}",
+            filename=f"photo_{i:06d}.jpg",
+            album_id=f"album_{i % num_albums:03d}" if i % 5 != 0 else None,
+            uploaded_at=base_date + timedelta(seconds=random.randint(0, 86400 * 365 * 4)),
+            size_bytes=random.randint(100000, 5000000),
+            width=random.choice([1920, 3840, 4032, 1080]),
+            height=random.choice([1080, 2160, 3024, 1920])
         )
+        images.append(img)
+
     return images
 
 
-# =========================
-# Correctness Test
-# =========================
-
-def verify_equivalence(original: ImageGallery, optimized: ImageGallery):
-    for page in [1, 5, 20, 50]:
-        for album in [None, "album_003"]:
-            for asc in [True, False]:
-                a = original.get_paginated_images(
-                    page=page,
-                    page_size=20,
-                    album_id=album,
-                    sort_ascending=asc
-                )
-                b = optimized.get_paginated_images(
-                    page=page,
-                    page_size=20,
-                    album_id=album,
-                    sort_ascending=asc
-                )
-                assert a == b, f"Mismatch on page={page}, album={album}, asc={asc}"
-
-    print("✅ Optimized output matches original exactly")
-
-
-# =========================
-# Benchmark
-# =========================
-
 if __name__ == "__main__":
-    print("Generating 10,000 images...")
-    images = generate_test_images(10_000)
+    import time
 
-    original_gallery = ImageGallery()
-    optimized_gallery = ImageGallery()
+    print("Generating 10,000 test images...")
+    test_images = generate_test_images(10000)
 
-    original_gallery.add_images(images)
-    optimized_gallery.add_images(images)
+    gallery = ImageGallery()
+    gallery.add_images(test_images)
 
-    verify_equivalence(original_gallery, optimized_gallery)
-
-    print("\nBenchmarking optimized pagination:\n")
+    print("\nBenchmarking pagination performance:\n")
 
     for page_num in [1, 10, 50, 100, 500]:
         start = time.perf_counter()
-        result = optimized_gallery.get_paginated_images(
-            page=page_num,
-            page_size=20
-        )
+        result = gallery.get_paginated_images(page=page_num, page_size=20)
         elapsed = time.perf_counter() - start
-        print(
-            f"Page {page_num:3d}: "
-            f"{elapsed * 1000:.2f}ms "
-            f"({len(result['images'])} images)"
-        )
+        print(f"Page {page_num:3d}: {elapsed*1000:6.2f} ms   (images: {len(result['images']):2d})")
 
-    print("\n🔥 Page cost is now constant regardless of page number")
+    print("\nBenchmarking with album filter:\n")
+
+    for page_num in [1, 10, 50, 200]:
+        start = time.perf_counter()
+        result = gallery.get_paginated_images(page=page_num, page_size=20, album_id="album_003")
+        elapsed = time.perf_counter() - start
+        print(f"Album filter, Page {page_num:3d}: {elapsed*1000:6.2f} ms   (images: {len(result['images']):2d})")
+
+    print("\n" + "="*70)
+    print("Optimized version: deep pages should now be fast (similar time to page 1)")
+    print("="*70)

@@ -1,8 +1,136 @@
-# Docker Compose file for running tests. You should customize this as needed.
+# docker-compose.yml
+# Project root level file
+# Contains services: before, after, compare, evaluate
 
 services:
-  app:
+
+  before:
     build: .
-    command: pytest -q tests
+    container_name: gallery-before
+    working_dir: /app/repository_before
     volumes:
-      - .:/app
+      - ./repository_before:/app/repository_before:ro
+      - ./tests:/app/tests:ro
+      - ./requirements.txt:/app/requirements.txt:ro
+    command: >-
+      bash -c "
+        echo '============================================================';
+        echo '  BEFORE version  (original slow implementation)';
+        echo '============================================================';
+        echo '';
+        echo '→ Running all tests ...';
+        PYTHONPATH=/app python -m unittest discover -s /app/tests -v ||
+          echo '→ Some tests failed (performance tests are expected to fail here)';
+
+        echo '';
+        echo '→ Running benchmark script ...';
+        python gallery.py ||
+          echo 'Benchmark script failed';
+
+        echo '';
+        echo '============================================================';
+        echo '  BEFORE evaluation finished';
+        echo '  → Expect: correctness pass, performance tests FAIL';
+        echo '============================================================';
+      "
+    profiles: ["before", "test"]
+
+  after:
+    build: .
+    container_name: gallery-after
+    working_dir: /app/repository_after
+    volumes:
+      - ./repository_after:/app/repository_after:ro
+      - ./tests:/app/tests:ro
+      - ./requirements.txt:/app/requirements.txt:ro
+    command: >-
+      bash -c "
+        echo '============================================================';
+        echo '  AFTER version  (optimized implementation)';
+        echo '============================================================';
+        echo '';
+        echo '→ Running all tests ...';
+        PYTHONPATH=/app python -m unittest discover -s /app/tests -v ||
+          echo '→ Some tests failed (should NOT happen on optimized version)';
+
+        echo '';
+        echo '→ Running benchmark script ...';
+        python gallery.py ||
+          echo 'Benchmark script failed';
+
+        echo '';
+        echo '============================================================';
+        echo '  AFTER evaluation finished';
+        echo '  → Expect: everything passes quickly';
+        echo '============================================================';
+      "
+    profiles: ["after", "test"]
+
+  compare:
+    build: .
+    container_name: gallery-compare
+    working_dir: /app
+    volumes:
+      - ./repository_before:/app/repository_before:ro
+      - ./repository_after:/app/repository_after:ro
+      - ./tests:/app/tests:ro
+      - ./requirements.txt:/app/requirements.txt:ro
+    command: >-
+      bash -c "
+        echo '============================================================';
+        echo '        FULL BEFORE vs AFTER COMPARISON';
+        echo '============================================================';
+
+        echo '';
+        echo '→ BEFORE';
+        echo '-----------------------------------';
+        cd repository_before &&
+          PYTHONPATH=/app python -m unittest discover -s /app/tests -v &&
+          python gallery.py ||
+            echo '→ BEFORE failed (performance tests should fail here)';
+
+        echo '';
+        echo '============================================================';
+        echo '→ AFTER';
+        echo '-----------------------------------';
+        cd ../repository_after &&
+          PYTHONPATH=/app python -m unittest discover -s /app/tests -v &&
+          python gallery.py ||
+            echo '→ AFTER failed (should NOT happen if optimized correctly)';
+
+        echo '';
+        echo '============================================================';
+        echo '  Comparison finished';
+        echo '============================================================';
+      "
+    profiles: ["compare"]
+
+  evaluate:
+    build: .
+    container_name: gallery-evaluation
+    working_dir: /app
+    volumes:
+      - .:/app:rw                               # read-write → can create report.json
+      - ./requirements.txt:/app/requirements.txt:ro
+    command: >-
+      bash -c "
+        echo '============================================================';
+        echo '  Starting Gallery Optimization Evaluation';
+        echo '============================================================';
+        echo '';
+        echo '→ Running evaluation script ...';
+        python evaluation/evaluation.py;
+
+        echo '';
+        echo '→ Report generated at: evaluation/report.json';
+        echo '→ File size:';
+        ls -lh evaluation/report.json;
+        echo '';
+        echo '→ First 20 lines of report:';
+        head -n 20 evaluation/report.json || echo '(file not created or empty)';
+        echo '';
+        echo '============================================================';
+        echo '  Evaluation finished';
+        echo '============================================================';
+      "
+    profiles: ["evaluate"]

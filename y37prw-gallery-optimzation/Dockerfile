@@ -1,7 +1,10 @@
-# Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
-
 FROM python:3.11-slim
+
 WORKDIR /app
-COPY . /app
+
+# Install dependencies
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+# Default command – will be overridden in compose
+CMD ["echo", "Please use docker-compose to select before/after"]
