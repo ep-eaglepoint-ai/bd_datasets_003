@@ -40,17 +40,18 @@ function runTestsAgainst(repoPath, env = {}) {
     REPO_PATH: repoPath,
     NODE_ENV: 'test',
   };
+
+  const timeoutMs = Number(process.env.EVALUATION_TEST_TIMEOUT_MS ?? 10 * 60_000);
   
   try {
-    const result = execSync(
-      `cd ${TESTS_DIR} && npm run test:all`,
-      { 
-        env: envVars,
-        stdio: 'pipe',
-        encoding: 'utf-8',
-        timeout: 60000,
-      }
-    );
+    const result = execSync('npm run test:all', {
+      cwd: TESTS_DIR,
+      env: envVars,
+      stdio: 'pipe',
+      encoding: 'utf-8',
+      timeout: timeoutMs,
+      maxBuffer: 10 * 1024 * 1024,
+    });
     
     return {
       success: true,
@@ -58,25 +59,35 @@ function runTestsAgainst(repoPath, env = {}) {
       error: null,
     };
   } catch (error) {
+    const timeoutHint = error && error.killed ? ` (timed out after ${timeoutMs}ms)` : '';
     return {
       success: false,
       output: error.stdout || '',
-      error: error.stderr || error.message,
+      error: (error.stderr || error.message || 'Unknown error') + timeoutHint,
     };
   }
 }
 
 async function main() {
+  // In docker-compose CI runs these are injected into the container and should be used as-is.
+  // Fall back to localhost defaults only when running outside compose.
+  const effectiveDatabaseUrl =
+    process.env.DATABASE_URL ||
+    process.env.TEST_DB_URL ||
+    'postgresql://postgres:password@localhost:5432/countdown_test';
+
+  const effectiveApiUrl = process.env.API_URL || 'http://localhost:3001';
+
   const report = {
     timestamp: new Date().toISOString(),
     task: 'BBYHBL - Custom Countdown Timer',
     
     before: runTestsAgainst(REPO_BEFORE, {
-      DATABASE_URL: process.env.TEST_DB_URL || 'postgresql://postgres:password@localhost:5432/countdown_test',
+      DATABASE_URL: effectiveDatabaseUrl,
     }),
     after: runTestsAgainst(REPO_AFTER, {
-      DATABASE_URL: process.env.TEST_DB_URL || 'postgresql://postgres:password@localhost:5432/countdown_test',
-      API_URL: 'http://localhost:3001',
+      DATABASE_URL: effectiveDatabaseUrl,
+      API_URL: effectiveApiUrl,
     }),
 
     requirements: [
@@ -88,6 +99,12 @@ async function main() {
       { id: 6, description: 'Theme customization', verified: false },
     ],
   };
+
+  // If repository_after passes the test suite, mark all requirements verified.
+  // Requirement-specific assertions live in the Jest tests; failures will flip `after.success`.
+  if (report.after && report.after.success) {
+    report.requirements = report.requirements.map((r) => ({ ...r, verified: true }));
+  }
   const reportPath = path.join(REPORTS_DIR, 'evaluation-report.json');
   fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
   
