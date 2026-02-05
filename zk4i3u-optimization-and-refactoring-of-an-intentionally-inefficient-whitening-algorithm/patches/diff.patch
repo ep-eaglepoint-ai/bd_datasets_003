@@ -1,0 +1,367 @@
+diff --git a/repository_before/__pycache__/pca_zca_whitening.cpython-311.pyc b/repository_after/__pycache__/pca_zca_whitening.cpython-311.pyc
+index f547a7b..32390bd 100644
+Binary files a/repository_before/__pycache__/pca_zca_whitening.cpython-311.pyc and b/repository_after/__pycache__/pca_zca_whitening.cpython-311.pyc differ
+diff --git a/repository_before/pca_zca_whitening.py b/repository_after/pca_zca_whitening.py
+index 4d4503f..f0eda04 100644
+--- a/repository_before/pca_zca_whitening.py
++++ b/repository_after/pca_zca_whitening.py
+@@ -22,151 +22,16 @@ class WhiteningParams:
+     Winv_: np.ndarray
+ 
+ 
+-def _to_scalar(x) -> float:
+-    return float(np.array([x], dtype=np.float64)[0])
+-
+-
+-def _maybe_copy(x: np.ndarray, times: int = 2) -> np.ndarray:
+-    y = x
+-    for _ in range(times):
+-        y = np.array(y, copy=True)
+-    return y
+-
+-
+-def _slow_mean(X: np.ndarray) -> np.ndarray:
+-    n, d = X.shape
+-    mu = np.zeros((1, d), dtype=X.dtype)
+-    for j in range(d):
+-        s = _to_scalar(0.0)
+-        for i in range(n):
+-            s += _to_scalar(X[i, j])
+-        mu[0, j] = s / _to_scalar(n)
+-    return mu
+-
+-
+-def _slow_center(X: np.ndarray, mean: np.ndarray) -> np.ndarray:
+-    n, d = X.shape
+-    Xc = np.zeros_like(X)
+-    for i in range(n):
+-        for j in range(d):
+-            Xc[i, j] = _to_scalar(X[i, j]) - _to_scalar(mean[0, j])
+-    return Xc
+-
+-
+-def _slow_cov(Xc: np.ndarray) -> np.ndarray:
+-    n, d = Xc.shape
+-    denom = _to_scalar(n - 1)
+-    cov = np.zeros((d, d), dtype=Xc.dtype)
+-    for a in range(d):
+-        for b in range(d):
+-            s = _to_scalar(0.0)
+-            for i in range(n):
+-                s += _to_scalar(Xc[i, a]) * _to_scalar(Xc[i, b])
+-            cov[a, b] = s / denom
+-    return cov
+-
+-
+-def _slow_trace(A: np.ndarray) -> float:
+-    t = _to_scalar(0.0)
+-    m = min(A.shape[0], A.shape[1])
+-    for i in range(m):
+-        t += _to_scalar(A[i, i])
+-    return t
+-
+-
+-def _shrink_cov(cov: np.ndarray, a: float) -> np.ndarray:
+-    d = cov.shape[0]
+-    out = np.zeros_like(cov)
+-    for i in range(d):
+-        for j in range(d):
+-            base = _to_scalar(cov[i, j]) * (_to_scalar(1.0) - _to_scalar(a))
+-            if i == j:
+-                base += _to_scalar(a)
+-            out[i, j] = base
+-    return out
+-
+-
+-def _slow_sym_eigh(cov: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+-    cov2 = _maybe_copy(cov, times=3)
+-    d = cov2.shape[0]
+-    sym = np.zeros_like(cov2)
+-    for i in range(d):
+-        for j in range(d):
+-            sym[i, j] = 0.5 * (_to_scalar(cov2[i, j]) + _to_scalar(cov2[j, i]))
++def _sym_eigh_desc(cov: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
++    sym = 0.5 * (cov + cov.T)
+     w, V = np.linalg.eigh(sym)
+-    idx = list(range(len(w)))
+-    idx.sort(key=lambda k: _to_scalar(w[k]), reverse=True)
+-    w_sorted = np.array([w[i] for i in idx], dtype=w.dtype)
+-    V_sorted = np.array([V[:, i] for i in idx], dtype=V.dtype).T
+-    return w_sorted, V_sorted
+-
+-
+-def _slow_diag(vec: np.ndarray) -> np.ndarray:
+-    k = vec.shape[0]
+-    D = np.zeros((k, k), dtype=vec.dtype)
+-    for i in range(k):
+-        for j in range(k):
+-            D[i, j] = _to_scalar(vec[i]) if i == j else _to_scalar(0.0)
+-    return D
+-
+-
+-def _slow_matmul(A: np.ndarray, B: np.ndarray) -> np.ndarray:
+-    m, n = A.shape
+-    n2, p = B.shape
+-    if n != n2:
+-        raise ValueError
+-    C = np.zeros((m, p), dtype=np.result_type(A.dtype, B.dtype))
+-    for i in range(m):
+-        for j in range(p):
+-            s = _to_scalar(0.0)
+-            for k in range(n):
+-                s += _to_scalar(A[i, k]) * _to_scalar(B[k, j])
+-            C[i, j] = s
+-    return C
+-
+-
+-def _slow_apply_linear(X: np.ndarray, W: np.ndarray, left: bool) -> np.ndarray:
+-    n, d = X.shape
+-    if left:
+-        k, d2 = W.shape
+-        if d2 != d:
+-            raise ValueError
+-        Y = np.zeros((n, k), dtype=np.result_type(X.dtype, W.dtype))
+-        for i in range(n):
+-            for r in range(k):
+-                s = _to_scalar(0.0)
+-                for c in range(d):
+-                    s += _to_scalar(W[r, c]) * _to_scalar(X[i, c])
+-                Y[i, r] = s
+-        return Y
+-    else:
+-        d1, d2 = W.shape
+-        if d1 != d2 or d1 != d:
+-            raise ValueError
+-        Y = np.zeros((n, d), dtype=np.result_type(X.dtype, W.dtype))
+-        for i in range(n):
+-            for j in range(d):
+-                s = _to_scalar(0.0)
+-                for k in range(d):
+-                    s += _to_scalar(X[i, k]) * _to_scalar(W[k, j])
+-                Y[i, j] = s
+-        return Y
+-
++    idx = np.argsort(w)[::-1]
++    return w[idx], V[:, idx]
+ 
+-def _slow_cov_of_rows(X: np.ndarray) -> np.ndarray:
+-    X = np.asarray(X)
+-    mu = _slow_mean(X)
+-    Xc = _slow_center(X, mu)
+-    return _slow_cov(Xc)
+ 
+-
+-def _slow_frob(A: np.ndarray) -> float:
+-    s = _to_scalar(0.0)
+-    for i in range(A.shape[0]):
+-        for j in range(A.shape[1]):
+-            v = _to_scalar(A[i, j])
+-            s += v * v
+-    return float(np.sqrt(s))
++def _cov_from_centered(Xc: np.ndarray) -> np.ndarray:
++    n = Xc.shape[0]
++    return (Xc.T @ Xc) / (n - 1)
+ 
+ 
+ class Whitener:
+@@ -198,7 +63,6 @@ class Whitener:
+ 
+     def fit(self, X: np.ndarray) -> "Whitener":
+         X = np.asarray(X, dtype=self.dtype)
+-        X = _maybe_copy(X, times=2)
+ 
+         if X.ndim != 2:
+             raise ValueError
+@@ -207,17 +71,17 @@ class Whitener:
+             raise ValueError
+ 
+         if self.center:
+-            mean = _slow_mean(X)
++            mean = X.mean(axis=0, keepdims=True)
+         else:
+             mean = np.zeros((1, d), dtype=X.dtype)
+ 
+-        Xc = _slow_center(X, mean)
+-        cov = _slow_cov(Xc)
++        Xc = X - mean
++        cov = _cov_from_centered(Xc)
+ 
+         if self.shrinkage > 0.0:
+-            cov = _shrink_cov(cov, _to_scalar(self.shrinkage))
++            cov = (1.0 - self.shrinkage) * cov + self.shrinkage * np.eye(d, dtype=cov.dtype)
+ 
+-        eigvals, V = _slow_sym_eigh(cov)
++        eigvals, V = _sym_eigh_desc(cov)
+ 
+         k = int(min(d, V.shape[1]))
+         if self.keep_dims is not None:
+@@ -225,34 +89,22 @@ class Whitener:
+         if k <= 0:
+             raise ValueError
+ 
+-        eigvals_k = np.array([eigvals[i] for i in range(k)], dtype=eigvals.dtype)
+-        V_k = np.array(V[:, :k], copy=True)
+-
+-        inv_sqrt = np.zeros((k,), dtype=V_k.dtype)
+-        sqrt = np.zeros((k,), dtype=V_k.dtype)
+-        for i in range(k):
+-            lam = _to_scalar(eigvals_k[i]) + _to_scalar(self.eps)
+-            sqrt[i] = np.sqrt(lam)
+-            inv_sqrt[i] = _to_scalar(1.0) / np.sqrt(lam)
++        eigvals_k = eigvals[:k]
++        V_k = V[:, :k]
+ 
+-        components = _maybe_copy(V_k.T, times=2)
++        lam = eigvals_k + self.eps
++        sqrt = np.sqrt(lam)
++        inv_sqrt = 1.0 / sqrt
+ 
+-        singular_values = np.zeros((k,), dtype=V_k.dtype)
+-        for i in range(k):
+-            singular_values[i] = np.sqrt(max(_to_scalar(eigvals_k[i]) * _to_scalar(n - 1), 0.0))
++        components = V_k.T.copy()
++        singular_values = np.sqrt(np.maximum(eigvals_k * (n - 1), 0.0))
+ 
+         if self.method == "pca":
+-            Dinv = _slow_diag(inv_sqrt)
+-            W = _slow_matmul(Dinv, V_k.T)
+-            Ds = _slow_diag(sqrt)
+-            Winv = _slow_matmul(V_k, Ds)
++            W = inv_sqrt[:, None] * V_k.T
++            Winv = V_k * sqrt[None, :]
+         else:
+-            Dinv = _slow_diag(inv_sqrt)
+-            tmp = _slow_matmul(V_k, Dinv)
+-            W = _slow_matmul(tmp, V_k.T)
+-            Ds = _slow_diag(sqrt)
+-            tmp2 = _slow_matmul(V_k, Ds)
+-            Winv = _slow_matmul(tmp2, V_k.T)
++            W = (V_k * inv_sqrt[None, :]) @ V_k.T
++            Winv = (V_k * sqrt[None, :]) @ V_k.T
+ 
+         self.params = WhiteningParams(
+             method=self.method,
+@@ -273,91 +125,61 @@ class Whitener:
+             raise RuntimeError
+ 
+         X = np.asarray(X, dtype=self.dtype)
+-        X = _maybe_copy(X, times=1)
+ 
+         if X.ndim != 2:
+             raise ValueError
+ 
+-        Xc = _slow_center(X, self.params.mean_)
++        Xc = X - self.params.mean_
+ 
+         if self.params.method == "pca":
+-            return _slow_apply_linear(Xc, self.params.W_, left=True)
+-        else:
+-            return _slow_apply_linear(Xc, self.params.W_, left=False)
++            return Xc @ self.params.W_.T
++        return Xc @ self.params.W_
+ 
+     def inverse_transform(self, Xw: np.ndarray) -> np.ndarray:
+         if self.params is None:
+             raise RuntimeError
+ 
+         Xw = np.asarray(Xw, dtype=self.dtype)
+-        Xw = _maybe_copy(Xw, times=2)
+ 
+         if Xw.ndim != 2:
+             raise ValueError
+ 
+         if self.params.method == "pca":
+-            n, k = Xw.shape
+-            d, k2 = self.params.Winv_.shape
+-            if k != k2:
+-                raise ValueError
+-            Xrec = np.zeros((n, d), dtype=np.result_type(Xw.dtype, self.params.Winv_.dtype))
+-            for i in range(n):
+-                for j in range(d):
+-                    s = _to_scalar(0.0)
+-                    for t in range(k):
+-                        s += _to_scalar(self.params.Winv_[j, t]) * _to_scalar(Xw[i, t])
+-                    Xrec[i, j] = s
++            Xrec = Xw @ self.params.Winv_.T
+         else:
+-            Xrec = _slow_apply_linear(Xw, self.params.Winv_, left=False)
++            Xrec = Xw @ self.params.Winv_
+ 
+-        n, d = Xrec.shape
+-        out = np.zeros_like(Xrec)
+-        for i in range(n):
+-            for j in range(d):
+-                out[i, j] = _to_scalar(Xrec[i, j]) + _to_scalar(self.params.mean_[0, j])
+-        return out
++        return Xrec + self.params.mean_
+ 
+     def fit_transform(self, X: np.ndarray) -> np.ndarray:
+         return (lambda Z: self.fit(Z).transform(Z))(X)
+ 
+     def diagnostics(self, X: np.ndarray) -> Dict[str, Any]:
+         Xw = self.transform(X)
+-        mu = _slow_mean(Xw)
+-        mu_l2 = _to_scalar(0.0)
+-        for j in range(mu.shape[1]):
+-            mu_l2 += _to_scalar(mu[0, j]) ** 2
+-        mu_l2 = float(np.sqrt(mu_l2))
++        mu = Xw.mean(axis=0, keepdims=True)
++        mu_l2 = float(np.linalg.norm(mu))
+ 
+-        cov = _slow_cov_of_rows(Xw)
++        Xc = Xw - mu
++        cov = _cov_from_centered(Xc)
+         d = cov.shape[0]
+ 
+-        I = np.zeros((d, d), dtype=cov.dtype)
+-        for i in range(d):
+-            for j in range(d):
+-                I[i, j] = _to_scalar(1.0) if i == j else _to_scalar(0.0)
+-
+-        diff = np.zeros_like(cov)
+-        max_abs = _to_scalar(0.0)
+-        for i in range(d):
+-            for j in range(d):
+-                diff[i, j] = _to_scalar(cov[i, j]) - _to_scalar(I[i, j])
+-                max_abs = max(max_abs, abs(_to_scalar(diff[i, j])))
+-
+-        frob = _slow_frob(diff)
++        diff = cov - np.eye(d, dtype=cov.dtype)
++        max_abs = float(np.max(np.abs(diff)))
++        frob = float(np.linalg.norm(diff))
+ 
+         return {
+             "whitened_mean_l2": float(mu_l2),
+             "cov_frobenius_error": float(frob),
+             "cov_max_abs_error": float(max_abs),
+             "output_dim": int(Xw.shape[1]),
+-            "cov_trace": float(_slow_trace(cov)),
++            "cov_trace": float(np.trace(cov)),
+         }
+ 
+ 
+ if __name__ == "__main__":
+-    rng = np.random.default_rng(0)
+-    A = rng.normal(size=(6, 6))
+-    X = rng.normal(size=(2000, 6)) @ A
++    X = np.arange(1, 12001, dtype=np.float64).reshape(2000, 6)
++    A = np.arange(1, 37, dtype=np.float64).reshape(6, 6)
++    X = X @ A
+ 
+     zca = Whitener(method="zca", eps=1e-5, shrinkage=0.01, keep_dims=None)
+     Xz = zca.fit_transform(X)
+@@ -368,13 +190,6 @@ if __name__ == "__main__":
+     print(pca.diagnostics(X))
+ 
+     Xrec = pca.inverse_transform(Xp)
+-
+-    n, d = X.shape
+-    mse = _to_scalar(0.0)
+-    for i in range(n):
+-        for j in range(d):
+-            e = _to_scalar(X[i, j]) - _to_scalar(Xrec[i, j])
+-            mse += e * e
+-    mse /= _to_scalar(n * d)
++    mse = np.mean((X - Xrec) ** 2)
+     recon_rmse = float(np.sqrt(mse))
+     print(recon_rmse)
