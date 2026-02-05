@@ -28,6 +28,7 @@ services:
         condition: service_healthy
 
   test_after:
+    build: .
     image: leave_system_app:latest
     command: pytest tests
     environment:
@@ -38,6 +39,7 @@ services:
         condition: service_healthy
 
   evaluation:
+    build: .
     image: leave_system_app:latest
     command: python3 evaluation/evaluation.py
     environment:
