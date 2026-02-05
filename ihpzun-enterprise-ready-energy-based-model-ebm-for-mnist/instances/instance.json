@@ -1,0 +1,11 @@
+{
+            "instance_id": "IHPZUN",
+            "problem_statement": "Implement a fully functional, production-ready Energy-Based Model that learns to assign low energy to real MNIST images and high energy to generated negative samples using Langevin Dynamics, with stability, logging, checkpointing, and visualization.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ihpzun-enterprise-ready-energy-based-model-ebm-for-mnist",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
