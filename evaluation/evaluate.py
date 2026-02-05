@@ -43,9 +43,9 @@ def run_tests(repo_path):
             "output": f"Repository path {repo_path} does not exist"
         }
     
-    # Run pytest
+    # Run pytest with explicit path
     result = subprocess.run(
-        ["pytest", "-v", "--tb=short"],
+        ["pytest", ".", "-v", "--tb=short"],
         cwd=repo_full_path,
         capture_output=True,
         text=True
@@ -75,10 +75,11 @@ def run_tests_with_coverage(repo_path):
             "output": f"Repository path {repo_path} does not exist"
         }, None
     
-    # Run pytest with coverage
+    # Run pytest with coverage and explicit path
     result = subprocess.run(
         [
             "pytest",
+            ".",
             "--cov=fiscal_engine",
             "--cov-report=json:coverage.json",
             "--cov-report=term",
