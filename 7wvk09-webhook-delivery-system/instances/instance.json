@@ -1,0 +1,11 @@
+{
+            "instance_id": "7WVK09",
+            "problem_statement": "SaaS platforms rely on webhooks to notify customers about important system events, but unreliable delivery and lack of retries can result in missed notifications and poor visibility into failures. The objective of this project is to build a Python-based Webhook Delivery System that allows customers to register webhook endpoints, delivers events reliably via HTTP, signs requests for security, and retries failed deliveries with basic backoff. The system must ensure events are not silently lost and that delivery status is clearly tracked.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/7wvk09-webhook-delivery-system",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
