@@ -1,0 +1,124 @@
+/**
+ * LinkWatchdog Component
+ * 
+ * Monitors satellite link latency pulses and detects drift anomalies
+ * using a dual-window statistical approach.
+ * 
+ * Optimized with Ring Buffer (Float64Array) for O(1) memory stability.
+ */
+class LinkWatchdog {
+  constructor() {
+    this.links = new Map();
+
+    this.CONSTANTS = {
+      WINDOW_SIZE: 200,
+      BASELINE_SIZE: 100,
+      CURRENT_SIZE: 100,
+      THRESHOLD_SIGMA: 2.0,
+      STATUS: {
+        WARMING_UP: 'WARMING_UP',
+        NOMINAL: 'NOMINAL',
+        ANOMALY: 'ANOMALY'
+      }
+    };
+  }
+
+  /**
+   * Process a latency pulse for a specific link.
+   * @param {Object} record - Input record
+   * @param {string} record.linkId - Unique identifier for the satellite link
+   * @param {number} record.latencyMs - Latency value in milliseconds
+   * @param {number} [record.timestamp] - Unix timestamp (unused in calc)
+   * @returns {string} - Current status of the link (WARMING_UP, NOMINAL, ANOMALY)
+   */
+  process({ linkId, latencyMs }) {
+    if (!this.links.has(linkId)) {
+      this.links.set(linkId, {
+        buffer: new Float64Array(this.CONSTANTS.WINDOW_SIZE),
+        count: 0,
+        head: 0,
+        status: this.CONSTANTS.STATUS.WARMING_UP
+      });
+    }
+
+    const state = this.links.get(linkId);
+    
+    // Write to buffer
+    state.buffer[state.head] = latencyMs;
+    state.head = (state.head + 1) % this.CONSTANTS.WINDOW_SIZE;
+    
+    if (state.count < this.CONSTANTS.WINDOW_SIZE) {
+      state.count++;
+    }
+
+    if (state.count < this.CONSTANTS.WINDOW_SIZE) {
+      state.status = this.CONSTANTS.STATUS.WARMING_UP;
+      return state.status;
+    }
+
+    // Full window calculation (Ring Buffer Traversal)
+    const baselineStats = this._calculateWindowStats(state.buffer, state.head, 0, this.CONSTANTS.BASELINE_SIZE);
+    const currentStats = this._calculateWindowStats(state.buffer, state.head, this.CONSTANTS.BASELINE_SIZE, this.CONSTANTS.CURRENT_SIZE);
+
+    const delta = Math.abs(currentStats.mean - baselineStats.mean);
+    const threshold = this.CONSTANTS.THRESHOLD_SIGMA * baselineStats.stdDev;
+
+    if (delta > threshold) {
+      state.status = this.CONSTANTS.STATUS.ANOMALY;
+    } else {
+      state.status = this.CONSTANTS.STATUS.NOMINAL;
+    }
+
+    return state.status;
+  }
+
+  _calculateWindowStats(buffer, head, offset, length) {
+    let sum = 0;
+    const capacity = buffer.length;
+    
+    for (let i = 0; i < length; i++) {
+      const idx = (head + offset + i) % capacity;
+      sum += buffer[idx];
+    }
+    const mean = sum / length;
+
+    let varianceSum = 0;
+    for (let i = 0; i < length; i++) {
+        const idx = (head + offset + i) % capacity;
+        const diff = buffer[idx] - mean;
+        varianceSum += diff * diff;
+    }
+
+    const variance = varianceSum / length;
+    const stdDev = Math.sqrt(variance);
+
+    return { mean, stdDev };
+  }
+
+  reset(linkId) {
+    if (this.links.has(linkId)) {
+        const state = this.links.get(linkId);
+        state.count = 0;
+        state.head = 0;
+        state.status = this.CONSTANTS.STATUS.WARMING_UP;
+    }
+  }
+
+  getLinkState(linkId) {
+      if (!this.links.has(linkId)) return undefined;
+      const state = this.links.get(linkId);
+      
+      const orderedSamples = [];
+      for(let i=0; i < state.count; i++) {
+          if (state.count < this.CONSTANTS.WINDOW_SIZE) {
+            orderedSamples.push(state.buffer[i]);
+          } else {
+            const idx = (state.head + i) % this.CONSTANTS.WINDOW_SIZE;
+            orderedSamples.push(state.buffer[idx]);
+          }
+      }
+      return { status: state.status, samples: orderedSamples };
+  }
+}
+
+module.exports = LinkWatchdog;
