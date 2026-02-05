@@ -1,0 +1,12 @@
+{
+            "instance_id": "OY72GQ",
+            "problem_statement": "A DevOps team uses a log analysis tool to parse server logs and extract error patterns for debugging production issues. The LogAnalyzer.java class reads log files, parses each line to extract timestamps and error codes, and aggregates statistics. Analyzing a 500MB log file with 2 million lines currently takes over 10 minutes, but engineers need results in under 30 seconds to quickly diagnose outages.
+Performance profiling reveals that the analyzeLogFile method reads the file inefficiently, creates excessive temporary String objects during parsing, and uses poor data structures for aggregation. The regular expression parsing is also compiled inside the loop rather than being reused. Memory usage grows unboundedly as the entire file content is held in memory.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/oy72gq-java-log-analyzer-optimization",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
