@@ -14,7 +14,7 @@ MOCK_DATA_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'books_mo
 # HELPERS
 
 def get_pace_status(user, books_read_count):
-    """Requirement: Projecting yearly goal completion based on pace."""
+    """Projecting yearly goal completion based on pace."""
     if not user.yearly_goal or user.yearly_goal == 0:
         return "No goal set"
     
@@ -64,7 +64,7 @@ def login():
 @api.route('/shelves', methods=['POST'])
 @jwt_required()
 def create_shelf():
-    """Requirement: Creating custom shelves."""
+    """Creating custom shelves."""
     user_id = get_jwt_identity()
     user = db.session.get(User, user_id)
     data = request.get_json()
@@ -98,6 +98,26 @@ def search_books():
     results = [b for b in books if query in b['title'].lower() or query in b.get('author', '').lower()]
     return jsonify(results), 200
 
+@api.route('/library', methods=['GET'])
+@jwt_required()
+def get_library():
+    """Returns all books in the user's personal library with correct image keys."""
+    user_id = get_jwt_identity()
+    books = UserBook.query.filter_by(user_id=user_id).all()
+    
+    return jsonify([{
+        "id": b.id,
+        "book_id": b.book_id,
+        "title": b.title,
+        "author": b.author,
+        "cover_image": b.cover_image,
+        "status": b.status,
+        "current_page": b.current_page,
+        "total_pages": b.total_pages,
+        "rating": b.rating,
+        "notes": b.notes
+    } for b in books]), 200
+
 @api.route('/shelf/add', methods=['POST'])
 @jwt_required()
 def add_to_shelf():
@@ -128,12 +148,11 @@ def add_to_shelf():
 @api.route('/library/<int:id>/progress', methods=['POST'])
 @jwt_required()
 def update_progress(id):
-    """Requirement: Update progress, log activity for streaks, and add notes to unfinished books."""
+    """Update progress and log activity."""
     user_id = get_jwt_identity()
     data = request.get_json()
     book = UserBook.query.filter_by(id=id, user_id=user_id).first_or_404()
     
-    # Update Pages and Log Activity (For Reading Streaks)
     if 'current_page' in data:
         diff = data['current_page'] - book.current_page
         book.current_page = data['current_page']
@@ -142,7 +161,6 @@ def update_progress(id):
             log = ReadingLog(user_book_id=book.id, pages_read=diff)
             db.session.add(log)
 
-    # Update Notes (Supports Requirement: Notes on unfinished books)
     if 'notes' in data:
         book.notes = data.get('notes')
 
@@ -157,7 +175,7 @@ def update_progress(id):
 @api.route('/library/<int:id>/finish', methods=['POST'])
 @jwt_required()
 def finish_book(id):
-    """Requirement: Marking a book as finished with final rating/notes."""
+    """Marking a book as finished."""
     user_id = get_jwt_identity()
     data = request.get_json()
     book = UserBook.query.filter_by(id=id, user_id=user_id).first_or_404()
@@ -174,7 +192,7 @@ def finish_book(id):
 @api.route('/user/stats', methods=['GET'])
 @jwt_required()
 def get_user_stats():
-    """Requirement: Calculating streaks, avg time, and yearly pace."""
+    """Calculating streaks, avg time, and yearly pace."""
     user_id = get_jwt_identity()
     user = db.session.get(User, user_id)
     if not user:
