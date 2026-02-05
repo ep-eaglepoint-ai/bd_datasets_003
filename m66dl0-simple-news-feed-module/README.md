@@ -2,11 +2,6 @@
 
 ## Commands
 
-### 1. Setup
-```bash
-docker compose build
-```
-
 ### 2. Run Tests on repository_before
 ```bash
 docker compose run --rm app bash -c 'cd repository_before && python -m pytest || true'
