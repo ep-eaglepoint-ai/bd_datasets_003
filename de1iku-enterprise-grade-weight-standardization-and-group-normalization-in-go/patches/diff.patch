@@ -1,0 +1,462 @@
+diff --git a/repository_before/.gitkeep b/repository_before/.gitkeep
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/repository_after/go.mod b/repository_after/go.mod
+new file mode 100644
+index 0000000..1fd704d
+--- /dev/null
++++ b/repository_after/go.mod
+@@ -0,0 +1,3 @@
++module repository_after
++
++go 1.21
+diff --git a/repository_after/main.go b/repository_after/main.go
+new file mode 100644
+index 0000000..2a59ea2
+--- /dev/null
++++ b/repository_after/main.go
+@@ -0,0 +1,444 @@
++// Package deep provides enterprise-grade neural network components for production systems.
++// It implements Weight Standardization (WS) and Group Normalization (GN) layers with
++// NCHW tensor abstraction, batch-size-independent operation, and deterministic behavior.
++package ws_conv
++
++import (
++	"errors"
++	"fmt"
++	"math"
++	"runtime"
++	"sync"
++	"sync/atomic"
++)
++
++// ==============================
++// Tensor Abstraction (NCHW Layout)
++// ==============================
++
++// Tensor represents a multi-dimensional array in NCHW (batch, channels, height, width) format.
++// Memory layout is contiguous row-major within each dimension: N → C → H → W.
++// Cache-friendly access patterns for convolutional operations.
++type Tensor struct {
++	N, C, H, W int
++	Data       []float32
++	strideC    int
++	strideH    int
++	strideW    int
++}
++
++// NewTensor creates a new Tensor with NCHW layout. Returns error for invalid dimensions.
++// Memory allocation is explicit and deterministic.
++func NewTensor(n, c, h, w int) (*Tensor, error) {
++	if n <= 0 || c <= 0 || h <= 0 || w <= 0 {
++		return nil, fmt.Errorf("tensor dimensions must be positive, got (%d, %d, %d, %d)", n, c, h, w)
++	}
++	if int64(n)*int64(c)*int64(h)*int64(w) > 1<<31-1 {
++		return nil, fmt.Errorf("tensor size exceeds 32-bit addressing limit")
++	}
++
++	total := n * c * h * w
++	return &Tensor{
++		N:       n,
++		C:       c,
++		H:       h,
++		W:       w,
++		Data:    make([]float32, total),
++		strideC: h * w,
++		strideH: w,
++		strideW: 1,
++	}, nil
++}
++
++// NewTensorFromData creates a tensor from existing data. Data length must match shape.
++func NewTensorFromData(n, c, h, w int, data []float32) (*Tensor, error) {
++	if n*c*h*w != len(data) {
++		return nil, fmt.Errorf("data length %d doesn't match shape (%d, %d, %d, %d)",
++			len(data), n, c, h, w)
++	}
++	return &Tensor{
++		N:       n,
++		C:       c,
++		H:       h,
++		W:       w,
++		Data:    data,
++		strideC: h * w,
++		strideH: w,
++		strideW: 1,
++	}, nil
++}
++
++// At returns the value at given indices with bounds checking.
++func (t *Tensor) At(n, c, h, w int) float32 {
++	if n < 0 || n >= t.N || c < 0 || c >= t.C || h < 0 || h >= t.H || w < 0 || w >= t.W {
++		panic(fmt.Sprintf("tensor access out of bounds: (%d,%d,%d,%d) shape (%d,%d,%d,%d)",
++			n, c, h, w, t.N, t.C, t.H, t.W))
++	}
++	return t.Data[n*t.C*t.strideC+c*t.strideC+h*t.strideH+w*t.strideW]
++}
++
++// Set assigns a value with bounds checking.
++func (t *Tensor) Set(n, c, h, w int, value float32) {
++	if n < 0 || n >= t.N || c < 0 || c >= t.C || h < 0 || h >= t.H || w < 0 || w >= t.W {
++		panic(fmt.Sprintf("tensor set out of bounds: (%d,%d,%d,%d) shape (%d,%d,%d,%d)",
++			n, c, h, w, t.N, t.C, t.H, t.W))
++	}
++	t.Data[n*t.C*t.strideC+c*t.strideC+h*t.strideH+w*t.strideW] = value
++}
++
++// Clone creates a deep copy of the tensor.
++func (t *Tensor) Clone() *Tensor {
++	dataCopy := make([]float32, len(t.Data))
++	copy(dataCopy, t.Data)
++	return &Tensor{
++		N:       t.N,
++		C:       t.C,
++		H:       t.H,
++		W:       t.W,
++		Data:    dataCopy,
++		strideC: t.strideC,
++		strideH: t.strideH,
++		strideW: t.strideW,
++	}
++}
++
++// Validate ensures tensor integrity.
++func (t *Tensor) Validate() error {
++	if t == nil {
++		return errors.New("tensor is nil")
++	}
++	if t.N <= 0 || t.C <= 0 || t.H <= 0 || t.W <= 0 {
++		return fmt.Errorf("invalid tensor dimensions: (%d,%d,%d,%d)", t.N, t.C, t.H, t.W)
++	}
++	if len(t.Data) != t.N*t.C*t.H*t.W {
++		return fmt.Errorf("data length mismatch: expected %d, got %d", t.N*t.C*t.H*t.W, len(t.Data))
++	}
++	return nil
++}
++
++// ==============================
++// Weight Standardized Convolution
++// ==============================
++
++type WSConv2DConfig struct {
++	InChannels, OutChannels int
++	KernelHeight, KernelWidth int
++	StrideH, StrideW int
++	PaddingH, PaddingW int
++	Epsilon float32
++	UseWS bool
++}
++
++func (c *WSConv2DConfig) Validate() error {
++	if c.InChannels <= 0 || c.OutChannels <= 0 {
++		return fmt.Errorf("channels must be positive: in=%d, out=%d", c.InChannels, c.OutChannels)
++	}
++	if c.KernelHeight <= 0 || c.KernelWidth <= 0 {
++		return fmt.Errorf("kernel dimensions must be positive: h=%d, w=%d", c.KernelHeight, c.KernelWidth)
++	}
++	if c.StrideH <= 0 || c.StrideW <= 0 {
++		return fmt.Errorf("strides must be positive: h=%d, w=%d", c.StrideH, c.StrideW)
++	}
++	if c.Epsilon <= 0 {
++		return fmt.Errorf("epsilon must be positive: %e", c.Epsilon)
++	}
++	return nil
++}
++
++type WSConv2D struct {
++	config WSConv2DConfig
++	weights, stdWeights *Tensor
++	biases []float32
++	mu sync.RWMutex
++	stdValid atomic.Bool
++	lastMean, lastStd []float32
++}
++
++// NewWSConv2D creates a weight-standardized conv2d layer with deterministic initialization.
++func NewWSConv2D(config WSConv2DConfig) (*WSConv2D, error) {
++	if err := config.Validate(); err != nil {
++		return nil, fmt.Errorf("invalid WSConv2D config: %w", err)
++	}
++
++	totalWeights := config.OutChannels * config.InChannels * config.KernelHeight * config.KernelWidth
++	weightsData := make([]float32, totalWeights)
++	fanIn := float32(config.InChannels * config.KernelHeight * config.KernelWidth)
++	std := float32(math.Sqrt(2.0 / float64(fanIn)))
++
++	for i := range weightsData {
++		val := float32((i*134775813 + 1) % 1000000007)
++		weightsData[i] = (val/500000003.5 - 1) * std
++	}
++
++	weights, err := NewTensorFromData(
++		config.OutChannels, config.InChannels, config.KernelHeight, config.KernelWidth, weightsData)
++	if err != nil {
++		return nil, fmt.Errorf("creating weight tensor: %w", err)
++	}
++
++	return &WSConv2D{
++		config: config,
++		weights: weights,
++		biases: make([]float32, config.OutChannels),
++		lastMean: make([]float32, config.OutChannels),
++		lastStd: make([]float32, config.OutChannels),
++	}, nil
++}
++
++// standardizeWeights computes WS per output channel.
++func (c *WSConv2D) standardizeWeights() {
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	if c.stdValid.Load() && c.stdWeights != nil {
++		return
++	}
++
++	stdWeights := c.weights.Clone()
++	for oc := 0; oc < c.config.OutChannels; oc++ {
++		var sum, sumSq float32
++		count := float32(c.config.InChannels * c.config.KernelHeight * c.config.KernelWidth)
++
++		for ic := 0; ic < c.config.InChannels; ic++ {
++			for kh := 0; kh < c.config.KernelHeight; kh++ {
++				for kw := 0; kw < c.config.KernelWidth; kw++ {
++					v := c.weights.At(oc, ic, kh, kw)
++					sum += v
++					sumSq += v * v
++				}
++			}
++		}
++		mean := sum / count
++		variance := (sumSq / count) - mean*mean
++		if variance < 0 {
++			variance = 0
++		}
++		std := float32(math.Sqrt(float64(variance + c.config.Epsilon)))
++		c.lastMean[oc] = mean
++		c.lastStd[oc] = std
++
++		for ic := 0; ic < c.config.InChannels; ic++ {
++			for kh := 0; kh < c.config.KernelHeight; kh++ {
++				for kw := 0; kw < c.config.KernelWidth; kw++ {
++					stdWeights.Set(oc, ic, kh, kw, (c.weights.At(oc, ic, kh, kw)-mean)/std)
++				}
++			}
++		}
++	}
++	c.stdWeights = stdWeights
++	c.stdValid.Store(true)
++}
++
++func (c *WSConv2D) invalidateCache() { c.stdValid.Store(false) }
++
++// Forward performs the WS convolution.
++func (c *WSConv2D) Forward(input *Tensor) (*Tensor, error) {
++	if input == nil {
++		return nil, errors.New("input tensor is nil")
++	}
++	if err := input.Validate(); err != nil {
++		return nil, fmt.Errorf("invalid input tensor: %w", err)
++	}
++	if input.C != c.config.InChannels {
++		return nil, errors.New("invalid input channels")
++	}
++	outH := (input.H+2*c.config.PaddingH-c.config.KernelHeight)/c.config.StrideH + 1
++	outW := (input.W+2*c.config.PaddingW-c.config.KernelWidth)/c.config.StrideW + 1
++	if outH <= 0 || outW <= 0 {
++		return nil, errors.New("invalid output dimensions")
++	}
++
++	output, err := NewTensor(input.N, c.config.OutChannels, outH, outW)
++	if err != nil {
++		return nil, fmt.Errorf("allocating output tensor: %w", err)
++	}
++	weights := c.weights
++	if c.config.UseWS {
++		c.standardizeWeights()
++		weights = c.stdWeights
++	}
++
++	numWorkers := min(input.N*c.config.OutChannels, runtime.NumCPU()*2)
++	workChan := make(chan [2]int, input.N*c.config.OutChannels)
++	for n := 0; n < input.N; n++ {
++		for oc := 0; oc < c.config.OutChannels; oc++ {
++			workChan <- [2]int{n, oc}
++		}
++	}
++	close(workChan)
++
++	var wg sync.WaitGroup
++	for i := 0; i < numWorkers; i++ {
++		wg.Add(1)
++		go func() {
++			defer wg.Done()
++			for work := range workChan {
++				n, oc := work[0], work[1]
++				for oh := 0; oh < output.H; oh++ {
++					inY := oh*c.config.StrideH - c.config.PaddingH
++					for ow := 0; ow < output.W; ow++ {
++						inX := ow*c.config.StrideW - c.config.PaddingW
++						var sum float32
++						for ic := 0; ic < c.config.InChannels; ic++ {
++							for kh := 0; kh < c.config.KernelHeight; kh++ {
++								iy := inY + kh
++								if iy < 0 || iy >= input.H {
++									continue
++								}
++								for kw := 0; kw < c.config.KernelWidth; kw++ {
++									ix := inX + kw
++									if ix < 0 || ix >= input.W {
++										continue
++									}
++									sum += input.At(n, ic, iy, ix) * weights.At(oc, ic, kh, kw)
++								}
++							}
++						}
++						output.Set(n, oc, oh, ow, sum)
++					}
++				}
++			}
++		}()
++	}
++	wg.Wait()
++
++	// Add biases
++	for n := 0; n < output.N; n++ {
++		for oc := 0; oc < output.C; oc++ {
++			bias := c.biases[oc]
++			for oh := 0; oh < output.H; oh++ {
++				for ow := 0; ow < output.W; ow++ {
++					output.Set(n, oc, oh, ow, output.At(n, oc, oh, ow)+bias)
++				}
++			}
++		}
++	}
++	return output, nil
++}
++
++// ==============================
++// Group Normalization (NCHW)
++// ==============================
++
++// GroupNormConfig configures Group Normalization.
++// Channels is validated against input.C at runtime.
++type GroupNormConfig struct {
++	Channels int
++	Groups   int
++	Epsilon  float32
++}
++
++func (c *GroupNormConfig) Validate() error {
++	if c.Channels <= 0 {
++		return fmt.Errorf("channels must be positive: %d", c.Channels)
++	}
++	if c.Groups <= 0 {
++		return fmt.Errorf("groups must be positive: %d", c.Groups)
++	}
++	if c.Groups > c.Channels {
++		return fmt.Errorf("groups must be <= channels: groups=%d channels=%d", c.Groups, c.Channels)
++	}
++	if c.Epsilon <= 0 {
++		return fmt.Errorf("epsilon must be positive: %e", c.Epsilon)
++	}
++	return nil
++}
++
++// GroupNorm performs batch-size-independent normalization across channel groups.
++// It supports channels that are not divisible by groups (last groups may have different sizes).
++type GroupNorm struct {
++	config GroupNormConfig
++}
++
++func NewGroupNorm(config GroupNormConfig) (*GroupNorm, error) {
++	if err := config.Validate(); err != nil {
++		return nil, fmt.Errorf("invalid GroupNorm config: %w", err)
++	}
++	return &GroupNorm{config: config}, nil
++}
++
++// Forward applies Group Normalization to an input tensor (NCHW) and returns a tensor of the same shape.
++func (g *GroupNorm) Forward(input *Tensor) (*Tensor, error) {
++	if input == nil {
++		return nil, errors.New("input tensor is nil")
++	}
++	if err := input.Validate(); err != nil {
++		return nil, fmt.Errorf("invalid input tensor: %w", err)
++	}
++	if input.C != g.config.Channels {
++		return nil, fmt.Errorf("invalid input channels: got=%d want=%d", input.C, g.config.Channels)
++	}
++
++	output, err := NewTensor(input.N, input.C, input.H, input.W)
++	if err != nil {
++		return nil, fmt.Errorf("allocating output tensor: %w", err)
++	}
++
++	groups := g.config.Groups
++	channels := input.C
++
++	// Distribute channels across groups as evenly as possible.
++	base := channels / groups
++	extra := channels % groups
++	starts := make([]int, groups+1)
++	idx := 0
++	for gr := 0; gr < groups; gr++ {
++		starts[gr] = idx
++		sz := base
++		if gr < extra {
++			sz++
++		}
++		idx += sz
++	}
++	starts[groups] = channels
++
++	spatial := input.H * input.W
++	for n := 0; n < input.N; n++ {
++		for gr := 0; gr < groups; gr++ {
++			c0 := starts[gr]
++			c1 := starts[gr+1]
++			count := float32((c1 - c0) * spatial)
++			if count <= 0 {
++				return nil, errors.New("invalid group/channel configuration")
++			}
++
++			var sum, sumSq float32
++			for c := c0; c < c1; c++ {
++				for h := 0; h < input.H; h++ {
++					for w := 0; w < input.W; w++ {
++						v := input.At(n, c, h, w)
++						sum += v
++						sumSq += v * v
++					}
++				}
++			}
++			mean := sum / count
++			variance := (sumSq / count) - mean*mean
++			if variance < 0 {
++				variance = 0
++			}
++			invStd := float32(1.0 / math.Sqrt(float64(variance+g.config.Epsilon)))
++
++			for c := c0; c < c1; c++ {
++				for h := 0; h < input.H; h++ {
++					for w := 0; w < input.W; w++ {
++						v := input.At(n, c, h, w)
++						output.Set(n, c, h, w, (v-mean)*invStd)
++					}
++				}
++			}
++		}
++	}
++
++	return output, nil
++}
++
++// ==============================
++// Utility
++// ==============================
++
++func min(a, b int) int {
++	if a < b {
++		return a
++	}
++	return b
++}

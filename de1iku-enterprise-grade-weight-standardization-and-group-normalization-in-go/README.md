@@ -1,11 +1,13 @@
-# DE1IKU - Enterprise-Grade Weight Standardization and Group Normalization in Go
+# DE1IKU - Weight Standardization and Group Normalization in Go
 
-    ## Before Test Docker Command
-    <docker before command here>
+### Run tests
 
-    ## After Test Docker Command
-    <docker after command here>
+```bash
+docker compose run --rm app go test -timeout 10s -v ./tests
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+### Run evaluation
+
+```bash
+docker compose run --rm app go run ./evaluation/evaluation.go
+```
