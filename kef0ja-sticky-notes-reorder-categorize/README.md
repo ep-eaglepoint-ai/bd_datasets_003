@@ -1,7 +1,7 @@
-# Run tests (defaults to repository_after)
+# Run tests
 docker compose run --rm app
 
-# Run tests against repository_before (expected to fail for baseline)
+# Run tests against repository_before
 docker compose run --rm app npm run test:before
 
 # Run tests against repository_after explicitly

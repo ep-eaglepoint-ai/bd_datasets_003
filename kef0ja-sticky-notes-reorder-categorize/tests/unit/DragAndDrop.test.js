@@ -2,13 +2,20 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 
+const resolveRepoFolder = () => {
+  const raw = (process.env.REPO_PATH || 'repository_after').trim();
+  if (raw.includes('repository_before')) return 'repository_before';
+  if (raw.includes('repository_after')) return 'repository_after';
+  return 'repository_after';
+};
+
 const getComponents = () => {
-  const repoPath = process.env.REPO_PATH || 'repository_after';
+  const repoPath = resolveRepoFolder();
   const App = require(`../../${repoPath}/src/App`).default;
   return { App };
 };
 
-const repoPath = process.env.REPO_PATH || 'repository_after';
+const repoPath = resolveRepoFolder();
 const describeAfter = repoPath === 'repository_after' ? describe : describe.skip;
 const describeBefore = repoPath === 'repository_before' ? describe : describe.skip;
 

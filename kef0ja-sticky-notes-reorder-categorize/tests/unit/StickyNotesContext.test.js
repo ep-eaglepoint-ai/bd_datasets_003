@@ -1,12 +1,19 @@
 import React from 'react';
 import { renderHook, act } from '@testing-library/react';
 
+const resolveRepoFolder = () => {
+  const raw = (process.env.REPO_PATH || 'repository_after').trim();
+  if (raw.includes('repository_before')) return 'repository_before';
+  if (raw.includes('repository_after')) return 'repository_after';
+  return 'repository_after';
+};
+
 const getContext = () => {
-  const repoPath = process.env.REPO_PATH || 'repository_after';
+  const repoPath = resolveRepoFolder();
   return require(`../../${repoPath}/src/context/StickyNotesContext`);
 };
 
-const repoPath = process.env.REPO_PATH || 'repository_after';
+const repoPath = resolveRepoFolder();
 const describeAfter = repoPath === 'repository_after' ? describe : describe.skip;
 const describeBefore = repoPath === 'repository_before' ? describe : describe.skip;
 

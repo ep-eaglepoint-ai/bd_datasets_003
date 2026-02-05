@@ -1,8 +1,15 @@
 // tests/integration/categoryFilter.test.js
 const path = require("path");
 
+const resolveRepoFolder = () => {
+  const raw = (process.env.REPO_PATH || 'repository_after').trim();
+  if (raw.includes('repository_before')) return 'repository_before';
+  if (raw.includes('repository_after')) return 'repository_after';
+  return 'repository_after';
+};
+
 // Use require.resolve with explicit paths
-const repoPath = process.env.REPO_PATH || "repository_after";
+const repoPath = resolveRepoFolder();
 const describeAfter = repoPath === 'repository_after' ? describe : describe.skip;
 const describeBefore = repoPath === 'repository_before' ? describe : describe.skip;
 
