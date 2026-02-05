@@ -151,6 +151,20 @@ describe("Inventory lifecycle", () => {
     // Note: Jest fake timers do not advance Redis TTL (server-side).
   });
 
+  test("getAvailableQuantity reflects DB quantity minus reserved quantity", async () => {
+    await seedInventory(ctx.txPool, [{ productId: "p_avail", quantity: 5 }]);
+
+    expect(await ctx.inventoryService.getAvailableQuantity("p_avail")).toBe(5);
+
+    const reserved = await ctx.inventoryService.reserve("p_avail", 2);
+    expect(reserved).toBe(true);
+
+    // Req 6: available = DB quantity − reserved
+    expect(await getInventoryQty(ctx.txPool, "p_avail")).toBe(5);
+    expect(await getReservation(ctx.redis, "p_avail")).toBe(2);
+    expect(await ctx.inventoryService.getAvailableQuantity("p_avail")).toBe(3);
+  });
+
   test("reservation key with short TTL expires (real wait; Redis TTL is server-side)", async () => {
     jest.useRealTimers();
     await ctx.redis.setex("reservation:p_short_ttl", 2, "1");

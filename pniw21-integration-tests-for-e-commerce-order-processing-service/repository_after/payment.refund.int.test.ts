@@ -274,6 +274,13 @@ describe("Payment + refund behaviors", () => {
     );
     expect(rr.rows).toHaveLength(1);
     expect(parseFloat(rr.rows[0].amount)).toBe(5);
+
+    // Req 9: verify Stripe refund call includes correct payment intent and amount (cents).
+    expect(stripeState.refunds.create).toHaveBeenCalledTimes(1);
+    expect(stripeState.refunds.create).toHaveBeenCalledWith({
+      payment_intent: "pi_for_partial_refund",
+      amount: 500,
+    });
   });
 
   test("reject refunds for unpaid orders and refunds exceeding ordered quantity", async () => {

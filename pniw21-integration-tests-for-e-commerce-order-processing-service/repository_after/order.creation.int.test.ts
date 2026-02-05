@@ -88,6 +88,9 @@ describe("Order creation flow", () => {
     expect(res.status).toBe(409);
     expect(res.body.error).toContain("Insufficient inventory");
 
+    // Req 4: for inventory errors no idempotency entry should be stored.
+    expect(await getIdempotency(ctx.redis, "idem_oos_1")).toBeNull();
+
     // No reservation should be left behind
     expect(await getReservation(ctx.redis, "p_out")).toBe(0);
     // Inventory unchanged
@@ -127,6 +130,16 @@ describe("Order creation flow", () => {
     );
     expect(orders.rows.length).toBe(1);
     expect(orders.rows[0].status).toBe("payment_failed");
+
+    // Req 4 / Req 8: payment failures must cache idempotency so retry returns same failed order.
+    expect(await getIdempotency(ctx.redis, "idem_decline_1")).toBe(
+      orders.rows[0].id
+    );
+
+    // Req 4: Stripe mock called with correct total amount (in cents).
+    expect(stripeState.paymentIntents.create).toHaveBeenCalledTimes(1);
+    const args = stripeState.paymentIntents.create.mock.calls[0][0];
+    expect(args.amount).toBe(Math.round(parseFloat(orders.rows[0].total) * 100));
 
     // Inventory restored (confirmReservation not called)
     expect(await getInventoryQty(ctx.txPool, "p2")).toBe(3);
@@ -205,6 +218,13 @@ describe("Order creation flow", () => {
     expect(res.status).toBe(201);
     expect(res.body.status).toBe("paid");
 
+    // Req 4: idempotency stored + Stripe mock called with correct cents.
+    expect(await getIdempotency(ctx.redis, "idem_wh_multi_1")).toBe(res.body.id);
+    const stripeState = (global as any).__stripeMockState;
+    expect(stripeState.paymentIntents.create).toHaveBeenCalledTimes(1);
+    const args = stripeState.paymentIntents.create.mock.calls[0][0];
+    expect(args.amount).toBe(Math.round(res.body.total * 100));
+
     expect(await getInventoryQty(ctx.txPool, "wh1:pA")).toBe(2);
     expect(await getInventoryQty(ctx.txPool, "wh2:pB")).toBe(0);
     expect(await getReservation(ctx.redis, "wh1:pA")).toBe(0);
@@ -229,6 +249,13 @@ describe("Order creation flow", () => {
 
     expect(res.status).toBe(201);
     expect(res.body.status).toBe("paid");
+
+    // Req 4: idempotency stored + Stripe mock called with correct cents.
+    expect(await getIdempotency(ctx.redis, "idem_multi_1")).toBe(res.body.id);
+    const stripeState = (global as any).__stripeMockState;
+    expect(stripeState.paymentIntents.create).toHaveBeenCalledTimes(1);
+    const args = stripeState.paymentIntents.create.mock.calls[0][0];
+    expect(args.amount).toBe(Math.round(res.body.total * 100));
 
     expect(await getInventoryQty(ctx.txPool, "pA")).toBe(3);
     expect(await getInventoryQty(ctx.txPool, "pB")).toBe(3);
