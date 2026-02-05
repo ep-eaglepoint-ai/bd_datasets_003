@@ -16,4 +16,4 @@ COPY repository_after/ /app/repository_after/
 COPY tests/ /app/tests/
 COPY jest.meta.config.js /app/jest.meta.config.js
 
-CMD ["sh", "-lc", "node /app/repository_after/kanban_app/node_modules/jest/bin/jest.js --config /app/jest.meta.config.js --runInBand --silent"]
+CMD ["sh", "-lc", "cd /app/repository_after/kanban_app && node node_modules/jest/bin/jest.js --config /app/jest.meta.config.js --runInBand --silent"]
