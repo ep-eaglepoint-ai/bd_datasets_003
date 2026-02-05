@@ -3,15 +3,16 @@ deleted file mode 100644
 index e69de29..0000000
 diff --git a/repository_after/concurrent_booking.sql b/repository_after/concurrent_booking.sql
 new file mode 100644
-index 0000000..bbb66e8
+index 0000000..ae430bb
 --- /dev/null
 +++ b/repository_after/concurrent_booking.sql
-@@ -0,0 +1,58 @@
+@@ -0,0 +1,51 @@
 +-- PostgreSQL Transaction to Prevent Double Booking Under Concurrency
 +-- 
-+-- This solution ensures we always have a concrete row to lock by using a UNION ALL
-+-- with VALUES clause that creates a virtual row for the resource_id, guaranteeing 
-+-- serialization even when no bookings exist yet for that resource.
++-- This solution ensures concurrency safety by using an advisory lock on the resource_id.
++-- Advisory locks allow us to create a serialization point for a specific ID even
++-- before any rows exist in the bookings table, resolving the race condition
++-- where multiple transactions might try to insert the first booking simultaneously.
 +--
 +-- Schema (given):
 +-- CREATE TABLE bookings (
@@ -21,24 +22,17 @@ index 0000000..bbb66e8
 +--     booked_at TIMESTAMP NOT NULL DEFAULT NOW()
 +-- );
 +
-+-- The booking prevention transaction
 +-- Parameters: $1 = resource_id, $2 = user_id
 +
 +BEGIN;
 +
-+-- Step 1: Create a serialization point by locking a guaranteed-to-exist row
-+-- We use UNION ALL with VALUES to ensure there's always a row to lock for any resource_id
-+-- This prevents the "empty SELECT FOR UPDATE" problem
-+WITH resource_lock AS (
-+    SELECT resource_id FROM bookings WHERE resource_id = $1
-+    UNION ALL
-+    SELECT $1 as resource_id
-+    LIMIT 1
-+)
-+SELECT resource_id FROM resource_lock FOR UPDATE;
++-- Step 1: Create a serialization point using an advisory lock.
++-- pg_advisory_xact_lock is automatically released at the end of the transaction.
++-- This ensures that only one transaction at a time can process booking logic 
++-- for a specific resource_id, regardless of whether the row exists yet.
++SELECT pg_advisory_xact_lock($1);
 +
-+-- Step 2: Now that we hold an exclusive lock, safely check and insert
-+-- Only one transaction can hold the lock at a time, eliminating race conditions
++-- Step 2: Now that we hold the lock, safely check and insert.
 +WITH booking_attempt AS (
 +    INSERT INTO bookings (resource_id, user_id)
 +    SELECT $1, $2
@@ -57,12 +51,11 @@ index 0000000..bbb66e8
 +COMMIT;
 +
 +-- EXPLANATION OF CONCURRENCY SAFETY:
-+-- 1. The UNION ALL with VALUES($1) ensures we always have exactly one row to lock
-+-- 2. If bookings exist for the resource: we lock the existing booking row
-+-- 3. If no bookings exist: we lock the virtual row created by VALUES($1)
-+-- 4. SELECT ... FOR UPDATE creates an exclusive lock that blocks other transactions
-+-- 5. The lock is held until COMMIT/ROLLBACK, preventing concurrent access
-+-- 6. Only after acquiring the lock do we check NOT EXISTS and potentially insert
-+-- 7. This guarantees exactly one transaction can proceed with booking logic at a time
-+-- 8. Works correctly under READ COMMITTED isolation level with true concurrency safety
++-- 1. pg_advisory_xact_lock($1) creates a lock tied to the resource_id value.
++-- 2. If another transaction tries to lock the same $1, it will wait.
++-- 3. Once the lock is acquired, we perform the NOT EXISTS check against the current state.
++-- 4. This eliminates the race condition where two transactions check for existence 
++--    at the same time before either has committed.
++-- 5. By using xact_lock, we ensure the lock is held until COMMIT, preventing
++--    interleaved execution that leads to double booking.
 \ No newline at end of file
