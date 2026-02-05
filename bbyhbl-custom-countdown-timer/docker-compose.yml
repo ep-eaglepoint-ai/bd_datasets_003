@@ -60,8 +60,6 @@ services:
       API_URL: http://api:3001
       DATABASE_URL: postgresql://postgres:password@db:5432/countdown_db
     volumes:
-      - ./tests:/app/tests
-      - ./repository_after:/app/repository_after
       - ./evaluation:/app/evaluation
 
 volumes:
