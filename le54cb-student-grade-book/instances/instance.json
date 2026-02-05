@@ -1,0 +1,12 @@
+{
+            "instance_id": "LE54CB",
+            "problem_statement": "A high school teacher needs a simple C++ program to manage student grades throughout the semester. Currently, grades are tracked in spreadsheets which makes it difficult to quickly calculate averages, find the highest and lowest scores, or identify students who are struggling. The teacher wants a console application where student records can be added, grades can be recorded for different assignments, and statistics can be viewed on demand.
+The system should persist data to a text file so grades are not lost between sessions. The teacher wants to be able to add new students, record assignment grades, view individual student performance, see class-wide statistics, and identify students below a passing threshold. The interface should be simple enough for someone with basic computer skills to operate.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/le54cb-student-grade-book",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
