@@ -1,0 +1,11 @@
+{
+            "instance_id": "GTJMTZ",
+            "problem_statement": "Received a feature request from the product team to build an internal productivity tool for the engineering department. Team leads noticed that developers struggle with focus during long coding sessions and want a simple, accessible timer application that follows the Pomodoro Technique. The tool should live as a standalone web app accessible from any browser without installation, and it needs to track completed focus sessions so developers can review their productivity patterns.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/gtjmtz-pomodoro-timer",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        

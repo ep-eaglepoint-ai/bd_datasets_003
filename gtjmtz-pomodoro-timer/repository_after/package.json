@@ -1,0 +1,32 @@
+{
+  "name": "pomodoro-timer",
+  "type": "module",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "node --input-type=module -e \"import { spawn } from 'node:child_process';\nconst vitestBin = process.platform === 'win32' ? 'node_modules/.bin/vitest.cmd' : 'node_modules/.bin/vitest';\nconst child = spawn(vitestBin, ['run', '--reporter', 'verbose'], { stdio: ['inherit', 'pipe', 'pipe'] });\nconst isStatusLine = (line) => /^\\s*[✓√×✗xX]\\s+/.test(line);\nconst keep = (line) => isStatusLine(line) || /^\\s*[✓√]\\s+tests\\//.test(line) || /^\\s*Test Files\\s+/.test(line) || /^\\s*Tests\\s+/.test(line) || /^\\s*✓\\s+tests\\//.test(line);\nconst drop = (line) => {\n  if (!line.trim()) return true;\n  if (line.includes('The CJS build of Vite')) return true;\n  if (line.includes('vite.dev/guide/troubleshooting')) return true;\n  if (line.includes('vite-cjs-node-api-deprecat')) return true;\n  if (/^\\s*d for more details\\.\\s*$/.test(line)) return true;\n  if (/^\\s*RUN\\s+v\\d+\\.\\d+\\.\\d+\\b/.test(line)) return true;\n  if (/^\\s*Start at\\s+/.test(line)) return true;\n  if (/^\\s*Duration\\s+/.test(line)) return true;\n  return false;\n};\nconst pipeFiltered = (stream, write) => {\n  let buf = '';\n  stream.setEncoding('utf8');\n  stream.on('data', (chunk) => {\n    buf += chunk;\n    let i;\n    while ((i = buf.indexOf('\\n')) !== -1) {\n      const raw = buf.slice(0, i);\n      buf = buf.slice(i + 1);\n      const line = raw.endsWith('\\r') ? raw.slice(0, -1) : raw;\n      if (drop(line)) continue;\n      if (keep(line) || line.includes(' FAIL ') || line.startsWith(' FAIL ') || line.includes('Error:') || line.includes('Unhandled') || line.includes('Unhandled Rejection')) {\n        write(line + '\\n');\n      }\n    }\n  });\n  stream.on('end', () => {\n    if (!buf) return;\n    const line = buf.endsWith('\\r') ? buf.slice(0, -1) : buf;\n    if (drop(line)) return;\n    if (keep(line) || line.includes(' FAIL ') || line.startsWith(' FAIL ') || line.includes('Error:') || line.includes('Unhandled') || line.includes('Unhandled Rejection')) {\n      write(line);\n    }\n  });\n};\npipeFiltered(child.stdout, (s) => process.stdout.write(s));\npipeFiltered(child.stderr, (s) => process.stderr.write(s));\nchild.on('close', (code, signal) => {\n  if (signal) process.exit(1);\n  process.exit(code ?? 1);\n});\""
+  },
+  "dependencies": {
+    "next": "^16.1.6",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "6.6.3",
+    "@testing-library/react": "16.1.0",
+    "@testing-library/user-event": "14.5.2",
+    "@types/node": "22.13.1",
+    "@types/react": "19.0.8",
+    "@types/react-dom": "19.0.3",
+    "autoprefixer": "10.4.20",
+    "jsdom": "25.0.1",
+    "postcss": "8.5.1",
+    "tailwindcss": "3.4.17",
+    "typescript": "5.7.3",
+    "vitest": "2.1.9"
+  }
+}
