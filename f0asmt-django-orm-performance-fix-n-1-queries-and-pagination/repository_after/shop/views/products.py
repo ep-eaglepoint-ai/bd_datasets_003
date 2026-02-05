@@ -2,6 +2,7 @@ from django.shortcuts import render, get_object_or_404
 from django.core.paginator import Paginator
 from django.http import JsonResponse
 from django.db.models import Q, F, Avg, Count, Prefetch
+from django.contrib.postgres.search import TrigramSimilarity
 from django.core.cache import cache
 from shop.models import Product, Category, Brand, Tag, ProductImage, Review
 from shop.signals import PRODUCT_LIST_VERSION_KEY
@@ -32,8 +33,8 @@ def product_list(request):
 
     # Prefetch Related
     products = products.prefetch_related(
-        'tags',
-        'images'
+        Prefetch('tags', queryset=Tag.objects.all()),
+        Prefetch('images', queryset=ProductImage.objects.all())
     )
 
     category_slug = request.GET.get('category')
@@ -61,11 +62,17 @@ def product_list(request):
 
     search = request.GET.get('search')
     if search:
-        products = products.filter(
-            Q(name__icontains=search) |
-            Q(description__icontains=search) |
-            Q(sku__icontains=search)
-        )
+        # Use PostgreSQL Trigram Similarity for search
+        # We annotating similarity and filtering/ordering by it
+        products = products.annotate(
+            similarity=TrigramSimilarity('name', search) + 
+                       TrigramSimilarity('description', search) + 
+                       TrigramSimilarity('sku', search)
+        ).filter(similarity__gt=0.1).order_by('-similarity')
+        # Note: Trigram filtering usually requires 'similarity__gt' or similar threshold
+        # Or we can just use simple Q filters if Trigram is just for ranking, 
+        # but Requirement 8 says "Text search must use PostgreSQL trigram similarity...". 
+        # So replacing strict icontains with similarity based search is the goal.
 
     in_stock = request.GET.get('in_stock')
     if in_stock == 'true':
@@ -77,7 +84,11 @@ def product_list(request):
 
     sort = request.GET.get('sort', '-created_at')
     if sort in ['price', '-price', 'name', '-name', 'created_at', '-created_at']:
-        products = products.order_by(sort)
+        # Req 14: All paginated queries must include id as a tiebreaker
+        if 'id' not in sort:
+             products = products.order_by(sort, 'id')
+        else:
+             products = products.order_by(sort)
 
     paginator = Paginator(products, 20)
     page = request.GET.get('page', 1)
@@ -234,36 +245,9 @@ def product_detail(request, slug):
         'rating': avg_rating,
         'review_count': review_count,
         'tags': [{'id': tag.id, 'name': tag.name} for tag in tags],
-        # metadata is deferred, accessing it would trigger query. 
-        # But we need it for display according to original code: accessing directly `product.metadata`.
-        # Wait, the prompt said: "Defer large JSON fields (metadata) not needed for display."
-        # BUT checking original code line 160: `'metadata': product.metadata,`
-        # It IS in the response.
-        # "Defer large JSON fields (metadata) not needed for display" implies we should NOT include it?
-        # OR "Exclude large JSON fields (metadata) using .defer()."
-        # AND "Ensure the JSON response structure remains unchanged."
-        # This is contradictory if the original response included it.
-        # Let's check the prompt again: "Defer large JSON fields (metadata) not needed for display."
-        # If it IS in the JSON response, it IS needed for display (technically).
-        # However, oftentimes metadata is huge and maybe the user meant "if not needed".
-        # But "Ensure the JSON response structure remains unchanged" means I MUST include it.
-        # If I include it, and it was deferred, it will trigger a separate query.
-        # That means 1 extra query. 
-        # Requirement 4: "Defer large JSON fields (`metadata`) not needed for display."
-        # Requirement 5: "Ensure the JSON response structure remains unchanged."
-        # If I remove it from JSON, I violate #5.
-        # If I keep it in JSON but defer it, I trigger an extra query, but maybe that's the intent? (Lazy load?)
-        # Or maybe the user THINKS it's not needed, but it is in the code.
-        # I will keep it in the JSON to satisfy #5. If it triggers a query, so be it, or I assume the user implies removing it from JSON too?
-        # "Defer ... not needed for display" -> strongly suggests it shouldn't be in the response.
-        # I will OMIT it from the JSON response and update the `product_detail` functionality?
-        # NO, "Ensure the JSON response structure remains unchanged" is explicit.
-        # I'll stick to maintaining structure. Accessing `product.metadata` will trigger the deferred load.
-        # Is there any way to respect both? Only if `metadata` key in JSON was None or empty?
-        # I will trust "structure remains unchanged" as the stronger constraint for API contracts.
-        # I will include it.
         'metadata': product.metadata,
         'reviews': review_data,
+
         'related_products': related_data,
     })
     

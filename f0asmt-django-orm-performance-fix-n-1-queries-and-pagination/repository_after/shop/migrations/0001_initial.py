@@ -169,6 +169,10 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name='product',
+            index=models.Index(fields=['created_at'], name='shop_produc_created_7eec82_idx'),
+        ),
+        migrations.AddIndex(
+            model_name='product',
             index=django.contrib.postgres.indexes.GinIndex(fields=['name'], name='product_name_gin', opclasses=['gin_trgm_ops']),
         ),
         migrations.AddIndex(

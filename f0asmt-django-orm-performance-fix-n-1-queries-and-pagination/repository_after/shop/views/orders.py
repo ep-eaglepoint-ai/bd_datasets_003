@@ -9,96 +9,7 @@ from shop.models import Order, OrderItem, ProductImage
 from shop.signals import get_order_list_version_key
 
 
-@login_required
-def order_list(request):
-    # Optimize query: filter by user and defer large fields
-    orders = Order.objects.filter(user=request.user).defer('shipping_address', 'billing_address')
 
-    status = request.GET.get('status')
-    if status:
-        orders = orders.filter(status=status)
-
-    date_from = request.GET.get('date_from')
-    if date_from:
-        orders = orders.filter(created_at__date__gte=date_from)
-
-    date_to = request.GET.get('date_to')
-    if date_to:
-        orders = orders.filter(created_at__date__lte=date_to)
-
-    # Base ordering for cursor pagination stability
-    # Must be deterministic: created_at desc, then id desc
-    orders = orders.order_by('-created_at', '-id')
-
-    # Cursor Pagination Logic
-    cursor = request.GET.get('cursor')
-    if cursor:
-        try:
-            # Decode cursor: "timestamp_str|id"
-            decoded_cursor = base64.b64decode(cursor).decode('utf-8')
-            parts = decoded_cursor.split('|')
-            if len(parts) == 2:
-                last_created_at_str, last_id = parts
-                last_created_at = parse_datetime(last_created_at_str)
-                
-                # Filter for items "after" the cursor (which means older/smaller in desc order)
-                # created_at < last_created OR (created_at == last_created AND id < last_id)
-                if last_created_at:
-                    orders = orders.filter(
-                        Q(created_at__lt=last_created_at) |
-                        Q(created_at=last_created_at, id__lt=last_id)
-                    )
-        except (ValueError, TypeError, UnicodeDecodeError):
-            pass  # Invalid cursor, ignore
-
-    per_page = 10
-    # Fetch per_page + 1 to know if there's a next page
-    orders_list = list(orders[:per_page + 1])
-    
-    has_next = len(orders_list) > per_page
-    if has_next:
-        # Remove the extra item, it was just for check
-        orders_list = orders_list[:-1]
-        next_item = orders_list[-1]
-        # Generate next cursor
-        cursor_data = f"{next_item.created_at.isoformat()}|{next_item.id}"
-        next_cursor = base64.b64encode(cursor_data.encode('utf-8')).decode('utf-8')
-    else:
-        next_cursor = None
-
-    order_data = []
-    for order in orders_list:
-        # Prefetch logic for items or simple iteration?
-        # Items are related via ForeignKey (OrderItem -> Order).
-        # "items = order.items.all()" -> triggers query for each order (N+1 again).
-        # We should optimize this.
-        # However, custom cursor pagination makes prefetch_related harder if we sliced in Python?
-        # NO, we sliced the QuerySet (LIMIT), so we can use prefetch_related on the initial queryset!
-        # BUT we already evaluated `list(orders[:per_page+1])`.
-        # To optimize items, we should have added `prefetch_related` BEFORE evaluation.
-        # Let's check constraints. "Optimize order_list view".
-        # I should add prefetch_related('items__product__images') to allow efficient traversal.
-        pass
-
-    # Re-evaluating optimal prefetch strategy:
-    # 1. We need order.items.all()
-    # 2. For each item, we need item.product (and product.images)
-    # So: .prefetch_related('items__product__images')
-    # Let's fix the initial queryset definition above (I can't edit previous lines in this Replace block easily without replacing the whole function again?
-    # Actually I AM replacing the whole function.
-    # So I will inject prefetch_related in the definition.
-    
-    # Redefine queryset with optimization
-    orders = Order.objects.filter(user=request.user).defer('shipping_address', 'billing_address').select_related().prefetch_related(
-        'items__product__images' 
-    )
-    # Re-apply filters ... (I will include this in the final replacement content)
-    
-    # Wait, I wrote the cursor logic above but didn't output it. 
-    # I will restart the replacement content generation to include prefetch.
-    
-    # Resetting replacement content string...
-    pass
 
 @login_required
 def order_list(request):
@@ -116,7 +27,7 @@ def order_list(request):
     # Prefetch items and deep nested product images
     # We use 'items' (related_name for OrderItem) -> product -> images
     orders = Order.objects.filter(user=request.user).defer(
-        'shipping_address', 'billing_address'
+        'shipping_address', 'billing_address', 'metadata'
     ).prefetch_related(
         'items__product__images'
     )
@@ -183,9 +94,11 @@ def order_list(request):
     total_count = count_orders.count()
     total_pages = (total_count + per_page - 1) // per_page if total_count > 0 else 1
     
-    # For current_page with cursor pagination: if no cursor = page 1, else approximate page 2+
-    # We can't determine exact page number efficiently with cursors
-    current_page = 1 if not cursor else None  # None indicates cursor-based, not page-based
+    # For current_page with cursor pagination:
+    # Clients expect an integer. If cursor is used, we don't know the exact page number easily.
+    # We will return 1 as a placeholder to satisfy type constraints, or handle strict page logic if needed.
+    # Given the constraint to not break clients expecting numeric `current_page`, 1 is safer than None.
+    current_page = 1 
     has_previous = cursor is not None  # If cursor exists, we're past the first page
     
     order_data = []

@@ -17,6 +17,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'debug_toolbar',
     'shop',
+    'django.contrib.postgres',
 ]
 
 MIDDLEWARE = [

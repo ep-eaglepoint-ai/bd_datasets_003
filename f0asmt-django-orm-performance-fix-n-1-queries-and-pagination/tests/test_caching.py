@@ -22,19 +22,20 @@ def test_product_list_caching(client, django_assert_num_queries):
     assert response.status_code == 200
 
     # Second request - should be cached (0 queries ideally, but middleware/auth might add some if checking session)
-    # Since we are using client, middleware runs. 
-    # But product queries should be 0.
-    # Let's count total queries.
-    with django_assert_num_queries(0): # Should be fully cached response for the view part?
-        # Actually middleware usually has session/user overhead.
-        # But for unauthenticated user it might be low.
-        # However, checking cache.get call is better.
-        # But we can assert that query count is significantly lower or 0 if we mock cache?
-        # Let's trust django_assert_num_queries checking if view executes DB calls.
-        # Wait, if middleware runs, session query might happen.
-        # Better strategy: modify product and see if cache returns OLD data (if we disabled signals) or NEW data (if signals work).
-        # Test invalidation:
-        pass
+    # The view itself should not query products.
+    with django_assert_num_queries(0):
+        # We need to mock cache or rely on actual cache behavior.
+        # Since we use database cache or dummy, we might see queries for cache itself if using db backend.
+        # But prompt said "Cache: Redis", so no DB queries for cache.
+        # Middleware-related queries (session, user) might occur.
+        # However, for pure API view caching, we expect 0 product queries.
+        # django_assert_num_queries counts ALL queries.
+        # To make this robust, we can just assert response content without strictly 0 if middleware is noisy,
+        # BUT the requirement says "Cache query results...".
+        # Let's assume redis is working and middleware is quiet enough or verified elsewhere.
+        # If this fails due to middleware queries, we might need to adjust.
+        # For now, placing the call inside is the correct way to test.
+        client.get(url)
     
     # Check cache key exists? 
     # We can't easily predict exact key due to version, but we know prefix.

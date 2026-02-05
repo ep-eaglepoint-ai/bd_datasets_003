@@ -62,6 +62,7 @@ class Product(models.Model):
             models.Index(fields=['brand']),
             models.Index(fields=['is_active']),
             models.Index(fields=['price']),
+            models.Index(fields=['created_at']),
             # GIN Indexes for Trigram Search
             GinIndex(fields=['name'], opclasses=['gin_trgm_ops'], name='product_name_gin'),
             GinIndex(fields=['description'], opclasses=['gin_trgm_ops'], name='product_desc_gin'),
