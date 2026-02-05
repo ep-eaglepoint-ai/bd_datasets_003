@@ -56,8 +56,8 @@ diff -ruN repository_before/backend/app/__init__.py repository_after/backend/app
 +# Distributed Task Priority Dashboard - Backend Package
 diff -ruN repository_before/backend/app/celery_app.py repository_after/backend/app/celery_app.py
 --- repository_before/backend/app/celery_app.py	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/backend/app/celery_app.py	2026-02-05 14:17:36.043770800 +0300
-@@ -0,0 +1,76 @@
++++ repository_after/backend/app/celery_app.py	2026-02-05 15:53:18.051822100 +0300
+@@ -0,0 +1,81 @@
 +"""Celery application configuration with priority-based queuing."""
 +from celery import Celery
 +from kombu import Queue
@@ -123,6 +123,11 @@ diff -ruN repository_before/backend/app/celery_app.py repository_after/backend/a
 +    # Retry settings
 +    task_acks_late=True,
 +    task_reject_on_worker_lost=True,
++    
++    # Transport options
++    broker_transport_options={
++        "queue_order_strategy": "priority"
++    },
 +)
 +
 +
@@ -136,7 +141,7 @@ diff -ruN repository_before/backend/app/celery_app.py repository_after/backend/a
 +    return priority_map.get(priority.lower(), "medium")
 diff -ruN repository_before/backend/app/config.py repository_after/backend/app/config.py
 --- repository_before/backend/app/config.py	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/backend/app/config.py	2026-02-05 14:17:36.046280900 +0300
++++ repository_after/backend/app/config.py	2026-02-05 16:07:39.103482800 +0300
 @@ -0,0 +1,44 @@
 +"""Configuration settings for the Distributed Task Priority Dashboard."""
 +import os

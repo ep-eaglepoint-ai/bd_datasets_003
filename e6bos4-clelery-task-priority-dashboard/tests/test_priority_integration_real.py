@@ -54,7 +54,7 @@ class TestRealPriorityIntegration:
             routing_key="high"
         )
 
-        time.sleep(2.0) # Wait for persistence (Critical for CI/CD consistency)
+        time.sleep(20.0) # Wait for persistence (Safe margin for slow CI)
 
         # 3. Start Worker
         worker_thread = threading.Thread(target=start_worker, daemon=True)
