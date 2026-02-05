@@ -8,10 +8,8 @@ services:
       sh -c "
       cp tests/*.go repository_before/ &&
       cd repository_before &&
-      go test -v -race . ;
-      TEST_RESULT=$$? &&
-      rm -f aggregator_test.go aggregator_bench_test.go &&
-      exit $$TEST_RESULT
+      (go test -v -race . || true) &&
+      rm -f aggregator_test.go aggregator_bench_test.go
       "
 
   tests-after:
@@ -51,6 +49,7 @@ services:
       BEFORE_RESULT=$$? &&
       rm -f aggregator_test.go aggregator_bench_test.go &&
       cd .. &&
+      echo 'Before tests result:' $$BEFORE_RESULT '(failures expected)' &&
       echo 'Testing repository_after...' &&
       cp tests/*.go repository_after/ &&
       cd repository_after &&
@@ -58,6 +57,6 @@ services:
       AFTER_RESULT=$$? &&
       rm -f aggregator_test.go aggregator_bench_test.go &&
       cd .. &&
-      echo 'Before result:' $$BEFORE_RESULT 'After result:' $$AFTER_RESULT &&
+      echo 'After tests result:' $$AFTER_RESULT &&
       if [ $$AFTER_RESULT -eq 0 ]; then exit 0; else exit 1; fi
       "
