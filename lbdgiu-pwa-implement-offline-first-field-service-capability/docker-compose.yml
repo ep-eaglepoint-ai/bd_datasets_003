@@ -20,3 +20,5 @@ services:
       - server
     environment:
       - VITE_SERVER_URL=http://server:4000 
+    volumes:
+      - .:/app
