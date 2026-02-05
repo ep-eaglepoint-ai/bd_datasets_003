@@ -1,0 +1,12 @@
+{
+            "instance_id": "T9IDVO",
+            "problem_statement": "The task is to optimize a function that counts how many words start with each given prefix. The baseline implementation scans the entire word list for every prefix, resulting in a time complexity of O(N × P). The goal is to improve this by using preprocessing and a more efficient lookup strategy while preserving exact baseline behavior, including case sensitivity, correct handling of empty prefixes, and support for duplicate words and prefixes. Solutions are evaluated based on correctness and whether they achieve a strictly better algorithmic complexity than the baseline.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/t9idvo-prefix-count-optimization-using-sorting-and-binary-search",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
