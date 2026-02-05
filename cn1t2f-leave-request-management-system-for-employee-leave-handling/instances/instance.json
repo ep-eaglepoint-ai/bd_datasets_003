@@ -5,7 +5,10 @@
             "test_patch": "tests/",
             "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/cn1t2f-leave-request-management-system-for-employee-leave-handling",
             "environment_setup": "Dockerfile",
-            "FAIL_TO_PASS": [],
+            "FAIL_TO_PASS": [
+                "tests/test_backend.py",
+                "tests/test_concurrency.py"
+            ],
             "PASS_TO_PASS": []
         }
         

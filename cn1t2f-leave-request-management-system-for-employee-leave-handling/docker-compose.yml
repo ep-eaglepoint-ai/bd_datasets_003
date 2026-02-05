@@ -1,9 +1,50 @@
+version: '3.8'
 
-        # Docker Compose file for running tests. You should customize this as needed.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: leave_db
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U user -d leave_db" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
-        services:
   app:
     build: .
-    command: pytest -q tests
+    image: leave_system_app:latest
+    command: python3 repository_after/app.py
+    ports:
+      - "5000:5000"
+    environment:
+      DATABASE_URL: postgresql://user:password@db:5432/leave_db
+    depends_on:
+      db:
+        condition: service_healthy
+
+  test_after:
+    image: leave_system_app:latest
+    command: pytest tests
+    environment:
+      DATABASE_URL: postgresql://user:password@db:5432/leave_db
+      PYTHONPATH: /app/repository_after
+    depends_on:
+      db:
+        condition: service_healthy
+
+  evaluation:
+    image: leave_system_app:latest
+    command: python3 evaluation/evaluation.py
+    environment:
+      DATABASE_URL: postgresql://user:password@db:5432/leave_db
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      db:
+        condition: service_healthy
     volumes:
-      - .:/app
+      - ./evaluation/reports:/app/evaluation/reports

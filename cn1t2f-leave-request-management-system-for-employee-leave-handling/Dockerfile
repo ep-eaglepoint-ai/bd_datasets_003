@@ -1,8 +1,17 @@
+FROM python:3.11-slim
 
-        # Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
-
-        FROM python:3.11-slim
 WORKDIR /app
-COPY . /app
+
+# Install system dependencies (needed for some python packages or tools if any)
+RUN apt-get update && apt-get install -y \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+# Copy the entire project
+COPY . .
+
+# Default command (can be overridden in docker-compose)
+CMD ["python3", "repository_after/app.py"]
