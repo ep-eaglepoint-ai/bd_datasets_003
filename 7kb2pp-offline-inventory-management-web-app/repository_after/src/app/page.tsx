@@ -159,21 +159,21 @@ export default function Home() {
               <button
                 onClick={() => setShowItemForm(true)}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >bulk' && <BulkOperations />}
-        {activeTab === 'categories' && <CategoryManager />}
-        {activeTab === 'locations' && <LocationManager />}
-        {activeTab === 'movements' && <MovementHistory />}
-        {activeTab === 'audit' && <AuditLogs />}
-        {activeTab === 'export' && <ExportImport />}
-        {activeTab === 'explainer' && <MetricsExplainertItem} />
+              >
+                Add Item
+              </button>
+            </div>
+            <InventoryList onEditItem={handleEditItem} />
           </div>
         )}
         
+        {activeTab === 'bulk' && <BulkOperations />}
         {activeTab === 'categories' && <CategoryManager />}
         {activeTab === 'locations' && <LocationManager />}
         {activeTab === 'movements' && <MovementHistory />}
         {activeTab === 'audit' && <AuditLogs />}
         {activeTab === 'export' && <ExportImport />}
+        {activeTab === 'explainer' && <MetricsExplainer />}
       </main>
       
       {/* Item Form Modal */}

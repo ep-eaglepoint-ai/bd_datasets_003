@@ -4,7 +4,9 @@
 import { InventoryItem, StockMovement, InventoryItemWithQuantity } from '../lib/schemas';
 
 export interface WorkerMessage {
-  type: 'calculateQuantities' | 'calculateHealth' | 'calculateTrends' | 'analyzeVelocity';
+  type: 'calculateQuantities' | 'calculateHealth' | 'calculateTrends' | 'analyzeVelocity' | 
+        'calculateValueByCategory' | 'calculateValueByLocation' | 'identifySlowMovingItems' | 
+        'identifyOverstockItems' | 'calculateTurnoverRates' | 'calculateStockAging';
   payload: unknown;
 }
 
@@ -27,6 +29,39 @@ export interface VelocityPayload {
   itemId: string;
   movements: StockMovement[];
   periodDays: number;
+}
+
+export interface ValueByCategoryPayload {
+  items: InventoryItem[];
+  movements: StockMovement[];
+}
+
+export interface ValueByLocationPayload {
+  items: InventoryItem[];
+  movements: StockMovement[];
+}
+
+export interface SlowMovingPayload {
+  items: InventoryItem[];
+  movements: StockMovement[];
+  thresholdDays: number;
+}
+
+export interface OverstockPayload {
+  items: InventoryItem[];
+  movements: StockMovement[];
+  multiplier: number;
+}
+
+export interface TurnoverRatesPayload {
+  items: InventoryItem[];
+  movements: StockMovement[];
+  periodDays: number;
+}
+
+export interface StockAgingPayload {
+  enrichedItems: InventoryItemWithQuantity[];
+  movements: StockMovement[];
 }
 
 // Calculate item quantity from movements
@@ -211,6 +246,148 @@ function analyzeVelocity(itemId: string, movements: StockMovement[], periodDays:
   };
 }
 
+// Calculate value grouped by category (CPU-intensive for large datasets)
+function calculateValueByCategory(
+  items: InventoryItem[],
+  movements: StockMovement[]
+): Record<string, number> {
+  const enriched = enrichItemsWithQuantities(items, movements);
+  const result: Record<string, number> = {};
+  
+  for (const item of enriched) {
+    const categoryKey = item.categoryId || 'uncategorized';
+    result[categoryKey] = (result[categoryKey] || 0) + item.totalValue;
+  }
+  
+  return result;
+}
+
+// Calculate value grouped by location (CPU-intensive for large datasets)
+function calculateValueByLocation(
+  items: InventoryItem[],
+  movements: StockMovement[]
+): Record<string, number> {
+  const enriched = enrichItemsWithQuantities(items, movements);
+  const result: Record<string, number> = {};
+  
+  for (const item of enriched) {
+    const locationKey = item.locationId || 'unassigned';
+    result[locationKey] = (result[locationKey] || 0) + item.totalValue;
+  }
+  
+  return result;
+}
+
+// Identify slow-moving items (no movements in thresholdDays)
+function identifySlowMovingItems(
+  items: InventoryItem[],
+  movements: StockMovement[],
+  thresholdDays: number
+): InventoryItem[] {
+  const now = Date.now();
+  const cutoff = now - (thresholdDays * 24 * 60 * 60 * 1000);
+  
+  return items.filter(item => {
+    const itemMovements = movements.filter(
+      m => m.itemId === item.id && new Date(m.timestamp).getTime() > cutoff
+    );
+    return itemMovements.length === 0;
+  });
+}
+
+// Identify overstocked items (quantity > multiplier * average daily outbound)
+function identifyOverstockItems(
+  items: InventoryItem[],
+  movements: StockMovement[],
+  multiplier: number
+): InventoryItemWithQuantity[] {
+  const enriched = enrichItemsWithQuantities(items, movements);
+  const now = Date.now();
+  const thirtyDaysAgo = now - (30 * 24 * 60 * 60 * 1000);
+  
+  return enriched.filter(item => {
+    const recentOutbound = movements.filter(
+      m => m.itemId === item.id && 
+           m.type === 'outbound' && 
+           new Date(m.timestamp).getTime() > thirtyDaysAgo
+    );
+    const totalOutbound = Math.abs(recentOutbound.reduce((sum, m) => sum + m.quantity, 0));
+    const dailyAverage = totalOutbound / 30;
+    const threshold = dailyAverage * multiplier;
+    
+    return item.quantity > threshold && threshold > 0;
+  });
+}
+
+// Calculate turnover rates for all items (batch operation)
+function calculateTurnoverRates(
+  items: InventoryItem[],
+  movements: StockMovement[],
+  periodDays: number
+): Record<string, number> {
+  const now = Date.now();
+  const periodStart = now - (periodDays * 24 * 60 * 60 * 1000);
+  const enriched = enrichItemsWithQuantities(items, movements);
+  
+  const result: Record<string, number> = {};
+  
+  for (const item of enriched) {
+    const itemOutbound = movements.filter(
+      m => m.itemId === item.id && 
+           m.type === 'outbound' && 
+           new Date(m.timestamp).getTime() > periodStart
+    );
+    const totalOutbound = Math.abs(itemOutbound.reduce((sum, m) => sum + m.quantity, 0));
+    const avgInventory = item.quantity > 0 ? item.quantity / 2 : 1;
+    result[item.id] = totalOutbound / avgInventory;
+  }
+  
+  return result;
+}
+
+// Calculate stock aging for all items (batch operation)
+function calculateStockAging(
+  enrichedItems: InventoryItemWithQuantity[],
+  movements: StockMovement[]
+): Record<string, number> {
+  const now = Date.now();
+  const result: Record<string, number> = {};
+  
+  for (const item of enrichedItems) {
+    if (item.quantity <= 0) {
+      result[item.id] = 0;
+      continue;
+    }
+    
+    // Find the earliest inbound movement that contributes to current stock
+    const itemInbounds = movements
+      .filter(m => m.itemId === item.id && m.type === 'inbound')
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    
+    if (itemInbounds.length === 0) {
+      result[item.id] = 0;
+      continue;
+    }
+    
+    // Weight aging by quantity contribution (FIFO approximation)
+    let remainingQty = item.quantity;
+    let weightedAgeDays = 0;
+    
+    for (const inbound of itemInbounds) {
+      if (remainingQty <= 0) break;
+      
+      const contribution = Math.min(inbound.quantity, remainingQty);
+      const ageDays = (now - new Date(inbound.timestamp).getTime()) / (1000 * 60 * 60 * 24);
+      weightedAgeDays += contribution * ageDays;
+      remainingQty -= contribution;
+    }
+    
+    result[item.id] = weightedAgeDays / item.quantity;
+  }
+  
+  return result;
+}
+
 // Handle messages from main thread
 self.onmessage = (event: MessageEvent<WorkerMessage>) => {
   const { type, payload } = event.data;
@@ -237,6 +414,36 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
       case 'analyzeVelocity': {
         const { itemId, movements, periodDays } = payload as VelocityPayload;
         result = analyzeVelocity(itemId, movements, periodDays);
+        break;
+      }
+      case 'calculateValueByCategory': {
+        const { items, movements } = payload as ValueByCategoryPayload;
+        result = calculateValueByCategory(items, movements);
+        break;
+      }
+      case 'calculateValueByLocation': {
+        const { items, movements } = payload as ValueByLocationPayload;
+        result = calculateValueByLocation(items, movements);
+        break;
+      }
+      case 'identifySlowMovingItems': {
+        const { items, movements, thresholdDays } = payload as SlowMovingPayload;
+        result = identifySlowMovingItems(items, movements, thresholdDays);
+        break;
+      }
+      case 'identifyOverstockItems': {
+        const { items, movements, multiplier } = payload as OverstockPayload;
+        result = identifyOverstockItems(items, movements, multiplier);
+        break;
+      }
+      case 'calculateTurnoverRates': {
+        const { items, movements, periodDays } = payload as TurnoverRatesPayload;
+        result = calculateTurnoverRates(items, movements, periodDays);
+        break;
+      }
+      case 'calculateStockAging': {
+        const { enrichedItems, movements } = payload as StockAgingPayload;
+        result = calculateStockAging(enrichedItems, movements);
         break;
       }
       default:

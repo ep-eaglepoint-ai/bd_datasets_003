@@ -272,10 +272,9 @@ describe('Calculation Tests', () => {
   describe('calculateInventoryHealth', () => {
     test('should return health metrics with valid ranges', () => {
       const enrichedItems = enrichItemsWithQuantities([mockItem], mockMovements);
-      const categories: Category[] = [];
-      const locations: Location[] = [];
       
-      const health = calculateInventoryHealth(enrichedItems, mockMovements, categories, locations);
+      // calculateInventoryHealth accepts 2 args: (itemsOrEnriched, movements)
+      const health = calculateInventoryHealth(enrichedItems, mockMovements);
       
       expect(health.totalItems).toBe(1);
       expect(health.totalValue).toBe(1750.00);
@@ -293,7 +292,8 @@ describe('Calculation Tests', () => {
     });
 
     test('should handle empty inventory', () => {
-      const health = calculateInventoryHealth([], [], [], []);
+      // calculateInventoryHealth accepts 2 args: (itemsOrEnriched, movements)
+      const health = calculateInventoryHealth([], []);
       
       expect(health.totalItems).toBe(0);
       expect(health.totalValue).toBe(0);

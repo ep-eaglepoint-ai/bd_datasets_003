@@ -35,6 +35,9 @@ function debounce<T extends (...args: any[]) => any>(
   };
 }
 
+// Debounced persistence function (will be initialized after store is created)
+let debouncedSaveRecoveryState: (() => void) | null = null;
+
 interface InventoryState {
   // Data
   items: InventoryItem[];
@@ -552,25 +555,54 @@ recordMovement: async (
     
     // Store original state for rollback
     const originalItems = itemsToUpdate.map(item => ({ ...item }));
-    const updatedItems: InventoryItem[] = [];
+    const now = new Date().toISOString();
+    
+    // Prepare all updated items
+    const updatedItemsData = itemsToUpdate.map(item => ({
+      ...item,
+      ...edit.updates,
+      updatedAt: now,
+    }));
     
     try {
-      for (const item of itemsToUpdate) {
-        await get().updateItem(item.id, edit.updates);
-        updatedItems.push(item);
+      // Use single batched transaction for atomicity
+      await db.bulkSaveItems(updatedItemsData);
+      
+      // Update state after successful DB write
+      set(state => ({
+        items: state.items.map(item => {
+          const updatedItem = updatedItemsData.find(u => u.id === item.id);
+          return updatedItem || item;
+        }),
+      }));
+      
+      // Create audit logs for all updates in batch
+      const auditLogs = updatedItemsData.map(item => ({
+        id: uuidv4(),
+        entityType: 'item' as const,
+        entityId: item.id,
+        action: 'update' as const,
+        changes: edit.updates,
+        timestamp: now,
+      }));
+      
+      // Add audit logs
+      for (const log of auditLogs) {
+        await db.addAuditLog(log);
       }
+      
+      set(state => ({
+        auditLogs: [...state.auditLogs, ...auditLogs],
+      }));
     } catch (error) {
-      // Rollback: restore original items
-      for (let i = 0; i < updatedItems.length; i++) {
-        const original = originalItems[i];
-        try {
-          await db.saveItem(original);
-        } catch (rollbackError) {
-          console.error('Rollback failed for item:', original.id, rollbackError);
-        }
+      // Rollback: restore original items using batched transaction
+      try {
+        await db.bulkSaveItems(originalItems);
+        // Reload state to ensure consistency
+        await get().initialize();
+      } catch (rollbackError) {
+        console.error('Rollback also failed:', rollbackError);
       }
-      // Reload state to ensure consistency
-      await get().initialize();
       throw new Error(`Bulk update failed and was rolled back: ${(error as Error).message}`);
     }
   },
@@ -640,6 +672,10 @@ recordMovement: async (
     set(state => ({
       filter: { ...state.filter, ...filter },
     }));
+    // Trigger debounced recovery state save for persistence
+    if (debouncedSaveRecoveryState) {
+      debouncedSaveRecoveryState();
+    }
   },
   
   clearFilter: () => {
@@ -806,6 +842,8 @@ recordMovement: async (
       items: state.items,
       categories: state.categories,
       locations: state.locations,
+      movements: state.movements,
+      auditLogs: state.auditLogs,
     });
   },
   
@@ -816,6 +854,8 @@ recordMovement: async (
         items: recoveryData.state.items,
         categories: recoveryData.state.categories,
         locations: recoveryData.state.locations,
+        movements: recoveryData.state.movements || [],
+        auditLogs: recoveryData.state.auditLogs || [],
       });
       await db.clearRecoveryState();
     }
@@ -825,6 +865,11 @@ recordMovement: async (
     return await db.needsRecovery();
   },
 }));
+
+// Initialize debounced recovery state persistence (300ms delay)
+debouncedSaveRecoveryState = debounce(() => {
+  useInventoryStore.getState().saveRecoveryState();
+}, 300);
 
 // Memoized selectors
 export const selectEnrichedItems = (state: InventoryState): InventoryItemWithQuantity[] => {

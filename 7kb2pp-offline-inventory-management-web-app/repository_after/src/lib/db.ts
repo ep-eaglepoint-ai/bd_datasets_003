@@ -270,6 +270,8 @@ export const db = {
     items: InventoryItem[];
     categories: Category[];
     locations: Location[];
+    movements: StockMovement[];
+    auditLogs: AuditLog[];
     pendingOperations?: Array<{ type: string; data: unknown; timestamp: string }>;
   }): Promise<void> {
     try {
@@ -290,6 +292,8 @@ export const db = {
       items: InventoryItem[];
       categories: Category[];
       locations: Location[];
+      movements: StockMovement[];
+      auditLogs: AuditLog[];
       pendingOperations?: Array<{ type: string; data: unknown; timestamp: string }>;
     };
   } | null> {
