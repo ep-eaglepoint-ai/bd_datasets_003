@@ -1,8 +1,18 @@
-# Docker Compose file for running tests. You should customize this as needed.
-
 services:
-  app:
+  before-tests:
     build: .
-    command: pytest -q tests
-    volumes:
-      - .:/app
+    environment:
+      - PHYSICS_REPO=before
+    command: 'sh -lc "python -m unittest discover -s tests -p test_*.py -q; status=$?; if [ $status -ne 0 ]; then echo ''NOTE: repository_before is expected to fail the performance gate.''; fi; exit 0"'
+
+  after-tests:
+    build: .
+    environment:
+      - PHYSICS_REPO=after
+    command: python -m unittest discover -s tests -p test_*.py -q
+
+  test-report:
+    build: .
+    environment:
+      - PHYSICS_REPO=after
+    command: sh -lc "python -m unittest discover -s tests -p test_*.py -q && python tests/report.py"

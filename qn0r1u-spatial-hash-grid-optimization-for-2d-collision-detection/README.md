@@ -1,11 +1,14 @@
 # QN0R1U - Spatial Hash Grid Optimization for 2D Collision Detection
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Before Test Docker Command
 
-    ## After Test Docker Command
-    <docker after command here>
+`docker compose run --rm before-tests`
 
-    ## Evaluation Docker Command
-    <evaluation command here>
+## After Test Docker Command
+
+`docker compose run --rm after-tests`
+
+## Evaluation Docker Command
+
+`docker compose run --rm test-report`
     
