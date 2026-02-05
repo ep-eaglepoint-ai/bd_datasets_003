@@ -1,5 +1,4 @@
-import { jest } from '@jest/globals';
-import { uploadReport } from '../repository_after/client/src/services/api';
+const { uploadReport } = require('../repository_after/client/src/services/api');
 
 describe('API Robustness', () => {
     beforeEach(() => {
@@ -13,14 +12,10 @@ describe('API Robustness', () => {
     });
 
     it('throws error on 412 Conflict immediately without retries', async () => {
-        global.fetch.mockResolvedValue({
-            status: 412,
-            ok: false
-        });
+        global.fetch.mockResolvedValue({ status: 412, ok: false });
 
         const promise = uploadReport({ id: 'conflicted' });
 
-        // Should reject immediately
         await expect(promise).rejects.toThrow(/CONFLICT/);
         expect(global.fetch).toHaveBeenCalledTimes(1);
     });

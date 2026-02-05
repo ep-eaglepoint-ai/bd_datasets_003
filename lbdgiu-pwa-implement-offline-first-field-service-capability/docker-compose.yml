@@ -22,3 +22,4 @@ services:
       - VITE_SERVER_URL=http://server:4000 
     volumes:
       - .:/app
+      - /app/node_modules

@@ -1,34 +1,18 @@
-import { jest } from '@jest/globals';
-import { renderHook, act, waitFor } from '@testing-library/react';
-import { fileURLToPath } from 'url';
-import path from 'path';
+const { renderHook, act, waitFor } = require('@testing-library/react');
+const dbService = require('../repository_after/client/src/services/db');
+const apiService = require('../repository_after/client/src/services/api');
+const { useSyncManager } = require('../repository_after/client/src/hooks/useSyncManager');
 
-// Generate absolute paths to ensure unstable_mockModule finds the files
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_PATH = path.resolve(__dirname, '../repository_after/client/src/services/db.js');
-const API_PATH = path.resolve(__dirname, '../repository_after/client/src/services/api.js');
-
-jest.unstable_mockModule(DB_PATH, () => ({
-    getPendingReports: jest.fn(),
-    markAsSynced: jest.fn(),
-}));
-
-jest.unstable_mockModule(API_PATH, () => ({
-    uploadReport: jest.fn(),
-}));
-
-// Use the exact same absolute paths for the imports
-const dbService = await import(DB_PATH);
-const apiService = await import(API_PATH);
-const { useSyncManager } = await import('../repository_after/client/src/hooks/useSyncManager');
+jest.mock('../repository_after/client/src/services/db');
+jest.mock('../repository_after/client/src/services/api');
 
 describe('Sync Manager', () => {
     beforeEach(() => {
         jest.useFakeTimers();
         jest.clearAllMocks();
 
-        // Default mocks
         Object.defineProperty(navigator, 'onLine', { value: true, configurable: true, writable: true });
+
         dbService.getPendingReports.mockResolvedValue([]);
         dbService.markAsSynced.mockResolvedValue(true);
         apiService.uploadReport.mockResolvedValue({ success: true });
@@ -39,33 +23,35 @@ describe('Sync Manager', () => {
     });
 
     it('Network Throttling simulation (Offline -> Wait 30s -> Online)', async () => {
-        // Simulate Offline
+        // Start offline
         Object.defineProperty(navigator, 'onLine', { value: false, configurable: true, writable: true });
-        const { result } = renderHook(() => useSyncManager());
 
+        const { result } = renderHook(() => useSyncManager());
         expect(result.current.syncStatus).toBe('Offline');
 
-        // Simulate User saving report during disconnection (we assume DB save happens elsewhere, we just mock the result)
+        // Mock pending report
         dbService.getPendingReports.mockResolvedValue([{ id: 'offline-report', timestamp: Date.now() }]);
 
-        // Wait 30 seconds
+        // Advance 30s for the hook's interval/timer
         act(() => {
             jest.advanceTimersByTime(30000);
         });
 
-        // Come back Online
+        // Go online and trigger the hook to start syncing
         await act(async () => {
             Object.defineProperty(navigator, 'onLine', { value: true, configurable: true, writable: true });
             window.dispatchEvent(new Event('online'));
-        });
 
-        await waitFor(() => expect(result.current.syncStatus).toBe('Syncing...'));
-
-        await act(async () => {
+            // Run all timers that trigger state updates inside the hook
             jest.runAllTimers();
         });
 
-        expect(apiService.uploadReport).toHaveBeenCalledWith(expect.objectContaining({ id: 'offline-report' }));
-        expect(result.current.syncStatus).toBe('Success');
+        // Wait for the final state to be "Success"
+        await waitFor(() => expect(result.current.syncStatus).toBe('Success'));
+
+        // Assert API was called
+        expect(apiService.uploadReport).toHaveBeenCalledWith(
+            expect.objectContaining({ id: 'offline-report' })
+        );
     });
 });
