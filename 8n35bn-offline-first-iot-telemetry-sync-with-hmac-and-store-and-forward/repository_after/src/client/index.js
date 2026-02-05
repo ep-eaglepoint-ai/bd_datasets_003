@@ -23,7 +23,8 @@ function createClient(options = {}) {
 
   return {
     stop,
-    wal
+    wal,
+    sensor // Expose sensor for test purposes
   };
 }
 

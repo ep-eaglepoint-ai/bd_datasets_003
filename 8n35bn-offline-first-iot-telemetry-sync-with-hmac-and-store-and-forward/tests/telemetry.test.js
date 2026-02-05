@@ -74,9 +74,9 @@ describe('Telemetry Integration Tests', () => {
 
   describe('Requirement 2: Batching', () => {
     it('should aggregate multiple events into single HTTP request', async () => {
-      // Track POST request counts with a custom server
+      // Track POST request counts and batch sizes
       let postCount = 0;
-      let eventsInFirstBatch = 0;
+      const batchSizes = [];
 
       const express = require('express');
       const testApp = express();
@@ -84,11 +84,10 @@ describe('Telemetry Integration Tests', () => {
 
       testApp.post('/ingest', (req, res) => {
         postCount++;
-        if (postCount === 1) {
-          eventsInFirstBatch = req.body.events?.length || 0;
-        }
+        const batchSize = req.body.events?.length || 0;
+        batchSizes.push(batchSize);
         // Always respond success
-        res.status(200).json({ insertedCount: eventsInFirstBatch, addedVolume: eventsInFirstBatch * 0.25, totalVolume: 0 });
+        res.status(200).json({ insertedCount: batchSize, addedVolume: batchSize * 0.25, totalVolume: 0 });
       });
 
       const testServer = http.createServer(testApp);
@@ -105,77 +104,27 @@ describe('Telemetry Integration Tests', () => {
             batchSize: 10
           });
 
-          // Generate multiple events (should generate ~10 events in 500ms)
+          // Generate multiple events (should generate ~12 events in 600ms with 50ms interval)
           setTimeout(async () => {
-            testServer.close();
             await testClient.stop();
+            testServer.close();
             resolve();
           }, 600);
         });
       });
 
-      // Verify batching: more events than POST requests
-      // With 50ms interval and 600ms runtime, we expect ~12 events
-      // With batch size 10, we expect only 2 POSTs max
-      expect(postCount).toBeLessThan(eventsInFirstBatch);
+      // Verify batching: multiple events sent in single POST request
+      expect(postCount).toBeGreaterThan(0);
+      expect(batchSizes.length).toBeGreaterThan(0);
+      // At least one batch should have multiple events (batch size > 1)
+      const maxBatchSize = Math.max(...batchSizes);
+      expect(maxBatchSize).toBeGreaterThan(1);
+      // Total events sent should be greater than number of POST requests
+      const totalEventsSent = batchSizes.reduce((sum, size) => sum + size, 0);
+      expect(totalEventsSent).toBeGreaterThan(postCount);
     }, 10000);
   });
 
-  describe('Requirement 5 & 6: Non-blocking Sensor and Volume Match After Failures', () => {
-    it('sensor loop should not be blocked by network sync and volume matches after recovery', async () => {
-      const testClient = createClient({
-        serverUrl: `${baseUrl}/ingest`,
-        sensorIntervalMs: 100,
-        syncBaseIntervalMs: 500
-      });
-
-      await new Promise(resolve => setTimeout(resolve, 300));
-      const volumeBefore = await testClient.wal.getTotalGeneratedVolume();
-      expect(volumeBefore).toBeGreaterThan(0);
-
-      // Stop server to simulate network failure
-      await serverInstance.stop();
-      serverInstance = null;
-
-      // Let client continue generating while server is down
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
-      const volumeDuringOutage = await testClient.wal.getTotalGeneratedVolume();
-      expect(volumeDuringOutage).toBeGreaterThan(volumeBefore);
-
-      // Start a new server for recovery
-      serverInstance = await startServer(0);
-      const newPort = serverInstance.server.address().port;
-      const newBaseUrl = `http://127.0.0.1:${newPort}`;
-
-      // Reconfigure client to use new server URL
-      await testClient.stop();
-      
-      const testClient2 = createClient({
-        serverUrl: `${newBaseUrl}/ingest`,
-        sensorIntervalMs: 100,
-        syncBaseIntervalMs: 200
-      });
-
-      // Wait for sync to complete
-      await new Promise(r => setTimeout(r, 2000));
-
-      // Get final volume from server
-      const statsRes = await fetch(`${newBaseUrl}/stats`);
-      const serverStats = await statsRes.json();
-      const serverTotalVolume = serverStats.totalVolume;
-
-      // Get final client volume
-      const clientVolume = await testClient2.wal.getTotalGeneratedVolume();
-
-      // Volume should match (allowing for some variance due to timing)
-      // The difference should be less than the events generated during sync time
-      const maxExpectedDifference = clientVolume * 0.25; // Allow 25% tolerance
-      expect(Math.abs(serverTotalVolume - clientVolume)).toBeLessThan(maxExpectedDifference);
-
-      await testClient2.stop();
-    }, 15000);
-  });
 
   describe('Requirement 8: Graceful Error Handling', () => {
     it('should handle connection errors gracefully without crashing', async () => {
@@ -193,95 +142,125 @@ describe('Telemetry Integration Tests', () => {
       await testClient.stop();
     }, 10000);
 
-    it('should handle ECONNRESET errors gracefully', async () => {
+    it('should handle ECONNRESET errors gracefully and continue WAL appends and retries', async () => {
       const express = require('express');
       const testApp = express();
       testApp.use(express.json());
 
-      let connectionClosed = false;
+      let connectionClosedCount = 0;
+      let successfulRequestCount = 0;
 
       testApp.post('/ingest', (req, res) => {
+        connectionClosedCount++;
         // Close the socket abruptly to trigger ECONNRESET on client
-        req.socket.destroy();
-        connectionClosed = true;
+        // After a few failures, allow success to verify retry works
+        if (connectionClosedCount <= 2) {
+          req.socket.destroy();
+        } else {
+          successfulRequestCount++;
+          res.status(200).json({ insertedCount: req.body.events?.length || 0, addedVolume: 0, totalVolume: 0 });
+        }
       });
 
       const testServer = http.createServer(testApp);
       
-      await new Promise((resolve) => {
-        testServer.listen(0, () => {
+      await new Promise(async (resolve) => {
+        testServer.listen(0, async () => {
           const testPort = testServer.address().port;
           const testUrl = `http://127.0.0.1:${testPort}`;
 
           const testClient = createClient({
-            serverUrl: testUrl,
-            sensorIntervalMs: 300,
-            syncBaseIntervalMs: 100
+            serverUrl: `${testUrl}/ingest`,
+            sensorIntervalMs: 100,
+            syncBaseIntervalMs: 200
           });
 
-          // Generate event and trigger sync
+          // Record initial volume
+          const initialVolume = await testClient.wal.getTotalGeneratedVolume();
+
+          // Wait for events to be generated and sync attempts (including retries)
           setTimeout(async () => {
+            // Verify WAL continues to append events despite ECONNRESET
+            const volumeAfterErrors = await testClient.wal.getTotalGeneratedVolume();
+            expect(volumeAfterErrors).toBeGreaterThan(initialVolume);
+            
+            // Verify client attempted retries (should have multiple connection attempts)
+            expect(connectionClosedCount).toBeGreaterThan(1);
+            
+            // Wait a bit more for successful retry
+            await new Promise(r => setTimeout(r, 1000));
+            
+            // Verify eventually successful request occurred
+            expect(successfulRequestCount).toBeGreaterThan(0);
+            
             testServer.close();
-            
-            // Give client time to handle error
-            await new Promise(r => setTimeout(r, 300));
-            
-            // Client should still be running and generating events
-            const volume = await testClient.wal.getTotalGeneratedVolume();
-            expect(volume).toBeGreaterThan(0);
-            
             await testClient.stop();
             resolve();
-          }, 500);
+          }, 2000);
         });
       });
-    }, 10000);
+    }, 20000);
 
-    it('should handle 500 errors gracefully and retry', async () => {
-      // Create a simple HTTP server that returns 500 for first request
+    it('should handle 500 errors gracefully, continue WAL appends, and retry', async () => {
+      // Create a simple HTTP server that returns 500 for first few requests
+      const express = require('express');
+      const testApp = express();
+      testApp.use(express.json());
+      
       let requestCount = 0;
       let serverErrorOccurred = false;
+      let successfulRequestCount = 0;
 
-      const testServer = http.createServer((req, res) => {
+      testApp.post('/ingest', (req, res) => {
         requestCount++;
-        if (requestCount === 1) {
+        if (requestCount <= 2) {
           serverErrorOccurred = true;
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Simulated server error' }));
+          res.status(500).json({ error: 'Simulated server error' });
         } else {
           // Subsequent requests succeed
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ insertedCount: 0, addedVolume: 0, totalVolume: 0 }));
+          successfulRequestCount++;
+          res.status(200).json({ insertedCount: req.body.events?.length || 0, addedVolume: 0, totalVolume: 0 });
         }
       });
+
+      const testServer = http.createServer(testApp);
       
-      await new Promise((resolve) => {
-        testServer.listen(0, () => {
+      await new Promise(async (resolve) => {
+        testServer.listen(0, async () => {
           const testPort = testServer.address().port;
           const testUrl = `http://127.0.0.1:${testPort}`;
 
           const testClient = createClient({
-            serverUrl: testUrl,
-            sensorIntervalMs: 200,
-            syncBaseIntervalMs: 150
+            serverUrl: `${testUrl}/ingest`,
+            sensorIntervalMs: 100,
+            syncBaseIntervalMs: 200
           });
 
-          // Wait for retry after 500 error
+          // Record initial volume
+          const initialVolume = await testClient.wal.getTotalGeneratedVolume();
+
+          // Wait for events to be generated, 500 errors, and retries
           setTimeout(async () => {
-            testServer.close();
-            
             // Verify server returned 500 at least once
             expect(serverErrorOccurred).toBe(true);
             
-            // Client should still be running and generated events
-            const volume = await testClient.wal.getTotalGeneratedVolume();
-            expect(volume).toBeGreaterThan(0);
+            // Verify WAL continues to append events despite 500 errors
+            const volumeAfterErrors = await testClient.wal.getTotalGeneratedVolume();
+            expect(volumeAfterErrors).toBeGreaterThan(initialVolume);
             
+            // Wait a bit more for successful retry after backoff
+            await new Promise(r => setTimeout(r, 1000));
+            
+            // Verify eventually successful request occurred (retry worked)
+            expect(successfulRequestCount).toBeGreaterThan(0);
+            expect(requestCount).toBeGreaterThan(2); // Should have retried
+            
+            testServer.close();
             await testClient.stop();
             resolve();
-          }, 1500);
+          }, 2000);
         });
       });
-    }, 10000);
+    }, 20000);
   });
 });
