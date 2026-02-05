@@ -1,16 +1,4 @@
 services:
-  test-before:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    environment:
-      - TEST_URL=http://localhost:3001/index.html
-    command: >
-      sh -c "npx http-server repository_before -p 3001 -s & sleep 2 &&
-             TEST_URL=http://localhost:3001/index.html npx playwright test --reporter=list || true"
-    volumes:
-      - ./test-results-before:/app/test-results
-
   test-after:
     build:
       context: .
