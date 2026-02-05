@@ -1,0 +1,11 @@
+{
+            "instance_id": "9I1CZP",
+            "problem_statement": "Create a production-ready distributed rate limiting system for cloud-native microservices that enforces global request quotas (e.g., 1000 requests/second) across all service instances. The system must maintain p99 latency <10ms under sustained loads of ≥1M requests/second while surviving individual node failures without significant accuracy degradation. The solution must avoid single-point bottlenecks, reject eventual consistency models for quota enforcement, use only typical cloud provider services (Redis permitted), and scale memory usage sub-linearly with request volume.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/9i1czp-hybrid-distributed-rate-limiter-for-1m-rps-with-strong-consistency",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
