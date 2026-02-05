@@ -1,11 +1,13 @@
 # 2SBVD2 - kanban board tests
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Before Test Docker Command (SKIPPED)
 
-    ## After Test Docker Command
-    <docker after command here>
+docker run --rm alpine true
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## After Test Docker Command
+
+docker compose run --rm tests
+
+## Evaluation Docker Command
+
+docker compose run --rm evaluation

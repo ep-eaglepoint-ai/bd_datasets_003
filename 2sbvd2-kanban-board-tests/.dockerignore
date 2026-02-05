@@ -1,0 +1,20 @@
+# dependencies
+**/node_modules
+**/.pnpm-store
+
+# next build output
+**/.next
+**/out
+
+# logs
+**/*.log
+
+# caches
+**/.cache
+**/.turbo
+
+# OS / editor
+**/.DS_Store
+**/Thumbs.db
+**/.vscode
+**/.idea

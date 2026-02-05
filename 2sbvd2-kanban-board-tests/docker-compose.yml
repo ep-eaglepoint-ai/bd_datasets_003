@@ -1,8 +1,26 @@
-# Docker Compose file for running tests. You should customize this as needed.
-
 services:
-  app:
-    build: .
-    command: pytest -q tests
-    volumes:
-      - .:/app
+    tests:
+        build: .
+        volumes:
+            - ./repository_before:/app/repository_before
+            - ./repository_after:/app/repository_after
+            - ./tests:/app/tests
+            - ./jest.meta.config.js:/app/jest.meta.config.js
+        working_dir: /app
+        command: >
+            sh -lc "TARGET_REPO=repository_after
+            node /app/repository_after/kanban_app/node_modules/jest/bin/jest.js
+            --config /app/jest.meta.config.js
+            --runInBand
+            --silent"
+
+    evaluation:
+        build: .
+        volumes:
+            - ./repository_before:/app/repository_before
+            - ./repository_after:/app/repository_after
+            - ./tests:/app/tests
+            - ./evaluation:/app/evaluation
+            - ./jest.meta.config.js:/app/jest.meta.config.js
+        working_dir: /app/tests
+        command: node ../evaluation/evaluate.js
