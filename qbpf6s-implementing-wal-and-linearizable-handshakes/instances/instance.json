@@ -1,0 +1,11 @@
+{
+            "instance_id": "QBPF6S",
+            "problem_statement": "Our current C++ scheduling architecture is vulnerable to State Divergence during hardware failures. The reliance on mmap for persistence fails to provide atomic "All-or-Nothing" guarantees, leading to scenarios where a transaction is partially written during a crash. Furthermore, the worker handover lacks Linearizability; network partitions can cause duplicate execution of financial updates. We need to refactor the core engine to use a Write-Ahead Log (WAL) for durability and a Two-Phase Commit (2PC) handshake to ensure that a task is only marked "Complete" if the side effect and the state update are atomically verified.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/qbpf6s-implementing-wal-and-linearizable-handshakes",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
