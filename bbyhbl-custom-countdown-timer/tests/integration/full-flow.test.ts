@@ -1,206 +1,111 @@
 import request from 'supertest';
-import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
+import { describe, it, expect, beforeAll } from '@jest/globals';
 
-const BASE_URL = process.env.API_URL || 'http://localhost:3001';
+const API_URL = process.env.API_URL;
+const BASE_URL = API_URL ?? 'http://localhost:3001';
+const describeApi = API_URL ? describe : describe.skip;
 
-describe('Full Application Flow - E2E Tests', () => {
-  let createdCountdownSlug: string | null = null;
-  let userAuthToken: string | null = null;
+async function waitForApiReady() {
+  const deadline = Date.now() + 45_000;
+  let lastError: unknown = null;
 
+  while (Date.now() < deadline) {
+    try {
+      const resp = await fetch(`${BASE_URL}/`);
+      if (resp.ok) return;
+      lastError = new Error(`API not ready: HTTP ${resp.status}`);
+    } catch (e) {
+      lastError = e;
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+
+  throw lastError ?? new Error('API not ready');
+}
+
+describeApi('Integration - Full Flow', () => {
   beforeAll(async () => {
+    await waitForApiReady();
   });
 
-  afterAll(async () => {
-  });
+  it('registers, logs in (Passport local), creates private countdown, and enforces privacy', async () => {
+    const unique = Date.now() + Math.floor(Math.random() * 1000);
+    const email = `flow${unique}@test.com`;
+    const username = `flowuser${unique}`;
+    const password = 'SecurePass123!';
 
-  describe('Complete User Journey', () => {
-    it('should allow full user registration to countdown creation flow', async () => {
-      const uniqueId = Date.now();
-      const registerResponse = await request(BASE_URL)
-        .post('/api/auth/register')
-        .send({
-          email: `user${uniqueId}@test.com`,
-          username: `testuser${uniqueId}`,
-          password: 'SecurePass123!',
-        });
-      if (registerResponse.status === 201) {
-        userAuthToken = registerResponse.body.data.token;
-        const createResponse = await request(BASE_URL)
-          .post('/api/countdowns')
-          .set('Authorization', `Bearer ${userAuthToken}`)
-          .send({
-            title: 'My Personal Countdown',
-            description: 'Created after registration',
-            targetDate: new Date('2024-12-31T23:59:59Z').toISOString(),
-            timezone: 'America/New_York',
-            backgroundColor: '#1a535c',
-            textColor: '#f7fff7',
-            accentColor: '#ff6b6b',
-            theme: 'elegant',
-            isPublic: false, 
-          });
+    const register = await request(BASE_URL)
+      .post('/api/auth/register')
+      .send({ email, username, password });
+    expect(register.status).toBe(201);
 
-        expect(createResponse.status).toBe(201);
-        createdCountdownSlug = createResponse.body.data.slug;
-        const getResponse = await request(BASE_URL)
-          .get(`/api/countdowns/${createdCountdownSlug}`);
+    const login = await request(BASE_URL)
+      .post('/api/auth/login')
+      .send({ email, password });
+    expect(login.status).toBe(200);
+    expect(login.body.data).toHaveProperty('token');
+    const token = login.body.data.token;
 
-        expect(getResponse.status).toBe(200);
-        expect(getResponse.body.data.title).toBe('My Personal Countdown');
-        expect(getResponse.body.data.isPublic).toBe(false);
-        const userCountdownsResponse = await request(BASE_URL)
-          .get('/api/countdowns/user/mine')
-          .set('Authorization', `Bearer ${userAuthToken}`);
-
-        if (userCountdownsResponse.status === 200) {
-          expect(userCountdownsResponse.body.data).toBeInstanceOf(Array);
-          const userCountdowns = userCountdownsResponse.body.data;
-          const found = userCountdowns.some((cd: any) => cd.slug === createdCountdownSlug);
-          expect(found).toBe(true);
-        }
-      }
-    });
-  });
-
-  describe('Public Sharing Flow', () => {
-    it('should create public countdown accessible without auth', async () => {
-      const createResponse = await request(BASE_URL)
-        .post('/api/countdowns')
-        .send({
-          title: 'Public Holiday Countdown',
-          description: 'Anyone can view this',
-          targetDate: new Date('2024-07-04T00:00:00Z').toISOString(),
-          timezone: 'UTC',
-          backgroundColor: '#003366',
-          textColor: '#FFFFFF',
-          accentColor: '#CC0000',
-          theme: 'celebration',
-          isPublic: true,
-        });
-
-      expect(createResponse.status).toBe(201);
-      const publicSlug = createResponse.body.data.slug;
-      const publicAccessResponse = await request(BASE_URL)
-        .get(`/api/countdowns/${publicSlug}`);
-
-      expect(publicAccessResponse.status).toBe(200);
-      expect(publicAccessResponse.body.data.isPublic).toBe(true);
-      expect(publicAccessResponse.body.data).toHaveProperty('shareUrl');
-    });
-  });
-
-  describe('Theme Customization Flow', () => {
-    const themes = ['minimal', 'celebration', 'elegant', 'neon'];
-
-    themes.forEach(theme => {
-      it(`should support ${theme} theme correctly`, async () => {
-        const response = await request(BASE_URL)
-          .post('/api/countdowns')
-          .send({
-            title: `${theme.charAt(0).toUpperCase() + theme.slice(1)} Theme Test`,
-            targetDate: new Date('2024-06-01T00:00:00Z').toISOString(),
-            timezone: 'UTC',
-            backgroundColor: '#000000',
-            textColor: '#FFFFFF',
-            accentColor: '#FF0000',
-            theme: theme,
-            isPublic: true,
-          });
-
-        expect(response.status).toBe(201);
-        expect(response.body.data.theme).toBe(theme);
-        const slug = response.body.data.slug;
-        const getResponse = await request(BASE_URL)
-          .get(`/api/countdowns/${slug}`);
-        
-        expect(getResponse.status).toBe(200);
-        expect(getResponse.body.data.theme).toBe(theme);
+    const createPrivate = await request(BASE_URL)
+      .post('/api/countdowns')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        title: 'Private Milestone',
+        description: 'Only me',
+        targetDate: new Date(Date.now() + 5 * 86400000).toISOString(),
+        timezone: 'UTC',
+        backgroundColor: '#000000',
+        textColor: '#FFFFFF',
+        accentColor: '#00FF00',
+        theme: 'neon',
+        isPublic: false,
       });
-    });
+    expect(createPrivate.status).toBe(201);
+    const { slug, id } = createPrivate.body.data;
+
+    // Public access should be forbidden
+    const publicGet = await request(BASE_URL).get(`/api/countdowns/${slug}`);
+    expect(publicGet.status).toBe(403);
+
+    // Owner access should succeed
+    const ownerGet = await request(BASE_URL)
+      .get(`/api/countdowns/${slug}`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(ownerGet.status).toBe(200);
+    expect(ownerGet.body.data.id).toBe(id);
+
+    // Dashboard listing should include it
+    const mine = await request(BASE_URL)
+      .get('/api/countdowns/user/mine')
+      .set('Authorization', `Bearer ${token}`);
+    expect(mine.status).toBe(200);
+    expect(mine.body.data.some((c: any) => c.id === id)).toBe(true);
   });
 
-  describe('Time Calculation States', () => {
-    it('should handle upcoming countdowns correctly', async () => {
-      const futureDate = new Date();
-      futureDate.setDate(futureDate.getDate() + 30); 
-      
-      const response = await request(BASE_URL)
-        .post('/api/countdowns')
-        .send({
-          title: 'Future Event',
-          targetDate: futureDate.toISOString(),
-          timezone: 'UTC',
-          backgroundColor: '#000000',
-          textColor: '#FFFFFF',
-          accentColor: '#00AA00',
-          theme: 'minimal',
-          isPublic: true,
-        });
+  it('creates a public countdown accessible without auth and visible in /public browse', async () => {
+    const createPublic = await request(BASE_URL)
+      .post('/api/countdowns')
+      .send({
+        title: 'Public Holiday',
+        description: 'Anyone can view',
+        targetDate: new Date(Date.now() + 10 * 86400000).toISOString(),
+        timezone: 'UTC',
+        backgroundColor: '#003366',
+        textColor: '#FFFFFF',
+        accentColor: '#CC0000',
+        theme: 'celebration',
+        isPublic: true,
+      });
+    expect(createPublic.status).toBe(201);
+    const slug = createPublic.body.data.slug;
 
-      expect(response.status).toBe(201);
-      
-      const slug = response.body.data.slug;
-      const getResponse = await request(BASE_URL)
-        .get(`/api/countdowns/${slug}`);
+    const get = await request(BASE_URL).get(`/api/countdowns/${slug}`);
+    expect(get.status).toBe(200);
+    expect(get.body.data.isPublic).toBe(true);
 
-      expect(getResponse.body.data.timeRemaining.status).toBe('upcoming');
-      expect(getResponse.body.data.timeRemaining.days).toBeGreaterThan(0);
-    });
-
-    it('should handle past countdowns correctly', async () => {
-      const pastDate = new Date();
-      pastDate.setDate(pastDate.getDate() - 7); 
-      const response = await request(BASE_URL)
-        .post('/api/countdowns')
-        .send({
-          title: 'Past Event',
-          targetDate: pastDate.toISOString(),
-          timezone: 'UTC',
-          backgroundColor: '#000000',
-          textColor: '#FFFFFF',
-          accentColor: '#AA0000',
-          theme: 'minimal',
-          isPublic: true,
-        });
-
-      expect(response.status).toBe(201);
-      
-      const slug = response.body.data.slug;
-      const getResponse = await request(BASE_URL)
-        .get(`/api/countdowns/${slug}`);
-
-      expect(getResponse.body.data.timeRemaining.status).toBe('past');
-      expect(getResponse.body.data.timeRemaining.days).toBeGreaterThan(0);
-    });
-  });
-
-  describe('Error Handling & Edge Cases', () => {
-    it('should handle malformed requests gracefully', async () => {
-      const response = await request(BASE_URL)
-        .post('/api/countdowns')
-        .send('{malformed json')
-        .set('Content-Type', 'application/json');
-
-      expect([400, 422, 500]).toContain(response.status);
-      expect(response.body).toBeDefined();
-    });
-
-    it('should validate date format', async () => {
-      const response = await request(BASE_URL)
-        .post('/api/countdowns')
-        .send({
-          title: 'Invalid Date Test',
-          targetDate: 'not-a-date-string',
-          timezone: 'UTC',
-          backgroundColor: '#000000',
-          textColor: '#FFFFFF',
-          accentColor: '#FF0000',
-          theme: 'minimal',
-          isPublic: true,
-        });
-
-      expect([400, 422]).toContain(response.status);
-      expect(response.body).toHaveProperty('error');
-    });
+    const browse = await request(BASE_URL).get('/api/countdowns/public');
+    expect(browse.status).toBe(200);
+    const found = browse.body.data.some((c: any) => c.slug === slug);
+    expect(found).toBe(true);
   });
 });

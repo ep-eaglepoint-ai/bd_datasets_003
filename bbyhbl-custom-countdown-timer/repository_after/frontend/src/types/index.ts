@@ -11,6 +11,7 @@ export interface Countdown {
   theme: 'minimal' | 'celebration' | 'elegant' | 'neon';
   backgroundImage?: string;
   isPublic: boolean;
+  isArchived?: boolean;
   createdAt: string;
   updatedAt: string;
   userId?: string;
@@ -45,4 +46,5 @@ export interface CreateCountdownInput {
   theme: 'minimal' | 'celebration' | 'elegant' | 'neon';
   backgroundImage?: string;
   isPublic: boolean;
+  isArchived?: boolean;
 }

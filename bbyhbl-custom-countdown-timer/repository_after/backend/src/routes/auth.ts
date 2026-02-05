@@ -1,8 +1,9 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
-import { hash, compare } from 'bcryptjs';
+import { hash } from 'bcryptjs';
 import { prisma } from '../lib/db';
-import { generateToken } from '../middleware/auth';
+import { generateToken, verifyToken } from '../middleware/auth';
+import { authenticateLocal } from '../auth/passport';
 import { z } from 'zod';
 
 const app = new Hono();
@@ -58,29 +59,20 @@ app.post('/register', zValidator('json', registerSchema as any), async (c) => {
 app.post('/login', zValidator('json', loginSchema as any), async (c) => {
   const { email, password } = c.req.valid('json');
 
-  const user = await prisma.user.findUnique({
-    where: { email },
-  });
-  
-  if (!user) {
+  const passportUser = await authenticateLocal(email, password);
+  if (!passportUser) {
     return c.json({ error: 'Invalid credentials' }, 401);
   }
 
-  const isValidPassword = await compare(password, user.password);
-  
-  if (!isValidPassword) {
-    return c.json({ error: 'Invalid credentials' }, 401);
-  }
-  
-  const token = generateToken(user.id, user.email, user.username);
+  const token = generateToken(passportUser.id, passportUser.email, passportUser.username);
   
   return c.json({
     success: true,
     data: {
       user: {
-        id: user.id,
-        email: user.email,
-        username: user.username,
+        id: passportUser.id,
+        email: passportUser.email,
+        username: passportUser.username,
       },
       token,
     },
@@ -93,10 +85,21 @@ app.get('/me', async (c) => {
   if (!authHeader) {
     return c.json({ error: 'No token provided' }, 401);
   }
- 
-  return c.json({ 
-    message: 'User endpoint - token verification would happen here' 
-  });
+
+  if (!authHeader.startsWith('Bearer ')) {
+    return c.json({ error: 'Invalid token format' }, 401);
+  }
+
+  try {
+    const token = authHeader.split(' ')[1];
+    const user = verifyToken(token);
+    return c.json({
+      success: true,
+      data: { user },
+    });
+  } catch {
+    return c.json({ error: 'Invalid token' }, 401);
+  }
 });
 
 export default app;

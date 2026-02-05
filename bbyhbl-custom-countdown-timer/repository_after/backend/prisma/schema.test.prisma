@@ -31,6 +31,7 @@ model Countdown {
   theme       String   @default("minimal")
   backgroundImage String?
   isPublic    Boolean  @default(true)
+  isArchived  Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   

@@ -5,10 +5,13 @@ import { ArrowLeft, Home } from 'lucide-react';
 import CountdownDisplay from '../components/CountdownDisplay';
 import { countdownApi } from '../api/client';
 import { CountdownWithTime } from '../types';
+import { useAuth } from '../contexts/AuthContext';
+import { DateTime } from 'luxon';
 
 const ViewCountdown: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [countdown, setCountdown] = useState<CountdownWithTime | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,6 +33,32 @@ const ViewCountdown: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const canManage = Boolean(user && countdown && countdown.userId && countdown.userId === user.id);
+
+  const handleArchive = async () => {
+    if (!countdown) return;
+    if (!window.confirm('Archive this countdown? It will be hidden from your dashboard.')) return;
+    await countdownApi.update(countdown.id, { isArchived: true });
+    navigate('/');
+  };
+
+  const handleReset = async () => {
+    if (!countdown) return;
+    const date = window.prompt('New date (YYYY-MM-DD):');
+    if (!date) return;
+    const time = window.prompt('New time (HH:MM):');
+    if (!time) return;
+
+    const dt = DateTime.fromISO(`${date}T${time}`, { zone: countdown.timezone });
+    const iso = dt.toUTC().toISO();
+    if (!iso) {
+      alert('Invalid date/time');
+      return;
+    }
+    await countdownApi.update(countdown.id, { targetDate: iso, isArchived: false });
+    await loadCountdown(countdown.slug);
   };
   if (isLoading) {
     return (
@@ -83,7 +112,12 @@ const ViewCountdown: React.FC = () => {
         <ArrowLeft size={20} />
         Back
       </button>
-      <CountdownDisplay countdown={countdown} />
+      <CountdownDisplay
+        countdown={countdown}
+        canManage={canManage}
+        onArchive={handleArchive}
+        onReset={handleReset}
+      />
     </div>
   );
 };

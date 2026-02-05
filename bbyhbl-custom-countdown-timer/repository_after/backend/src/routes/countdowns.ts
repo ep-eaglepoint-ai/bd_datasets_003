@@ -5,21 +5,70 @@ import {
   calculateTimeRemaining,
   generateSlug 
 } from '../lib/utils';
-import { authMiddleware, AuthContext } from '../middleware/auth';
+import { authMiddleware, AuthContext, optionalAuthMiddleware } from '../middleware/auth';
 import { createCountdownSchema, CreateCountdownInput } from '../schemas/countdown';
 import { z } from 'zod';
 
 const updateCountdownSchema = createCountdownSchema.partial();
 
 const app = new Hono<{ Variables: { user?: any } }>();
-app.post('/', zValidator('json', createCountdownSchema as any), async (c) => {
+
+app.get('/user/mine', authMiddleware, async (c: AuthContext) => {
+  const user = c.user!;
+
+  const all = await prisma.countdown.findMany({
+    where: {
+      userId: user.id,
+      isArchived: false,
+    },
+  });
+
+  const now = Date.now();
+  const upcoming = all
+    .filter(cd => cd.targetDate.getTime() >= now)
+    .sort((a, b) => a.targetDate.getTime() - b.targetDate.getTime());
+  const past = all
+    .filter(cd => cd.targetDate.getTime() < now)
+    .sort((a, b) => b.targetDate.getTime() - a.targetDate.getTime());
+
+  const countdownsWithTime = [...upcoming, ...past].map(cd => ({
+    ...cd,
+    timeRemaining: calculateTimeRemaining(cd.targetDate),
+  }));
+
+  return c.json({
+    success: true,
+    data: countdownsWithTime,
+  });
+});
+
+app.get('/public', async (c) => {
+  const countdowns = await prisma.countdown.findMany({
+    where: {
+      isPublic: true,
+      isArchived: false,
+    },
+    orderBy: { targetDate: 'asc' },
+    take: 50,
+  });
+
+  return c.json({
+    success: true,
+    data: countdowns.map(cd => ({
+      ...cd,
+      timeRemaining: calculateTimeRemaining(cd.targetDate),
+    })),
+  });
+});
+
+app.post('/', optionalAuthMiddleware, zValidator('json', createCountdownSchema as any), async (c) => {
   try {
     console.log('Creating countdown...');
 
     const data = c.req.valid('json') as CreateCountdownInput;
     console.log('Data:', data);
     
-    const user = c.get('user');
+    const user = (c as any).user ?? c.get('user');
     console.log('User:', user ? `ID: ${user.id}` : 'No user (public)');
     
     const slug = generateSlug();
@@ -66,44 +115,32 @@ app.post('/', zValidator('json', createCountdownSchema as any), async (c) => {
   }
 });
 
-app.get('/:slug', async (c) => {
+app.get('/:slug', optionalAuthMiddleware, async (c: AuthContext) => {
   const slug = c.req.param('slug');
-  
+
   const countdown = await prisma.countdown.findUnique({
     where: { slug },
   });
-  
-  if (!countdown) {
+
+  if (!countdown || countdown.isArchived) {
     return c.json({ error: 'Countdown not found' }, 404);
   }
-  
+
+  if (!countdown.isPublic) {
+    const user = c.user;
+    if (!user || countdown.userId !== user.id) {
+      return c.json({ error: 'Forbidden' }, 403);
+    }
+  }
+
   const timeRemaining = calculateTimeRemaining(countdown.targetDate);
-  
+
   return c.json({
     success: true,
     data: {
       ...countdown,
       timeRemaining,
     },
-  });
-});
-
-app.get('/user/mine', authMiddleware, async (c: AuthContext) => {
-  const user = c.user!;
-  
-  const countdowns = await prisma.countdown.findMany({
-    where: { userId: user.id },
-    orderBy: { targetDate: 'asc' },
-  });
-  
-  const countdownsWithTime = countdowns.map(cd => ({
-    ...cd,
-    timeRemaining: calculateTimeRemaining(cd.targetDate),
-  }));
-  
-  return c.json({
-    success: true,
-    data: countdownsWithTime,
   });
 });
 
@@ -147,7 +184,10 @@ app.patch('/:id', authMiddleware, validateSchema(updateCountdownSchema), async (
   
   const updated = await prisma.countdown.update({
     where: { id },
-    data,
+    data: {
+      ...data,
+      ...(data.targetDate ? { targetDate: new Date(data.targetDate) } : {}),
+    },
   });
   
   return c.json({

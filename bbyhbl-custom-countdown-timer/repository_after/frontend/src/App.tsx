@@ -4,6 +4,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import Home from './pages/Home';
 import CreateCountdown from './pages/CreateCountdown';
 import ViewCountdown from './pages/ViewCountdown';
+import Browse from './pages/Browse';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Navbar from './components/Navbar';
@@ -18,6 +19,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/create" element={<CreateCountdown />} />
+            <Route path="/browse" element={<Browse />} />
             <Route path="/countdown/:slug" element={<ViewCountdown />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />

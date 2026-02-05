@@ -32,8 +32,13 @@ export const countdownApi = {
   create: (data: any) => api.post('/countdowns', data),
   getBySlug: (slug: string) => api.get(`/countdowns/${slug}`), 
   getUserCountdowns: () => api.get('/countdowns/user/mine'),
+  getPublicCountdowns: () => api.get('/countdowns/public'),
   update: (id: string, data: any) => api.patch(`/countdowns/${id}`, data),
   delete: (id: string) => api.delete(`/countdowns/${id}`),
+};
+
+export const unsplashApi = {
+  search: (query: string, perPage = 12) => api.get(`/unsplash/search?query=${encodeURIComponent(query)}&perPage=${perPage}`),
 };
 export const authApi = {
   register: (data: { email: string; username: string; password: string }) =>

@@ -1,50 +1,61 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { CountdownWithTime } from '../types';
-import { Calendar, Clock, Globe, Share2, RefreshCw } from 'lucide-react';
+import { Calendar, Clock, Globe, Share2, RefreshCw, Archive } from 'lucide-react';
 
 interface CountdownDisplayProps {
   countdown: CountdownWithTime;
   isPreview?: boolean;
+  canManage?: boolean;
+  onReset?: () => void;
+  onArchive?: () => void;
 }
-function CountdownDisplay({ countdown, isPreview = false }: CountdownDisplayProps) {
+
+function computeRemaining(targetDateIso: string): CountdownWithTime['timeRemaining'] {
+  const now = new Date();
+  const target = new Date(targetDateIso);
+  const diffMs = target.getTime() - now.getTime();
+  const totalSecondsRaw = Math.floor(diffMs / 1000);
+
+  if (totalSecondsRaw <= 0) {
+    const daysAgo = Math.floor(Math.abs(totalSecondsRaw) / 86400);
+    return {
+      days: daysAgo,
+      hours: 0,
+      minutes: 0,
+      seconds: 0,
+      totalSeconds: 0,
+      status: 'past',
+    };
+  }
+
+  const days = Math.floor(totalSecondsRaw / 86400);
+  const hours = Math.floor((totalSecondsRaw % 86400) / 3600);
+  const minutes = Math.floor((totalSecondsRaw % 3600) / 60);
+  const seconds = totalSecondsRaw % 60;
+  const status = totalSecondsRaw <= 60 ? 'happening' : 'upcoming';
+
+  return { days, hours, minutes, seconds, totalSeconds: totalSecondsRaw, status };
+}
+
+function CountdownDisplay({ countdown, isPreview = false, canManage = false, onReset, onArchive }: CountdownDisplayProps) {
   const [timeRemaining, setTimeRemaining] = useState(countdown.timeRemaining);
 
   useEffect(() => {
     if (timeRemaining.status === 'past' || isPreview) return;
 
     const interval = setInterval(() => {
-      setTimeRemaining(prev => {
-        const newRemaining = { ...prev };
-        newRemaining.seconds -= 1;
-        if (newRemaining.seconds < 0) {
-          newRemaining.seconds = 59;
-          newRemaining.minutes -= 1;
-        }
-        if (newRemaining.minutes < 0) {
-          newRemaining.minutes = 59;
-          newRemaining.hours -= 1;
-        }
-        if (newRemaining.hours < 0) {
-          newRemaining.hours = 23;
-          newRemaining.days -= 1;
-        }
-        if (newRemaining.days < 0) {
-          newRemaining.status = 'past';
-          clearInterval(interval);
-        } else if (newRemaining.days === 0 && 
-                   newRemaining.hours === 0 && 
-                   newRemaining.minutes === 0 && 
-                   newRemaining.seconds <= 60) {
-          newRemaining.status = 'happening';
-        }
-        
-        return newRemaining;
-      });
+      setTimeRemaining(computeRemaining(countdown.targetDate));
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [isPreview]);
+  }, [countdown.targetDate, isPreview, timeRemaining.status]);
+
+  useEffect(() => {
+    // If the server returned a stale snapshot, ensure we immediately compute from targetDate.
+    setTimeRemaining(computeRemaining(countdown.targetDate));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countdown.targetDate]);
 
   const getStatusColor = () => {
     switch (timeRemaining.status) {
@@ -62,6 +73,35 @@ function CountdownDisplay({ countdown, isPreview = false }: CountdownDisplayProp
   };
   const formatNumber = (num: number) => num.toString().padStart(2, '0');
 
+  const themeConfig = (() => {
+    switch (countdown.theme) {
+      case 'neon':
+        return {
+          titleClass: 'drop-shadow-[0_0_18px_rgba(255,0,255,0.35)]',
+          numberClass: 'shadow-[0_0_24px_rgba(0,255,0,0.25)]',
+          overlayClass: 'bg-black/50 backdrop-blur',
+        };
+      case 'elegant':
+        return {
+          titleClass: 'font-serif',
+          numberClass: 'shadow-lg',
+          overlayClass: 'bg-black/35 backdrop-blur-md',
+        };
+      case 'celebration':
+        return {
+          titleClass: 'tracking-wide',
+          numberClass: 'shadow-xl',
+          overlayClass: 'bg-black/25 backdrop-blur-sm',
+        };
+      default:
+        return {
+          titleClass: '',
+          numberClass: '',
+          overlayClass: 'bg-black/30 backdrop-blur-sm',
+        };
+    }
+  })();
+
   const backgroundStyle = countdown.backgroundImage 
     ? { backgroundImage: `url(${countdown.backgroundImage})` }
     : { backgroundColor: countdown.backgroundColor };
@@ -71,14 +111,14 @@ function CountdownDisplay({ countdown, isPreview = false }: CountdownDisplayProp
       className="min-h-screen flex flex-col items-center justify-center p-4 bg-cover bg-center bg-no-repeat"
       style={backgroundStyle}
     >
-      <div className="backdrop-blur-sm bg-black/30 p-8 rounded-2xl max-w-4xl w-full">
+      <div className={`${themeConfig.overlayClass} p-8 rounded-2xl max-w-4xl w-full`}>
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           className="text-center mb-8"
         >
           <h1 
-            className="text-5xl md:text-7xl font-bold mb-4"
+            className={`text-5xl md:text-7xl font-bold mb-4 ${themeConfig.titleClass}`}
             style={{ color: countdown.textColor }}
           >
             {countdown.title}
@@ -108,13 +148,21 @@ function CountdownDisplay({ countdown, isPreview = false }: CountdownDisplayProp
               className="text-center"
             >
               <div 
-                className="text-5xl md:text-7xl font-bold mb-2 rounded-lg p-4 bg-black/50"
+                className={`text-5xl md:text-7xl font-bold mb-2 rounded-lg p-4 bg-black/50 ${themeConfig.numberClass}`}
                 style={{ 
                   color: countdown.accentColor,
                   border: `2px solid ${countdown.accentColor}`
                 }}
               >
-                {formatNumber(item.value)}
+                <motion.span
+                  key={`${item.key}-${item.value}`}
+                  initial={{ y: 8, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ duration: 0.18 }}
+                  className="inline-block"
+                >
+                  {formatNumber(item.value)}
+                </motion.span>
               </div>
               <div 
                 className="text-lg uppercase tracking-wider"
@@ -171,17 +219,31 @@ function CountdownDisplay({ countdown, isPreview = false }: CountdownDisplayProp
               <Share2 size={20} />
               Share Countdown
             </button>
-            {timeRemaining.status === 'past' && (
-              <button
-                className="flex items-center gap-2 px-6 py-3 rounded-lg font-semibold border-2 transition-transform hover:scale-105"
-                style={{ 
-                  borderColor: countdown.accentColor,
-                  color: countdown.accentColor
-                }}
-              >
-                <RefreshCw size={20} />
-                Reset Countdown
-              </button>
+            {timeRemaining.status === 'past' && canManage && (
+              <>
+                <button
+                  className="flex items-center gap-2 px-6 py-3 rounded-lg font-semibold border-2 transition-transform hover:scale-105"
+                  style={{ 
+                    borderColor: countdown.accentColor,
+                    color: countdown.accentColor
+                  }}
+                  onClick={onReset}
+                >
+                  <RefreshCw size={20} />
+                  Reset
+                </button>
+                <button
+                  className="flex items-center gap-2 px-6 py-3 rounded-lg font-semibold border-2 transition-transform hover:scale-105"
+                  style={{ 
+                    borderColor: countdown.accentColor,
+                    color: countdown.accentColor
+                  }}
+                  onClick={onArchive}
+                >
+                  <Archive size={20} />
+                  Archive
+                </button>
+              </>
             )}
           </motion.div>
         )}

@@ -1,0 +1,20 @@
+FROM node:18-slim
+
+WORKDIR /app
+
+# Install minimal system deps used by some Node packages
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+# Install test dependencies
+COPY tests/package*.json ./tests/
+RUN cd tests && npm ci
+
+# Copy tests and the implementation-under-test
+COPY tests ./tests
+COPY repository_after ./repository_after
+
+ENV NODE_ENV=test
+
+CMD ["npm", "--prefix", "tests", "run", "test:all"]

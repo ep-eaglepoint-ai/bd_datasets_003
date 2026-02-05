@@ -11,6 +11,7 @@ export const createCountdownSchema = z.object({
   theme: z.enum(['minimal', 'celebration', 'elegant', 'neon']).default('minimal'),
   backgroundImage: z.string().url().optional(),
   isPublic: z.boolean().default(true),
+  isArchived: z.boolean().default(false),
 });
 
 export const updateCountdownSchema = createCountdownSchema.partial();

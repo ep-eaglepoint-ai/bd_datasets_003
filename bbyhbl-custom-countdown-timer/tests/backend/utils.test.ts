@@ -1,9 +1,12 @@
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect, jest } from '@jest/globals';
 import { calculateTimeRemaining, formatCountdownDisplay } from '../../repository_after/backend/src/lib/utils';
 
 describe('Time Calculation Utilities', () => {
   describe('calculateTimeRemaining', () => {
     it('should calculate future dates correctly', () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+
       const now = new Date();
       const futureDate = new Date(now.getTime() + (25 * 60 * 60 * 1000)); // 25 hours from now
       const result = calculateTimeRemaining(futureDate);
@@ -13,6 +16,8 @@ describe('Time Calculation Utilities', () => {
       expect(result.minutes).toBe(0);
       expect(result.seconds).toBeGreaterThanOrEqual(0);
       expect(result.status).toBe('upcoming');
+
+      jest.useRealTimers();
     });
 
     it('should handle past dates', () => {

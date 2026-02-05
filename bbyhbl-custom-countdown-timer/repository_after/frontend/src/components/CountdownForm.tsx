@@ -4,6 +4,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { motion } from 'framer-motion';
 import { z } from 'zod';
 import { Palette, Image, Calendar, Clock, Globe } from 'lucide-react';
+import { DateTime } from 'luxon';
+import { unsplashApi } from '../api/client';
 
 const countdownSchema = z.object({
   title: z.string().min(1, 'Title is required').max(100),
@@ -51,6 +53,12 @@ const CountdownForm: React.FC<CountdownFormProps> = ({ onSubmit, isLoading = fal
   const backgroundColor = watch('backgroundColor');
   const textColor = watch('textColor');
   const accentColor = watch('accentColor');
+  const currentBackgroundImage = watch('backgroundImage');
+
+  const [unsplashQuery, setUnsplashQuery] = React.useState('');
+  const [unsplashResults, setUnsplashResults] = React.useState<Array<{ id: string; small: string; regular: string; full: string; alt?: string | null; credit?: string }>>([]);
+  const [unsplashLoading, setUnsplashLoading] = React.useState(false);
+  const [unsplashError, setUnsplashError] = React.useState<string | null>(null);
   const handleThemeSelect = (themeId: string) => {
     const theme = themes.find(t => t.id === themeId);
     if (theme) {
@@ -61,11 +69,12 @@ const CountdownForm: React.FC<CountdownFormProps> = ({ onSubmit, isLoading = fal
     }
   };
   const onSubmitForm = (data: CountdownFormData) => {
-    const targetDateTime = new Date(`${data.targetDate}T${data.targetTime}`);
+    const dt = DateTime.fromISO(`${data.targetDate}T${data.targetTime}`, { zone: data.timezone });
+    const targetDateTime = dt.toUTC();
     onSubmit({
       title: data.title,
       description: data.description || undefined,
-      targetDate: targetDateTime.toISOString(),
+      targetDate: targetDateTime.toISO(),
       timezone: data.timezone,
       backgroundColor: data.backgroundColor,
       textColor: data.textColor,
@@ -74,6 +83,21 @@ const CountdownForm: React.FC<CountdownFormProps> = ({ onSubmit, isLoading = fal
       backgroundImage: data.backgroundImage || undefined,
       isPublic: data.isPublic,
     });
+  };
+
+  const searchUnsplash = async () => {
+    const q = unsplashQuery.trim();
+    if (!q) return;
+    setUnsplashLoading(true);
+    setUnsplashError(null);
+    try {
+      const resp = await unsplashApi.search(q, 12);
+      setUnsplashResults(resp.data.data || []);
+    } catch (e: any) {
+      setUnsplashError(e?.response?.data?.error || 'Failed to search Unsplash');
+    } finally {
+      setUnsplashLoading(false);
+    }
   };
 
   return (
@@ -110,8 +134,9 @@ const CountdownForm: React.FC<CountdownFormProps> = ({ onSubmit, isLoading = fal
           </h3>
           
           <div>
-            <label className="block text-sm font-medium mb-1">Event Title *</label>
+              <label htmlFor="countdown-title" className="block text-sm font-medium mb-1">Event Title *</label>
             <input
+                id="countdown-title"
               type="text"
               {...register('title')}
               className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500"
@@ -123,8 +148,9 @@ const CountdownForm: React.FC<CountdownFormProps> = ({ onSubmit, isLoading = fal
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Description (Optional)</label>
+            <label htmlFor="countdown-description" className="block text-sm font-medium mb-1">Description (Optional)</label>
             <textarea
+              id="countdown-description"
               {...register('description')}
               className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500"
               rows={3}
@@ -134,8 +160,9 @@ const CountdownForm: React.FC<CountdownFormProps> = ({ onSubmit, isLoading = fal
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Target Date *</label>
+              <label htmlFor="countdown-target-date" className="block text-sm font-medium mb-1">Target Date *</label>
               <input
+                id="countdown-target-date"
                 type="date"
                 {...register('targetDate')}
                 className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500"
@@ -146,8 +173,9 @@ const CountdownForm: React.FC<CountdownFormProps> = ({ onSubmit, isLoading = fal
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1">Target Time *</label>
+              <label htmlFor="countdown-target-time" className="block text-sm font-medium mb-1">Target Time *</label>
               <input
+                id="countdown-target-time"
                 type="time"
                 {...register('targetTime')}
                 className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500"
@@ -159,11 +187,12 @@ const CountdownForm: React.FC<CountdownFormProps> = ({ onSubmit, isLoading = fal
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1 flex items-center gap-2">
+            <label htmlFor="countdown-timezone" className="block text-sm font-medium mb-1 flex items-center gap-2">
               <Globe size={16} />
               Timezone
             </label>
             <select
+              id="countdown-timezone"
               {...register('timezone')}
               className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500"
             >
@@ -218,9 +247,10 @@ const CountdownForm: React.FC<CountdownFormProps> = ({ onSubmit, isLoading = fal
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Background Color</label>
+              <label htmlFor="countdown-background-color" className="block text-sm font-medium mb-1">Background Color</label>
               <div className="flex gap-2">
                 <input
+                  id="countdown-background-color"
                   type="color"
                   {...register('backgroundColor')}
                   className="w-12 h-12 cursor-pointer"
@@ -234,9 +264,10 @@ const CountdownForm: React.FC<CountdownFormProps> = ({ onSubmit, isLoading = fal
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1">Text Color</label>
+              <label htmlFor="countdown-text-color" className="block text-sm font-medium mb-1">Text Color</label>
               <div className="flex gap-2">
                 <input
+                  id="countdown-text-color"
                   type="color"
                   {...register('textColor')}
                   className="w-12 h-12 cursor-pointer"
@@ -250,9 +281,10 @@ const CountdownForm: React.FC<CountdownFormProps> = ({ onSubmit, isLoading = fal
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1">Accent Color</label>
+              <label htmlFor="countdown-accent-color" className="block text-sm font-medium mb-1">Accent Color</label>
               <div className="flex gap-2">
                 <input
+                  id="countdown-accent-color"
                   type="color"
                   {...register('accentColor')}
                   className="w-12 h-12 cursor-pointer"
@@ -277,12 +309,53 @@ const CountdownForm: React.FC<CountdownFormProps> = ({ onSubmit, isLoading = fal
               className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500"
               placeholder="https://images.unsplash.com/..."
             />
-            <p className="text-sm text-gray-500 mt-1">
-              You can also find beautiful images at{' '}
-              <a href="https://unsplash.com" target="_blank" rel="noopener noreferrer" className="text-blue-500">
-                Unsplash.com
-              </a>
-            </p>
+
+            <div className="mt-3 p-4 border rounded-lg bg-gray-50">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-sm font-semibold">Search Unsplash</span>
+                <span className="text-xs text-gray-500">(uses Unsplash API)</span>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={unsplashQuery}
+                  onChange={(e) => setUnsplashQuery(e.target.value)}
+                  className="flex-1 p-3 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g., fireworks, beach, neon city"
+                />
+                <button
+                  type="button"
+                  onClick={searchUnsplash}
+                  disabled={unsplashLoading}
+                  className="px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {unsplashLoading ? 'Searching…' : 'Search'}
+                </button>
+              </div>
+              {unsplashError && <p className="text-sm text-red-600 mt-2">{unsplashError}</p>}
+              {unsplashResults.length > 0 && (
+                <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {unsplashResults.map((r) => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => setValue('backgroundImage', r.regular)}
+                      className={`relative rounded-lg overflow-hidden border transition-all hover:scale-[1.01] ${
+                        currentBackgroundImage === r.regular ? 'border-blue-600 ring-2 ring-blue-200' : 'border-gray-200'
+                      }`}
+                      title={r.alt || 'Unsplash image'}
+                    >
+                      <img src={r.small} alt={r.alt || 'Unsplash'} className="w-full h-20 object-cover" />
+                      {r.credit && (
+                        <div className="absolute bottom-0 left-0 right-0 text-[10px] text-white bg-black/50 px-2 py-1 truncate">
+                          {r.credit}
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

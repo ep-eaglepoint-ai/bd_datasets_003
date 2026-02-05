@@ -42,9 +42,8 @@ module.exports = {
   restoreMocks: true,
 };
 
-// Set environment variables for tests
-process.env.DATABASE_URL = 'file:./test.db';
-process.env.UNSPLASH_ACCESS_KEY = 'DpjbQKrPNzvzAbwK7AWplLI2HeZUmIn9RPvrLJhlnoo';
-process.env.SESSION_SECRET = '03b60940baeb78947902fca9c6129829580ea77224e370565fc1f24ad5c5ec76';
-process.env.NODE_ENV = 'development';
-process.env.PORT = '3001';
+// Set defaults for tests (docker-compose can override)
+process.env.UNSPLASH_ACCESS_KEY = process.env.UNSPLASH_ACCESS_KEY || 'test_unsplash_key';
+process.env.SESSION_SECRET = process.env.SESSION_SECRET || '03b60940baeb78947902fca9c6129829580ea77224e370565fc1f24ad5c5ec76';
+process.env.NODE_ENV = process.env.NODE_ENV || 'test';
+process.env.PORT = process.env.PORT || '3001';

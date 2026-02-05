@@ -1,62 +1,94 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
+import { MemoryRouter } from 'react-router-dom';
 
-const TestHome = () => {
-  return (
-    <div data-testid="home-page">
-      <h1>Count Down to What Matters</h1>
-      <p>Create beautiful, shareable countdowns</p>
-      <button>Create Countdown</button>
-      <button>Browse Public Countdowns</button>
-      
-      <div>
-        <h3>Beautiful Displays</h3>
-        <h3>Share Instantly</h3>
-        <h3>Cross-Device Sync</h3>
-      </div>
-      
-      <div>
-        <h3>Save Your Countdowns</h3>
-        <button>Sign In</button>
-        <button>Create Account</button>
-      </div>
-    </div>
-  );
-};
+import Home from '../../repository_after/frontend/src/pages/Home';
+import Browse from '../../repository_after/frontend/src/pages/Browse';
+import { AuthProvider } from '../../repository_after/frontend/src/contexts/AuthContext';
 
-describe('Home Page - Requirement Verification', () => {
+import { countdownApi } from '../__mocks__/frontendApiClient';
+
+describe('Pages - Requirements', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it('renders the main hero section with heading', () => {
-    render(<TestHome />);
-    
-    expect(screen.getByText(/count down to what matters/i)).toBeInTheDocument();
-    expect(screen.getByText(/create beautiful, shareable countdowns/i)).toBeInTheDocument();
+  it('Home shows user countdown grid when logged in (Requirement 4)', async () => {
+    (countdownApi.getUserCountdowns as jest.Mock).mockResolvedValueOnce({
+      data: {
+        data: [
+          {
+            id: '1',
+            slug: 'soon',
+            title: 'Soon',
+            targetDate: new Date(Date.now() + 1000 * 60 * 60).toISOString(),
+            timezone: 'UTC',
+            backgroundColor: '#000000',
+            textColor: '#FFFFFF',
+            accentColor: '#3B82F6',
+            theme: 'minimal',
+            isPublic: false,
+            isArchived: false,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            timeRemaining: { days: 0, hours: 1, minutes: 0, seconds: 0, totalSeconds: 3600, status: 'upcoming' },
+          },
+        ],
+      },
+    });
+
+    // AuthProvider reads from localStorage
+    window.localStorage.getItem = jest.fn((k: string) => {
+      if (k === 'token') return 't';
+      if (k === 'user') return JSON.stringify({ id: 'u1', email: 'e@test.com', username: 'u' });
+      return null;
+    });
+
+    render(
+      <MemoryRouter>
+        <AuthProvider>
+          <Home />
+        </AuthProvider>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getByText(/your countdowns/i)).toBeInTheDocument());
+    expect(screen.getByText('Soon')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /view/i })).toBeInTheDocument();
   });
 
-  it('shows call-to-action buttons', () => {
-    render(<TestHome />);
-    
-    expect(screen.getByText(/create countdown/i)).toBeInTheDocument();
-    expect(screen.getByText(/browse public countdowns/i)).toBeInTheDocument();
-  });
+  it('Browse lists public countdowns (Requirement 3)', async () => {
+    (countdownApi.getPublicCountdowns as jest.Mock).mockResolvedValueOnce({
+      data: {
+        data: [
+          {
+            id: 'p1',
+            slug: 'public',
+            title: 'Public',
+            targetDate: new Date(Date.now() + 1000 * 60 * 60).toISOString(),
+            timezone: 'UTC',
+            backgroundColor: '#000000',
+            textColor: '#FFFFFF',
+            accentColor: '#3B82F6',
+            theme: 'minimal',
+            isPublic: true,
+            isArchived: false,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            timeRemaining: { days: 0, hours: 1, minutes: 0, seconds: 0, totalSeconds: 3600, status: 'upcoming' },
+          },
+        ],
+      },
+    });
 
-  it('displays key features', () => {
-    render(<TestHome />);
-    
-    expect(screen.getByText(/beautiful displays/i)).toBeInTheDocument();
-    expect(screen.getByText(/share instantly/i)).toBeInTheDocument();
-    expect(screen.getByText(/cross-device sync/i)).toBeInTheDocument();
-  });
+    render(
+      <MemoryRouter>
+        <Browse />
+      </MemoryRouter>
+    );
 
-  it('prompts non-logged-in users to sign up', () => {
-    render(<TestHome />);
-    
-    expect(screen.getByText(/save your countdowns/i)).toBeInTheDocument();
-    expect(screen.getByText(/sign in/i)).toBeInTheDocument();
-    expect(screen.getByText(/create account/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/public countdowns/i)).toBeInTheDocument());
+    expect(screen.getByText('Public')).toBeInTheDocument();
   });
 });

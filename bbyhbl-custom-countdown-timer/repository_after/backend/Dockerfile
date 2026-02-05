@@ -24,4 +24,4 @@ RUN npm run build
 EXPOSE 3001
 
 # Start application
-CMD ["node", "dist/index.js"]
+CMD ["sh", "-c", "npx prisma db push && node dist/index.js"]
