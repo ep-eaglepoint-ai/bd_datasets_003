@@ -1,0 +1,11 @@
+{
+            "instance_id": "OPWT0B",
+            "problem_statement": "Developers managing dozens of microservices frequently experience startup failures due to local .env files being out of sync with the master config-template.yaml. There is no automated mechanism to detect missing, optional, or secret environment variables, which causes onboarding delays and debugging overhead. The task is to build a Python 3.12 CLI tool (env-sync) that validates and synchronizes .env files against the YAML template, enforcing naming conventions, preventing secret leaks, preserving user values, and supporting an interactive update mode with secure secret prompts.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/opwt0b-python-cli-utility-for-synchronizing-env-files-with-yaml-templates",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
