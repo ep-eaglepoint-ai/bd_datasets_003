@@ -58,7 +58,8 @@ def run_tests(test_targets, filter_pattern=None, extra_args=None):
         os.remove(report_file)
     
     return {
-        "success": process.returncode == 0 or summary["failed"] == 0,
+        # Tightened: Success only if exit_code is 0 AND there are actually tests run AND no failures/errors
+        "success": process.returncode == 0 and summary["total"] > 0 and summary["failed"] == 0 and summary["errors"] == 0,
         "exit_code": process.returncode,
         "tests": results,
         "summary": summary,
