@@ -1,0 +1,11 @@
+{
+            "instance_id": "HOSTXZ",
+            "problem_statement": "Refactor the existing SwitchableNorm2d_Unholy implementation to make it efficient, readable, maintainable, and numerically stable while preserving its original functionality.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/hostxz-optimize-and-refactor-switchablenorm2d-layer",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
