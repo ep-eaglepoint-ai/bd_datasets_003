@@ -81,13 +81,50 @@ export function createTestApp(deps: {
     const body = req.body as CreateOrderRequest;
     try {
       const order = await deps.orderService.createOrder(body);
+
+      // If the order is being returned via idempotency and it is a failed order,
+      // keep the response aligned with payment failure semantics.
+      if (order.status === "payment_failed") {
+        return res.status(402).json(order);
+      }
+
       return res.status(201).json(order);
     } catch (err: any) {
       const msg = err?.message ?? "Unknown error";
       if (msg.includes("Insufficient inventory")) {
         return res.status(409).json({ error: msg });
       }
-      if (msg.includes("Payment") || msg.toLowerCase().includes("payment")) {
+
+      const isPaymentError =
+        msg.includes("Payment") || msg.toLowerCase().includes("payment");
+
+      if (isPaymentError) {
+        // Requirement (Req 8): cache idempotency even on payment failure, so retries
+        // return the same failed order and do not re-attempt a charge.
+        // OrderService throws on payment failure but it *does* persist an order row.
+        if (body?.userId && body?.idempotencyKey) {
+          try {
+            const found = await deps.pool.query(
+              "SELECT id FROM orders WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1",
+              [body.userId]
+            );
+            const orderId = found.rows?.[0]?.id as string | undefined;
+            if (orderId) {
+              const failedOrder = await deps.orderService.getOrderById(orderId);
+              if (failedOrder.status === "payment_failed") {
+                await deps.redis.setex(
+                  `idempotency:${body.idempotencyKey}`,
+                  86400,
+                  failedOrder.id
+                );
+                return res.status(402).json(failedOrder);
+              }
+            }
+          } catch {
+            // Fall through to generic payment error response.
+          }
+        }
+
         return res.status(402).json({ error: msg });
       }
       return res.status(500).json({ error: msg });

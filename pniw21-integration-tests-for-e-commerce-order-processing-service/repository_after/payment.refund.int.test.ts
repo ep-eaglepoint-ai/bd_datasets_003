@@ -34,26 +34,22 @@ describe("Payment + refund behaviors", () => {
   test("payment timeout releases inventory (simulated delayed non-success status)", async () => {
     await seedInventory(ctx.txPool, [{ productId: "p_timeout", quantity: 1 }]);
 
-    const stripeState = (global as any).__stripeMockState;
-    stripeState.paymentIntents.create.mockImplementationOnce(() => {
-      return new Promise((resolve) => {
-        setTimeout(
-          () =>
-            resolve({
-              id: "pi_timeout",
-              object: "payment_intent",
-              status: "processing",
-              amount: 0,
-              currency: "usd",
-              metadata: {},
-              created: Math.floor(Date.now() / 1000),
-            }),
-          200
-        );
+    // NOTE: Do not use Jest fake timers here: ioredis relies on real timers.
+    // Simulate a delayed Stripe response with a manual deferred promise instead.
+    const chargeDeferred = (() => {
+      let resolve!: (v: any) => void;
+      const promise = new Promise<any>((r) => {
+        resolve = r;
       });
-    });
+      return { promise, resolve };
+    })();
 
-    const pending = ctx.http.post("/orders").send({
+    const stripeState = (global as any).__stripeMockState;
+    stripeState.paymentIntents.create.mockImplementationOnce(
+      () => chargeDeferred.promise
+    );
+
+    const req = ctx.http.post("/orders").send({
       userId: "u_timeout",
       items: orderItems([
         { productId: "p_timeout", quantity: 1, pricePerUnit: 1 },
@@ -61,6 +57,22 @@ describe("Payment + refund behaviors", () => {
       shippingAddress: US_WEST_ADDRESS,
       idempotencyKey: "idem_timeout_1",
     });
+
+    const pending = new Promise<any>((resolve, reject) => {
+      req.end((err, res) => (err ? reject(err) : resolve(res)));
+    });
+
+    // Release the deferred Stripe response now (non-success status -> payment failure).
+    chargeDeferred.resolve({
+      id: "pi_timeout",
+      object: "payment_intent",
+      status: "processing",
+      amount: 0,
+      currency: "usd",
+      metadata: {},
+      created: Math.floor(Date.now() / 1000),
+    });
+
     const res = await pending;
 
     expect(res.status).toBe(402);
@@ -126,15 +138,17 @@ describe("Payment + refund behaviors", () => {
     const orderId = orderRow.rows[0].id as string;
     expect(orderRow.rows[0].status).toBe("payment_failed");
 
-    const idempotencyKey = await ctx.redis.get(
-      "idempotency:idem_failed_retry_1"
-    );
-    expect(idempotencyKey).toBeNull();
+    // Req 8: failed orders must be cached by idempotency, so retry returns same order.
+    const cached = await ctx.redis.get("idempotency:idem_failed_retry_1");
+    expect(cached).toBe(orderId);
 
     const r2 = await ctx.http.post("/orders").send(payload);
     expect(r2.status).toBe(402);
+    expect(r2.body.id).toBe(orderId);
+    expect(r2.body.status).toBe("payment_failed");
 
-    expect(stripeState.paymentIntents.create).toHaveBeenCalledTimes(2);
+    // No duplicate charge attempt on retry.
+    expect(stripeState.paymentIntents.create).toHaveBeenCalledTimes(1);
   });
 
   test("fake timers can control local time-dependent promises", async () => {

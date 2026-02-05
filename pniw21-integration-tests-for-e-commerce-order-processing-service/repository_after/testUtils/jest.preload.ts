@@ -21,6 +21,14 @@ try {
 
 (global as any).__stripeSecretKeyAccessCount = () => stripeSecretKeyAccessCount;
 
+beforeEach(() => {
+  // Explicit check (Req 3): Stripe SDK must be mocked.
+  // If this fails, tests may attempt real Stripe usage.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const stripeModule = require("stripe");
+  expect(stripeModule?.default?.name).toBe("StripeMock");
+});
+
 afterEach(() => {
   // Hard requirement: the test suite must never read STRIPE_SECRET_KEY.
   expect((global as any).__stripeSecretKeyAccessCount()).toBe(0);

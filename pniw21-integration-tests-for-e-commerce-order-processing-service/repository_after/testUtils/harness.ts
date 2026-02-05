@@ -50,6 +50,13 @@ export async function createIntegrationHarness(): Promise<IntegrationHarness> {
   };
 
   const createContext = async (): Promise<TestContext> => {
+    // Ensure the Stripe mock module has initialized its shared state.
+    // The state is created when StripeMock is constructed.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const StripeCtor = require("stripe").default;
+    // eslint-disable-next-line no-new
+    new StripeCtor("sk_test_init", { apiVersion: "2023-10-16" });
+
     // Reset Stripe mock state per test so mockImplementationOnce doesn't leak.
     const stripeState = (global as any).__stripeMockState;
     if (stripeState?.paymentIntents?.create?.mockReset) {
@@ -107,14 +114,25 @@ export async function createIntegrationHarness(): Promise<IntegrationHarness> {
     }
 
     // Requirement: each test starts with a clean Redis DB (dedicated DB 15).
+    expect((redis as any)?.options?.db).toBe(15);
     await flushRedis(redis);
     const keys = await redis.keys("*");
     expect(keys).toHaveLength(0);
+    const reservationKeys = await redis.keys("reservation:*");
+    expect(reservationKeys).toHaveLength(0);
 
     const txPool = await createTransactionalPool(basePool);
 
     const inventoryService = new InventoryService(txPool, redis);
     const paymentService = new PaymentService("sk_test_do_not_use");
+
+    // Explicit check (Req 3): ensure our Stripe mock surface is wired.
+    expect(stripeState).toBeDefined();
+    expect(stripeState?.paymentIntents?.create).toBeDefined();
+    expect(stripeState?.paymentIntents?.search).toBeDefined();
+    expect(stripeState?.refunds?.create).toBeDefined();
+    expect(stripeState?.webhooks?.constructEvent).toBeDefined();
+
     const shippingService = new ShippingService();
     const orderService = new OrderService(
       txPool,

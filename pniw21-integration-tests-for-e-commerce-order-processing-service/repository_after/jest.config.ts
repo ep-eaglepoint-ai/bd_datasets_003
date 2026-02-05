@@ -15,6 +15,7 @@ const config: Config = {
   testTimeout: 15000,
   collectCoverage: true,
   coverageProvider: "v8",
+  coverageReporters: ["json-summary", "json", "lcov", "text", "clover"],
   collectCoverageFrom: ["<rootDir>/repository_before/services/**/*.ts"],
   coverageDirectory: "<rootDir>/repository_after/coverage",
   coverageThreshold: {

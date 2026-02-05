@@ -35,24 +35,20 @@ describe("Inventory lifecycle", () => {
   test("inventory reserved during in-flight payment, then confirmed and reservation cleared", async () => {
     await seedInventory(ctx.txPool, [{ productId: "p3", quantity: 2 }]);
 
-    const stripeState = (global as any).__stripeMockState;
-    stripeState.paymentIntents.create.mockImplementationOnce(() => {
-      return new Promise((resolve) => {
-        setTimeout(
-          () =>
-            resolve({
-              id: "pi_delayed",
-              object: "payment_intent",
-              status: "succeeded",
-              amount: 0,
-              currency: "usd",
-              metadata: {},
-              created: Math.floor(Date.now() / 1000),
-            }),
-          250
-        );
+    // NOTE: Do not use Jest fake timers here: ioredis relies on real timers.
+    // Instead, simulate an in-flight Stripe call with a manual deferred promise.
+    const chargeDeferred = (() => {
+      let resolve!: (v: any) => void;
+      const promise = new Promise<any>((r) => {
+        resolve = r;
       });
-    });
+      return { promise, resolve };
+    })();
+
+    const stripeState = (global as any).__stripeMockState;
+    stripeState.paymentIntents.create.mockImplementationOnce(
+      () => chargeDeferred.promise
+    );
 
     const req = ctx.http.post("/orders").send({
       userId: "u_inflight",
@@ -65,15 +61,26 @@ describe("Inventory lifecycle", () => {
       req.end((err, res) => (err ? reject(err) : resolve(res)));
     });
 
-    // Wait until reservation is visible (Redis is real).
+    // Wait until reservation is visible (Redis is real), without sleeps.
     let reserved = 0;
-    for (let i = 0; i < 30; i += 1) {
+    for (let i = 0; i < 200; i += 1) {
       reserved = await getReservation(ctx.redis, "p3");
       if (reserved === 1) break;
-      await new Promise((r) => setTimeout(r, 10));
+      // Allow pending IO/microtasks to flush without adding time.
+      await new Promise((r) => setImmediate(r));
     }
     expect(reserved).toBe(1);
     expect(await getInventoryQty(ctx.txPool, "p3")).toBe(2);
+
+    chargeDeferred.resolve({
+      id: "pi_delayed",
+      object: "payment_intent",
+      status: "succeeded",
+      amount: 0,
+      currency: "usd",
+      metadata: {},
+      created: Math.floor(Date.now() / 1000),
+    });
 
     const res = await pending;
 

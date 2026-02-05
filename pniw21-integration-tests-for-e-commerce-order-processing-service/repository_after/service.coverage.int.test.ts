@@ -54,7 +54,7 @@ describe("Service coverage (fast)", () => {
   });
 
   afterEach(async () => {
-    await ctx.cleanup();
+    if (ctx) await ctx.cleanup();
   });
 
   test("ShippingService zones + address validation + delivery estimate", () => {

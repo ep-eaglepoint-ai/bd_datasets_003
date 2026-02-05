@@ -157,12 +157,19 @@ describe("Order creation flow", () => {
     ) as PromiseFulfilledResult<any>[];
     expect(fulfilled).toHaveLength(3);
 
-    const statuses = fulfilled.map((r) => r.value.status);
-    const ok = statuses.filter((s) => s === 201);
-    const fail = statuses.filter((s) => s !== 201);
+    const responses = fulfilled.map((r) => r.value);
+    const statuses = responses.map((r) => r.status);
+    const ok = responses.filter((r) => r.status === 201);
+    const fail = responses.filter((r) => r.status !== 201);
 
     expect(ok).toHaveLength(1);
-    expect(fail.length).toBe(2);
+    expect(fail).toHaveLength(2);
+
+    // Req 5: failures must be inventory errors, not random status codes.
+    for (const r of fail) {
+      expect(r.status).toBe(409);
+      expect(r.body?.error ?? "").toContain("Insufficient inventory");
+    }
 
     const inv = await getInventoryQty(ctx.txPool, "p_last");
     expect(inv).toBe(0);
@@ -177,6 +184,31 @@ describe("Order creation flow", () => {
 
     // Reservation key should be cleared after successful confirmation
     expect(await getReservation(ctx.redis, "p_last")).toBe(0);
+  });
+
+  test("order with multiple items from different warehouses (modeled as distinct product IDs)", async () => {
+    await seedInventory(ctx.txPool, [
+      { productId: "wh1:pA", quantity: 3 },
+      { productId: "wh2:pB", quantity: 2 },
+    ]);
+
+    const res = await ctx.http.post("/orders").send({
+      userId: "u_wh_multi",
+      items: orderItems([
+        { productId: "wh1:pA", quantity: 1, pricePerUnit: 3.0 },
+        { productId: "wh2:pB", quantity: 2, pricePerUnit: 2.5 },
+      ]),
+      shippingAddress: US_WEST_ADDRESS,
+      idempotencyKey: "idem_wh_multi_1",
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.status).toBe("paid");
+
+    expect(await getInventoryQty(ctx.txPool, "wh1:pA")).toBe(2);
+    expect(await getInventoryQty(ctx.txPool, "wh2:pB")).toBe(0);
+    expect(await getReservation(ctx.redis, "wh1:pA")).toBe(0);
+    expect(await getReservation(ctx.redis, "wh2:pB")).toBe(0);
   });
 
   test("order with multiple items reserves/consumes inventory for each product", async () => {

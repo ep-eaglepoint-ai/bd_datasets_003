@@ -1,4 +1,5 @@
 import { spawnSync } from "child_process";
+import fs from "fs";
 import path from "path";
 
 function runJestWithConfig(configPath: string, args: string[] = []) {
@@ -53,6 +54,23 @@ test("integration suite passes twice, supports randomization, and completes with
 
   expect(first.status).toBe(0);
   expect(duration1).toBeLessThanOrEqual(30_000);
+
+  // Definition of Done: coverage must stay above 85% for service files.
+  // The repository_after Jest config enforces thresholds; this makes it explicit.
+  const coverageSummaryPath = path.resolve(
+    __dirname,
+    "..",
+    "repository_after",
+    "coverage",
+    "coverage-summary.json"
+  );
+  expect(fs.existsSync(coverageSummaryPath)).toBe(true);
+  const summary = JSON.parse(fs.readFileSync(coverageSummaryPath, "utf8"));
+  const total = summary?.total;
+  expect(total?.statements?.pct).toBeGreaterThanOrEqual(85);
+  expect(total?.branches?.pct).toBeGreaterThanOrEqual(85);
+  expect(total?.functions?.pct).toBeGreaterThanOrEqual(85);
+  expect(total?.lines?.pct).toBeGreaterThanOrEqual(85);
 
   const start2 = Date.now();
   const second = runJestWithConfig(configPath, [
