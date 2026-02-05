@@ -1,0 +1,435 @@
+diff --git a/repository_before/.gitkeep b/repository_before/.gitkeep
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/repository_after/cube_state.py b/repository_after/cube_state.py
+new file mode 100644
+index 0000000..72a8c0b
+--- /dev/null
++++ b/repository_after/cube_state.py
+@@ -0,0 +1,40 @@
++class CubeState:
++    """
++    Represents the state of a Rubik's Cube using permutation and orientation vectors.
++    
++    cp: Corner Permutation (8 elements, 0-7)
++    co: Corner Orientation (8 elements, 0-2)
++    ep: Edge Permutation (12 elements, 0-11)
++    eo: Edge Orientation (12 elements, 0-1)
++    """
++    def __init__(self, cp, co, ep, eo):
++        self.cp = list(cp)
++        self.co = list(co)
++        self.ep = list(ep)
++        self.eo = list(eo)
++
++    @staticmethod
++    def solved_state():
++        """Returns a CubeState representing the solved cube."""
++        return CubeState(
++            cp=list(range(8)),
++            co=[0] * 8,
++            ep=list(range(12)),
++            eo=[0] * 12
++        )
++
++    def is_solved(self) -> bool:
++        """Returns True if the cube is in the solved state."""
++        return (self.cp == list(range(8)) and
++                self.co == [0] * 8 and
++                self.ep == list(range(12)) and
++                self.eo == [0] * 12)
++
++    def copy(self):
++        """Returns a deep copy of the current cube state."""
++        return CubeState(
++            cp=list(self.cp),
++            co=list(self.co),
++            ep=list(self.ep),
++            eo=list(self.eo)
++        )
+diff --git a/repository_after/heuristic.py b/repository_after/heuristic.py
+new file mode 100644
+index 0000000..2d9a720
+--- /dev/null
++++ b/repository_after/heuristic.py
+@@ -0,0 +1,78 @@
++from .moves import MOVE_DATA
++
++# CO: 3^7 = 2187 states
++# EO: 2^11 = 2048 states
++
++def get_co_index(co):
++    idx = 0
++    for i in range(7):
++        idx = idx * 3 + co[i]
++    return idx
++
++def get_eo_index(eo):
++    idx = 0
++    for i in range(11):
++        idx = idx * 2 + eo[i]
++    return idx
++
++class Heuristic:
++    def __init__(self):
++        self.co_table = self._generate_co_table()
++        self.eo_table = self._generate_eo_table()
++
++    def _generate_co_table(self):
++        table = [-1] * 2187
++        start = [0] * 8
++        table[get_co_index(start)] = 0
++        queue = [start]
++        dist = 0
++        while queue:
++            next_queue = []
++            for co in queue:
++                for move in 'UDFBLR':
++                    m_data = MOVE_DATA[move]
++                    p = m_data['cp_p']
++                    i = m_data['co_i']
++                    # Apply move
++                    new_co = [(co[p[j]] + i[j]) % 3 for j in range(8)]
++                    idx = get_co_index(new_co)
++                    if table[idx] == -1:
++                        table[idx] = dist + 1
++                        next_queue.append(new_co)
++                        
++                    # Also check 180 and 270 (prime)
++                    # For simplicity, BFS handles all depths so we just need moves.
++                    # Standard BFS explores all neighbors.
++            queue = next_queue
++            dist += 1
++            if dist > 20: break # Safety
++        return table
++
++    def _generate_eo_table(self):
++        table = [-1] * 2048
++        start = [0] * 12
++        table[get_eo_index(start)] = 0
++        queue = [start]
++        dist = 0
++        while queue:
++            next_queue = []
++            for eo in queue:
++                for move in 'UDFBLR':
++                    m_data = MOVE_DATA[move]
++                    p = m_data['ep_p']
++                    i = m_data['eo_i']
++                    new_eo = [(eo[p[j]] + i[j]) % 2 for j in range(12)]
++                    idx = get_eo_index(new_eo)
++                    if table[idx] == -1:
++                        table[idx] = dist + 1
++                        next_queue.append(new_eo)
++            queue = next_queue
++            dist += 1
++            if dist > 20: break
++        return table
++
++    def get_h(self, state) -> int:
++        h_co = self.co_table[get_co_index(state.co)]
++        h_eo = self.eo_table[get_eo_index(state.eo)]
++        # Heuristic must be admissible. Max of two admissible heuristics is admissible.
++        return max(h_co, h_eo)
+diff --git a/repository_after/ida_star.py b/repository_after/ida_star.py
+new file mode 100644
+index 0000000..b235965
+--- /dev/null
++++ b/repository_after/ida_star.py
+@@ -0,0 +1,72 @@
++from .moves import apply_move
++
++class IDAStar:
++    def __init__(self, heuristic):
++        self.heuristic = heuristic
++        self.moves = ["U", "U'", "U2", "D", "D'", "D2", "L", "L'", "L2", "R", "R'", "R2", "F", "F'", "F2", "B", "B'", "B2"]
++        self.inverse_map = {
++            "U": "U'", "U'": "U", "U2": "U2",
++            "D": "D'", "D'": "D", "D2": "D2",
++            "L": "L'", "L'": "L", "L2": "L2",
++            "R": "R'", "R'": "R", "R2": "R2",
++            "F": "F'", "F'": "F", "F2": "F2",
++            "B": "B'", "B'": "B", "B2": "B2"
++        }
++
++    def solve(self, state):
++        """Finds the optimal move sequence using IDA*."""
++        if state.is_solved():
++            return []
++
++        threshold = self.heuristic.get_h(state)
++        while True:
++            result, path = self._search(state, 0, threshold, [])
++            if result == "FOUND":
++                return path
++            if result == float('inf'):
++                return None  # No solution possible
++            threshold = result
++
++    def _search(self, state, g, threshold, path):
++        h = self.heuristic.get_h(state)
++        f = g + h
++        
++        if f > threshold:
++            return f, None
++        
++        if state.is_solved():
++            return "FOUND", path
++
++        min_new_threshold = float('inf')
++        
++        last_move = path[-1] if path else None
++        
++        for move in self.moves:
++            # Pruning rule 1: Don't move the same face twice in a row
++            if last_move and move[0] == last_move[0]:
++                continue
++            
++            # Pruning rule 2: Eliminate redundant opposite face move orders
++            # (e.g., U D is same as D U, so we only allow one order)
++            if last_move:
++                if (last_move[0] == 'D' and move[0] == 'U') or \
++                   (last_move[0] == 'L' and move[0] == 'R') or \
++                   (last_move[0] == 'B' and move[0] == 'F'):
++                    continue
++
++            # Apply move (using a copy to backtrack effectively)
++            new_state = state.copy()
++            apply_move(new_state, move)
++            
++            path.append(move)
++            result, found_path = self._search(new_state, g + 1, threshold, path)
++            
++            if result == "FOUND":
++                return "FOUND", found_path
++            
++            if result < min_new_threshold:
++                min_new_threshold = result
++                
++            path.pop()
++            
++        return min_new_threshold, None
+diff --git a/repository_after/moves.py b/repository_after/moves.py
+new file mode 100644
+index 0000000..edbfdeb
+--- /dev/null
++++ b/repository_after/moves.py
+@@ -0,0 +1,90 @@
++from .cube_state import CubeState
++
++# Corners: 0:UFR, 1:URB, 2:UBL, 3:ULF, 4:DRF, 5:DFL, 6:DLB, 7:DBR
++# Edges: 0:UR, 1:UF, 2:UL, 3:UB, 4:DR, 5:DF, 6:DL, 7:DB, 8:FR, 9:FL, 10:BR, 11:BL
++
++def _apply_move_data(state, cp_p, co_i, ep_p, eo_i):
++    """
++    Applies permutation and orientation increments to the state.
++    new_state[i] = old_state[p[i]]
++    orientation is incremented by i and kept mod 3 (corners) or 2 (edges).
++    """
++    # Corner update
++    old_cp = list(state.cp)
++    old_co = list(state.co)
++    for i in range(8):
++        state.cp[i] = old_cp[cp_p[i]]
++        state.co[i] = (old_co[cp_p[i]] + co_i[i]) % 3
++    
++    # Edge update
++    old_ep = list(state.ep)
++    old_eo = list(state.eo)
++    for i in range(12):
++        state.ep[i] = old_ep[ep_p[i]]
++        state.eo[i] = (old_eo[ep_p[i]] + eo_i[i]) % 2
++
++# Basic Move Tables (CW 90 deg)
++MOVE_DATA = {
++    'U': {
++        'cp_p': [3, 0, 1, 2, 4, 5, 6, 7],
++        'co_i': [0, 0, 0, 0, 0, 0, 0, 0],
++        'ep_p': [3, 0, 1, 2, 4, 5, 6, 7, 8, 9, 10, 11],
++        'eo_i': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
++    },
++    'D': {
++        'cp_p': [0, 1, 2, 3, 5, 6, 7, 4],
++        'co_i': [0, 0, 0, 0, 0, 0, 0, 0],
++        'ep_p': [0, 1, 2, 3, 5, 6, 7, 4, 8, 9, 10, 11],
++        'eo_i': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
++    },
++    'L': {
++        'cp_p': [0, 1, 6, 2, 4, 3, 5, 7],
++        'co_i': [0, 0, 1, 2, 0, 1, 2, 0],
++        'ep_p': [0, 1, 11, 3, 4, 5, 9, 7, 8, 2, 10, 6],
++        'eo_i': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
++    },
++    'R': {
++        'cp_p': [4, 0, 2, 3, 7, 5, 6, 1],
++        'co_i': [2, 1, 0, 0, 1, 0, 0, 2],
++        'ep_p': [8, 1, 2, 3, 10, 5, 6, 7, 4, 9, 0, 11],
++        'eo_i': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
++    },
++    'F': {
++        'cp_p': [3, 1, 2, 5, 0, 4, 6, 7],
++        'co_i': [1, 0, 0, 2, 2, 1, 0, 0],
++        'ep_p': [0, 9, 2, 3, 4, 8, 6, 7, 1, 5, 10, 11],
++        'eo_i': [0, 1, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0]
++    },
++    'B': {
++        'cp_p': [0, 7, 1, 3, 4, 5, 2, 6],
++        'co_i': [0, 1, 2, 0, 0, 0, 1, 2],
++        'ep_p': [0, 1, 2, 10, 4, 5, 6, 11, 8, 9, 7, 3],
++        'eo_i': [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1]
++    }
++}
++
++def move_U(state): _apply_move_data(state, **MOVE_DATA['U'])
++def move_D(state): _apply_move_data(state, **MOVE_DATA['D'])
++def move_L(state): _apply_move_data(state, **MOVE_DATA['L'])
++def move_R(state): _apply_move_data(state, **MOVE_DATA['R'])
++def move_F(state): _apply_move_data(state, **MOVE_DATA['F'])
++def move_B(state): _apply_move_data(state, **MOVE_DATA['B'])
++
++def apply_move(state, move_name):
++    """
++    Applies any of the 18 standard moves.
++    """
++    face = move_name[0]
++    power = 1
++    if len(move_name) > 1:
++        if move_name[1] == "'":
++            power = 3
++        elif move_name[1] == '2':
++            power = 2
++    
++    func = globals().get(f"move_{face}")
++    if func:
++        for _ in range(power):
++            func(state)
++    else:
++        raise ValueError(f"Invalid move: {move_name}")
+diff --git a/repository_after/parser.py b/repository_after/parser.py
+new file mode 100644
+index 0000000..03b3381
+--- /dev/null
++++ b/repository_after/parser.py
+@@ -0,0 +1,90 @@
++from .cube_state import CubeState
++
++# Indices in 54-char string (U, R, F, D, L, B)
++# Face: U(0-8), R(9-17), F(18-26), D(27-35), L(36-44), B(45-53)
++# Corners (Pos: Facelets)
++C_F = [
++    (8, 9, 20),   # 0: UFR (U9, R1, F3)
++    (2, 45, 11),  # 1: URB (U3, B1, R3)
++    (0, 36, 47),  # 2: UBL (U1, L1, B3)
++    (6, 18, 38),  # 3: ULF (U7, F1, L3)
++    (29, 26, 15), # 4: DRF (D3, F9, R7)
++    (27, 44, 24), # 5: DFL (D1, L9, F7)
++    (33, 53, 42), # 6: DLB (D7, B9, L7)
++    (35, 17, 51)  # 7: DBR (D9, R9, B7)
++]
++
++# Edges (Pos: Facelets)
++E_F = [
++    (5, 10),      # 0: UR (U6, R2)
++    (7, 19),      # 1: UF (U8, F2)
++    (3, 37),      # 2: UL (U4, L2)
++    (1, 46),      # 3: UB (U2, B2)
++    (32, 16),     # 4: DR (D6, R8)
++    (28, 25),     # 5: DF (D2, F8)
++    (30, 43),     # 6: DL (D4, L8)
++    (34, 52),     # 7: DB (D8, B8)
++    (23, 12),     # 8: FR (F6, R4)
++    (21, 39),     # 9: FL (F4, L6)
++    (48, 14),     # 10: BR (B4, R6)
++    (50, 41)      # 11: BL (B6, L4)
++]
++
++# Corner piece definition (solved colors)
++C_PIECES = [set('URF'), set('UBR'), set('ULB'), set('UFL'), set('DFR'), set('DLF'), set('DBL'), set('DRB')]
++# Edge piece definition (solved colors)
++E_PIECES = [set('UR'), set('UF'), set('UL'), set('UB'), set('DR'), set('DF'), set('DL'), set('DB'), set('FR'), set('FL'), set('BR'), set('BL')]
++
++def parse_singmaster(s: str) -> CubeState:
++    """Parses a 54-char Singmaster notation string into a CubeState."""
++    if len(s) != 54:
++        raise ValueError(f"String must be exactly 54 characters, got {len(s)}")
++    
++    valid_chars = set("URFDLB")
++    if not all(c.upper() in valid_chars for c in s):
++        raise ValueError("String contains invalid characters. Only U, R, F, D, L, B allowed.")
++
++    # Map face indices to face letters
++    color_map = {s[4]:'U', s[13]:'R', s[22]:'F', s[31]:'D', s[40]:'L', s[49]:'B'}
++
++    cp = [0] * 8
++    co = [0] * 8
++    for i in range(8):
++        facelets = [color_map[s[idx]] for idx in C_F[i]]
++        f_set = set(facelets)
++        for p_idx, p_set in enumerate(C_PIECES):
++            if f_set == p_set:
++                cp[i] = p_idx
++                # Orientation: which facelet is U or D?
++                for orient, color in enumerate(facelets):
++                    if color in ('U', 'D'):
++                        co[i] = orient
++                        break
++                break
++    
++    ep = [0] * 12
++    eo = [0] * 12
++    for i in range(12):
++        facelets = [color_map[s[idx]] for idx in E_F[i]]
++        f_set = set(facelets)
++        for p_idx, p_set in enumerate(E_PIECES):
++            if f_set == p_set:
++                ep[i] = p_idx
++                # Orientation: 
++                # EO=0 if U/D facelet is on U/D face
++                # or if no U/D color, if F/B facelet is on F/B face.
++                if facelets[0] in ('U', 'D'):
++                    eo[i] = 0
++                elif facelets[1] in ('U', 'D'):
++                    eo[i] = 1
++                elif facelets[0] in ('F', 'B'):
++                    eo[i] = 0
++                else:
++                    eo[i] = 1
++                break
++                
++    return CubeState(cp, co, ep, eo)
++
++def format_moves(move_list: list[str]) -> str:
++    """Converts a list of move names to a notation string."""
++    return " ".join(move_list)
+diff --git a/repository_after/solver.py b/repository_after/solver.py
+new file mode 100644
+index 0000000..4bb54c0
+--- /dev/null
++++ b/repository_after/solver.py
+@@ -0,0 +1,26 @@
++from .parser import parse_singmaster, format_moves
++from .heuristic import Heuristic
++from .ida_star import IDAStar
++
++class OptimalCubeSolver:
++    """
++    Principal Robotics Engineer implementation of a sub-second Rubik's Cube solver.
++    Uses IDA* search with pre-computed Pattern Database Heuristics.
++    """
++    def __init__(self):
++        # Initialize the modular search and heuristic engines
++        self.heuristic = Heuristic()
++        self.search_engine = IDAStar(self.heuristic)
++
++    def solve(self, scramble_string: str) -> str:
++        """
++        Accepts a 54-char Singmaster notation string and returns a move sequence solution.
++        """
++        # Parse the input string into internal permutation/orientation arrays
++        initial_state = parse_singmaster(scramble_string)
++        
++        # Execute the IDA* search (Iterative Deepening A*)
++        move_sequence = self.search_engine.solve(initial_state)
++        
++        # Format the internal move list back to standard notation
++        return format_moves(move_sequence)
