@@ -1,0 +1,19 @@
+FROM node:18-alpine
+#Enable pnpm via corepack
+RUN corepack enable
+
+WORKDIR /app
+#Copy only dependency files first (better caching)
+COPY package.json pnpm-lock.yaml* ./
+# Install deps
+RUN pnpm install
+# Copy vite config
+COPY ./vite.config.js ./
+# Copy the frontend app (index.html and src/)
+COPY ./repository_after/frontend/index.html ./
+COPY ./repository_after/frontend/src ./src
+COPY ./tests/frontend ./tests
+
+EXPOSE 3000
+CMD ["pnpm", "run", "dev"]
+
