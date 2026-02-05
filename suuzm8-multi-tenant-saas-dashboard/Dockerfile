@@ -32,6 +32,6 @@ ENV PATH="/opt/venv/bin:$PATH" \
 # Cache Node deps for client tests
 COPY repository_after/client/package.json repository_after/client/package.json
 COPY repository_after/client/package-lock.json repository_after/client/package-lock.json
-RUN cd repository_after/client && npm ci --silent
+RUN cd repository_after/client && npm ci --silent --include=dev
 
 COPY . /app

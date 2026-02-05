@@ -250,7 +250,7 @@ def run_client_suite(project_root: Path, timeout_s: int) -> RunResults:
             "sh",
             "test",
             "-lc",
-            "cd /app/repository_after/client && ./node_modules/.bin/vitest run --config vitest.config.ts --reporter verbose",
+            "cd /app/repository_after/client && npm ci --silent --include=dev && ./node_modules/.bin/vitest run --config vitest.config.ts --reporter verbose",
         ]
     else:
         # Fallback for when this evaluator is executed inside the test container.
@@ -258,7 +258,7 @@ def run_client_suite(project_root: Path, timeout_s: int) -> RunResults:
         vitest_bin = client_dir / "node_modules" / ".bin" / "vitest"
         install_cmd = ""
         if not vitest_bin.exists():
-            install_cmd = "npm ci --silent && "
+            install_cmd = "npm ci --silent --include=dev && "
         cmd = [
             "sh",
             "-lc",

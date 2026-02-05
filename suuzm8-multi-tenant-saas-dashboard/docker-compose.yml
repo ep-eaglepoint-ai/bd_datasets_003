@@ -34,7 +34,7 @@ services:
     command: >
       sh -c "
         pytest -q --cov=repository_after/server --cov-report=term-missing tests && \
-        cd /app/repository_after/client && ./node_modules/.bin/vitest run --config vitest.config.ts
+        cd /app/repository_after/client && npm ci --silent --include=dev && ./node_modules/.bin/vitest run --config vitest.config.ts
       "
     volumes:
       - .:/app
