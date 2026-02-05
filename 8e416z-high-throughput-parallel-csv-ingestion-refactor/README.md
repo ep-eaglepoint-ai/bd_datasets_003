@@ -1,11 +1,14 @@
 # 8E416Z - High-Throughput-Parallel-CSV-Ingestion-Refactor
 
-    ## Before Test Docker Command
-    <docker before command here>
-
-    ## After Test Docker Command
-    <docker after command here>
-
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## Before Test Docker Command
+```bash
+docker compose run --rm test-before
+```
+## After Test Docker Command
+```bash
+docker compose run --rm test-after
+```
+## Evaluation Docker Command
+```bash
+docker compose run --rm evaluate
+```

@@ -1,9 +1,18 @@
-
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
-  app:
+services:
+  test-after:
     build: .
-    command: pytest -q tests
+    command: pytest tests -k "not BaselineFailures"
+    volumes:
+      - .:/app
+
+  test-before:
+    build: .
+    command: pytest tests/test_baseline_failures.py
+    volumes:
+      - .:/app
+
+  evaluate:
+    build: .
+    command: python evaluation/evaluation.py
     volumes:
       - .:/app
