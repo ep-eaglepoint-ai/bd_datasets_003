@@ -1,9 +1,23 @@
+version: "3.8"
 
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
-  app:
+services:
+  test:
     build: .
-    command: pytest -q tests
+    working_dir: /app/repository_after
+    command: mvn -Dmaven.test.failure.ignore=false clean test
+    volumes:
+      - .:/app
+
+  meta-test:
+    build: .
+    working_dir: /app
+    command: python3 tests/meta_test.py
+    volumes:
+      - .:/app
+
+  evaluation:
+    build: .
+    working_dir: /app
+    command: python3 evaluation/evaluation.py
     volumes:
       - .:/app
