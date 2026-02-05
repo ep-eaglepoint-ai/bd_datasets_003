@@ -1,0 +1,13 @@
+{
+            "instance_id": "JNCRLA",
+            "problem_statement": "Standard UUIDs are too bulky for our social media  primary keys and cause index fragmentation because they aren't time-ordered. We need a 64-bit integer ID that is naturally sortable by time, unique across the network, and compact. The tricky part is ensuring that if the server's clock glitches and jumps backwards (NTP drift), we don't issue an ID that we already issued 5 seconds ago, which would crash the database with a duplicate key error.
+
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/jncrla-thread-safe-snowflake-id-generator",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
