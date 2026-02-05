@@ -1,0 +1,12 @@
+services:
+  evaluation:
+    build: .
+    volumes:
+      - .:/app
+    command: go run evaluation/eval.go
+
+  test:
+    build: .
+    volumes:
+      - .:/app
+    command: go test -v ./tests/...

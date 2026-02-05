@@ -1,0 +1,11 @@
+{
+            "instance_id": "E1U8JR",
+            "problem_statement": "mplementing a bounded pool requires blocking when the limit is reached. The difficult part is handling Timeouts. If 10 goroutines are blocked waiting for a connection and one of them times out (Context Deadline), the pool must remove that specific waiter from the queue. Naive implementations using simple buffered channels often fail here: the Put operation blindly sends a token to the channel, which might be received by a goroutine that has already abandoned its wait, resulting in the token (and the connection capacity) being lost forever (Resource Leak). Alternatively, using sync.Cond.Broadcast wakes everyone up, causing a "Thundering Herd" for a single resource.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/e1u8jr-bounded-tcp-connection-pool-with-context-cancellation",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
