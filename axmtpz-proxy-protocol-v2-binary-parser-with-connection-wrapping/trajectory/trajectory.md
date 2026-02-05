@@ -1,0 +1,43 @@
+# Trajectory: PROXY Protocol v2 Binary Parser with Connection Wrapping
+
+### 1. Audit / Requirements Analysis (The actual problem)
+I looked at what we actually need: a way to get the real client IP when traffic comes through a load balancer. The server only sees the LB's address on the connection. PROXY protocol v2 fixes that by sending a binary header before the first byte of application data. I had to understand the spec: 12-byte fixed signature, then version/family bytes, then a 16-bit big-endian length, then exactly that many bytes of address block. IPv4 uses 12 bytes of addresses (4+4+2+2), IPv6 uses 36 (16+16+2+2). If we read the wrong amount or don't validate the signature, we either leak garbage into the app or drop real payload. So the problem is parsing a strict binary protocol and then making the rest of the connection look like a normal net.Conn to the app.
+
+### 2. Question Assumptions (Challenge the Premise)
+At first I figured we could use a library like go-proxyproto. The requirements said no external libs, standard net only. So we have to do it ourselves. I also had to decide: do we parse lazily on first Read, or do we block in a wrapper until the header is fully consumed? The spec and the task both say the handshake must happen immediately when we wrap the connection, and the app must not see any payload until the header is done. So we block in WrapProxyConn until we've read and validated the full header, then return a ProxyConn that already has the client address and forwards Read to the underlying conn (or a buffer if we ever read past the header).
+
+### 3. Define Success Criteria (Establish Measurable Goals)
+Success meant: (1) exact 12-byte signature check, (2) read the length field then read exactly that many bytes, no more no less, (3) use binary.BigEndian for length and ports, (4) distinguish IPv4 vs IPv6 from the family byte and parse the right layout, (5) return a type that implements net.Conn with RemoteAddr() returning the extracted client, (6) any bytes after the header must show up in Read() and not be lost, (7) return specific errors for bad signature or truncated header, (8) use net.IP for addresses, (9) no external dependencies, (10) handshake on wrap and block until it's done. I treated the written requirements as the checklist.
+
+### 4. Map Requirements to Validation (Define Test Strategy)
+I wired each requirement to a test. Signature validation gets a test that sends wrong bytes and expects ErrInvalidSignature. Truncated header (only signature, no length/body) expects ErrTruncatedHeader. Valid IPv4 and IPv6 headers with known IPs and ports prove parsing and RemoteAddr. A test that sends header plus "hello" and then Read()s proves we don't eat the payload. TestProxyConnImplementsNetConn checks the return type is a net.Conn. TestNoExternalLibraries checks go.mod. I used net.Pipe() so we don't need a real network, and the tests run in Docker against repository_after only.
+
+### 5. Scope the Solution
+The solution lives in repository_after/proxy: one package with WrapProxyConn and ProxyConn. ProxyConn embeds net.Conn and overrides Read and RemoteAddr. We don't touch the rest of the codebase. We don't support TLV or optional PP2 fields beyond the address block; we read exactly the length bytes and parse src/dst IP and ports for IPv4 and IPv6 only. That keeps the scope small and testable.
+
+### 6. Trace Data Flow (Follow the Path)
+When a connection arrives from the LB, the stream looks like: [12-byte signature][4 bytes ver/family/length][length bytes of addresses][application payload]. WrapProxyConn reads 12 bytes, compares to the fixed signature, then reads 4 bytes and pulls out the 16-bit length with BigEndian, then io.ReadFull(conn, length) for the address block. We parse family (high nibble 0x10 = IPv4, 0x20 = IPv6), copy src IP into net.IP, read ports with BigEndian, build a net.TCPAddr for srcAddr. We don't read past the header, so the next Read() from the app goes straight to the underlying conn and gets the payload. If we had read extra (we don't), we'd put it in a bytes.Reader and drain that first in Read().
+
+### 7. Anticipate Objections (Play Devil's Advocate)
+Someone might say: "What if the length field says 0 or something huge?" We still read exactly that many bytes; io.ReadFull will fail if the stream ends early and we return ErrTruncatedHeader. For a malicious length we'd allocate a big buffer; in practice the spec says 12 or 36 for the address block, so we could add a sanity cap (e.g. max 256 bytes) if we wanted to harden later. Another objection: "Why not use bufio and Peek?" Because we need to consume exactly the header and not one byte more; ReadFull in sequence keeps that clear and avoids buffering payload we didn't ask for.
+
+### 8. Verify Invariants (Define Constraints)
+We must not use any package outside the standard library (no go-proxyproto). We must use net.IP for the parsed addresses, not raw byte slices. We must return the exact errors ErrInvalidSignature and ErrTruncatedHeader so callers can distinguish failure modes. The wrapper must implement net.Conn fully: Read, Write, Close, RemoteAddr, SetDeadline, etc. We delegate Write, Close, and deadlines to the embedded conn and only override Read and RemoteAddr. That keeps the contract intact.
+
+### 9. Execute with Surgical Precision (Ordered Implementation)
+First I defined the 12-byte signature and the two sentinel errors. Then the ProxyConn struct: embed net.Conn, srcAddr net.Addr, buffer *bytes.Reader (initially empty). In WrapProxyConn: ReadFull 12 bytes, compare to signature, return ErrInvalidSignature on mismatch. ReadFull 4 bytes, length = BigEndian.Uint16(header[2:4]). ReadFull length bytes into addrData. Switch on family & 0xF0: IPv4 branch copies addrData[0:4] into net.IP and reads ports from 8:10 and 10:12; IPv6 branch copies 0:16 and ports from 32:34 and 34:36. Build *net.TCPAddr for srcAddr. Return ProxyConn with buffer = bytes.NewReader(nil). Read() checks buffer.Len() first and reads from buffer if non-empty, else from p.Conn. RemoteAddr() returns p.srcAddr. No external imports.
+
+### 10. Measure Impact (Verify Completion)
+I ran the test suite against repository_after. All requirement-mapped tests pass: valid IPv4 and IPv6 headers produce the right RemoteAddr and payload is readable, invalid signature returns ErrInvalidSignature, truncated input returns ErrTruncatedHeader, the returned type implements net.Conn, and go.mod has no proxy protocol dependency. The evaluation script runs the same tests and writes a report with pass/fail per requirement. That confirms we meet the criteria.
+
+### 11. Document the Decision
+I implemented a minimal PROXY protocol v2 reader in pure Go: validate the signature, read the length, read exactly that many bytes, parse IPv4 or IPv6 addresses and ports with BigEndian, and wrap the connection so the app sees a normal net.Conn with the correct RemoteAddr and the rest of the stream unchanged. No external libs, no lazy parsing—handshake at wrap time, then transparent forwarding. This matches how production L4 sidecars and gateways handle PROXY v2 and keeps the code easy to reason about and test.
+
+### 12. Infrastructure and Tooling
+- **go.work** at project root so `go test -timeout 10s -v ./tests` and `go run ./evaluation/evaluation.go` work from `/app` without `-w` path issues on Windows/Git Bash or AWS builds.
+- **Docker** single `app` service with `working_dir: /app`, `REPO_PATH` set in environment. No quoted commands.
+- **Evaluation** runs only against `repository_after` (no `repository_before`). Before is a baseline placeholder with success: false, exit_code: 1, tests: [].
+- **Evaluation deadlock fix**: read stderr in a goroutine while consuming stdout in the main goroutine; previously blocking on `ReadAll(stderr)` before reading stdout caused a deadlock when the go test stdout buffer filled.
+- **.gitignore** updated for Go build artifacts, IDE files, evaluation outputs, debug logs, and OS cruft. `go.work` is committed for the workspace setup.
+- **TestHandshakeBlocksUntilComplete** sends the header in 2 chunks instead of byte-by-byte to keep run time low while still verifying that payload is blocked until the full header is parsed. Added 2s timeouts on WrapProxyConn and Read so the test fails fast instead of hanging if either blocks.
+
