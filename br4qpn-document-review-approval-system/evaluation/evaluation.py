@@ -121,27 +121,33 @@ def run_evaluation():
     }
 
 def main():
-    REPORTS.mkdir(parents=True, exist_ok=True)
-    # Ensure reports directory has open permissions if created by root
+    # Set umask to 0 so all created files/dirs have 777 permissions (accessible by host user)
+    old_umask = os.umask(0)
     try:
-        os.chmod(REPORTS, 0o777)
-    except Exception:
-        pass
+        REPORTS.mkdir(parents=True, exist_ok=True)
+        # Ensure reports directory has open permissions
+        try:
+            os.chmod(REPORTS, 0o777)
+        except Exception:
+            pass
 
-    report = run_evaluation()
-    
-    # Save standard report
-    report_path = REPORTS / "latest.json"
-    report_path.write_text(json.dumps(report, indent=2))
-    try:
-        os.chmod(report_path, 0o666)
-    except Exception:
-        pass
-    
-    print(f"Evaluation finished. Success: {report['success']}")
-    print(f"Report written to {report_path}")
-    
-    return 0 if report["success"] else 1
+        report = run_evaluation()
+        
+        # Save standard report
+        report_path = REPORTS / "latest.json"
+        # Overwrite content
+        report_path.write_text(json.dumps(report, indent=2))
+        try:
+            os.chmod(report_path, 0o666)
+        except Exception:
+            pass
+        
+        print(f"Evaluation finished. Success: {report['success']}")
+        print(f"Report written to {report_path}")
+        
+        return 0 if report["success"] else 1
+    finally:
+        os.umask(old_umask)
 
 if __name__ == "__main__":
     sys.exit(main())
