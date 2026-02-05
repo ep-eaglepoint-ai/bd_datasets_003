@@ -1,18 +1,15 @@
+version: '3.8'
+
 services:
-  # Core services for running the actual application (optional - for manual testing)
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
+    ports: [ "6379:6379" ]
+    volumes: [ redis_data:/data ]
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
       timeout: 3s
       retries: 3
-    profiles:
-      - app
 
   postgres:
     image: postgres:16-alpine
@@ -20,83 +17,70 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: taskdb
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+    ports: [ "5432:5432" ]
+    volumes: [ postgres_data:/var/lib/postgresql/data ]
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 5s
       timeout: 3s
       retries: 3
-    profiles:
-      - app
 
+  # --- Application Services (Profile: app) ---
   backend:
-    build:
-      context: ./repository_after/backend
-    ports:
-      - "8000:8000"
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/taskdb
-      - DATABASE_URL_SYNC=postgresql://postgres:postgres@postgres:5432/taskdb
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=db+postgresql://postgres:postgres@postgres:5432/taskdb
-      - REDIS_URL=redis://redis:6379/0
-    depends_on:
+    build: ./repository_after/backend
+    image: app-backend
+    ports: [ "8000:8000" ]
+    environment: &app_env
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/taskdb
+      DATABASE_URL_SYNC: postgresql://postgres:postgres@postgres:5432/taskdb
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: db+postgresql://postgres:postgres@postgres:5432/taskdb
+      REDIS_URL: redis://redis:6379/0
+    depends_on: &app_deps
       redis:
         condition: service_healthy
       postgres:
         condition: service_healthy
-    profiles:
-      - app
+    profiles: [ app ]
 
   worker:
-    build:
-      context: ./repository_after/backend
+    image: app-backend # Reuses the same image built by 'backend'
     command: celery -A app.celery_app worker --loglevel=info -Q high,medium,low -c 4
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/taskdb
-      - DATABASE_URL_SYNC=postgresql://postgres:postgres@postgres:5432/taskdb
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=db+postgresql://postgres:postgres@postgres:5432/taskdb
-      - REDIS_URL=redis://redis:6379/0
-    depends_on:
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-    profiles:
-      - app
+    environment: *app_env
+    depends_on: *app_deps
+    profiles: [ app ]
 
   frontend:
-    build:
-      context: ./repository_after/frontend
-    ports:
-      - "3000:80"
-    depends_on:
-      - backend
-    profiles:
-      - app
+    build: ./repository_after/frontend
+    ports: [ "3000:80" ]
+    depends_on: [ backend ]
+    profiles: [ app ]
 
-  # Verification service - runs ONLY tests (fast, default for 'up')
-  tests:
-    build:
-      context: .
-      dockerfile: Dockerfile
+  # --- Verification & Evaluation Services ---
+  after_test:
+    build: .
+    image: task-evaluator # Shared image for testing and evaluation
     command: python -m pytest tests -v
     volumes:
       - .:/app
+    environment: &test_env
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: db+postgresql://postgres:postgres@postgres:5432/taskdb
+      PYTHONPATH: /app/repository_after/backend
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
 
-  # Evaluation service - generates report (run explicitly)
   evaluation:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: task-evaluator # Reuses the same image built by 'after_test'
     volumes:
       - ./evaluation/reports:/app/evaluation/reports
-    profiles:
-      - eval  # Hides from default 'up'
+    environment: *test_env
+    depends_on:
+      redis:
+        condition: service_healthy
 
 volumes:
   redis_data:

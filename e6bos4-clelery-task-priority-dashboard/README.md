@@ -1,11 +1,7 @@
 # E6BOS4 - Celery Task Priority Dashboard
 
 ## After Test Docker Command
-```bash
-docker-compose up --build
-```
+docker-compose run --rm after_test
 
 ## Evaluation Docker Command
-```bash
-docker-compose --profile eval run --rm evaluation
-```
+docker-compose run --rm evaluation
