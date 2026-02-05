@@ -1,0 +1,11 @@
+{
+            "instance_id": "NMCBKS",
+            "problem_statement": "Given an undirected connected graph with n nodes and a list of edges, identify all critical connections (bridges) whose removal increases the number of connected components. Return each edge as [u, v] with u < v and sort the result first by smaller node index, then by larger. Use Tarjan’s algorithm: maintain discovery times disc[u] and low-link values low[u] to detect bridges. Correct low-link updates are crucial: for child v, use low[u] = min(low[u], low[v]); for back edges, use low[u] = min(low[u], disc[v]).",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/nmcbks-find-critical-connections-in-an-undirected-graph",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
