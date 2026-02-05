@@ -1,0 +1,11 @@
+{
+            "instance_id": "DJPZFO",
+            "problem_statement": "Our distributed data pipeline is currently experiencing Replay Divergence. When independent source streams are merged for long-term archival, the resulting sequence varies across different worker nodes due to a lack of a unified causal tracking mechanism. This inconsistency makes it impossible to perform reliable backfills or audit the system state post-facto. We require a Deterministic Sequencer that can ingest partially-ordered streams and produce a byte-for-byte identical output regardless of network jitter. This is a critical business requirement for our Compliance and Disaster Recovery protocols, as any divergence in the archived log results in corrupted state reconstruction during a failover.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/djpzfo-writing-a-deterministic-causal-sequencer-for-geo-distributed-update-streams",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
