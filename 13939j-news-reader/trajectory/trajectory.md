@@ -165,17 +165,18 @@ I did this because:
    - Registered the **`@tailwindcss/typography` plugin**.
 3. I verified that the app could run with the default starter to ensure a clean baseline.
 
-### 6.2 Article data module
+### 6.2 Article types and data module
 
-1. I created a **TypeScript interface** for articles with the required fields: `id`, `title`, `excerpt`, `content`, `category`, `author`, `publishedAt`, and `imageUrl`.
-2. I populated a **static `articles` array**:
+1. I created a **dedicated `Article` type** in a `types` module, with the required fields: `id`, `title`, `excerpt`, `content`, `category`, `author`, `publishedAt`, and `imageUrl`.
+2. I wired the data layer so that `lib/articles` imports and re-exports this type and exposes a **static `articles` array**:
    - Ensured there were **at least 12 entries**.
    - Chose categories such as **World, Technology, Sports, Entertainment**.
    - Ensured each category had **2–3+ articles**.
    - Wrote content and excerpts that read like real editorial blurbs, using realistic headlines and short summaries.
 3. I used **consistent `imageUrl`s** from free stock-style URLs that felt on theme for each category (e.g., cityscapes for World, devices for Technology, stadiums for Sports).
+4. I organized types separately from data so components can depend on **shared domain types** without coupling to a specific data source.
 
-### 6.3 Home page: structure and hero layout
+### 6.3 Home page: structure, hero layout, and components
 
 1. I built the home page component as a **client component** since it uses `useState`.
 2. At the top of the page, I added:
@@ -184,12 +185,16 @@ I did this because:
 3. I split the article list into:
    - A **hero subset** (first 1–2 articles), rendered in a two-column grid on medium+ screens and stacked on mobile.
    - An **“All Articles” section** below, with a responsive `grid` for smaller cards.
-4. Each hero card:
+4. I extracted the presentation for the hero and standard cards into **reusable components**:
+   - A `HeroArticleCard` component that encapsulates the hero card markup and styling.
+   - An `ArticleCard` component for the smaller grid cards.
+5. Each hero card:
    - Uses a **large image container** with `relative` sizing and an image set to `object-cover` and `fill` for immersive visuals.
    - Shows a **category badge**, **headline**, **excerpt**, and **author/date row**.
-5. Each grid card:
+6. Each grid card:
    - Uses a **compact variant** of the hero card layout.
    - Maintains the required fields: image, title, excerpt, category badge, date.
+7. By moving card markup into dedicated components, I kept the home page focused on **state, filtering, and layout**, which makes the codebase easier to extend and reason about.
 
 ### 6.4 Category navigation and filtering logic
 
@@ -220,7 +225,7 @@ I did this because:
    - It navigates back to the home route.
    - It is styled as a subtle, but easily discoverable, control.
 
-### 6.6 Styling choices and micro-interactions
+### 6.6 Utilities, styling choices, and micro-interactions
 
 1. For **typography**, I:
    - Chose **large, bold headings** for titles.
@@ -235,6 +240,7 @@ I did this because:
      - Adjust grid columns (`md:grid-cols-2`, `lg:grid-cols-3`).
      - Increase image and text sizes at larger breakpoints.
    - Ensured padding and max widths were tuned (e.g., `max-w-7xl mx-auto px-4 sm:px-6 lg:px-8`) so content stays centered and readable on large screens.
+4. I introduced a small **date utilities module** that normalizes date formatting into helper functions used by both the cards and the detail page, so changes to formatting can be made in **one place** while keeping the rendered output consistent with the requirements.
 
 ## 7. How the Solution Handles Requirements, Constraints, and Edge Cases
 

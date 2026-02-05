@@ -1,13 +1,5 @@
-export interface Article {
-  id: string | number;
-  title: string;
-  excerpt: string;
-  content: string;
-  category: string;
-  author: string;
-  publishedAt: string;
-  imageUrl: string;
-}
+import type { Article } from '@/types/article'
+export type { Article } from '@/types/article'
 
 export const articles: Article[] = [
   {

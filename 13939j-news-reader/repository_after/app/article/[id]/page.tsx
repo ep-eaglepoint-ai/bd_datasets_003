@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import { articles } from '@/lib/articles'
+import { formatLongDate } from '@/utils/date'
 
 interface PageProps {
   params: {
@@ -44,11 +45,7 @@ export default function ArticlePage({ params }: PageProps) {
             <span className="font-medium">{article.author}</span>
             <span>•</span>
             <time dateTime={article.publishedAt} className="font-medium">
-              {new Date(article.publishedAt).toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric'
-              })}
+              {formatLongDate(article.publishedAt)}
             </time>
           </div>
         </div>
