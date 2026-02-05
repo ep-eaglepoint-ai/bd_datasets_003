@@ -1,0 +1,11 @@
+{
+            "instance_id": "1LD9QY",
+            "problem_statement": "The Billing-Core service contains a legacy DiscountCalculator that produces incorrect invoice totals due to float-based arithmetic, improper discount stacking, lack of rounding, and missing boundary enforcement. These issues have caused overcharges, undercharges, and even negative totals for enterprise customers. The task is to refactor the calculator to use Decimal consistently, enforce financial correctness rules, and author a comprehensive pytest-based test suite achieving 100% branch coverage. The solution must ensure audit compliance, correct stacking behavior, rounding accuracy, non-negativity guarantees, and resilience against edge cases such as zero-value carts and invalid promotions.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/1ld9qy-refactor-and-fully-test-financial-discount-calculator-with-decimal-precision",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
