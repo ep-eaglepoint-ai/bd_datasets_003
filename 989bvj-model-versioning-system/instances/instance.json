@@ -1,0 +1,11 @@
+{
+            "instance_id": "989BVJ",
+            "problem_statement": "Machine learning teams often train and deploy large numbers of models, but without proper versioning and lineage tracking, experiments are easily lost, model provenance becomes unclear, and production failures are difficult to recover from. The objective of this project is to build a Python-based Model Versioning System that tracks complete model lineage, records metrics over time, supports A/B testing, and enables automatic and manual rollback. The system must be framework-agnostic, performant at scale, and reliable enough to support production-grade model deployments.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/989bvj-model-versioning-system",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
