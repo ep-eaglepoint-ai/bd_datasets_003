@@ -1,11 +1,13 @@
 # EZCRJN - Customer Activity Feature Module for E-commerce Platform
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Docker Command
 
-    ## After Test Docker Command
-    <docker after command here>
+test repository_after
+```bash
+docker compose run app pytest tests --repo after
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+run evaluation
+```bash
+docker compose run app python evaluation/evaluation.py
+```
