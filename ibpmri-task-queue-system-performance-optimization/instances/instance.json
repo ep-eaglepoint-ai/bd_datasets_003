@@ -1,0 +1,11 @@
+{
+            "instance_id": "IBPMRI",
+            "problem_statement": "The task management platform relies on a task queue system to handle thousands of tasks and team members, but the current implementation suffers from slow task retrieval, inefficient priority sorting, and poor scalability under load. Naive sorting logic, unoptimized database queries, and excessive memory usage cause operations that should complete in milliseconds to take seconds. The objective of this task is to optimize the existing Task Queue System to significantly reduce latency, improve priority-based task handling, support concurrent operations efficiently, and scale reliably to larger workloads while maintaining correctness.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ibpmri-task-queue-system-performance-optimization",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
