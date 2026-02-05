@@ -1,0 +1,11 @@
+{
+            "instance_id": "6O3OLN",
+            "problem_statement": "The current auditing mechanism relies on an unstructured activity_log table that stores free-form strings, preventing granular querying, change diffs, and efficient compliance reporting. As data volume grows into the millions of rows, the lack of structure, indexing, and partitioning causes severe performance degradation during reporting windows. The task is to design and implement a production-grade structured audit logging schema in PostgreSQL 15+ that captures who performed an action, what was changed, where it occurred, and when it happened. The schema must enforce immutability at the database level, guarantee tenant isolation, support polymorphic resource tracking and JSONB-based change tracking, and scale efficiently for high-volume writes and compliance-grade queries.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/6o3oln-production-grade-structured-audit-logging-schema-for-multi-tenant-postgresql",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
