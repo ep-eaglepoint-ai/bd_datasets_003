@@ -1,0 +1,12 @@
+{
+            "instance_id": "ZSBM15",
+            "problem_statement": "The task is to implement an in-memory rate limiter for a hotel booking API that enforces dual sliding-window limits: a global per-user limit and a per-user per-route limit. Each request must be deterministically allowed or denied based on cost-based usage within a strict time window, while supporting request retries (idempotency), route-specific costs, and out-of-order timestamps. The implementation must use only standard Python libraries, operate purely in memory, and avoid mutating caller-provided inputs. Correct handling of sliding-window boundaries, request ordering, and retry behavior is required for downstream systems to trust the limiter’s decisions.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/zsbm15-complex-in-memory-rate-limiter-with-idempotency-and-sliding-window-enforcement",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
