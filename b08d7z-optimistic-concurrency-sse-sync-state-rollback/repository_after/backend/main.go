@@ -104,7 +104,9 @@ func (s *SeatReservationServer) handleSSEEvents(w http.ResponseWriter, r *http.R
 	s.seatMutex.Unlock()
 
 	fmt.Fprintf(w, "data: %d\n\n", currentSeats)
-	w.(http.Flusher).Flush()
+	if flusher, ok := w.(http.Flusher); ok {
+		flusher.Flush()
+	}
 
 	// Listen for updates and client disconnection
 	for {
@@ -112,7 +114,9 @@ func (s *SeatReservationServer) handleSSEEvents(w http.ResponseWriter, r *http.R
 		case update := <-clientChannel:
 			// Send seat count update to client
 			fmt.Fprintf(w, "data: %s\n\n", update)
-			w.(http.Flusher).Flush()
+			if flusher, ok := w.(http.Flusher); ok {
+				flusher.Flush()
+			}
 		case <-r.Context().Done():
 			// Client disconnected, cleanup handled by defer
 			return

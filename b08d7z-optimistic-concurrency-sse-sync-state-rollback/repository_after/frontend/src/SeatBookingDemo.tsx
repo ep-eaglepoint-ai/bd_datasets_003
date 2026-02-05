@@ -6,6 +6,27 @@
 import React from 'react';
 import { useSeatBooking } from './hooks/useSeatBooking';
 
+const getConnectionStatusStyle = (status: 'connected' | 'disconnected' | 'reconnecting') => {
+  const baseStyle = {
+    width: '12px',
+    height: '12px',
+    borderRadius: '50%',
+    display: 'inline-block',
+    marginRight: '8px',
+  };
+
+  switch (status) {
+    case 'connected':
+      return { ...baseStyle, backgroundColor: '#28a745' };
+    case 'reconnecting':
+      return { ...baseStyle, backgroundColor: '#ffc107' };
+    case 'disconnected':
+      return { ...baseStyle, backgroundColor: '#dc3545' };
+    default:
+      return { ...baseStyle, backgroundColor: '#6c757d' };
+  }
+};
+
 export const SeatBookingDemo: React.FC = () => {
   const { 
     availableSeats, 
@@ -14,28 +35,6 @@ export const SeatBookingDemo: React.FC = () => {
     connectionStatus, 
     bookSeat 
   } = useSeatBooking();
-
-  // Dynamic styling based on connection status
-  const getConnectionStatusStyle = () => {
-    const baseStyle = {
-      width: '12px',
-      height: '12px',
-      borderRadius: '50%',
-      display: 'inline-block',
-      marginRight: '8px',
-    };
-
-    switch (connectionStatus) {
-      case 'connected':
-        return { ...baseStyle, backgroundColor: '#28a745' };
-      case 'reconnecting':
-        return { ...baseStyle, backgroundColor: '#ffc107' };
-      case 'disconnected':
-        return { ...baseStyle, backgroundColor: '#dc3545' };
-      default:
-        return { ...baseStyle, backgroundColor: '#6c757d' };
-    }
-  };
 
   const isBookingDisabled = isLoading || availableSeats === 0 || connectionStatus === 'disconnected';
 
@@ -81,7 +80,7 @@ export const SeatBookingDemo: React.FC = () => {
           fontSize: '14px',
           color: '#6c757d'
         }}>
-          <span style={getConnectionStatusStyle()}></span>
+          <span style={getConnectionStatusStyle(connectionStatus)}></span>
           <span>Real-time Connection: </span>
           <strong style={{ 
             marginLeft: '4px',

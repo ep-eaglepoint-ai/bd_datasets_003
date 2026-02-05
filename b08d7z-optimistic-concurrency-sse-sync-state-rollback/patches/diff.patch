@@ -13,10 +13,10 @@ index 0000000..69b6778
 \ No newline at end of file
 diff --git a/repository_after/backend/main.go b/repository_after/backend/main.go
 new file mode 100644
-index 0000000..04f203f
+index 0000000..19f3b3e
 --- /dev/null
 +++ b/repository_after/backend/main.go
-@@ -0,0 +1,207 @@
+@@ -0,0 +1,211 @@
 +// High-Concurrency Seat Reservation Backend
 +// Principal Full Stack Engineer Implementation
 +//
@@ -123,7 +123,9 @@ index 0000000..04f203f
 +	s.seatMutex.Unlock()
 +
 +	fmt.Fprintf(w, "data: %d\n\n", currentSeats)
-+	w.(http.Flusher).Flush()
++	if flusher, ok := w.(http.Flusher); ok {
++		flusher.Flush()
++	}
 +
 +	// Listen for updates and client disconnection
 +	for {
@@ -131,7 +133,9 @@ index 0000000..04f203f
 +		case update := <-clientChannel:
 +			// Send seat count update to client
 +			fmt.Fprintf(w, "data: %s\n\n", update)
-+			w.(http.Flusher).Flush()
++			if flusher, ok := w.(http.Flusher); ok {
++				flusher.Flush()
++			}
 +		case <-r.Context().Done():
 +			// Client disconnected, cleanup handled by defer
 +			return
@@ -224,65 +228,7 @@ index 0000000..04f203f
 +		log.Fatal("❌ Server failed to start:", err)
 +	}
 +}
-diff --git a/repository_after/frontend/.gitignore b/repository_after/frontend/.gitignore
-new file mode 100644
-index 0000000..a547bf3
---- /dev/null
-+++ b/repository_after/frontend/.gitignore
-@@ -0,0 +1,24 @@
-+# Logs
-+logs
-+*.log
-+npm-debug.log*
-+yarn-debug.log*
-+yarn-error.log*
-+pnpm-debug.log*
-+lerna-debug.log*
-+
-+node_modules
-+dist
-+dist-ssr
-+*.local
-+
-+# Editor directories and files
-+.vscode/*
-+!.vscode/extensions.json
-+.idea
-+.DS_Store
-+*.suo
-+*.ntvs*
-+*.njsproj
-+*.sln
-+*.sw?
-diff --git a/repository_after/frontend/eslint.config.js b/repository_after/frontend/eslint.config.js
-new file mode 100644
-index 0000000..5e6b472
---- /dev/null
-+++ b/repository_after/frontend/eslint.config.js
-@@ -0,0 +1,23 @@
-+import js from '@eslint/js'
-+import globals from 'globals'
-+import reactHooks from 'eslint-plugin-react-hooks'
-+import reactRefresh from 'eslint-plugin-react-refresh'
-+import tseslint from 'typescript-eslint'
-+import { defineConfig, globalIgnores } from 'eslint/config'
-+
-+export default defineConfig([
-+  globalIgnores(['dist']),
-+  {
-+    files: ['**/*.{ts,tsx}'],
-+    extends: [
-+      js.configs.recommended,
-+      tseslint.configs.recommended,
-+      reactHooks.configs.flat.recommended,
-+      reactRefresh.configs.vite,
-+    ],
-+    languageOptions: {
-+      ecmaVersion: 2020,
-+      globals: globals.browser,
-+    },
-+  },
-+])
+
 diff --git a/repository_after/frontend/index.html b/repository_after/frontend/index.html
 new file mode 100644
 index 0000000..072a57e
@@ -410,10 +356,10 @@ index 0000000..03312ef
 \ No newline at end of file
 diff --git a/repository_after/frontend/src/SeatBookingDemo.tsx b/repository_after/frontend/src/SeatBookingDemo.tsx
 new file mode 100644
-index 0000000..2f9e407
+index 0000000..8611a5e
 --- /dev/null
 +++ b/repository_after/frontend/src/SeatBookingDemo.tsx
-@@ -0,0 +1,197 @@
+@@ -0,0 +1,196 @@
 +/**
 + * Seat Booking Demo Component
 + * Demonstrates high-concurrency seat reservation with optimistic UI
@@ -421,6 +367,27 @@ index 0000000..2f9e407
 +
 +import React from 'react';
 +import { useSeatBooking } from './hooks/useSeatBooking';
++
++const getConnectionStatusStyle = (status: 'connected' | 'disconnected' | 'reconnecting') => {
++  const baseStyle = {
++    width: '12px',
++    height: '12px',
++    borderRadius: '50%',
++    display: 'inline-block',
++    marginRight: '8px',
++  };
++
++  switch (status) {
++    case 'connected':
++      return { ...baseStyle, backgroundColor: '#28a745' };
++    case 'reconnecting':
++      return { ...baseStyle, backgroundColor: '#ffc107' };
++    case 'disconnected':
++      return { ...baseStyle, backgroundColor: '#dc3545' };
++    default:
++      return { ...baseStyle, backgroundColor: '#6c757d' };
++  }
++};
 +
 +export const SeatBookingDemo: React.FC = () => {
 +  const { 
@@ -430,28 +397,6 @@ index 0000000..2f9e407
 +    connectionStatus, 
 +    bookSeat 
 +  } = useSeatBooking();
-+
-+  // Dynamic styling based on connection status
-+  const getConnectionStatusStyle = () => {
-+    const baseStyle = {
-+      width: '12px',
-+      height: '12px',
-+      borderRadius: '50%',
-+      display: 'inline-block',
-+      marginRight: '8px',
-+    };
-+
-+    switch (connectionStatus) {
-+      case 'connected':
-+        return { ...baseStyle, backgroundColor: '#28a745' };
-+      case 'reconnecting':
-+        return { ...baseStyle, backgroundColor: '#ffc107' };
-+      case 'disconnected':
-+        return { ...baseStyle, backgroundColor: '#dc3545' };
-+      default:
-+        return { ...baseStyle, backgroundColor: '#6c757d' };
-+    }
-+  };
 +
 +  const isBookingDisabled = isLoading || availableSeats === 0 || connectionStatus === 'disconnected';
 +
@@ -497,7 +442,7 @@ index 0000000..2f9e407
 +          fontSize: '14px',
 +          color: '#6c757d'
 +        }}>
-+          <span style={getConnectionStatusStyle()}></span>
++          <span style={getConnectionStatusStyle(connectionStatus)}></span>
 +          <span>Real-time Connection: </span>
 +          <strong style={{ 
 +            marginLeft: '4px',
