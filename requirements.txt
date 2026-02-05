@@ -1,0 +1,5 @@
+# Add your Python dependencies here if the project is Python-based. If it is not Python-based, you can remove this file and configure the requirements accordingly.
+pytest>=7.0
+pytest-cov>=4.0
+psutil>=5.9
+mypy>=1.10
