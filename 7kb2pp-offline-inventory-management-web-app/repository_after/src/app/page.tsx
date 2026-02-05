@@ -14,7 +14,9 @@ import AdvancedAnalytics from '@/components/AdvancedAnalytics';
 import { RecoveryDialog } from '@/components/RecoveryDialog';
 import { BulkOperations } from '@/components/BulkOperations';
 import { MetricsExplainer } from '@/components/MetricsExplainer';
-import { Package, BarChart3, FolderTree, MapPin, History, FileText, Download, Menu, X, TrendingUp, Edit3, HelpCircle } from 'lucide-react';
+import { TransferForm } from '@/components/TransferForm';
+import { CorrectionForm } from '@/components/CorrectionForm';
+import { Package, BarChart3, FolderTree, MapPin, History, FileText, Download, Menu, X, TrendingUp, Edit3, HelpCircle, ArrowLeftRight, RefreshCw } from 'lucide-react';
 
 type TabType = 'dashboard' | 'analytics' | 'inventory' | 'bulk' | 'categories' | 'locations' | 'movements' | 'audit' | 'export' | 'explainer';
 
@@ -24,6 +26,8 @@ export default function Home() {
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showRecovery, setShowRecovery] = useState(false);
+  const [showTransferForm, setShowTransferForm] = useState(false);
+  const [showCorrectionForm, setShowCorrectionForm] = useState(false);
   
   const { initialize, isLoading, error, loadRecoveryState, needsRecovery, addValuationSnapshot } = useInventoryStore();
   
@@ -156,12 +160,28 @@ export default function Home() {
           <div>
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-bold text-gray-800">Inventory Items</h2>
-              <button
-                onClick={() => setShowItemForm(true)}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                Add Item
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowTransferForm(true)}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2"
+                >
+                  <ArrowLeftRight size={18} />
+                  Transfer
+                </button>
+                <button
+                  onClick={() => setShowCorrectionForm(true)}
+                  className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors flex items-center gap-2"
+                >
+                  <RefreshCw size={18} />
+                  Correction
+                </button>
+                <button
+                  onClick={() => setShowItemForm(true)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Add Item
+                </button>
+              </div>
             </div>
             <InventoryList onEditItem={handleEditItem} />
           </div>
@@ -182,6 +202,16 @@ export default function Home() {
           itemId={editingItemId}
           onClose={handleCloseForm}
         />
+      )}
+      
+      {/* Transfer Form Modal */}
+      {showTransferForm && (
+        <TransferForm onClose={() => setShowTransferForm(false)} />
+      )}
+      
+      {/* Correction Form Modal */}
+      {showCorrectionForm && (
+        <CorrectionForm onClose={() => setShowCorrectionForm(false)} />
       )}
     </div>
   );

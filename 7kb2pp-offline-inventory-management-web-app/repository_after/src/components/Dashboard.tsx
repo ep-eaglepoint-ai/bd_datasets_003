@@ -1,17 +1,21 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useInventoryStore, selectEnrichedItems, selectTotalValue, selectInventoryHealth, selectLowStockItems, selectValueByCategory } from '@/lib/store';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
-import { generateValuationHistoryData, identifySlowMovingItems, identifyOverstockItems } from '@/lib/calculations';
-import { AlertTriangle, TrendingUp, Package, DollarSign, Activity, AlertCircle } from 'lucide-react';
+import { generateValuationHistoryData, identifySlowMovingItems, identifyOverstockItems, enrichItemsWithQuantities } from '@/lib/calculations';
+import { AlertTriangle, TrendingUp, Package, DollarSign, Activity, AlertCircle, Loader2 } from 'lucide-react';
 import { ReorderRiskChart } from './ReorderRiskChart';
 import { StockHistoryChart } from './StockHistoryChart';
 import { WarehouseUtilizationChart } from './WarehouseUtilizationChart';
 import { ExpirationRiskView } from './ExpirationRiskView';
 import { useCalculationsWorker } from '@/lib/useWorker';
+import { InventoryItemWithQuantity, InventoryItem } from '@/lib/schemas';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
+
+// Threshold for offloading to web worker (items count)
+const WORKER_THRESHOLD = 100;
 
 // Debounce helper for search/filter
 function debounce<T extends (...args: any[]) => any>(
@@ -32,36 +36,118 @@ export function Dashboard() {
   const health = useInventoryStore(selectInventoryHealth);
   const lowStockItems = useInventoryStore(selectLowStockItems);
   const valueByCategory = useInventoryStore(selectValueByCategory);
-  const worker = useCalculationsWorker();
+  const { postMessage } = useCalculationsWorker();
   
-  // Use web worker for expensive calculations when items > 1000
-  const [workerValuationHistory, setWorkerValuationHistory] = useState<any[]>([]);
-  const shouldUseWorker = items.length > 1000;
+  // Worker computation state
+  const [workerSlowMoving, setWorkerSlowMoving] = useState<InventoryItem[] | null>(null);
+  const [workerOverstock, setWorkerOverstock] = useState<InventoryItemWithQuantity[] | null>(null);
+  const [workerValueByCategory, setWorkerValueByCategory] = useState<Record<string, number> | null>(null);
+  const [workerHealth, setWorkerHealth] = useState<any | null>(null);
+  const [workerTrends, setWorkerTrends] = useState<any[] | null>(null);
+  const [isWorkerLoading, setIsWorkerLoading] = useState(false);
+  const [workerAvailable, setWorkerAvailable] = useState(true);
   
-  // Memoize expensive calculations
-  const valuationHistory = useMemo(() => {
-    if (shouldUseWorker && workerValuationHistory.length > 0) {
-      return workerValuationHistory;
+  // Track if we should use worker
+  const shouldUseWorker = items.length >= WORKER_THRESHOLD && workerAvailable;
+  
+  // Debounced worker invocation
+  const workerInvocationRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  // Invoke worker for heavy computations
+  useEffect(() => {
+    if (!shouldUseWorker || items.length === 0) {
+      // Clear worker results when not using worker
+      setWorkerSlowMoving(null);
+      setWorkerOverstock(null);
+      setWorkerValueByCategory(null);
+      setWorkerHealth(null);
+      setWorkerTrends(null);
+      return;
     }
-    return generateValuationHistoryData(items, movements, 30);
-  }, [items, movements, shouldUseWorker, workerValuationHistory]);
+    
+    // Debounce worker calls
+    if (workerInvocationRef.current) {
+      clearTimeout(workerInvocationRef.current);
+    }
+    
+    workerInvocationRef.current = setTimeout(async () => {
+      setIsWorkerLoading(true);
+      
+      try {
+        // Run worker computations in parallel
+        const [slowMovingResult, overstockResult, valueByCatResult, trendsResult] = await Promise.all([
+          postMessage<InventoryItem[]>({
+            type: 'identifySlowMovingItems',
+            payload: { items, movements, thresholdDays: 30 }
+          }).catch(() => null),
+          postMessage<InventoryItemWithQuantity[]>({
+            type: 'identifyOverstockItems',
+            payload: { items, movements, multiplier: 3 }
+          }).catch(() => null),
+          postMessage<Record<string, number>>({
+            type: 'calculateValueByCategory',
+            payload: { items, movements }
+          }).catch(() => null),
+          postMessage<any[]>({
+            type: 'calculateTrends',
+            payload: { movements, days: 30 }
+          }).catch(() => null),
+        ]);
+        
+        // Update state with worker results
+        if (slowMovingResult !== null) setWorkerSlowMoving(slowMovingResult);
+        if (overstockResult !== null) setWorkerOverstock(overstockResult);
+        if (valueByCatResult !== null) setWorkerValueByCategory(valueByCatResult);
+        if (trendsResult !== null) setWorkerTrends(trendsResult);
+        
+      } catch (error) {
+        console.warn('Worker computation failed, falling back to main thread:', error);
+        setWorkerAvailable(false);
+      } finally {
+        setIsWorkerLoading(false);
+      }
+    }, 300); // 300ms debounce
+    
+    return () => {
+      if (workerInvocationRef.current) {
+        clearTimeout(workerInvocationRef.current);
+      }
+    };
+  }, [items, movements, shouldUseWorker, postMessage]);
   
+  // Use worker results or fall back to main thread calculations
   const slowMovingItems = useMemo(() => {
+    if (shouldUseWorker && workerSlowMoving !== null) {
+      return workerSlowMoving;
+    }
     return identifySlowMovingItems(items, movements);
-  }, [items, movements]);
+  }, [items, movements, shouldUseWorker, workerSlowMoving]);
   
   const overstockItems = useMemo(() => {
+    if (shouldUseWorker && workerOverstock !== null) {
+      return workerOverstock;
+    }
     return identifyOverstockItems(items, movements);
+  }, [items, movements, shouldUseWorker, workerOverstock]);
+  
+  const valuationHistory = useMemo(() => {
+    return generateValuationHistoryData(items, movements, 30);
   }, [items, movements]);
   
-  // Prepare category data for pie chart
-  const categoryData = Object.entries(valueByCategory).map(([categoryId, value]) => {
-    const category = categories.find(c => c.id === categoryId);
-    return {
-      name: category?.name || 'Uncategorized',
-      value: value,
-    };
-  }, [valueByCategory, categories]);
+  // Prepare category data for pie chart - use worker results if available
+  const categoryData = useMemo(() => {
+    const valueByCat = (shouldUseWorker && workerValueByCategory) 
+      ? workerValueByCategory 
+      : valueByCategory;
+    
+    return Object.entries(valueByCat).map(([categoryId, value]) => {
+      const category = categories.find(c => c.id === categoryId);
+      return {
+        name: category?.name || 'Uncategorized',
+        value: value,
+      };
+    });
+  }, [valueByCategory, workerValueByCategory, categories, shouldUseWorker]);
   
   // Stock status distribution - memoized
   const statusData = useMemo(() => {
@@ -80,7 +166,24 @@ export function Dashboard() {
   
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-gray-800">Dashboard</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold text-gray-800">Dashboard</h2>
+        {shouldUseWorker && (
+          <div className="flex items-center gap-2 text-sm">
+            {isWorkerLoading ? (
+              <>
+                <Loader2 className="animate-spin text-blue-500" size={16} />
+                <span className="text-blue-500">Computing analytics...</span>
+              </>
+            ) : (
+              <>
+                <Activity className="text-green-500" size={16} />
+                <span className="text-green-600">Worker active ({items.length} items)</span>
+              </>
+            )}
+          </div>
+        )}
+      </div>
       
       {/* Key Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

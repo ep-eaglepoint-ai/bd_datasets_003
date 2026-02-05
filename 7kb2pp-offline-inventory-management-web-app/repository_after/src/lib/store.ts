@@ -82,6 +82,20 @@ interface InventoryState {
     toLocationId?: string
   ) => Promise<StockMovement>;
   
+  // Explicit transfer action - updates item location AND creates immutable movement
+  recordTransfer: (
+    itemId: string,
+    toLocationId: string | null,
+    reason?: string
+  ) => Promise<StockMovement>;
+  
+  // Explicit correction action - adjusts quantity with audit trail
+  recordCorrection: (
+    itemId: string,
+    newQuantity: number,
+    reason: string
+  ) => Promise<StockMovement>;
+  
   // Bulk operations
   bulkUpdateItems: (edit: BulkEdit) => Promise<void>;
   bulkImport: (data: ExportData) => Promise<void>;
@@ -227,17 +241,23 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     const existingItem = items.find(i => i.id === id);
     if (!existingItem) throw new Error('Item not found');
     
+    // Calculate quantity for this item
+    const itemMovements = movements.filter(m => m.itemId === id);
+    const currentQuantity = itemMovements.length > 0
+      ? itemMovements.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0].newQuantity
+      : 0;
+    
+    // Check if location is being changed - track for transfer movement
+    const isLocationChange = updates.locationId !== undefined && 
+                             updates.locationId !== existingItem.locationId;
+    const fromLocationId = existingItem.locationId;
+    const toLocationId = updates.locationId;
+    
     // Check location capacity if location is being changed
-    if (updates.locationId && updates.locationId !== existingItem.locationId) {
-      const location = locations.find(l => l.id === updates.locationId);
+    if (isLocationChange && toLocationId) {
+      const location = locations.find(l => l.id === toLocationId);
       if (location?.capacity) {
-        // Calculate quantity for this item
-        const itemMovements = movements.filter(m => m.itemId === id);
-        const currentQuantity = itemMovements.length > 0
-          ? itemMovements.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0].newQuantity
-          : 0;
-        
-        const currentTotal = calculateLocationTotal(updates.locationId, items, movements);
+        const currentTotal = calculateLocationTotal(toLocationId, items, movements);
         
         if (currentTotal + currentQuantity > location.capacity) {
           throw new Error(
@@ -248,25 +268,46 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       }
     }
     
+    const now = new Date().toISOString();
     const updatedItem: InventoryItem = {
       ...existingItem,
       ...updates,
       id,
       createdAt: existingItem.createdAt,
-      updatedAt: new Date().toISOString(),
+      updatedAt: now,
     };
     
     await db.saveItem(updatedItem);
+    
+    // Create immutable transfer movement if location changed
+    let transferMovement: StockMovement | null = null;
+    if (isLocationChange && currentQuantity > 0) {
+      transferMovement = {
+        id: uuidv4(),
+        itemId: id,
+        type: 'transfer' as const,
+        quantity: 0, // Transfer doesn't change quantity
+        previousQuantity: currentQuantity,
+        newQuantity: currentQuantity,
+        fromLocationId: fromLocationId || null,
+        toLocationId: toLocationId || null,
+        reason: `Transfer from ${fromLocationId ? locations.find(l => l.id === fromLocationId)?.name || 'Unknown' : 'Unassigned'} to ${toLocationId ? locations.find(l => l.id === toLocationId)?.name || 'Unknown' : 'Unassigned'}`,
+        timestamp: now,
+      };
+      await db.addMovement(transferMovement);
+    }
     
     const auditLog = createAuditLog('item', id, 'update', {
       before: existingItem,
       after: updatedItem,
       changes: updates,
+      transferMovementId: transferMovement?.id,
     });
     await db.addAuditLog(auditLog);
     
     set(state => ({
       items: state.items.map(i => i.id === id ? updatedItem : i),
+      movements: transferMovement ? [...state.movements, transferMovement] : state.movements,
       auditLogs: [...state.auditLogs, auditLog],
     }));
   },
@@ -541,10 +582,168 @@ recordMovement: async (
   return movement;
 },
 
+  // Explicit transfer: updates item location AND creates immutable transfer movement
+  recordTransfer: async (itemId, toLocationId, reason) => {
+    const { items, movements, locations } = get();
+    const item = items.find(i => i.id === itemId);
+    if (!item) throw new Error('Item not found');
+    
+    const fromLocationId = item.locationId;
+    
+    // No-op if location isn't changing
+    if (fromLocationId === toLocationId) {
+      throw new Error('Item is already at this location');
+    }
+    
+    // Calculate current quantity
+    const itemMovements = movements.filter(m => m.itemId === itemId);
+    const currentQuantity = itemMovements.length > 0
+      ? itemMovements.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0].newQuantity
+      : 0;
+    
+    if (currentQuantity <= 0) {
+      throw new Error('Cannot transfer item with zero quantity');
+    }
+    
+    // Check destination capacity
+    if (toLocationId) {
+      const toLocation = locations.find(l => l.id === toLocationId);
+      if (toLocation?.capacity) {
+        const currentTotal = calculateLocationTotal(toLocationId, items, movements);
+        if (currentTotal + currentQuantity > toLocation.capacity) {
+          throw new Error(
+            `Location "${toLocation.name}" cannot hold this item. ` +
+            `Current: ${currentTotal}, Item quantity: ${currentQuantity}, Capacity: ${toLocation.capacity}`
+          );
+        }
+      }
+    }
+    
+    const now = new Date().toISOString();
+    const fromLocationName = fromLocationId 
+      ? locations.find(l => l.id === fromLocationId)?.name || 'Unknown'
+      : 'Unassigned';
+    const toLocationName = toLocationId
+      ? locations.find(l => l.id === toLocationId)?.name || 'Unknown'
+      : 'Unassigned';
+    
+    // Create transfer movement
+    const movement: StockMovement = {
+      id: uuidv4(),
+      itemId,
+      type: 'transfer' as const,
+      quantity: 0, // Transfer doesn't change quantity
+      previousQuantity: currentQuantity,
+      newQuantity: currentQuantity,
+      fromLocationId: fromLocationId || null,
+      toLocationId: toLocationId || null,
+      reason: reason || `Transfer from ${fromLocationName} to ${toLocationName}`,
+      timestamp: now,
+    };
+    
+    // Update item location
+    const updatedItem: InventoryItem = {
+      ...item,
+      locationId: toLocationId,
+      updatedAt: now,
+    };
+    
+    await db.saveItem(updatedItem);
+    await db.addMovement(movement);
+    
+    // Create audit log
+    const auditLog = createAuditLog('movement', movement.id, 'create', {
+      itemId,
+      itemName: item.name,
+      itemSku: item.sku,
+      type: 'transfer',
+      fromLocationId,
+      toLocationId,
+      fromLocationName,
+      toLocationName,
+      quantity: currentQuantity,
+      reason: movement.reason,
+    });
+    await db.addAuditLog(auditLog);
+    
+    set(state => ({
+      items: state.items.map(i => i.id === itemId ? updatedItem : i),
+      movements: [...state.movements, movement],
+      auditLogs: [...state.auditLogs, auditLog],
+    }));
+    
+    return movement;
+  },
+  
+  // Explicit correction: adjusts quantity with required reason
+  recordCorrection: async (itemId, newQuantity, reason) => {
+    const { items, movements } = get();
+    const item = items.find(i => i.id === itemId);
+    if (!item) throw new Error('Item not found');
+    
+    if (!reason || reason.trim().length === 0) {
+      throw new Error('Correction requires a reason');
+    }
+    
+    if (newQuantity < 0) {
+      throw new Error('Quantity cannot be negative');
+    }
+    
+    // Calculate current quantity
+    const itemMovements = movements.filter(m => m.itemId === itemId);
+    const currentQuantity = itemMovements.length > 0
+      ? itemMovements.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0].newQuantity
+      : 0;
+    
+    const quantityDiff = newQuantity - currentQuantity;
+    
+    if (quantityDiff === 0) {
+      throw new Error('New quantity is the same as current quantity');
+    }
+    
+    const now = new Date().toISOString();
+    
+    // Create correction movement
+    const movement: StockMovement = {
+      id: uuidv4(),
+      itemId,
+      type: 'correction' as const,
+      quantity: quantityDiff,
+      previousQuantity: currentQuantity,
+      newQuantity,
+      fromLocationId: null,
+      toLocationId: null,
+      reason: reason.trim(),
+      timestamp: now,
+    };
+    
+    await db.addMovement(movement);
+    
+    // Create audit log
+    const auditLog = createAuditLog('movement', movement.id, 'create', {
+      itemId,
+      itemName: item.name,
+      itemSku: item.sku,
+      type: 'correction',
+      previousQuantity: currentQuantity,
+      newQuantity,
+      quantityDiff,
+      reason: reason.trim(),
+    });
+    await db.addAuditLog(auditLog);
+    
+    set(state => ({
+      movements: [...state.movements, movement],
+      auditLogs: [...state.auditLogs, auditLog],
+    }));
+    
+    return movement;
+  },
+
   
   // Bulk operations with transaction support
   bulkUpdateItems: async (edit) => {
-    const { items } = get();
+    const { items, movements, locations } = get();
     
     // Validate all items exist before starting
     const itemsToUpdate = items.filter(i => edit.itemIds.includes(i.id));
@@ -557,6 +756,10 @@ recordMovement: async (
     const originalItems = itemsToUpdate.map(item => ({ ...item }));
     const now = new Date().toISOString();
     
+    // Check if this is a location change (for transfer movements)
+    const isLocationChange = edit.updates.locationId !== undefined;
+    const toLocationId = edit.updates.locationId;
+    
     // Prepare all updated items
     const updatedItemsData = itemsToUpdate.map(item => ({
       ...item,
@@ -564,9 +767,43 @@ recordMovement: async (
       updatedAt: now,
     }));
     
+    // Prepare transfer movements for location changes
+    const transferMovements: StockMovement[] = [];
+    if (isLocationChange) {
+      for (const item of itemsToUpdate) {
+        // Only create transfer if location actually changed
+        if (item.locationId !== toLocationId) {
+          const itemMovements = movements.filter(m => m.itemId === item.id);
+          const currentQuantity = itemMovements.length > 0
+            ? itemMovements.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0].newQuantity
+            : 0;
+          
+          if (currentQuantity > 0) {
+            transferMovements.push({
+              id: uuidv4(),
+              itemId: item.id,
+              type: 'transfer' as const,
+              quantity: 0, // Transfer doesn't change quantity
+              previousQuantity: currentQuantity,
+              newQuantity: currentQuantity,
+              fromLocationId: item.locationId || null,
+              toLocationId: toLocationId || null,
+              reason: `Bulk transfer from ${item.locationId ? locations.find(l => l.id === item.locationId)?.name || 'Unknown' : 'Unassigned'} to ${toLocationId ? locations.find(l => l.id === toLocationId)?.name || 'Unknown' : 'Unassigned'}`,
+              timestamp: now,
+            });
+          }
+        }
+      }
+    }
+    
     try {
       // Use single batched transaction for atomicity
       await db.bulkSaveItems(updatedItemsData);
+      
+      // Add transfer movements
+      for (const movement of transferMovements) {
+        await db.addMovement(movement);
+      }
       
       // Update state after successful DB write
       set(state => ({
@@ -574,17 +811,26 @@ recordMovement: async (
           const updatedItem = updatedItemsData.find(u => u.id === item.id);
           return updatedItem || item;
         }),
+        movements: transferMovements.length > 0 
+          ? [...state.movements, ...transferMovements] 
+          : state.movements,
       }));
       
       // Create audit logs for all updates in batch
-      const auditLogs = updatedItemsData.map(item => ({
-        id: uuidv4(),
-        entityType: 'item' as const,
-        entityId: item.id,
-        action: 'update' as const,
-        changes: edit.updates,
-        timestamp: now,
-      }));
+      const auditLogs = updatedItemsData.map(item => {
+        const transferMovement = transferMovements.find(m => m.itemId === item.id);
+        return {
+          id: uuidv4(),
+          entityType: 'item' as const,
+          entityId: item.id,
+          action: 'update' as const,
+          changes: {
+            ...edit.updates,
+            transferMovementId: transferMovement?.id,
+          },
+          timestamp: now,
+        };
+      });
       
       // Add audit logs
       for (const log of auditLogs) {
