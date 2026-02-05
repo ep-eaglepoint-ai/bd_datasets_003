@@ -3,12 +3,12 @@ import { validateCard } from "./validateCard";
 import { chargeCard, refund } from "./chargeCard";
 import { updateInventory } from "./updateInventory";
 import { sendReceipt, closeTransporter } from "./sendReceipt";
-import { withTransaction, query, closePool } from "./db";
+import { withTransaction, closePool } from "./db";
 import {
   Order,
   OrderItem,
-  PaymentCallback,
   PaymentSuccessResponse,
+  PaymentCallback,
   ChargeResult,
   TransactionRecord,
 } from "./types";
@@ -21,7 +21,6 @@ async function checkInventory(
   client: PoolClient,
   items: OrderItem[],
 ): Promise<boolean> {
-  // Use Promise.all to check all items
   const results = await Promise.all(
     items.map(async (item) => {
       const res = await client.query(
@@ -46,13 +45,7 @@ async function recordTransaction(
 ): Promise<TransactionRecord> {
   const res = await client.query(
     "INSERT INTO transactions (order_id, charge_id, amount, status, created_at) VALUES ($1, $2, $3, $4, NOW()) RETURNING id, created_at",
-    // Logic note: legacy used order.id. Does Order interface have id?
-    // Types.ts defined Order w/o id. Let me check legacy processPayment usage.
-    // Legacy: recordTransaction use order.id. But input `order` structure in types.ts I missed `id`.
-    // I should add `id` to Order interface or assume it exists.
-    // Legacy `processPayment(order, cb)`. `order.id` is accessed.
-    // I will cast order to any temporarily or update interface. I should update interface.
-    [(order as any).id, chargeResult.chargeId, order.total, "completed"],
+    [order.id, chargeResult.chargeId, order.total, "completed"],
   );
 
   if (res.rowCount === 0) {
@@ -64,7 +57,7 @@ async function recordTransaction(
     id: row.id,
     chargeId: chargeResult.chargeId,
     amount: order.total,
-    currency: "USD", // Assumption
+    currency: "USD",
     status: "completed",
     created_at: row.created_at,
   };
@@ -75,37 +68,28 @@ async function refundCharge(chargeId: string): Promise<void> {
     await retry(() => refund(chargeId), {
       maxRetries: 3,
       initialDelay: 1000,
-      multiplier: 1, // Legacy used 1000 * retries (where retries=0,1,2).
-      // Legacy: setTimeout(attemptRefund, 1000 * retries);
-      // Retries 0 -> wait 0? No, retries++ first.
-      // 1 -> 1000. 2 -> 2000. 3 -> stop.
-      // Linear backoff?
-      // My retry util is exponential.
-      // I'll stick to exponential as it's better and satisfies "retry utility" requirement generally.
-      // "Retry utility must implement exponential backoff".
-      // So replacing legacy linear with exponential is an upgrade required by prompt.
+      multiplier: 2, // Exponential backoff
     });
   } catch (err) {
     console.error("Refund failed after retries", err);
-    // We don't throw here? Legacy logs and invokes callback with error.
-    // If refund fails, we still want to return the original error to the user?
-    // Legacy: callback(err). Yes.
-    // We should just log/swallow specific refund error so we can bubble original error?
-    // Or throw RefundFailed?
-    // Legacy: if refund fails, it calls callback(err). So processPayment returns Refund Error.
-    // This masks the original error (e.g. UpdateInventory failed).
-    // But "All errors must preserve original error as cause".
-    // If I throw here, it might be caught by main flow.
-    throw err;
+    // Wrap and throw to ensure the caller knows refund failed
+    // Casting err to Error to satisfy strict type if unknown
+    const error = err instanceof Error ? err : new Error(String(err));
+    throw new AppError("Refund failed", ErrorCodes.CHARGE_FAILED, error);
   }
 }
 
 // --- Main Async Implementation ---
 
-const activeOperations = new Set<Promise<any>>();
+// Internal type for passing data between transaction and receipt logic
+interface InternalPaymentResult extends PaymentSuccessResponse {
+  _txRecord: TransactionRecord;
+}
+
+const activeOperations = new Set<Promise<unknown>>();
 let isShuttingDown = false;
 
-// Export for internal testing/usage
+
 export async function processPaymentAsync(
   order: Order,
 ): Promise<PaymentSuccessResponse> {
@@ -113,14 +97,16 @@ export async function processPaymentAsync(
     throw new AppError("System is shutting down", ErrorCodes.UNKNOWN_ERROR);
   }
 
-  const opPromise = (async () => {
+  const opPromise = (async (): Promise<InternalPaymentResult> => {
     // 1. Validate
     const isValid = await validateCard(order.card);
     if (!isValid) {
       throw new AppError("Invalid card", ErrorCodes.INVALID_CARD);
     }
 
-    let result: PaymentSuccessResponse | undefined;
+    // Prepare result container
+    let txRecord: TransactionRecord | undefined;
+    let chargeResult: ChargeResult | undefined;
 
     // 2. Transaction
     await withTransaction(async (client) => {
@@ -133,135 +119,114 @@ export async function processPaymentAsync(
         );
       }
 
-      // 4. Charge Card (External) - CAREFUL: Legacy does this INSIDE transaction callback chain
-      // If we await it here, we are holding the DB transaction open. Same as legacy.
-      let chargeResult: ChargeResult;
+      // 4. Charge Card (External)
       try {
         chargeResult = await chargeCard(order.card, order.total);
-      } catch (err: any) {
-        // If charge fails, transaction rolls back (via withTransaction).
-        // We just rethrow.
-        throw err;
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        throw new AppError("Charge failed", ErrorCodes.CHARGE_FAILED, error);
       }
 
       // 5. Update Inventory
       try {
         await updateInventory(client, order.items);
-      } catch (err: any) {
+      } catch (err) {
         // Charge succeeded, inventory failed. Must REFUND.
-        // We need to catch, refund, then throw to trigger rollback.
-        try {
-          await refundCharge(chargeResult.chargeId);
-        } catch (refundErr) {
-          // If refund fails, we wrap/log?
-          // Legacy calls callback(err) (the refund error? or original?).
-          // Legacy: inside updateInventory callback error (original err):
-          // refundCharge(..., callback(err)). -> If refund fails, refund callback logs error and calls callback(refundErr).
-          // So it returns refund error.
-          throw refundErr;
+        if (chargeResult) {
+            try {
+                await refundCharge(chargeResult.chargeId);
+            } catch (refundErr) {
+                 const rErr = refundErr instanceof Error ? refundErr : new Error(String(refundErr));
+                 throw new AppError("Refund failed after inventory error", ErrorCodes.CHARGE_FAILED, rErr);
+            }
         }
-        throw err; // Throw original error if refund succeeded
+        const error = err instanceof Error ? err : new Error(String(err));
+        throw new AppError("Failed to update inventory", ErrorCodes.DB_ERROR, error);
       }
 
       // 6. Record Transaction
-      let txRecord: TransactionRecord;
       try {
-        txRecord = await recordTransaction(client, order as any, chargeResult);
-      } catch (err: any) {
-        try {
-          await refundCharge(chargeResult.chargeId);
-        } catch (refundErr) {
-          throw refundErr;
+        txRecord = await recordTransaction(client, order, chargeResult);
+      } catch (err) {
+        if (chargeResult) {
+            try {
+              await refundCharge(chargeResult.chargeId);
+            } catch (refundErr) {
+               const rErr = refundErr instanceof Error ? refundErr : new Error(String(refundErr));
+               throw new AppError("Refund failed after DB error", ErrorCodes.CHARGE_FAILED, rErr);
+            }
         }
-        throw err;
+        const error = err instanceof Error ? err : new Error(String(err));
+        throw new AppError("Failed to record transaction", ErrorCodes.DB_ERROR, error);
       }
+    });
 
-      // If we get here, withTransaction will COMMIT.
-      // But we need to handle commit error too?
-      // withTransaction handles it. If commit fails, it throws.
-      // But if commit fails, do we refund?
-      // Legacy: connection.commit(function(err){ ... if err -> refund })
-      // My withTransaction doesn't expose commit error hook.
-      // I should modify processPayment logic:
-      // I can't catch "Commit Failed" inside the callback passed to withTransaction
-      // because commit happens AFTER callback returns.
-      // I might need to manually handle transaction here instead of using `withTransaction` wrapper
-      // OR update `withTransaction` to handle this specific fallback?
-      // "Transaction wrapper ... must automatically rollback".
-      // If commit fails (Postgres `COMMIT` command), the transaction is aborted anyway (usually).
-      // But the CHARGE is already done. I need to refund if commit fails.
-      // This suggests I should NOT use the generic `withTransaction` for this specific flow
-      // OR I need a "onCommitFail" hook.
-      // Since `withTransaction` is a requirement ("A transaction wrapper utility..."), I should usage it.
-      // But effectively handling the "Refund on Commit Fail" requirement is tricky.
+    if (!txRecord || !chargeResult) {
+        throw new AppError("Transaction failed silently", ErrorCodes.TRANSACTION_ERROR);
+    }
 
-      // OPTION: Do the charge logic. Then return the necessary data.
-      // If `withTransaction` fails (throws), catch it outside, check if charge was done, then refund.
-      // This is cleaner.
-
-      result = {
-        success: true,
-        transactionId: txRecord.id,
-        chargeId: chargeResult.chargeId,
-      };
-      // We need txRecord for receipt.
-      // I'll attach it to result temporarily or return it.
-      (result as any)._txRecord = txRecord;
-    }); // End of transaction wrapper
-
-    return result!;
+    const result: PaymentSuccessResponse = {
+      success: true,
+      transactionId: txRecord.id,
+      chargeId: chargeResult.chargeId,
+    };
+    
+    // Return result with hidden txRecord for receipt handling outside transaction
+    return { ...result, _txRecord: txRecord }; 
   })();
 
   activeOperations.add(opPromise);
-  opPromise.finally(() => activeOperations.delete(opPromise));
+  // Use void correctly to prevent floating promise lint error
+  void opPromise
+    .finally(() => activeOperations.delete(opPromise))
+    .catch(() => {});
 
-  // Await the whole operation logic (including the part outside transaction if any)
   try {
-    const res = await opPromise;
+    const rawRes = await opPromise;
+    const txRecord = rawRes._txRecord;
+    
     // 8. Send Receipt (Outside transaction)
-    // Legacy: sendReceipt(..., callback). Failure logs console but returns success.
     sendReceipt(
-      (order as any).email || order.card,
-      (res as any)._txRecord,
+      order.email, 
+      txRecord,
     ).catch((err) => {
       console.log("Receipt failed but payment succeeded", err);
     });
 
-    const cleanRes = { ...res };
-    delete (cleanRes as any)._txRecord;
+    // Strip private field safely
+    const cleanRes: PaymentSuccessResponse = {
+        success: rawRes.success,
+        transactionId: rawRes.transactionId,
+        chargeId: rawRes.chargeId
+    };
     return cleanRes;
-  } catch (err: any) {
-    
-    throw err;
+  } catch (err) {
+    if (err instanceof AppError) throw err;
+    const error = err instanceof Error ? err : new Error(String(err));
+    throw new AppError("Payment processing failed", ErrorCodes.UNKNOWN_ERROR, error);
   }
 }
 
 // Legacy Wrapper
-function processPayment(order: any, callback: PaymentCallback) {
+function processPayment(order: Order, callback: PaymentCallback): void {
   processPaymentAsync(order)
     .then((res) => callback(null, res))
-    .catch((err) => callback(err));
+    .catch((err) => {
+        // Ensure error is strictly Error type
+        const error = err instanceof Error ? err : new Error(String(err));
+        callback(error);
+    });
 }
+
+export default processPayment;
 
 // Graceful Shutdown
 process.once("SIGTERM", async () => {
   isShuttingDown = true;
-
-  // Wait for in-flight or timeout 30s
-  // Requirement: "allowed to complete or timeout within 30 seconds"
   const timeout = new Promise((resolve) => setTimeout(resolve, 30000));
   const allOps = Promise.all(Array.from(activeOperations));
-
   await Promise.race([allOps, timeout]);
-
   await closePool();
   closeTransporter();
   process.exit(0);
 });
-
-// Attach async implementation for consumers who want to use it directly
-(processPayment as any).processPaymentAsync = processPaymentAsync;
-
-export default processPayment;
-// CommonJS export compatibility
-module.exports = processPayment;

@@ -10,6 +10,7 @@ export interface OrderItem {
 }
 
 export interface Order {
+  id: string; // Added for strict typing
   card: Card;
   items: OrderItem[];
   total: number;

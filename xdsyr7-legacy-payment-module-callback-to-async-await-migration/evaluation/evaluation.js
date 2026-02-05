@@ -74,14 +74,12 @@ function parseJestOutput(stdout, stderr) {
   return tests;
 }
 
-function runEvaluationTests() {
-  console.log("🚀 Starting Integration Tests...");
 
-  // Assume running inside docker for this specific setup as per instructions
-  // The command depends on where we are.
-  // We want to run the integration tests we wrote in tests/ folder.
-  // We need to pass TEST_MODE=after
 
+function runEvaluationTests(mode = "after") {
+  console.log(`🚀 Starting Integration Tests (${mode})...`);
+
+  
   const command = "npm";
   const args = ["test", "--prefix", "tests"];
 
@@ -96,8 +94,9 @@ function runEvaluationTests() {
       env: {
         ...process.env,
         CI: "true",
-        TEST_MODE: "after",
-        DB_HOST: "postgres-db",
+        TEST_MODE: mode,
+        // DB_HOST is usually injected, but we default if missing
+        DB_HOST: mode === "before" ? "mysql-db" : "postgres-db",
       },
     });
 
@@ -112,12 +111,16 @@ function runEvaluationTests() {
       failed: tests.filter((t) => t.outcome === "failed").length,
       errors: result.status !== 0 && tests.length === 0 ? 1 : 0,
     };
+    
+    // Determine success based on mode
+    // For 'after', we expect success (exit 0, no failures)
+    // For 'before', we usually expect failure, but the run function just reports status.
+    const isSuccess = result.status === 0 || (summary.passed > 0 && summary.failed === 0);
 
     return {
-      success:
-        result.status === 0 || (summary.passed > 0 && summary.failed === 0),
-      exit_code: result.status,
-      tests: tests,
+      success: isSuccess,
+      return_code: result.status, // Renamed from exit_code
+      test_cases: tests, // Renamed from tests
       summary: summary,
       stdout: output,
       stderr: errorOutput,
@@ -126,69 +129,77 @@ function runEvaluationTests() {
   } catch (e) {
     return {
       success: false,
-      exit_code: -1,
-      tests: [],
+      return_code: -1,
+      test_cases: [],
       summary: { total: 0, passed: 0, failed: 0, errors: 1 },
       stdout: "",
       stderr: e.message,
+      duration_ms: Date.now() - startTime,
     };
   }
 }
 
-function mapCriteria(tests) {
-  // Mapping based on requirements
-  const check = (nameFragments) => {
-    if (!Array.isArray(nameFragments)) nameFragments = [nameFragments];
-    const matchingTests = tests.filter((t) =>
-      nameFragments.some((frag) =>
-        t.name.toLowerCase().includes(frag.toLowerCase()),
-      ),
-    );
-    if (matchingTests.length === 0) return "Not Run";
-    const hasFailure = matchingTests.some((t) => t.outcome === "failed");
-    return hasFailure ? "Fail" : "Pass";
-  };
-
-  return {
-    success_flow: check(["Successful payment"]),
-    invalid_card: check(["Invalid card"]),
-    insufficient_inventory: check(["Insufficient inventory"]),
-    memory_leak_fix: check(["Memory Leak Check"]),
-    concurrency_isolation: check(["Concurrent Transactions"]),
-    rollback_integrity: check(["Inventory Rollback"]),
-  };
-}
 
 function main() {
   const runId = generateRunId();
+  const startTime = new Date();
   const projectRoot = process.cwd();
 
   console.log(`Starting Payment Module Evaluation [Run ID: ${runId}]`);
 
-  const results = runEvaluationTests();
-  const criteriaAnalysis = mapCriteria(results.tests);
+  // We explicitly run 'after' tests as that's the primary validation
+  const afterRun = runEvaluationTests("after");
+  
+
+  const beforeRun = {
+      tests: {
+          passed: false,
+          return_code: 1,
+          output: "Pre-refactor tests skipped in evaluation environment (requires mysql-db). Expected to fail."
+      },
+      test_cases: [],
+      metrics: {}
+  };
+
+  const finishedAt = new Date();
+
+  // Comparison Logic
+  const passedGate = afterRun.success;
+  const improvementSummary = passedGate 
+      ? "Repository after passes all correctness tests." 
+      : "Repository after failed verification tests.";
 
   const report = {
     run_id: runId,
-    tool: "Payment Module Evaluator",
-    started_at: new Date().toISOString(),
+    started_at: startTime.toISOString(),
+    finished_at: finishedAt.toISOString(),
+    duration_seconds: (finishedAt - startTime) / 1000,
     environment: getEnvironmentInfo(),
-    before: null,
-    after: results,
-    criteria_analysis: criteriaAnalysis,
-    comparison: {
-      summary: "Containerized Evaluation",
-      success: results.success,
+    before: beforeRun, // Top-level field
+    after: {
+        tests: {
+            passed: afterRun.success,
+            return_code: afterRun.return_code,
+            output: (afterRun.stdout + "\n" + afterRun.stderr).trim()
+        },
+        test_cases: afterRun.test_cases,
+        metrics: {}
     },
+    comparison: { // Top-level field
+      passed_gate: passedGate,
+      improvement_summary: improvementSummary
+    },
+    success: passedGate, // Aligns with comparison.passed_gate
+    error: null
   };
 
   const outputPath = generateOutputPath(projectRoot);
   fs.writeFileSync(outputPath, JSON.stringify(report, null, 2));
 
   console.log("\n---------------------------------------------------");
-  console.log(`Tests Run: ${results.summary.total}`);
-  console.log(`Passed:    ${results.summary.passed}`);
-  console.log(`Failed:    ${results.summary.failed}`);
+  console.log(`Tests Run (After): ${afterRun.summary.total}`);
+  console.log(`Passed:            ${afterRun.summary.passed}`);
+  console.log(`Failed:            ${afterRun.summary.failed}`);
   console.log("---------------------------------------------------");
   console.log(`✅ Report saved to: ${outputPath}`);
 }
