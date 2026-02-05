@@ -1,0 +1,11 @@
+{
+            "instance_id": "IQXRL8",
+            "problem_statement": "Develop a high-performance, zero-dependency file path matching engine in Go. The system must support a custom set of glob-like wildcards (recursive, single-segment, and selection groups) while enforcing a strict 'poisoning' protocol where specific exclusion patterns override positive matches. The implementation must avoid standard Regex libraries to ensure predictable performance and strict adherence to the defined precedence logic.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/iqxrl8-ambiguous-wildcard-filepath-matcher",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
