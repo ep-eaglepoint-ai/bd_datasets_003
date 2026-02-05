@@ -3,7 +3,7 @@
 ### Run tests
 
 ```bash
-docker compose run --rm app go test -timeout 10s -v ./tests
+docker compose run --rm app go run tests/runner.go
 ```
 
 ### Run evaluation

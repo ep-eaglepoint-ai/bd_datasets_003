@@ -52,6 +52,9 @@ func NewTensor(n, c, h, w int) (*Tensor, error) {
 
 // NewTensorFromData creates a tensor from existing data. Data length must match shape.
 func NewTensorFromData(n, c, h, w int, data []float32) (*Tensor, error) {
+	if n <= 0 || c <= 0 || h <= 0 || w <= 0 {
+		return nil, fmt.Errorf("tensor dimensions must be positive, got (%d, %d, %d, %d)", n, c, h, w)
+	}
 	if n*c*h*w != len(data) {
 		return nil, fmt.Errorf("data length %d doesn't match shape (%d, %d, %d, %d)",
 			len(data), n, c, h, w)
@@ -241,6 +244,9 @@ func (c *WSConv2D) Forward(input *Tensor) (*Tensor, error) {
 	if input.C != c.config.InChannels {
 		return nil, errors.New("invalid input channels")
 	}
+	if c.config.PaddingH > (1<<30-input.H)/2 || c.config.PaddingW > (1<<30-input.W)/2 {
+		return nil, errors.New("padding too large, would cause overflow")
+	}
 	outH := (input.H+2*c.config.PaddingH-c.config.KernelHeight)/c.config.StrideH + 1
 	outW := (input.W+2*c.config.PaddingW-c.config.KernelWidth)/c.config.StrideW + 1
 	if outH <= 0 || outW <= 0 {
@@ -254,7 +260,9 @@ func (c *WSConv2D) Forward(input *Tensor) (*Tensor, error) {
 	weights := c.weights
 	if c.config.UseWS {
 		c.standardizeWeights()
+		c.mu.RLock()
 		weights = c.stdWeights
+		c.mu.RUnlock()
 	}
 
 	numWorkers := min(input.N*c.config.OutChannels, runtime.NumCPU()*2)
@@ -273,6 +281,7 @@ func (c *WSConv2D) Forward(input *Tensor) (*Tensor, error) {
 			defer wg.Done()
 			for work := range workChan {
 				n, oc := work[0], work[1]
+				bias := c.biases[oc]
 				for oh := 0; oh < output.H; oh++ {
 					inY := oh*c.config.StrideH - c.config.PaddingH
 					for ow := 0; ow < output.W; ow++ {
@@ -293,25 +302,13 @@ func (c *WSConv2D) Forward(input *Tensor) (*Tensor, error) {
 								}
 							}
 						}
-						output.Set(n, oc, oh, ow, sum)
+						output.Set(n, oc, oh, ow, sum+bias)
 					}
 				}
 			}
 		}()
 	}
 	wg.Wait()
-
-	// Add biases
-	for n := 0; n < output.N; n++ {
-		for oc := 0; oc < output.C; oc++ {
-			bias := c.biases[oc]
-			for oh := 0; oh < output.H; oh++ {
-				for ow := 0; ow < output.W; ow++ {
-					output.Set(n, oc, oh, ow, output.At(n, oc, oh, ow)+bias)
-				}
-			}
-		}
-	}
 	return output, nil
 }
 
