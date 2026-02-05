@@ -1,0 +1,2262 @@
+diff --git a/repository_before/.gitkeep b/repository_before/.gitkeep
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/repository_after/cmd/server/main.go b/repository_after/cmd/server/main.go
+new file mode 100644
+index 0000000..7b1df13
+--- /dev/null
++++ b/repository_after/cmd/server/main.go
+@@ -0,0 +1,113 @@
++package main
++
++import (
++	"context"
++	"log"
++	"net/http"
++	"os"
++	"os/signal"
++	"syscall"
++	"time"
++
++	"webhook-delivery-system/internal/config"
++	"webhook-delivery-system/internal/database"
++	"webhook-delivery-system/internal/delivery"
++	"webhook-delivery-system/internal/handlers"
++	"webhook-delivery-system/internal/metrics"
++	"webhook-delivery-system/internal/queue"
++
++	"github.com/go-chi/chi/v5"
++	"github.com/go-chi/chi/v5/middleware"
++)
++
++func main() {
++	cfg := config.Load()
++
++	db, err := database.New(cfg.DatabaseURL)
++	if err != nil {
++		log.Fatalf("Failed to connect to database: %v", err)
++	}
++	defer db.Close()
++
++	if err := db.Migrate(); err != nil {
++		log.Fatalf("Failed to run migrations: %v", err)
++	}
++
++	redisQueue, err := queue.NewRedisQueue(cfg.RedisURL)
++	if err != nil {
++		log.Fatalf("Failed to connect to Redis: %v", err)
++	}
++	defer redisQueue.Close()
++
++	metricsCollector := metrics.New()
++	circuitBreaker := delivery.NewCircuitBreaker()
++	rateLimiter := delivery.NewRateLimiter(100, time.Minute)
++
++	deliveryService := delivery.NewService(db, redisQueue, metricsCollector, circuitBreaker, rateLimiter)
++
++	if err := deliveryService.RecoverPendingDeliveries(context.Background()); err != nil {
++		log.Printf("Warning: Failed to recover pending deliveries: %v", err)
++	}
++
++	workerCtx, cancelWorkers := context.WithCancel(context.Background())
++	for i := 0; i < cfg.WorkerCount; i++ {
++		go deliveryService.StartWorker(workerCtx, i)
++	}
++
++	h := handlers.New(db, redisQueue, deliveryService, metricsCollector)
++
++	r := chi.NewRouter()
++	r.Use(middleware.Logger)
++	r.Use(middleware.Recoverer)
++	r.Use(middleware.Timeout(60 * time.Second))
++
++	r.Post("/webhooks", h.CreateWebhook)
++	r.Get("/webhooks/{id}", h.GetWebhook)
++	r.Put("/webhooks/{id}", h.UpdateWebhook)
++	r.Delete("/webhooks/{id}", h.DeleteWebhook)
++	r.Get("/webhooks", h.ListWebhooks)
++
++	r.Post("/events", h.CreateEvent)
++	r.Get("/events/{id}", h.GetEvent)
++
++	r.Get("/deliveries/{id}", h.GetDelivery)
++	r.Get("/deliveries/{id}/logs", h.GetDeliveryLogs)
++	r.Post("/deliveries/{id}/replay", h.ReplayDelivery)
++
++	r.Get("/dead-letters", h.ListDeadLetters)
++	r.Post("/dead-letters/{id}/replay", h.ReplayDeadLetter)
++
++	r.Get("/metrics", h.GetMetrics)
++	r.Get("/health", h.HealthCheck)
++
++	server := &http.Server{
++		Addr:         ":" + cfg.Port,
++		Handler:      r,
++		ReadTimeout:  15 * time.Second,
++		WriteTimeout: 15 * time.Second,
++		IdleTimeout:  60 * time.Second,
++	}
++
++	go func() {
++		log.Printf("Server starting on port %s", cfg.Port)
++		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
++			log.Fatalf("Server error: %v", err)
++		}
++	}()
++
++	quit := make(chan os.Signal, 1)
++	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
++	<-quit
++
++	log.Println("Shutting down server...")
++	cancelWorkers()
++
++	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
++	defer cancel()
++
++	if err := server.Shutdown(ctx); err != nil {
++		log.Fatalf("Server forced to shutdown: %v", err)
++	}
++
++	log.Println("Server exited properly")
++}
+diff --git a/repository_after/go.mod b/repository_after/go.mod
+new file mode 100644
+index 0000000..01f5068
+--- /dev/null
++++ b/repository_after/go.mod
+@@ -0,0 +1,21 @@
++module webhook-delivery-system
++
++go 1.21
++
++require (
++	github.com/go-chi/chi/v5 v5.0.11
++	github.com/google/uuid v1.5.0
++	github.com/jackc/pgx/v5 v5.5.1
++	github.com/redis/go-redis/v9 v9.3.1
++)
++
++require (
++	github.com/cespare/xxhash/v2 v2.2.0 // indirect
++	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
++	github.com/jackc/pgpassfile v1.0.0 // indirect
++	github.com/jackc/pgservicefile v0.0.0-20231201235250-de7065d80cb9 // indirect
++	github.com/jackc/puddle/v2 v2.2.1 // indirect
++	golang.org/x/crypto v0.17.0 // indirect
++	golang.org/x/sync v0.5.0 // indirect
++	golang.org/x/text v0.14.0 // indirect
++)
+diff --git a/repository_after/internal/config/config.go b/repository_after/internal/config/config.go
+new file mode 100644
+index 0000000..a20ac3d
+--- /dev/null
++++ b/repository_after/internal/config/config.go
+@@ -0,0 +1,44 @@
++package config
++
++import (
++	"os"
++	"strconv"
++)
++
++type Config struct {
++	Port        string
++	DatabaseURL string
++	RedisURL    string
++	WorkerCount int
++}
++
++func Load() *Config {
++	workerCount := 5
++	if wc := os.Getenv("WORKER_COUNT"); wc != "" {
++		if n, err := strconv.Atoi(wc); err == nil && n > 0 {
++			workerCount = n
++		}
++	}
++
++	port := os.Getenv("PORT")
++	if port == "" {
++		port = "8080"
++	}
++
++	dbURL := os.Getenv("DATABASE_URL")
++	if dbURL == "" {
++		dbURL = "postgres://postgres:postgres@localhost:5432/webhooks?sslmode=disable"
++	}
++
++	redisURL := os.Getenv("REDIS_URL")
++	if redisURL == "" {
++		redisURL = "redis://localhost:6379"
++	}
++
++	return &Config{
++		Port:        port,
++		DatabaseURL: dbURL,
++		RedisURL:    redisURL,
++		WorkerCount: workerCount,
++	}
++}
+diff --git a/repository_after/internal/database/database.go b/repository_after/internal/database/database.go
+new file mode 100644
+index 0000000..3b22c00
+--- /dev/null
++++ b/repository_after/internal/database/database.go
+@@ -0,0 +1,581 @@
++package database
++
++import (
++	"context"
++	"encoding/json"
++	"fmt"
++	"time"
++
++	"webhook-delivery-system/internal/models"
++
++	"github.com/jackc/pgx/v5/pgxpool"
++)
++
++type DB struct {
++	pool *pgxpool.Pool
++}
++
++func New(connString string) (*DB, error) {
++	config, err := pgxpool.ParseConfig(connString)
++	if err != nil {
++		return nil, fmt.Errorf("failed to parse connection string: %w", err)
++	}
++
++	config.MaxConns = 25
++	config.MinConns = 5
++	config.MaxConnLifetime = time.Hour
++	config.MaxConnIdleTime = 30 * time.Minute
++
++	pool, err := pgxpool.NewWithConfig(context.Background(), config)
++	if err != nil {
++		return nil, fmt.Errorf("failed to create pool: %w", err)
++	}
++
++	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
++	defer cancel()
++
++	if err := pool.Ping(ctx); err != nil {
++		return nil, fmt.Errorf("failed to ping database: %w", err)
++	}
++
++	return &DB{pool: pool}, nil
++}
++
++func (db *DB) Close() {
++	db.pool.Close()
++}
++
++func (db *DB) Migrate() error {
++	ctx := context.Background()
++	
++	migrations := []string{
++		`CREATE TABLE IF NOT EXISTS webhooks (
++			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
++			customer_id VARCHAR(255) NOT NULL,
++			url TEXT NOT NULL,
++			secret VARCHAR(255) NOT NULL,
++			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
++			is_active BOOLEAN DEFAULT true
++		)`,
++		`CREATE INDEX IF NOT EXISTS idx_webhooks_customer_id ON webhooks(customer_id)`,
++		`CREATE INDEX IF NOT EXISTS idx_webhooks_is_active ON webhooks(is_active)`,
++		
++		`CREATE TABLE IF NOT EXISTS events (
++			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
++			webhook_id UUID NOT NULL REFERENCES webhooks(id) ON DELETE CASCADE,
++			event_type VARCHAR(255) NOT NULL,
++			payload JSONB NOT NULL,
++			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
++		)`,
++		`CREATE INDEX IF NOT EXISTS idx_events_webhook_id ON events(webhook_id)`,
++		`CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at)`,
++		
++		`CREATE TABLE IF NOT EXISTS deliveries (
++			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
++			event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
++			attempt_number INTEGER NOT NULL DEFAULT 1,
++			status VARCHAR(50) NOT NULL DEFAULT 'pending',
++			request_headers TEXT,
++			request_body TEXT,
++			response_status INTEGER,
++			response_body TEXT,
++			response_time_ms BIGINT,
++			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
++			next_retry_at TIMESTAMP WITH TIME ZONE
++		)`,
++		`CREATE INDEX IF NOT EXISTS idx_deliveries_event_id ON deliveries(event_id)`,
++		`CREATE INDEX IF NOT EXISTS idx_deliveries_status ON deliveries(status)`,
++		`CREATE INDEX IF NOT EXISTS idx_deliveries_next_retry_at ON deliveries(next_retry_at)`,
++		
++		`CREATE TABLE IF NOT EXISTS dead_letters (
++			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
++			delivery_id UUID NOT NULL REFERENCES deliveries(id) ON DELETE CASCADE,
++			reason TEXT NOT NULL,
++			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
++		)`,
++		`CREATE INDEX IF NOT EXISTS idx_dead_letters_delivery_id ON dead_letters(delivery_id)`,
++		`CREATE INDEX IF NOT EXISTS idx_dead_letters_created_at ON dead_letters(created_at)`,
++	}
++
++	for _, migration := range migrations {
++		if _, err := db.pool.Exec(ctx, migration); err != nil {
++			return fmt.Errorf("failed to run migration: %w", err)
++		}
++	}
++
++	return nil
++}
++
++func (db *DB) CreateWebhook(ctx context.Context, webhook *models.Webhook) error {
++	query := `
++		INSERT INTO webhooks (id, customer_id, url, secret, created_at, is_active)
++		VALUES ($1, $2, $3, $4, $5, $6)
++	`
++	_, err := db.pool.Exec(ctx, query, webhook.ID, webhook.CustomerID, webhook.URL, webhook.Secret, webhook.CreatedAt, webhook.IsActive)
++	return err
++}
++
++func (db *DB) GetWebhook(ctx context.Context, id string) (*models.Webhook, error) {
++	query := `SELECT id, customer_id, url, secret, created_at, is_active FROM webhooks WHERE id = $1`
++	
++	var w models.Webhook
++	err := db.pool.QueryRow(ctx, query, id).Scan(&w.ID, &w.CustomerID, &w.URL, &w.Secret, &w.CreatedAt, &w.IsActive)
++	if err != nil {
++		return nil, err
++	}
++	return &w, nil
++}
++
++func (db *DB) UpdateWebhook(ctx context.Context, webhook *models.Webhook) error {
++	query := `UPDATE webhooks SET url = $1, secret = $2, is_active = $3 WHERE id = $4`
++	_, err := db.pool.Exec(ctx, query, webhook.URL, webhook.Secret, webhook.IsActive, webhook.ID)
++	return err
++}
++
++func (db *DB) DeleteWebhook(ctx context.Context, id string) error {
++	query := `DELETE FROM webhooks WHERE id = $1`
++	_, err := db.pool.Exec(ctx, query, id)
++	return err
++}
++
++func (db *DB) ListWebhooks(ctx context.Context, customerID string) ([]models.Webhook, error) {
++	query := `SELECT id, customer_id, url, secret, created_at, is_active FROM webhooks`
++	args := []interface{}{}
++	
++	if customerID != "" {
++		query += ` WHERE customer_id = $1`
++		args = append(args, customerID)
++	}
++	query += ` ORDER BY created_at DESC`
++	
++	rows, err := db.pool.Query(ctx, query, args...)
++	if err != nil {
++		return nil, err
++	}
++	defer rows.Close()
++	
++	var webhooks []models.Webhook
++	for rows.Next() {
++		var w models.Webhook
++		if err := rows.Scan(&w.ID, &w.CustomerID, &w.URL, &w.Secret, &w.CreatedAt, &w.IsActive); err != nil {
++			return nil, err
++		}
++		webhooks = append(webhooks, w)
++	}
++	return webhooks, nil
++}
++
++func (db *DB) CreateEvent(ctx context.Context, event *models.Event) error {
++	query := `
++		INSERT INTO events (id, webhook_id, event_type, payload, created_at)
++		VALUES ($1, $2, $3, $4, $5)
++	`
++	_, err := db.pool.Exec(ctx, query, event.ID, event.WebhookID, event.EventType, event.Payload, event.CreatedAt)
++	return err
++}
++
++func (db *DB) GetEvent(ctx context.Context, id string) (*models.Event, error) {
++	query := `SELECT id, webhook_id, event_type, payload, created_at FROM events WHERE id = $1`
++	
++	var e models.Event
++	err := db.pool.QueryRow(ctx, query, id).Scan(&e.ID, &e.WebhookID, &e.EventType, &e.Payload, &e.CreatedAt)
++	if err != nil {
++		return nil, err
++	}
++	return &e, nil
++}
++
++func (db *DB) GetEventWithWebhook(ctx context.Context, eventID string) (*models.Event, *models.Webhook, error) {
++	query := `
++		SELECT e.id, e.webhook_id, e.event_type, e.payload, e.created_at,
++		       w.id, w.customer_id, w.url, w.secret, w.created_at, w.is_active
++		FROM events e
++		JOIN webhooks w ON e.webhook_id = w.id
++		WHERE e.id = $1
++	`
++	
++	var e models.Event
++	var w models.Webhook
++	err := db.pool.QueryRow(ctx, query, eventID).Scan(
++		&e.ID, &e.WebhookID, &e.EventType, &e.Payload, &e.CreatedAt,
++		&w.ID, &w.CustomerID, &w.URL, &w.Secret, &w.CreatedAt, &w.IsActive,
++	)
++	if err != nil {
++		return nil, nil, err
++	}
++	return &e, &w, nil
++}
++
++func (db *DB) CreateDelivery(ctx context.Context, delivery *models.Delivery) error {
++	query := `
++		INSERT INTO deliveries (id, event_id, attempt_number, status, request_headers, request_body, 
++		                        response_status, response_body, response_time_ms, created_at, next_retry_at)
++		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
++	`
++	_, err := db.pool.Exec(ctx, query, 
++		delivery.ID, delivery.EventID, delivery.AttemptNumber, delivery.Status,
++		delivery.RequestHeaders, delivery.RequestBody, delivery.ResponseStatus,
++		delivery.ResponseBody, delivery.ResponseTimeMs, delivery.CreatedAt, delivery.NextRetryAt)
++	return err
++}
++
++func (db *DB) GetDelivery(ctx context.Context, id string) (*models.Delivery, error) {
++	query := `
++		SELECT id, event_id, attempt_number, status, request_headers, request_body,
++		       response_status, response_body, response_time_ms, created_at, next_retry_at
++		FROM deliveries WHERE id = $1
++	`
++	
++	var d models.Delivery
++	var reqHeaders, reqBody, respBody *string
++	var respStatus *int
++	var respTimeMs *int64
++	
++	err := db.pool.QueryRow(ctx, query, id).Scan(
++		&d.ID, &d.EventID, &d.AttemptNumber, &d.Status, &reqHeaders, &reqBody,
++		&respStatus, &respBody, &respTimeMs, &d.CreatedAt, &d.NextRetryAt,
++	)
++	if err != nil {
++		return nil, err
++	}
++	
++	if reqHeaders != nil {
++		d.RequestHeaders = *reqHeaders
++	}
++	if reqBody != nil {
++		d.RequestBody = *reqBody
++	}
++	if respStatus != nil {
++		d.ResponseStatus = *respStatus
++	}
++	if respBody != nil {
++		d.ResponseBody = *respBody
++	}
++	if respTimeMs != nil {
++		d.ResponseTimeMs = *respTimeMs
++	}
++	
++	return &d, nil
++}
++
++func (db *DB) UpdateDelivery(ctx context.Context, delivery *models.Delivery) error {
++	query := `
++		UPDATE deliveries 
++		SET attempt_number = $1, status = $2, request_headers = $3, request_body = $4,
++		    response_status = $5, response_body = $6, response_time_ms = $7, next_retry_at = $8
++		WHERE id = $9
++	`
++	_, err := db.pool.Exec(ctx, query,
++		delivery.AttemptNumber, delivery.Status, delivery.RequestHeaders, delivery.RequestBody,
++		delivery.ResponseStatus, delivery.ResponseBody, delivery.ResponseTimeMs, delivery.NextRetryAt,
++		delivery.ID)
++	return err
++}
++
++func (db *DB) GetDeliveriesByEventID(ctx context.Context, eventID string) ([]models.Delivery, error) {
++	query := `
++		SELECT id, event_id, attempt_number, status, request_headers, request_body,
++		       response_status, response_body, response_time_ms, created_at, next_retry_at
++		FROM deliveries WHERE event_id = $1 ORDER BY created_at DESC
++	`
++	
++	rows, err := db.pool.Query(ctx, query, eventID)
++	if err != nil {
++		return nil, err
++	}
++	defer rows.Close()
++	
++	var deliveries []models.Delivery
++	for rows.Next() {
++		var d models.Delivery
++		var reqHeaders, reqBody, respBody *string
++		var respStatus *int
++		var respTimeMs *int64
++		
++		if err := rows.Scan(&d.ID, &d.EventID, &d.AttemptNumber, &d.Status, &reqHeaders, &reqBody,
++			&respStatus, &respBody, &respTimeMs, &d.CreatedAt, &d.NextRetryAt); err != nil {
++			return nil, err
++		}
++		
++		if reqHeaders != nil {
++			d.RequestHeaders = *reqHeaders
++		}
++		if reqBody != nil {
++			d.RequestBody = *reqBody
++		}
++		if respStatus != nil {
++			d.ResponseStatus = *respStatus
++		}
++		if respBody != nil {
++			d.ResponseBody = *respBody
++		}
++		if respTimeMs != nil {
++			d.ResponseTimeMs = *respTimeMs
++		}
++		
++		deliveries = append(deliveries, d)
++	}
++	return deliveries, nil
++}
++
++func (db *DB) GetPendingDeliveries(ctx context.Context) ([]models.Delivery, error) {
++	query := `
++		SELECT d.id, d.event_id, d.attempt_number, d.status, d.created_at, d.next_retry_at,
++		       e.webhook_id
++		FROM deliveries d
++		JOIN events e ON d.event_id = e.id
++		WHERE d.status = 'pending' OR d.status = 'failed'
++		ORDER BY d.next_retry_at ASC NULLS FIRST
++	`
++	
++	rows, err := db.pool.Query(ctx, query)
++	if err != nil {
++		return nil, err
++	}
++	defer rows.Close()
++	
++	var deliveries []models.Delivery
++	for rows.Next() {
++		var d models.Delivery
++		var webhookID string
++		if err := rows.Scan(&d.ID, &d.EventID, &d.AttemptNumber, &d.Status, &d.CreatedAt, &d.NextRetryAt, &webhookID); err != nil {
++			return nil, err
++		}
++		deliveries = append(deliveries, d)
++	}
++	return deliveries, nil
++}
++
++func (db *DB) GetLatestDeliveryAttempt(ctx context.Context, eventID string) (*models.Delivery, error) {
++	query := `
++		SELECT id, event_id, attempt_number, status, request_headers, request_body,
++		       response_status, response_body, response_time_ms, created_at, next_retry_at
++		FROM deliveries WHERE event_id = $1 ORDER BY attempt_number DESC LIMIT 1
++	`
++	
++	var d models.Delivery
++	var reqHeaders, reqBody, respBody *string
++	var respStatus *int
++	var respTimeMs *int64
++	
++	err := db.pool.QueryRow(ctx, query, eventID).Scan(
++		&d.ID, &d.EventID, &d.AttemptNumber, &d.Status, &reqHeaders, &reqBody,
++		&respStatus, &respBody, &respTimeMs, &d.CreatedAt, &d.NextRetryAt,
++	)
++	if err != nil {
++		return nil, err
++	}
++	
++	if reqHeaders != nil {
++		d.RequestHeaders = *reqHeaders
++	}
++	if reqBody != nil {
++		d.RequestBody = *reqBody
++	}
++	if respStatus != nil {
++		d.ResponseStatus = *respStatus
++	}
++	if respBody != nil {
++		d.ResponseBody = *respBody
++	}
++	if respTimeMs != nil {
++		d.ResponseTimeMs = *respTimeMs
++	}
++	
++	return &d, nil
++}
++
++func (db *DB) CreateDeadLetter(ctx context.Context, deadLetter *models.DeadLetter) error {
++	query := `
++		INSERT INTO dead_letters (id, delivery_id, reason, created_at)
++		VALUES ($1, $2, $3, $4)
++	`
++	_, err := db.pool.Exec(ctx, query, deadLetter.ID, deadLetter.DeliveryID, deadLetter.Reason, deadLetter.CreatedAt)
++	return err
++}
++
++func (db *DB) GetDeadLetter(ctx context.Context, id string) (*models.DeadLetter, error) {
++	query := `SELECT id, delivery_id, reason, created_at FROM dead_letters WHERE id = $1`
++	
++	var dl models.DeadLetter
++	err := db.pool.QueryRow(ctx, query, id).Scan(&dl.ID, &dl.DeliveryID, &dl.Reason, &dl.CreatedAt)
++	if err != nil {
++		return nil, err
++	}
++	return &dl, nil
++}
++
++func (db *DB) ListDeadLetters(ctx context.Context, limit, offset int) ([]models.DeadLetter, error) {
++	query := `SELECT id, delivery_id, reason, created_at FROM dead_letters ORDER BY created_at DESC LIMIT $1 OFFSET $2`
++	
++	rows, err := db.pool.Query(ctx, query, limit, offset)
++	if err != nil {
++		return nil, err
++	}
++	defer rows.Close()
++	
++	var deadLetters []models.DeadLetter
++	for rows.Next() {
++		var dl models.DeadLetter
++		if err := rows.Scan(&dl.ID, &dl.DeliveryID, &dl.Reason, &dl.CreatedAt); err != nil {
++			return nil, err
++		}
++		deadLetters = append(deadLetters, dl)
++	}
++	return deadLetters, nil
++}
++
++func (db *DB) GetDeliveryWithEventAndWebhook(ctx context.Context, deliveryID string) (*models.Delivery, *models.Event, *models.Webhook, error) {
++	query := `
++		SELECT d.id, d.event_id, d.attempt_number, d.status, d.created_at,
++		       e.id, e.webhook_id, e.event_type, e.payload, e.created_at,
++		       w.id, w.customer_id, w.url, w.secret, w.created_at, w.is_active
++		FROM deliveries d
++		JOIN events e ON d.event_id = e.id
++		JOIN webhooks w ON e.webhook_id = w.id
++		WHERE d.id = $1
++	`
++	
++	var d models.Delivery
++	var e models.Event
++	var w models.Webhook
++	
++	err := db.pool.QueryRow(ctx, query, deliveryID).Scan(
++		&d.ID, &d.EventID, &d.AttemptNumber, &d.Status, &d.CreatedAt,
++		&e.ID, &e.WebhookID, &e.EventType, &e.Payload, &e.CreatedAt,
++		&w.ID, &w.CustomerID, &w.URL, &w.Secret, &w.CreatedAt, &w.IsActive,
++	)
++	if err != nil {
++		return nil, nil, nil, err
++	}
++	return &d, &e, &w, nil
++}
++
++type DeliveryLog struct {
++	DeliveryID     string    `json:"delivery_id"`
++	AttemptNumber  int       `json:"attempt_number"`
++	Status         string    `json:"status"`
++	RequestHeaders string    `json:"request_headers"`
++	RequestBody    string    `json:"request_body"`
++	ResponseStatus int       `json:"response_status"`
++	ResponseBody   string    `json:"response_body"`
++	ResponseTimeMs int64     `json:"response_time_ms"`
++	CreatedAt      time.Time `json:"created_at"`
++}
++
++func (db *DB) GetDeliveryLogs(ctx context.Context, deliveryID string) ([]DeliveryLog, error) {
++	query := `
++		SELECT id, attempt_number, status, 
++		       COALESCE(request_headers, '') as request_headers,
++		       COALESCE(request_body, '') as request_body,
++		       COALESCE(response_status, 0) as response_status,
++		       COALESCE(response_body, '') as response_body,
++		       COALESCE(response_time_ms, 0) as response_time_ms,
++		       created_at
++		FROM deliveries WHERE id = $1 OR event_id = (SELECT event_id FROM deliveries WHERE id = $1)
++		ORDER BY attempt_number ASC
++	`
++	
++	rows, err := db.pool.Query(ctx, query, deliveryID)
++	if err != nil {
++		return nil, err
++	}
++	defer rows.Close()
++	
++	var logs []DeliveryLog
++	for rows.Next() {
++		var log DeliveryLog
++		if err := rows.Scan(&log.DeliveryID, &log.AttemptNumber, &log.Status,
++			&log.RequestHeaders, &log.RequestBody, &log.ResponseStatus,
++			&log.ResponseBody, &log.ResponseTimeMs, &log.CreatedAt); err != nil {
++			return nil, err
++		}
++		logs = append(logs, log)
++	}
++	return logs, nil
++}
++
++func (db *DB) CountDeadLetters(ctx context.Context) (int64, error) {
++	var count int64
++	err := db.pool.QueryRow(ctx, `SELECT COUNT(*) FROM dead_letters`).Scan(&count)
++	return count, err
++}
++
++func (db *DB) GetWebhookIDForDelivery(ctx context.Context, deliveryID string) (string, error) {
++	query := `
++		SELECT e.webhook_id FROM deliveries d
++		JOIN events e ON d.event_id = e.id
++		WHERE d.id = $1
++	`
++	var webhookID string
++	err := db.pool.QueryRow(ctx, query, deliveryID).Scan(&webhookID)
++	return webhookID, err
++}
++
++type DeliveryWithWebhook struct {
++	Delivery  models.Delivery
++	WebhookID string
++}
++
++func (db *DB) GetPendingDeliveriesWithWebhook(ctx context.Context) ([]DeliveryWithWebhook, error) {
++	query := `
++		SELECT d.id, d.event_id, d.attempt_number, d.status, d.created_at, d.next_retry_at,
++		       e.webhook_id
++		FROM deliveries d
++		JOIN events e ON d.event_id = e.id
++		WHERE d.status = 'pending' OR d.status = 'failed'
++		ORDER BY d.next_retry_at ASC NULLS FIRST
++	`
++	
++	rows, err := db.pool.Query(ctx, query)
++	if err != nil {
++		return nil, err
++	}
++	defer rows.Close()
++	
++	var results []DeliveryWithWebhook
++	for rows.Next() {
++		var d models.Delivery
++		var webhookID string
++		if err := rows.Scan(&d.ID, &d.EventID, &d.AttemptNumber, &d.Status, &d.CreatedAt, &d.NextRetryAt, &webhookID); err != nil {
++			return nil, err
++		}
++		results = append(results, DeliveryWithWebhook{Delivery: d, WebhookID: webhookID})
++	}
++	return results, nil
++}
++
++func (db *DB) Exec(ctx context.Context, query string, args ...interface{}) error {
++	_, err := db.pool.Exec(ctx, query, args...)
++	return err
++}
++
++func (db *DB) Query(ctx context.Context, query string, args ...interface{}) ([]map[string]interface{}, error) {
++	rows, err := db.pool.Query(ctx, query, args...)
++	if err != nil {
++		return nil, err
++	}
++	defer rows.Close()
++
++	fields := rows.FieldDescriptions()
++	var results []map[string]interface{}
++
++	for rows.Next() {
++		values, err := rows.Values()
++		if err != nil {
++			return nil, err
++		}
++
++		row := make(map[string]interface{})
++		for i, field := range fields {
++			row[string(field.Name)] = values[i]
++		}
++		results = append(results, row)
++	}
++
++	return results, nil
++}
++
++func MarshalJSON(v interface{}) ([]byte, error) {
++	return json.Marshal(v)
++}
+diff --git a/repository_after/internal/delivery/circuit_breaker.go b/repository_after/internal/delivery/circuit_breaker.go
+new file mode 100644
+index 0000000..eced2ca
+--- /dev/null
++++ b/repository_after/internal/delivery/circuit_breaker.go
+@@ -0,0 +1,109 @@
++package delivery
++
++import (
++	"sync"
++	"time"
++)
++
++const (
++	circuitBreakerThreshold = 5
++	circuitBreakerTimeout   = time.Minute
++)
++
++type CircuitBreaker struct {
++	mu       sync.RWMutex
++	failures map[string]int
++	openedAt map[string]time.Time
++}
++
++func NewCircuitBreaker() *CircuitBreaker {
++	return &CircuitBreaker{
++		failures: make(map[string]int),
++		openedAt: make(map[string]time.Time),
++	}
++}
++
++func (cb *CircuitBreaker) RecordFailure(webhookID string) {
++	cb.mu.Lock()
++	defer cb.mu.Unlock()
++
++	cb.failures[webhookID]++
++
++	if cb.failures[webhookID] >= circuitBreakerThreshold {
++		if _, exists := cb.openedAt[webhookID]; !exists {
++			cb.openedAt[webhookID] = time.Now()
++		}
++	}
++}
++
++func (cb *CircuitBreaker) RecordSuccess(webhookID string) {
++	cb.mu.Lock()
++	defer cb.mu.Unlock()
++
++	cb.failures[webhookID] = 0
++	delete(cb.openedAt, webhookID)
++}
++
++func (cb *CircuitBreaker) IsOpen(webhookID string) bool {
++	cb.mu.RLock()
++	defer cb.mu.RUnlock()
++
++	openedTime, exists := cb.openedAt[webhookID]
++	if !exists {
++		return false
++	}
++
++	if time.Since(openedTime) >= circuitBreakerTimeout {
++		return false
++	}
++
++	return true
++}
++
++func (cb *CircuitBreaker) GetResetDelay(webhookID string) time.Duration {
++	cb.mu.RLock()
++	defer cb.mu.RUnlock()
++
++	openedTime, exists := cb.openedAt[webhookID]
++	if !exists {
++		return 0
++	}
++
++	elapsed := time.Since(openedTime)
++	if elapsed >= circuitBreakerTimeout {
++		return 0
++	}
++
++	return circuitBreakerTimeout - elapsed
++}
++
++func (cb *CircuitBreaker) Reset(webhookID string) {
++	cb.mu.Lock()
++	defer cb.mu.Unlock()
++
++	cb.failures[webhookID] = 0
++	delete(cb.openedAt, webhookID)
++}
++
++func (cb *CircuitBreaker) GetFailureCount(webhookID string) int {
++	cb.mu.RLock()
++	defer cb.mu.RUnlock()
++
++	return cb.failures[webhookID]
++}
++
++func (cb *CircuitBreaker) GetState(webhookID string) string {
++	cb.mu.RLock()
++	defer cb.mu.RUnlock()
++
++	openedTime, exists := cb.openedAt[webhookID]
++	if !exists {
++		return "closed"
++	}
++
++	if time.Since(openedTime) >= circuitBreakerTimeout {
++		return "half-open"
++	}
++
++	return "open"
++}
+diff --git a/repository_after/internal/delivery/rate_limiter.go b/repository_after/internal/delivery/rate_limiter.go
+new file mode 100644
+index 0000000..d95f6bc
+--- /dev/null
++++ b/repository_after/internal/delivery/rate_limiter.go
+@@ -0,0 +1,131 @@
++package delivery
++
++import (
++	"sync"
++	"time"
++)
++
++type RateLimiter struct {
++	mu          sync.Mutex
++	requests    map[string][]time.Time
++	limit       int
++	window      time.Duration
++}
++
++func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
++	return &RateLimiter{
++		requests: make(map[string][]time.Time),
++		limit:    limit,
++		window:   window,
++	}
++}
++
++func (rl *RateLimiter) Allow(webhookID string) bool {
++	rl.mu.Lock()
++	defer rl.mu.Unlock()
++
++	now := time.Now()
++	windowStart := now.Add(-rl.window)
++
++	requests := rl.requests[webhookID]
++	var validRequests []time.Time
++	for _, t := range requests {
++		if t.After(windowStart) {
++			validRequests = append(validRequests, t)
++		}
++	}
++
++	if len(validRequests) >= rl.limit {
++		rl.requests[webhookID] = validRequests
++		return false
++	}
++
++	rl.requests[webhookID] = append(validRequests, now)
++	return true
++}
++
++func (rl *RateLimiter) GetRetryDelay(webhookID string) time.Duration {
++	rl.mu.Lock()
++	defer rl.mu.Unlock()
++
++	requests := rl.requests[webhookID]
++	if len(requests) == 0 {
++		return 0
++	}
++
++	now := time.Now()
++	windowStart := now.Add(-rl.window)
++
++	var validRequests []time.Time
++	for _, t := range requests {
++		if t.After(windowStart) {
++			validRequests = append(validRequests, t)
++		}
++	}
++
++	if len(validRequests) < rl.limit {
++		return 0
++	}
++
++	oldestInWindow := validRequests[0]
++	for _, t := range validRequests {
++		if t.Before(oldestInWindow) {
++			oldestInWindow = t
++		}
++	}
++
++	delay := oldestInWindow.Add(rl.window).Sub(now)
++	if delay < 0 {
++		return 0
++	}
++
++	return delay + time.Millisecond*100
++}
++
++func (rl *RateLimiter) GetCurrentCount(webhookID string) int {
++	rl.mu.Lock()
++	defer rl.mu.Unlock()
++
++	now := time.Now()
++	windowStart := now.Add(-rl.window)
++
++	requests := rl.requests[webhookID]
++	count := 0
++	for _, t := range requests {
++		if t.After(windowStart) {
++			count++
++		}
++	}
++
++	return count
++}
++
++func (rl *RateLimiter) Reset(webhookID string) {
++	rl.mu.Lock()
++	defer rl.mu.Unlock()
++
++	delete(rl.requests, webhookID)
++}
++
++func (rl *RateLimiter) Cleanup() {
++	rl.mu.Lock()
++	defer rl.mu.Unlock()
++
++	now := time.Now()
++	windowStart := now.Add(-rl.window)
++
++	for webhookID, requests := range rl.requests {
++		var validRequests []time.Time
++		for _, t := range requests {
++			if t.After(windowStart) {
++				validRequests = append(validRequests, t)
++			}
++		}
++
++		if len(validRequests) == 0 {
++			delete(rl.requests, webhookID)
++		} else {
++			rl.requests[webhookID] = validRequests
++		}
++	}
++}
+diff --git a/repository_after/internal/delivery/service.go b/repository_after/internal/delivery/service.go
+new file mode 100644
+index 0000000..bcd0375
+--- /dev/null
++++ b/repository_after/internal/delivery/service.go
+@@ -0,0 +1,388 @@
++package delivery
++
++import (
++	"bytes"
++	"context"
++	"crypto/hmac"
++	"crypto/sha256"
++	"encoding/hex"
++	"encoding/json"
++	"fmt"
++	"io"
++	"log"
++	"net/http"
++	"strings"
++	"time"
++
++	"webhook-delivery-system/internal/database"
++	"webhook-delivery-system/internal/metrics"
++	"webhook-delivery-system/internal/models"
++	"webhook-delivery-system/internal/queue"
++
++	"github.com/google/uuid"
++)
++
++const (
++	maxRetries           = 10
++	maxBackoffDuration   = time.Hour
++	httpTimeout          = 30 * time.Second
++	workerPollInterval   = 100 * time.Millisecond
++	maxResponseBodySize  = 64 * 1024
++)
++
++type Service struct {
++	db             *database.DB
++	queue          *queue.RedisQueue
++	metrics        *metrics.Collector
++	circuitBreaker *CircuitBreaker
++	rateLimiter    *RateLimiter
++	httpClient     *http.Client
++}
++
++func NewService(db *database.DB, q *queue.RedisQueue, m *metrics.Collector, cb *CircuitBreaker, rl *RateLimiter) *Service {
++	return &Service{
++		db:             db,
++		queue:          q,
++		metrics:        m,
++		circuitBreaker: cb,
++		rateLimiter:    rl,
++		httpClient: &http.Client{
++			Timeout: httpTimeout,
++			Transport: &http.Transport{
++				MaxIdleConns:        100,
++				MaxIdleConnsPerHost: 10,
++				IdleConnTimeout:     90 * time.Second,
++			},
++		},
++	}
++}
++
++func (s *Service) CreateEventAndEnqueue(ctx context.Context, event *models.Event) (*models.Delivery, error) {
++	event.ID = uuid.New().String()
++	event.CreatedAt = time.Now()
++
++	if err := s.db.CreateEvent(ctx, event); err != nil {
++		return nil, fmt.Errorf("failed to create event: %w", err)
++	}
++
++	delivery := &models.Delivery{
++		ID:            uuid.New().String(),
++		EventID:       event.ID,
++		AttemptNumber: 0,
++		Status:        models.DeliveryStatusPending,
++		CreatedAt:     time.Now(),
++	}
++
++	if err := s.db.CreateDelivery(ctx, delivery); err != nil {
++		return nil, fmt.Errorf("failed to create delivery: %w", err)
++	}
++
++	webhook, err := s.db.GetWebhook(ctx, event.WebhookID)
++	if err != nil {
++		return nil, fmt.Errorf("failed to get webhook: %w", err)
++	}
++
++	queueItem := models.QueueItem{
++		DeliveryID: delivery.ID,
++		EventID:    event.ID,
++		WebhookID:  webhook.ID,
++		Score:      float64(time.Now().UnixNano()),
++	}
++
++	if err := s.queue.Enqueue(ctx, queueItem); err != nil {
++		return nil, fmt.Errorf("failed to enqueue delivery: %w", err)
++	}
++
++	return delivery, nil
++}
++
++func (s *Service) StartWorker(ctx context.Context, workerID int) {
++	log.Printf("Worker %d started", workerID)
++
++	for {
++		select {
++		case <-ctx.Done():
++			log.Printf("Worker %d stopped", workerID)
++			return
++		default:
++			item, err := s.queue.Dequeue(ctx)
++			if err != nil {
++				log.Printf("Worker %d: error dequeuing: %v", workerID, err)
++				time.Sleep(time.Second)
++				continue
++			}
++
++			if item == nil {
++				time.Sleep(workerPollInterval)
++				continue
++			}
++
++			s.processDelivery(ctx, item)
++		}
++	}
++}
++
++func (s *Service) processDelivery(ctx context.Context, item *models.QueueItem) {
++	defer func() {
++		if err := s.queue.Complete(ctx, item.DeliveryID); err != nil {
++			log.Printf("Failed to complete delivery %s: %v", item.DeliveryID, err)
++		}
++	}()
++
++	delivery, event, webhook, err := s.db.GetDeliveryWithEventAndWebhook(ctx, item.DeliveryID)
++	if err != nil {
++		log.Printf("Failed to get delivery data for %s: %v", item.DeliveryID, err)
++		return
++	}
++
++	if !webhook.IsActive {
++		log.Printf("Webhook %s is inactive, skipping delivery %s", webhook.ID, item.DeliveryID)
++		return
++	}
++
++	if s.circuitBreaker.IsOpen(webhook.ID) {
++		delay := s.circuitBreaker.GetResetDelay(webhook.ID)
++		if err := s.queue.Reschedule(ctx, *item, delay); err != nil {
++			log.Printf("Failed to reschedule delivery %s: %v", item.DeliveryID, err)
++		}
++		return
++	}
++
++	if !s.rateLimiter.Allow(webhook.ID) {
++		delay := s.rateLimiter.GetRetryDelay(webhook.ID)
++		if err := s.queue.Reschedule(ctx, *item, delay); err != nil {
++			log.Printf("Failed to reschedule delivery %s due to rate limit: %v", item.DeliveryID, err)
++		}
++		return
++	}
++
++	delivery.AttemptNumber++
++	success, responseStatus, responseBody, responseTimeMs, requestHeaders, requestBody := s.executeDelivery(ctx, webhook, event)
++
++	delivery.RequestHeaders = requestHeaders
++	delivery.RequestBody = requestBody
++	delivery.ResponseStatus = responseStatus
++	delivery.ResponseBody = responseBody
++	delivery.ResponseTimeMs = responseTimeMs
++
++	if success {
++		delivery.Status = models.DeliveryStatusSuccess
++		delivery.NextRetryAt = nil
++		s.circuitBreaker.RecordSuccess(webhook.ID)
++		s.metrics.RecordSuccess()
++	} else {
++		s.circuitBreaker.RecordFailure(webhook.ID)
++		s.metrics.RecordFailure()
++
++		if delivery.AttemptNumber >= maxRetries {
++			delivery.Status = models.DeliveryStatusDead
++			delivery.NextRetryAt = nil
++
++			deadLetter := &models.DeadLetter{
++				ID:         uuid.New().String(),
++				DeliveryID: delivery.ID,
++				Reason:     fmt.Sprintf("Max retries (%d) exceeded. Last response: %d - %s", maxRetries, responseStatus, truncateString(responseBody, 500)),
++				CreatedAt:  time.Now(),
++			}
++
++			if err := s.db.CreateDeadLetter(ctx, deadLetter); err != nil {
++				log.Printf("Failed to create dead letter for delivery %s: %v", delivery.ID, err)
++			}
++			s.metrics.RecordDeadLetter()
++		} else {
++			delivery.Status = models.DeliveryStatusFailed
++			nextRetry := calculateBackoff(delivery.AttemptNumber)
++			retryAt := time.Now().Add(nextRetry)
++			delivery.NextRetryAt = &retryAt
++
++			newItem := models.QueueItem{
++				DeliveryID: delivery.ID,
++				EventID:    event.ID,
++				WebhookID:  webhook.ID,
++			}
++			if err := s.queue.EnqueueWithDelay(ctx, newItem, nextRetry); err != nil {
++				log.Printf("Failed to reschedule delivery %s: %v", delivery.ID, err)
++			}
++		}
++	}
++
++	if err := s.db.UpdateDelivery(ctx, delivery); err != nil {
++		log.Printf("Failed to update delivery %s: %v", delivery.ID, err)
++	}
++
++	s.metrics.RecordDelivery()
++}
++
++func (s *Service) executeDelivery(ctx context.Context, webhook *models.Webhook, event *models.Event) (bool, int, string, int64, string, string) {
++	startTime := time.Now()
++
++	idempotencyKey := fmt.Sprintf("%s-%s", event.ID, webhook.ID)
++	signature := generateSignature(event.Payload, webhook.Secret)
++
++	headers := map[string]string{
++		"Content-Type":       "application/json",
++		"X-Webhook-Signature": signature,
++		"X-Idempotency-Key":  idempotencyKey,
++		"X-Event-Type":       event.EventType,
++		"X-Event-ID":         event.ID,
++		"X-Webhook-ID":       webhook.ID,
++		"X-Timestamp":        fmt.Sprintf("%d", time.Now().Unix()),
++	}
++
++	headersJSON, _ := json.Marshal(headers)
++	requestHeaders := string(headersJSON)
++	requestBody := string(event.Payload)
++
++	req, err := http.NewRequestWithContext(ctx, http.MethodPost, webhook.URL, bytes.NewReader(event.Payload))
++	if err != nil {
++		return false, 0, fmt.Sprintf("failed to create request: %v", err), time.Since(startTime).Milliseconds(), requestHeaders, requestBody
++	}
++
++	for k, v := range headers {
++		req.Header.Set(k, v)
++	}
++
++	resp, err := s.httpClient.Do(req)
++	responseTimeMs := time.Since(startTime).Milliseconds()
++
++	if err != nil {
++		return false, 0, fmt.Sprintf("request failed: %v", err), responseTimeMs, requestHeaders, requestBody
++	}
++	defer resp.Body.Close()
++
++	bodyReader := io.LimitReader(resp.Body, maxResponseBodySize)
++	responseBody, err := io.ReadAll(bodyReader)
++	if err != nil {
++		return false, resp.StatusCode, fmt.Sprintf("failed to read response: %v", err), responseTimeMs, requestHeaders, requestBody
++	}
++
++	success := resp.StatusCode >= 200 && resp.StatusCode < 300
++	return success, resp.StatusCode, string(responseBody), responseTimeMs, requestHeaders, requestBody
++}
++
++func generateSignature(payload []byte, secret string) string {
++	h := hmac.New(sha256.New, []byte(secret))
++	h.Write(payload)
++	return hex.EncodeToString(h.Sum(nil))
++}
++
++func calculateBackoff(attempt int) time.Duration {
++	backoff := time.Second * time.Duration(1<<uint(attempt-1))
++	if backoff > maxBackoffDuration {
++		backoff = maxBackoffDuration
++	}
++	return backoff
++}
++
++func truncateString(s string, maxLen int) string {
++	if len(s) <= maxLen {
++		return s
++	}
++	return s[:maxLen] + "..."
++}
++
++func (s *Service) RecoverPendingDeliveries(ctx context.Context) error {
++	if err := s.queue.ClearProcessing(ctx); err != nil {
++		log.Printf("Warning: failed to clear processing set: %v", err)
++	}
++
++	deliveries, err := s.db.GetPendingDeliveriesWithWebhook(ctx)
++	if err != nil {
++		return fmt.Errorf("failed to get pending deliveries: %w", err)
++	}
++
++	pendingItems, err := s.queue.GetPendingItems(ctx)
++	if err != nil {
++		return fmt.Errorf("failed to get pending queue items: %w", err)
++	}
++
++	queuedDeliveries := make(map[string]bool)
++	for _, item := range pendingItems {
++		queuedDeliveries[item.DeliveryID] = true
++	}
++
++	recovered := 0
++	for _, dw := range deliveries {
++		if queuedDeliveries[dw.Delivery.ID] {
++			continue
++		}
++
++		var score float64
++		if dw.Delivery.NextRetryAt != nil {
++			score = float64(dw.Delivery.NextRetryAt.UnixNano())
++		} else {
++			score = float64(time.Now().UnixNano())
++		}
++
++		item := models.QueueItem{
++			DeliveryID: dw.Delivery.ID,
++			EventID:    dw.Delivery.EventID,
++			WebhookID:  dw.WebhookID,
++			Score:      score,
++		}
++
++		if err := s.queue.Enqueue(ctx, item); err != nil {
++			log.Printf("Failed to recover delivery %s: %v", dw.Delivery.ID, err)
++			continue
++		}
++		recovered++
++	}
++
++	if recovered > 0 {
++		log.Printf("Recovered %d pending deliveries", recovered)
++	}
++
++	return nil
++}
++
++func (s *Service) ReplayDelivery(ctx context.Context, deliveryID string) (*models.Delivery, error) {
++	delivery, event, webhook, err := s.db.GetDeliveryWithEventAndWebhook(ctx, deliveryID)
++	if err != nil {
++		return nil, fmt.Errorf("failed to get delivery: %w", err)
++	}
++
++	newDelivery := &models.Delivery{
++		ID:            uuid.New().String(),
++		EventID:       event.ID,
++		AttemptNumber: 0,
++		Status:        models.DeliveryStatusPending,
++		CreatedAt:     time.Now(),
++	}
++
++	if err := s.db.CreateDelivery(ctx, newDelivery); err != nil {
++		return nil, fmt.Errorf("failed to create new delivery: %w", err)
++	}
++
++	queueItem := models.QueueItem{
++		DeliveryID: newDelivery.ID,
++		EventID:    event.ID,
++		WebhookID:  webhook.ID,
++		Score:      float64(time.Now().UnixNano()),
++	}
++
++	if err := s.queue.Enqueue(ctx, queueItem); err != nil {
++		return nil, fmt.Errorf("failed to enqueue delivery: %w", err)
++	}
++
++	_ = delivery
++
++	return newDelivery, nil
++}
++
++func (s *Service) ReplayDeadLetter(ctx context.Context, deadLetterID string) (*models.Delivery, error) {
++	deadLetter, err := s.db.GetDeadLetter(ctx, deadLetterID)
++	if err != nil {
++		return nil, fmt.Errorf("failed to get dead letter: %w", err)
++	}
++
++	return s.ReplayDelivery(ctx, deadLetter.DeliveryID)
++}
++
++func (s *Service) GetDeliveryStatus(ctx context.Context, deliveryID string) (*models.Delivery, error) {
++	return s.db.GetDelivery(ctx, deliveryID)
++}
++
++func VerifySignature(payload []byte, signature, secret string) bool {
++	expected := generateSignature(payload, secret)
++	return hmac.Equal([]byte(expected), []byte(strings.ToLower(signature)))
++}
+diff --git a/repository_after/internal/handlers/handlers.go b/repository_after/internal/handlers/handlers.go
+new file mode 100644
+index 0000000..fb91225
+--- /dev/null
++++ b/repository_after/internal/handlers/handlers.go
+@@ -0,0 +1,492 @@
++package handlers
++
++import (
++	"encoding/json"
++	"net/http"
++	"strconv"
++	"time"
++
++	"webhook-delivery-system/internal/database"
++	"webhook-delivery-system/internal/delivery"
++	"webhook-delivery-system/internal/metrics"
++	"webhook-delivery-system/internal/models"
++	"webhook-delivery-system/internal/queue"
++
++	"github.com/go-chi/chi/v5"
++	"github.com/google/uuid"
++)
++
++type Handler struct {
++	db              *database.DB
++	queue           *queue.RedisQueue
++	deliveryService *delivery.Service
++	metrics         *metrics.Collector
++}
++
++func New(db *database.DB, q *queue.RedisQueue, ds *delivery.Service, m *metrics.Collector) *Handler {
++	return &Handler{
++		db:              db,
++		queue:           q,
++		deliveryService: ds,
++		metrics:         m,
++	}
++}
++
++type ErrorResponse struct {
++	Error   string `json:"error"`
++	Message string `json:"message,omitempty"`
++}
++
++type SuccessResponse struct {
++	Success bool        `json:"success"`
++	Data    interface{} `json:"data,omitempty"`
++}
++
++func writeJSON(w http.ResponseWriter, status int, data interface{}) {
++	w.Header().Set("Content-Type", "application/json")
++	w.WriteHeader(status)
++	json.NewEncoder(w).Encode(data)
++}
++
++func writeError(w http.ResponseWriter, status int, err string, message string) {
++	writeJSON(w, status, ErrorResponse{Error: err, Message: message})
++}
++
++type CreateWebhookRequest struct {
++	CustomerID string `json:"customer_id"`
++	URL        string `json:"url"`
++	Secret     string `json:"secret"`
++}
++
++type WebhookResponse struct {
++	ID         string    `json:"id"`
++	CustomerID string    `json:"customer_id"`
++	URL        string    `json:"url"`
++	CreatedAt  time.Time `json:"created_at"`
++	IsActive   bool      `json:"is_active"`
++}
++
++func (h *Handler) CreateWebhook(w http.ResponseWriter, r *http.Request) {
++	var req CreateWebhookRequest
++	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
++		writeError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON body")
++		return
++	}
++
++	if req.CustomerID == "" || req.URL == "" || req.Secret == "" {
++		writeError(w, http.StatusBadRequest, "missing_fields", "customer_id, url, and secret are required")
++		return
++	}
++
++	webhook := &models.Webhook{
++		ID:         uuid.New().String(),
++		CustomerID: req.CustomerID,
++		URL:        req.URL,
++		Secret:     req.Secret,
++		CreatedAt:  time.Now(),
++		IsActive:   true,
++	}
++
++	if err := h.db.CreateWebhook(r.Context(), webhook); err != nil {
++		writeError(w, http.StatusInternalServerError, "database_error", "Failed to create webhook")
++		return
++	}
++
++	writeJSON(w, http.StatusCreated, SuccessResponse{
++		Success: true,
++		Data: WebhookResponse{
++			ID:         webhook.ID,
++			CustomerID: webhook.CustomerID,
++			URL:        webhook.URL,
++			CreatedAt:  webhook.CreatedAt,
++			IsActive:   webhook.IsActive,
++		},
++	})
++}
++
++func (h *Handler) GetWebhook(w http.ResponseWriter, r *http.Request) {
++	id := chi.URLParam(r, "id")
++	
++	webhook, err := h.db.GetWebhook(r.Context(), id)
++	if err != nil {
++		writeError(w, http.StatusNotFound, "not_found", "Webhook not found")
++		return
++	}
++
++	writeJSON(w, http.StatusOK, SuccessResponse{
++		Success: true,
++		Data: WebhookResponse{
++			ID:         webhook.ID,
++			CustomerID: webhook.CustomerID,
++			URL:        webhook.URL,
++			CreatedAt:  webhook.CreatedAt,
++			IsActive:   webhook.IsActive,
++		},
++	})
++}
++
++type UpdateWebhookRequest struct {
++	URL      string `json:"url,omitempty"`
++	Secret   string `json:"secret,omitempty"`
++	IsActive *bool  `json:"is_active,omitempty"`
++}
++
++func (h *Handler) UpdateWebhook(w http.ResponseWriter, r *http.Request) {
++	id := chi.URLParam(r, "id")
++	
++	webhook, err := h.db.GetWebhook(r.Context(), id)
++	if err != nil {
++		writeError(w, http.StatusNotFound, "not_found", "Webhook not found")
++		return
++	}
++
++	var req UpdateWebhookRequest
++	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
++		writeError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON body")
++		return
++	}
++
++	if req.URL != "" {
++		webhook.URL = req.URL
++	}
++	if req.Secret != "" {
++		webhook.Secret = req.Secret
++	}
++	if req.IsActive != nil {
++		webhook.IsActive = *req.IsActive
++	}
++
++	if err := h.db.UpdateWebhook(r.Context(), webhook); err != nil {
++		writeError(w, http.StatusInternalServerError, "database_error", "Failed to update webhook")
++		return
++	}
++
++	writeJSON(w, http.StatusOK, SuccessResponse{
++		Success: true,
++		Data: WebhookResponse{
++			ID:         webhook.ID,
++			CustomerID: webhook.CustomerID,
++			URL:        webhook.URL,
++			CreatedAt:  webhook.CreatedAt,
++			IsActive:   webhook.IsActive,
++		},
++	})
++}
++
++func (h *Handler) DeleteWebhook(w http.ResponseWriter, r *http.Request) {
++	id := chi.URLParam(r, "id")
++	
++	if err := h.db.DeleteWebhook(r.Context(), id); err != nil {
++		writeError(w, http.StatusNotFound, "not_found", "Webhook not found")
++		return
++	}
++
++	writeJSON(w, http.StatusOK, SuccessResponse{Success: true})
++}
++
++func (h *Handler) ListWebhooks(w http.ResponseWriter, r *http.Request) {
++	customerID := r.URL.Query().Get("customer_id")
++	
++	webhooks, err := h.db.ListWebhooks(r.Context(), customerID)
++	if err != nil {
++		writeError(w, http.StatusInternalServerError, "database_error", "Failed to list webhooks")
++		return
++	}
++
++	var response []WebhookResponse
++	for _, w := range webhooks {
++		response = append(response, WebhookResponse{
++			ID:         w.ID,
++			CustomerID: w.CustomerID,
++			URL:        w.URL,
++			CreatedAt:  w.CreatedAt,
++			IsActive:   w.IsActive,
++		})
++	}
++
++	writeJSON(w, http.StatusOK, SuccessResponse{Success: true, Data: response})
++}
++
++type CreateEventRequest struct {
++	WebhookID string          `json:"webhook_id"`
++	EventType string          `json:"event_type"`
++	Payload   json.RawMessage `json:"payload"`
++}
++
++type EventResponse struct {
++	ID        string          `json:"id"`
++	WebhookID string          `json:"webhook_id"`
++	EventType string          `json:"event_type"`
++	Payload   json.RawMessage `json:"payload"`
++	CreatedAt time.Time       `json:"created_at"`
++}
++
++type DeliveryResponse struct {
++	ID            string    `json:"id"`
++	EventID       string    `json:"event_id"`
++	AttemptNumber int       `json:"attempt_number"`
++	Status        string    `json:"status"`
++	CreatedAt     time.Time `json:"created_at"`
++}
++
++func (h *Handler) CreateEvent(w http.ResponseWriter, r *http.Request) {
++	var req CreateEventRequest
++	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
++		writeError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON body")
++		return
++	}
++
++	if req.WebhookID == "" || req.EventType == "" || len(req.Payload) == 0 {
++		writeError(w, http.StatusBadRequest, "missing_fields", "webhook_id, event_type, and payload are required")
++		return
++	}
++
++	webhook, err := h.db.GetWebhook(r.Context(), req.WebhookID)
++	if err != nil {
++		writeError(w, http.StatusNotFound, "webhook_not_found", "Webhook not found")
++		return
++	}
++
++	if !webhook.IsActive {
++		writeError(w, http.StatusBadRequest, "webhook_inactive", "Webhook is not active")
++		return
++	}
++
++	event := &models.Event{
++		WebhookID: req.WebhookID,
++		EventType: req.EventType,
++		Payload:   req.Payload,
++	}
++
++	del, err := h.deliveryService.CreateEventAndEnqueue(r.Context(), event)
++	if err != nil {
++		writeError(w, http.StatusInternalServerError, "delivery_error", "Failed to create event and delivery")
++		return
++	}
++
++	writeJSON(w, http.StatusCreated, SuccessResponse{
++		Success: true,
++		Data: map[string]interface{}{
++			"event": EventResponse{
++				ID:        event.ID,
++				WebhookID: event.WebhookID,
++				EventType: event.EventType,
++				Payload:   event.Payload,
++				CreatedAt: event.CreatedAt,
++			},
++			"delivery": DeliveryResponse{
++				ID:            del.ID,
++				EventID:       del.EventID,
++				AttemptNumber: del.AttemptNumber,
++				Status:        string(del.Status),
++				CreatedAt:     del.CreatedAt,
++			},
++		},
++	})
++}
++
++func (h *Handler) GetEvent(w http.ResponseWriter, r *http.Request) {
++	id := chi.URLParam(r, "id")
++	
++	event, err := h.db.GetEvent(r.Context(), id)
++	if err != nil {
++		writeError(w, http.StatusNotFound, "not_found", "Event not found")
++		return
++	}
++
++	deliveries, err := h.db.GetDeliveriesByEventID(r.Context(), id)
++	if err != nil {
++		writeError(w, http.StatusInternalServerError, "database_error", "Failed to get deliveries")
++		return
++	}
++
++	var deliveryResponses []DeliveryResponse
++	for _, d := range deliveries {
++		deliveryResponses = append(deliveryResponses, DeliveryResponse{
++			ID:            d.ID,
++			EventID:       d.EventID,
++			AttemptNumber: d.AttemptNumber,
++			Status:        string(d.Status),
++			CreatedAt:     d.CreatedAt,
++		})
++	}
++
++	writeJSON(w, http.StatusOK, SuccessResponse{
++		Success: true,
++		Data: map[string]interface{}{
++			"event": EventResponse{
++				ID:        event.ID,
++				WebhookID: event.WebhookID,
++				EventType: event.EventType,
++				Payload:   event.Payload,
++				CreatedAt: event.CreatedAt,
++			},
++			"deliveries": deliveryResponses,
++		},
++	})
++}
++
++type DeliveryDetailResponse struct {
++	ID             string     `json:"id"`
++	EventID        string     `json:"event_id"`
++	AttemptNumber  int        `json:"attempt_number"`
++	Status         string     `json:"status"`
++	RequestHeaders string     `json:"request_headers,omitempty"`
++	RequestBody    string     `json:"request_body,omitempty"`
++	ResponseStatus int        `json:"response_status,omitempty"`
++	ResponseBody   string     `json:"response_body,omitempty"`
++	ResponseTimeMs int64      `json:"response_time_ms,omitempty"`
++	CreatedAt      time.Time  `json:"created_at"`
++	NextRetryAt    *time.Time `json:"next_retry_at,omitempty"`
++}
++
++func (h *Handler) GetDelivery(w http.ResponseWriter, r *http.Request) {
++	id := chi.URLParam(r, "id")
++	
++	del, err := h.db.GetDelivery(r.Context(), id)
++	if err != nil {
++		writeError(w, http.StatusNotFound, "not_found", "Delivery not found")
++		return
++	}
++
++	writeJSON(w, http.StatusOK, SuccessResponse{
++		Success: true,
++		Data: DeliveryDetailResponse{
++			ID:             del.ID,
++			EventID:        del.EventID,
++			AttemptNumber:  del.AttemptNumber,
++			Status:         string(del.Status),
++			RequestHeaders: del.RequestHeaders,
++			RequestBody:    del.RequestBody,
++			ResponseStatus: del.ResponseStatus,
++			ResponseBody:   del.ResponseBody,
++			ResponseTimeMs: del.ResponseTimeMs,
++			CreatedAt:      del.CreatedAt,
++			NextRetryAt:    del.NextRetryAt,
++		},
++	})
++}
++
++func (h *Handler) GetDeliveryLogs(w http.ResponseWriter, r *http.Request) {
++	id := chi.URLParam(r, "id")
++	
++	logs, err := h.db.GetDeliveryLogs(r.Context(), id)
++	if err != nil {
++		writeError(w, http.StatusNotFound, "not_found", "Delivery not found")
++		return
++	}
++
++	writeJSON(w, http.StatusOK, SuccessResponse{Success: true, Data: logs})
++}
++
++func (h *Handler) ReplayDelivery(w http.ResponseWriter, r *http.Request) {
++	id := chi.URLParam(r, "id")
++	
++	newDelivery, err := h.deliveryService.ReplayDelivery(r.Context(), id)
++	if err != nil {
++		writeError(w, http.StatusInternalServerError, "replay_error", "Failed to replay delivery")
++		return
++	}
++
++	writeJSON(w, http.StatusCreated, SuccessResponse{
++		Success: true,
++		Data: DeliveryResponse{
++			ID:            newDelivery.ID,
++			EventID:       newDelivery.EventID,
++			AttemptNumber: newDelivery.AttemptNumber,
++			Status:        string(newDelivery.Status),
++			CreatedAt:     newDelivery.CreatedAt,
++		},
++	})
++}
++
++type DeadLetterResponse struct {
++	ID         string    `json:"id"`
++	DeliveryID string    `json:"delivery_id"`
++	Reason     string    `json:"reason"`
++	CreatedAt  time.Time `json:"created_at"`
++}
++
++func (h *Handler) ListDeadLetters(w http.ResponseWriter, r *http.Request) {
++	limitStr := r.URL.Query().Get("limit")
++	offsetStr := r.URL.Query().Get("offset")
++	
++	limit := 50
++	offset := 0
++	
++	if limitStr != "" {
++		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
++			limit = l
++		}
++	}
++	if offsetStr != "" {
++		if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
++			offset = o
++		}
++	}
++
++	deadLetters, err := h.db.ListDeadLetters(r.Context(), limit, offset)
++	if err != nil {
++		writeError(w, http.StatusInternalServerError, "database_error", "Failed to list dead letters")
++		return
++	}
++
++	var response []DeadLetterResponse
++	for _, dl := range deadLetters {
++		response = append(response, DeadLetterResponse{
++			ID:         dl.ID,
++			DeliveryID: dl.DeliveryID,
++			Reason:     dl.Reason,
++			CreatedAt:  dl.CreatedAt,
++		})
++	}
++
++	writeJSON(w, http.StatusOK, SuccessResponse{Success: true, Data: response})
++}
++
++func (h *Handler) ReplayDeadLetter(w http.ResponseWriter, r *http.Request) {
++	id := chi.URLParam(r, "id")
++	
++	newDelivery, err := h.deliveryService.ReplayDeadLetter(r.Context(), id)
++	if err != nil {
++		writeError(w, http.StatusInternalServerError, "replay_error", "Failed to replay dead letter")
++		return
++	}
++
++	writeJSON(w, http.StatusCreated, SuccessResponse{
++		Success: true,
++		Data: DeliveryResponse{
++			ID:            newDelivery.ID,
++			EventID:       newDelivery.EventID,
++			AttemptNumber: newDelivery.AttemptNumber,
++			Status:        string(newDelivery.Status),
++			CreatedAt:     newDelivery.CreatedAt,
++		},
++	})
++}
++
++func (h *Handler) GetMetrics(w http.ResponseWriter, r *http.Request) {
++	stats := h.metrics.GetStats()
++	
++	deadLetterCount, err := h.db.CountDeadLetters(r.Context())
++	if err == nil {
++		stats.DeadLetterCount = deadLetterCount
++	}
++
++	writeJSON(w, http.StatusOK, SuccessResponse{Success: true, Data: stats})
++}
++
++func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
++	queueSize, _ := h.queue.Size(r.Context())
++	processingCount, _ := h.queue.ProcessingCount(r.Context())
++
++	writeJSON(w, http.StatusOK, SuccessResponse{
++		Success: true,
++		Data: map[string]interface{}{
++			"status":           "healthy",
++			"queue_size":       queueSize,
++			"processing_count": processingCount,
++			"timestamp":        time.Now().Unix(),
++		},
++	})
++}
+diff --git a/repository_after/internal/metrics/metrics.go b/repository_after/internal/metrics/metrics.go
+new file mode 100644
+index 0000000..c58c5de
+--- /dev/null
++++ b/repository_after/internal/metrics/metrics.go
+@@ -0,0 +1,81 @@
++package metrics
++
++import (
++	"sync/atomic"
++)
++
++type Collector struct {
++	totalDeliveries int64
++	successCount    int64
++	failureCount    int64
++	deadLetterCount int64
++}
++
++func New() *Collector {
++	return &Collector{}
++}
++
++func (c *Collector) RecordDelivery() {
++	atomic.AddInt64(&c.totalDeliveries, 1)
++}
++
++func (c *Collector) RecordSuccess() {
++	atomic.AddInt64(&c.successCount, 1)
++}
++
++func (c *Collector) RecordFailure() {
++	atomic.AddInt64(&c.failureCount, 1)
++}
++
++func (c *Collector) RecordDeadLetter() {
++	atomic.AddInt64(&c.deadLetterCount, 1)
++}
++
++func (c *Collector) GetTotalDeliveries() int64 {
++	return atomic.LoadInt64(&c.totalDeliveries)
++}
++
++func (c *Collector) GetSuccessCount() int64 {
++	return atomic.LoadInt64(&c.successCount)
++}
++
++func (c *Collector) GetFailureCount() int64 {
++	return atomic.LoadInt64(&c.failureCount)
++}
++
++func (c *Collector) GetDeadLetterCount() int64 {
++	return atomic.LoadInt64(&c.deadLetterCount)
++}
++
++func (c *Collector) GetSuccessRate() float64 {
++	total := c.GetSuccessCount() + c.GetFailureCount()
++	if total == 0 {
++		return 0
++	}
++	return float64(c.GetSuccessCount()) / float64(total) * 100
++}
++
++type Stats struct {
++	TotalDeliveries int64   `json:"total_deliveries"`
++	SuccessCount    int64   `json:"success_count"`
++	FailureCount    int64   `json:"failure_count"`
++	DeadLetterCount int64   `json:"dead_letter_count"`
++	SuccessRate     float64 `json:"success_rate_percent"`
++}
++
++func (c *Collector) GetStats() Stats {
++	return Stats{
++		TotalDeliveries: c.GetTotalDeliveries(),
++		SuccessCount:    c.GetSuccessCount(),
++		FailureCount:    c.GetFailureCount(),
++		DeadLetterCount: c.GetDeadLetterCount(),
++		SuccessRate:     c.GetSuccessRate(),
++	}
++}
++
++func (c *Collector) Reset() {
++	atomic.StoreInt64(&c.totalDeliveries, 0)
++	atomic.StoreInt64(&c.successCount, 0)
++	atomic.StoreInt64(&c.failureCount, 0)
++	atomic.StoreInt64(&c.deadLetterCount, 0)
++}
+diff --git a/repository_after/internal/models/models.go b/repository_after/internal/models/models.go
+new file mode 100644
+index 0000000..dd4f4ca
+--- /dev/null
++++ b/repository_after/internal/models/models.go
+@@ -0,0 +1,59 @@
++package models
++
++import (
++	"time"
++)
++
++type Webhook struct {
++	ID         string    `json:"id"`
++	CustomerID string    `json:"customer_id"`
++	URL        string    `json:"url"`
++	Secret     string    `json:"-"`
++	CreatedAt  time.Time `json:"created_at"`
++	IsActive   bool      `json:"is_active"`
++}
++
++type Event struct {
++	ID        string    `json:"id"`
++	WebhookID string    `json:"webhook_id"`
++	EventType string    `json:"event_type"`
++	Payload   []byte    `json:"payload"`
++	CreatedAt time.Time `json:"created_at"`
++}
++
++type DeliveryStatus string
++
++const (
++	DeliveryStatusPending DeliveryStatus = "pending"
++	DeliveryStatusSuccess DeliveryStatus = "success"
++	DeliveryStatusFailed  DeliveryStatus = "failed"
++	DeliveryStatusDead    DeliveryStatus = "dead"
++)
++
++type Delivery struct {
++	ID             string         `json:"id"`
++	EventID        string         `json:"event_id"`
++	AttemptNumber  int            `json:"attempt_number"`
++	Status         DeliveryStatus `json:"status"`
++	RequestHeaders string         `json:"request_headers,omitempty"`
++	RequestBody    string         `json:"request_body,omitempty"`
++	ResponseStatus int            `json:"response_status,omitempty"`
++	ResponseBody   string         `json:"response_body,omitempty"`
++	ResponseTimeMs int64          `json:"response_time_ms,omitempty"`
++	CreatedAt      time.Time      `json:"created_at"`
++	NextRetryAt    *time.Time     `json:"next_retry_at,omitempty"`
++}
++
++type DeadLetter struct {
++	ID         string    `json:"id"`
++	DeliveryID string    `json:"delivery_id"`
++	Reason     string    `json:"reason"`
++	CreatedAt  time.Time `json:"created_at"`
++}
++
++type QueueItem struct {
++	DeliveryID string  `json:"delivery_id"`
++	EventID    string  `json:"event_id"`
++	WebhookID  string  `json:"webhook_id"`
++	Score      float64 `json:"score"`
++}
+diff --git a/repository_after/internal/queue/queue.go b/repository_after/internal/queue/queue.go
+new file mode 100644
+index 0000000..4355cf8
+--- /dev/null
++++ b/repository_after/internal/queue/queue.go
+@@ -0,0 +1,174 @@
++package queue
++
++import (
++	"context"
++	"encoding/json"
++	"fmt"
++	"time"
++
++	"webhook-delivery-system/internal/models"
++
++	"github.com/redis/go-redis/v9"
++)
++
++const (
++	deliveryQueueKey = "webhook:delivery:queue"
++	processingSetKey = "webhook:delivery:processing"
++)
++
++type RedisQueue struct {
++	client *redis.Client
++}
++
++func NewRedisQueue(redisURL string) (*RedisQueue, error) {
++	opts, err := redis.ParseURL(redisURL)
++	if err != nil {
++		return nil, fmt.Errorf("failed to parse redis URL: %w", err)
++	}
++
++	client := redis.NewClient(opts)
++
++	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
++	defer cancel()
++
++	if err := client.Ping(ctx).Err(); err != nil {
++		return nil, fmt.Errorf("failed to ping redis: %w", err)
++	}
++
++	return &RedisQueue{client: client}, nil
++}
++
++func (q *RedisQueue) Close() error {
++	return q.client.Close()
++}
++
++func (q *RedisQueue) Enqueue(ctx context.Context, item models.QueueItem) error {
++	data, err := json.Marshal(item)
++	if err != nil {
++		return fmt.Errorf("failed to marshal queue item: %w", err)
++	}
++
++	score := item.Score
++	if score == 0 {
++		score = float64(time.Now().UnixNano())
++	}
++
++	return q.client.ZAdd(ctx, deliveryQueueKey, redis.Z{
++		Score:  score,
++		Member: string(data),
++	}).Err()
++}
++
++func (q *RedisQueue) EnqueueWithDelay(ctx context.Context, item models.QueueItem, delay time.Duration) error {
++	item.Score = float64(time.Now().Add(delay).UnixNano())
++	return q.Enqueue(ctx, item)
++}
++
++func (q *RedisQueue) Dequeue(ctx context.Context) (*models.QueueItem, error) {
++	now := float64(time.Now().UnixNano())
++
++	results, err := q.client.ZRangeByScoreWithScores(ctx, deliveryQueueKey, &redis.ZRangeBy{
++		Min:    "-inf",
++		Max:    fmt.Sprintf("%f", now),
++		Offset: 0,
++		Count:  1,
++	}).Result()
++
++	if err != nil {
++		return nil, fmt.Errorf("failed to get items from queue: %w", err)
++	}
++
++	if len(results) == 0 {
++		return nil, nil
++	}
++
++	member := results[0].Member
++
++	removed, err := q.client.ZRem(ctx, deliveryQueueKey, member).Result()
++	if err != nil {
++		return nil, fmt.Errorf("failed to remove item from queue: %w", err)
++	}
++
++	if removed == 0 {
++		return nil, nil
++	}
++
++	var item models.QueueItem
++	if err := json.Unmarshal([]byte(member), &item); err != nil {
++		return nil, fmt.Errorf("failed to unmarshal queue item: %w", err)
++	}
++
++	if err := q.client.SAdd(ctx, processingSetKey, item.DeliveryID).Err(); err != nil {
++		return nil, fmt.Errorf("failed to add to processing set: %w", err)
++	}
++
++	return &item, nil
++}
++
++func (q *RedisQueue) Complete(ctx context.Context, deliveryID string) error {
++	return q.client.SRem(ctx, processingSetKey, deliveryID).Err()
++}
++
++func (q *RedisQueue) Size(ctx context.Context) (int64, error) {
++	return q.client.ZCard(ctx, deliveryQueueKey).Result()
++}
++
++func (q *RedisQueue) ProcessingCount(ctx context.Context) (int64, error) {
++	return q.client.SCard(ctx, processingSetKey).Result()
++}
++
++func (q *RedisQueue) GetPendingItems(ctx context.Context) ([]models.QueueItem, error) {
++	results, err := q.client.ZRangeWithScores(ctx, deliveryQueueKey, 0, -1).Result()
++	if err != nil {
++		return nil, fmt.Errorf("failed to get pending items: %w", err)
++	}
++
++	var items []models.QueueItem
++	for _, result := range results {
++		var item models.QueueItem
++		if err := json.Unmarshal([]byte(result.Member), &item); err != nil {
++			continue
++		}
++		item.Score = result.Score
++		items = append(items, item)
++	}
++
++	return items, nil
++}
++
++func (q *RedisQueue) RemoveFromProcessing(ctx context.Context, deliveryID string) error {
++	return q.client.SRem(ctx, processingSetKey, deliveryID).Err()
++}
++
++func (q *RedisQueue) IsProcessing(ctx context.Context, deliveryID string) (bool, error) {
++	return q.client.SIsMember(ctx, processingSetKey, deliveryID).Result()
++}
++
++func (q *RedisQueue) ClearProcessing(ctx context.Context) error {
++	return q.client.Del(ctx, processingSetKey).Err()
++}
++
++func (q *RedisQueue) Reschedule(ctx context.Context, item models.QueueItem, delay time.Duration) error {
++	if err := q.Complete(ctx, item.DeliveryID); err != nil {
++		return err
++	}
++	return q.EnqueueWithDelay(ctx, item, delay)
++}
++
++func (q *RedisQueue) Remove(ctx context.Context, deliveryID string) error {
++	items, err := q.client.ZRange(ctx, deliveryQueueKey, 0, -1).Result()
++	if err != nil {
++		return err
++	}
++
++	for _, item := range items {
++		var queueItem models.QueueItem
++		if err := json.Unmarshal([]byte(item), &queueItem); err != nil {
++			continue
++		}
++		if queueItem.DeliveryID == deliveryID {
++			return q.client.ZRem(ctx, deliveryQueueKey, item).Err()
++		}
++	}
++	return nil
++}
