@@ -1,0 +1,11 @@
+{
+            "instance_id": "SJA6RG",
+            "problem_statement": "An API Gateway acts as the central entry point for backend services, enforcing security, performance, and reliability controls such as authentication, rate limiting, routing, caching, and error handling. Failures or incorrect behavior at this layer can lead to security vulnerabilities, service overload, or incorrect responses being delivered to clients. The objective of this task is to create a comprehensive pytest-based test suite that validates all critical behaviors of the API Gateway, ensuring it functions correctly under normal, edge-case, and failure scenarios, and behaves reliably under concurrent load.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/sja6rg-api-gateway-testing-suite",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
