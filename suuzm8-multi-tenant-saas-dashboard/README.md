@@ -1,11 +1,15 @@
 # SUUZM8 - Multi -Tenant SaaS Dashboard
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Test repository before command
 
-    ## After Test Docker Command
-    <docker after command here>
+`No repository before`
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## Test repository_after command
+
+```bash
+docker compose run --rm test
+```
+
+## Evaluation
+
+- `docker compose run --rm client`

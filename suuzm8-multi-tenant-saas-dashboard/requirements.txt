@@ -1,1 +1,10 @@
-# Add your Python dependencies here if the project is Python-based. If it is not Python-based, you can remove this file and configure the requirements accordingly.
+django>=4.2,<5.0
+djangorestframework>=3.14,<4.0
+psycopg2-binary>=2.9
+django-redis>=5.4
+redis>=5.0
+
+pytest>=8.0
+pytest-django>=4.8
+pytest-cov>=5.0
+freezegun>=1.4
