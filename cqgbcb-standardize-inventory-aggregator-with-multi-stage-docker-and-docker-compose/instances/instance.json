@@ -1,0 +1,11 @@
+{
+            "instance_id": "CQGBCB",
+            "problem_statement": "The current development workflow for the Inventory Aggregator service is fragile and inconsistent across environments. Developers manually run the Node.js application and Redis, leading to connection errors when services start out of order. The existing single-stage Dockerfile produces an oversized image with unnecessary build-time dependencies and runs the application with elevated privileges, increasing the attack surface. There is no mechanism to ensure the application waits for Redis to become healthy before startup. The task is to refactor and standardize the containerized environment using multi-stage Docker builds and Docker Compose to minimize image size, enforce non-root execution, ensure Redis health checks are respected, and support hot-reloading for local development without altering existing application behavior.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/cqgbcb-standardize-inventory-aggregator-with-multi-stage-docker-and-docker-compose",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
