@@ -52,10 +52,12 @@ def _train_val_split_unoptimized(X, y, val_fraction=0.2, seed=42):
     tr_idx = idx[n_val:].copy()
     
     # Use vectorized indexing (still optimized!)
-    Xtr = np.array(X[tr_idx], copy=True)
-    ytr = np.array(y[tr_idx], copy=True)
-    Xva = np.array(X[val_idx], copy=True)
-    yva = np.array(y[val_idx], copy=True)
+    # Note: Fancy indexing X[idx] creates a copy, so we generally don't need another explicit copy wrapper.
+    # We return the new arrays directly.
+    Xtr = X[tr_idx]
+    ytr = y[tr_idx]
+    Xva = X[val_idx]
+    yva = y[val_idx]
     return Xtr, ytr, Xva, yva
 
 def _slow_dot_row(xrow, w):
@@ -287,17 +289,20 @@ class ElasticNetRegressorVeryUnoptimized:
                 perm[k], perm[j] = perm[j], perm[k]
             
             # Use vectorized indexing (still optimized!)
-            Xtr_epoch = np.array(Xtr_s[perm], copy=True)
-            ytr_epoch = np.array(ytr[perm], copy=True)
+            # We DO NOT create a full copy of Xtr_epoch here to save memory.
+            # Instead we just shuffle indices and use them for batching.
             
             # Mini-batch gradient descent
             start = 0
             while start < n:
                 end = min(start + self.batch_size, n)
                 
-                # Get batch (no unnecessary copy)
-                Xb = Xtr_epoch[start:end]
-                yb = ytr_epoch[start:end]
+                # Get batch indices
+                batch_idx = perm[start:end]
+                
+                # Get batch (creates a small copy for the batch only)
+                Xb = Xtr_s[batch_idx]
+                yb = ytr[batch_idx]
                 
                 # Compute loss and gradients
                 data_loss, grad_w, grad_b = self._data_loss_and_grads(Xb, yb, self.w_, self.b_)
