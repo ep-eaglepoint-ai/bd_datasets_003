@@ -1,0 +1,13 @@
+{
+            "instance_id": "FCRF5S",
+            "problem_statement": "
+A project management startup has built an Express backend API for their task tracking application. The API allows users to create projects, add tasks to projects, assign tasks to team members, update task statuses, and track progress through various workflow states. The API was developed rapidly by a contractor who has since left the company, and the codebase has no tests. The engineering team has discovered several bugs in production related to task state transitions and assignment rules, and they need a comprehensive test suite to prevent regressions and enable confident refactoring.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/fcrf5s-task-manager-api-testing",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
