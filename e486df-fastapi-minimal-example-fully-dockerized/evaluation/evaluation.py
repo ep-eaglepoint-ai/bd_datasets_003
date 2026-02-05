@@ -128,10 +128,8 @@ def main():
         }
     
     
-    # Write to both locations for compatibility
+    # Write report to standard location
     path = REPORTS / "latest.json"
-    ci_path = ROOT / "evaluation" / "latest.json"
-    
     report_json = json.dumps(report, indent=2)
     
     try:
@@ -140,13 +138,6 @@ def main():
     except PermissionError:
         print(f"ERROR: Permission denied writing report to {path}")
         return 1
-    
-    try:
-        ci_path.write_text(report_json)
-        print(f"Report also written to {ci_path} for CI")
-    except PermissionError:
-        print(f"WARNING: Permission denied writing to {ci_path}")
-        # Don't fail - the main report was written
     
     return 0 if report["success"] else 1
 
