@@ -1,0 +1,21 @@
+{
+            "instance_id": "EKPNGZ",
+            "problem_statement": "You are optimizing a production SQL query used for daily data-integrity validation between orders and users.
+ The query identifies invalid records such as missing users, soft-deleted users, and NULL foreign keys. Its output is consumed by finance and compliance teams and is reviewed by humans.
+The current implementation is functionally correct but inefficient at scale.
+ Your task is to optimize the query without changing its observable behavior.
+Any optimization must preserve:
+the exact result set
+the exact validation categories
+
+row-level diagnostic clarity
+correct handling of NULLs and soft deletes
+Performance improvements are required, but correctness and auditability are non-negotiable.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ekpngz-sql-query-optimization-under-strict-data-integrity-constraints",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
