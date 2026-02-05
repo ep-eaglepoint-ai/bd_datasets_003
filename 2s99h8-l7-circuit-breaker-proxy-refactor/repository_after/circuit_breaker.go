@@ -58,16 +58,17 @@ func (cb *FastCircuitBreaker) RoundTrip(req *http.Request) (*http.Response, erro
 	now := time.Now().UnixNano()
 	
 	// Single atomic load to avoid race conditions
-	initialState := atomic.LoadInt32(&cb.state)
+	currentState := atomic.LoadInt32(&cb.state)
 	isProbe := false
 
 	// Handle Open state
-	if initialState == StateOpen {
+	if currentState == StateOpen {
 		if now-atomic.LoadInt64(&cb.lastFailureTime) > cb.sleepWindow {
 			// Sleep window expired, try to transition to half-open
 			if atomic.CompareAndSwapInt32(&cb.state, StateOpen, StateHalfOpen) {
 				// Successfully transitioned to half-open, this becomes the probe
 				isProbe = true
+				currentState = StateHalfOpen // Update our view of the state
 			} else {
 				// Another goroutine transitioned, reject this request
 				return cb.gen503(req), ErrCircuitOpen
@@ -76,7 +77,7 @@ func (cb *FastCircuitBreaker) RoundTrip(req *http.Request) (*http.Response, erro
 			// Still in sleep window
 			return cb.gen503(req), ErrCircuitOpen
 		}
-	} else if initialState == StateHalfOpen {
+	} else if currentState == StateHalfOpen {
 		// Handle Half-Open state - enforce single probe
 		if !atomic.CompareAndSwapInt32(&cb.probeInProgress, 0, 1) {
 			// Another probe is already in progress
@@ -95,7 +96,7 @@ func (cb *FastCircuitBreaker) RoundTrip(req *http.Request) (*http.Response, erro
 	isFailure := err != nil || (resp != nil && resp.StatusCode >= 500)
 	cb.recordResult(isFailure)
 
-	// Handle state transitions based on the initial state we acted upon
+	// Handle state transitions based on the state we're acting upon
 	if isProbe {
 		// We're the probe, decide the next state
 		if isFailure {
@@ -107,8 +108,8 @@ func (cb *FastCircuitBreaker) RoundTrip(req *http.Request) (*http.Response, erro
 			cb.resetWindow()
 			atomic.StoreInt32(&cb.state, StateClosed)
 		}
-	} else if initialState == StateClosed && isFailure {
-		// Check if we should trip (only if we started in closed state)
+	} else if currentState == StateClosed && isFailure {
+		// Check if we should trip (only if we're in closed state)
 		if cb.shouldTrip() {
 			if atomic.CompareAndSwapInt32(&cb.state, StateClosed, StateOpen) {
 				atomic.StoreInt64(&cb.lastFailureTime, time.Now().UnixNano())
@@ -141,14 +142,13 @@ func (cb *FastCircuitBreaker) recordResult(isFailure bool) {
 
 func (cb *FastCircuitBreaker) shouldTrip() bool {
 	requests := atomic.LoadInt64(&cb.windowRequests)
-	if requests < 10 { // Increase minimum requests
+	if requests < 10 {
 		return false
 	}
 	
 	failures := atomic.LoadInt64(&cb.windowFailures)
 	failureRate := float64(failures) / float64(requests)
 	
-	// Use exact threshold without tolerance
 	return failureRate >= cb.errorThreshold
 }
 
@@ -231,7 +231,7 @@ func NewLegacyBreaker(threshold int, sleepWindow time.Duration) *LegacyCircuitBr
 
 func (cb *LegacyCircuitBreaker) RoundTrip(req *http.Request, next http.RoundTripper) (*http.Response, error) {
 	// Simulate extremely heavy mutex contention like a real legacy implementation
-	for i := 0; i < 50; i++ { // Increased from 10 to 50
+	for i := 0; i < 50; i++ {
 		cb.mu.Lock()
 		_ = cb.state
 		_ = cb.failures
@@ -253,7 +253,7 @@ func (cb *LegacyCircuitBreaker) RoundTrip(req *http.Request, next http.RoundTrip
 	cb.mu.Unlock()
 
 	// More mutex operations during request
-	for i := 0; i < 20; i++ { // Additional mutex contention
+	for i := 0; i < 20; i++ {
 		cb.mu.Lock()
 		cb.failures++
 		cb.mu.Unlock()
@@ -266,7 +266,7 @@ func (cb *LegacyCircuitBreaker) RoundTrip(req *http.Request, next http.RoundTrip
 	defer cb.mu.Unlock()
 	
 	// Simulate complex state management with more operations
-	time.Sleep(time.Microsecond * 5) // Increased delay
+	time.Sleep(time.Microsecond * 5)
 	
 	// Additional processing to slow it down
 	for i := 0; i < 10; i++ {
