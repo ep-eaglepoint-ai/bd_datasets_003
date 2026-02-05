@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   test-before:
     build:
@@ -32,4 +30,4 @@ services:
     command: >
       sh -c "node evaluation/evaluate.js"
     volumes:
-      - ./:/app/output
+      - ./evaluation:/app/evaluation

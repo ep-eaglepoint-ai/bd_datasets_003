@@ -15,15 +15,8 @@ module.exports = defineConfig({
     ['json', { outputFile: 'test-results.json' }]
   ],
   use: {
-    baseURL: process.env.TEST_URL || 'http://localhost:3000',
+    baseURL: process.env.TEST_URL || 'http://localhost:3000/index.html',
     trace: 'on-first-retry',
     headless: true,
-  },
-  webServer: {
-    command: process.env.TEST_URL?.includes('3001')
-      ? 'npx http-server repository_before -p 3001 -s'
-      : 'npx http-server repository_after -p 3000 -s',
-    port: process.env.TEST_URL?.includes('3001') ? 3001 : 3000,
-    reuseExistingServer: !process.env.CI,
   },
 });

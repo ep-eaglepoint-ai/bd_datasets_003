@@ -1,12 +1,12 @@
-FROM mcr.microsoft.com/playwright:v1.40.0-jammy
+FROM mcr.microsoft.com/playwright:v1.48.0-jammy
 
 WORKDIR /app
 
 # Copy package files
 COPY package.json playwright.config.js ./
 
-# Install dependencies
-RUN npm install
+# Install dependencies with specific playwright version matching docker image
+RUN npm install @playwright/test@1.48.0 http-server
 
 # Copy test files
 COPY tests/ ./tests/

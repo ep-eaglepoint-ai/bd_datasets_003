@@ -16,6 +16,7 @@ test-results/
 test-results*.json
 playwright-report/
 report.json
+evaluation/reports/
 
 # IDE
 .idea/
