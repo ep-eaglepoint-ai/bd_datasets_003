@@ -1,0 +1,19 @@
+{
+            "instance_id": "QP590Z",
+            "problem_statement": "
+You are building a static analysis tool that inspects human-written policy rules for logical correctness and consistency before deployment.
+The tool must not execute rules, not simulate outcomes, and not mutate input data.
+Instead, it analyzes rule definitions to detect structural errors and logical conflicts such as contradictions, redundancy, shadowing, and ambiguity.
+
+The analyzer must be deterministic, defensive against future enum expansion, and return structured findings explaining why each issue exists.
+The same input must always produce the same output, and the tool must be safe to use in security- and compliance-sensitive pipelines.
+
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/qp590z-static-policy-rule-analyzer-logical-consistency-safety-validation",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
