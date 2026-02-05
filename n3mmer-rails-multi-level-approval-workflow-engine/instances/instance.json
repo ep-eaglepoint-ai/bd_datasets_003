@@ -1,0 +1,11 @@
+{
+            "instance_id": "N3MMER",
+            "problem_statement": "An enterprise resource planning system needs configurable approval workflows for purchase orders and expense reports. Currently, documents are either auto-approved or require manual email chains with no tracking. The business requires multi-level approvals based on amount thresholds and department hierarchy, support for parallel approvers (multiple people must approve), automatic escalation when approvers don't respond in time, and delegation for out-of-office scenarios. All approval actions must be auditable for compliance.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/n3mmer-rails-multi-level-approval-workflow-engine",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
