@@ -1,0 +1,11 @@
+{
+            "instance_id": "N527SI",
+            "problem_statement": "A Time-Limited Voting System allows users to create polls and vote on predefined options within a specific time window. Votes submitted outside the allowed timeframe or more than once per user must be rejected, and results must reflect votes accurately in real time. The goal of this task is to write a Python test suite that thoroughly validates the behavior of a Flask-based voting API, ensuring correct poll creation, voting rules enforcement, accurate result reporting, and safe handling of concurrent voting scenarios.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/n527si-time-limited-voting-system-test-suite",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
