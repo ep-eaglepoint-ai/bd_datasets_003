@@ -1,0 +1,11 @@
+{
+            "instance_id": "WGIUKB",
+            "problem_statement": "Our current internal caching libraries are suffering from non-deterministic "flaky" failures in the CI/CD pipeline, primarily due to an over-reliance on system wall-clocks and global monkey-patching during testing. From a business continuity standpoint, this is unacceptable; we require a validation harness that guarantees 100% determinism regardless of CPU load or execution environment. The challenge is to architect a test suite that handles the complex intersection of LRU (Least Recently Used) eviction and TTL (Time-to-Live) expiration without resorting to time.sleep() or fragile global mocks that leak state across test suites.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/wgiukb-architecting-a-deterministic-thread-safe-test-harness-for-temporal-cache-logic",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
