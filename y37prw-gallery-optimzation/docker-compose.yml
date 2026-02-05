@@ -1,6 +1,4 @@
-# docker-compose.yml
-# Project root level file
-# Contains services: before, after, compare, evaluate
+
 
 services:
 
@@ -110,7 +108,7 @@ services:
     container_name: gallery-evaluation
     working_dir: /app
     volumes:
-      - .:/app:rw                               # read-write → can create report.json
+      - .:/app:rw                               
       - ./requirements.txt:/app/requirements.txt:ro
     command: >-
       bash -c "
