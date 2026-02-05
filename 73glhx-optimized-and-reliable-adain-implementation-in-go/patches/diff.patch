@@ -2,11 +2,14 @@ diff --git a/repository_before/.gitkeep b/repository_before/.gitkeep
 deleted file mode 100644
 index e69de29..0000000
 diff --git a/repository_before/adain/adain.go b/repository_after/adain/adain.go
-index 5ef1752..c0b572b 100644
+index 5ef1752..df7c159 100644
 --- a/repository_before/adain/adain.go
 +++ b/repository_after/adain/adain.go
-@@ -5,131 +5,127 @@ import (
+@@ -3,133 +3,144 @@ package adain
+ import (
+ 	"errors"
  	"math"
++	"strconv"
  )
  
 -type X struct {
@@ -56,7 +59,7 @@ index 5ef1752..c0b572b 100644
 +	for i, v := range t.Data {
  		if math.IsNaN(v) || math.IsInf(v, 0) {
 -			return errors.New(n)
-+			return errors.New(name + " contains invalid value at index " + string(i))
++			return errors.New(name + " contains invalid value at index " + strconv.Itoa(i))
  		}
  	}
  	return nil
@@ -67,6 +70,7 @@ index 5ef1752..c0b572b 100644
 -	u := Z([]int{N, C, 1, 1})
 -	v := Z([]int{N, C, 1, 1})
 +// ComputeMeanStd computes per-sample, per-channel mean and std over spatial dims with optional mask
++// x must be a validated 4D tensor.
 +func ComputeMeanStd(x *Tensor, mask *Tensor, epsilon float64) (*Tensor, *Tensor) {
 +	N, C, H, W := x.Shape[0], x.Shape[1], x.Shape[2], x.Shape[3]
 +	mean := NewTensor([]int{N, C, 1, 1})
@@ -92,19 +96,20 @@ index 5ef1752..c0b572b 100644
 +		for c := 0; c < C; c++ {
 +			sum, weight := 0.0, 0.0
 +			offset := x.Index(n, c, 0, 0)
++			// Spatial flattening: flat index i maps to (h=i/W, w=i%W) in row-major order.
 +			for i := 0; i < spatialSize; i++ {
 +				val := x.Data[offset+i]
 +				w := 1.0
 +				if mask != nil {
-+					w = mask.Data[mask.Index(n, 0, i/H, i%W)]
++					w = mask.Data[mask.Index(n, 0, i/W, i%W)]
  				}
 +				sum += val * w
 +				weight += w
  			}
 -			if c < 1 {
 -				c = 1
-+			if weight < 1 {
-+				weight = 1
++			if weight == 0 {
++				weight = float64(spatialSize)
  			}
 -			p := t / c
 -			u.D[u.I(a, b, 0, 0)] = p
@@ -128,23 +133,23 @@ index 5ef1752..c0b572b 100644
 +				diff := val - m
 +				w := 1.0
 +				if mask != nil {
-+					w = mask.Data[mask.Index(n, 0, i/H, i%W)]
++					w = mask.Data[mask.Index(n, 0, i/W, i%W)]
  				}
 +				varSum += diff * diff * w
  			}
 -			v.D[v.I(a, b, 0, 0)] = s / c
--		}
--	}
++			std.Data[std.Index(n, c, 0, 0)] = math.Sqrt(math.Max(varSum/weight, 0) + epsilon)
+ 		}
+ 	}
 -
 -	o := Z([]int{N, C, 1, 1})
 -	for i := 0; i < len(o.D); i++ {
 -		z := v.D[i]
 -		if z < 0 {
 -			z = 0
-+			std.Data[std.Index(n, c, 0, 0)] = math.Sqrt(math.Max(varSum/weight, 0) + epsilon)
- 		}
+-		}
 -		o.D[i] = math.Sqrt(z + e)
- 	}
+-	}
 -
 -	return u, o
 +	return mean, std
@@ -165,6 +170,18 @@ index 5ef1752..c0b572b 100644
 -		return nil, errors.New("x")
 +	if content.Shape[1] != style.Shape[1] {
 +		return nil, errors.New("channel mismatch")
++	}
++	if contentMask != nil {
++		if len(contentMask.Shape) != 4 || contentMask.Shape[0] != content.Shape[0] || contentMask.Shape[1] != 1 ||
++			contentMask.Shape[2] != content.Shape[2] || contentMask.Shape[3] != content.Shape[3] {
++			return nil, errors.New("content mask shape mismatch")
++		}
++	}
++	if styleMask != nil {
++		if len(styleMask.Shape) != 4 || styleMask.Shape[0] != style.Shape[0] || styleMask.Shape[1] != 1 ||
++			styleMask.Shape[2] != style.Shape[2] || styleMask.Shape[3] != style.Shape[3] {
++			return nil, errors.New("style mask shape mismatch")
++		}
  	}
  
 -	m1, d1 := Y(c, e, cm)
@@ -213,7 +230,7 @@ index 5ef1752..c0b572b 100644
 +	for i, v := range out.Data {
  		if math.IsNaN(v) || math.IsInf(v, 0) {
 -			return nil, errors.New("x")
-+			return nil, errors.New("output contains invalid value at index " + string(i))
++			return nil, errors.New("output contains invalid value at index " + strconv.Itoa(i))
  		}
  	}
 -
