@@ -92,5 +92,37 @@ export function useApi() {
     return request<T>(endpoint, { method: 'DELETE' })
   }
 
-  return { get, post, put, del, request }
+  /**
+   * Fetch a blob response (e.g., for CSV downloads).
+   * Returns the blob directly or an error string.
+   */
+  async function getBlob(
+    endpoint: string
+  ): Promise<{ data: Blob | null; error: string | null }> {
+    const headers: HeadersInit = {}
+
+    if (authStore.token) {
+      (headers as Record<string, string>)['Authorization'] = `Bearer ${authStore.token}`
+    }
+
+    try {
+      const response = await fetch(`${baseURL}${endpoint}`, {
+        method: 'GET',
+        headers
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null)
+        const formattedError = formatErrorDetail(errorData)
+        return { data: null, error: formattedError }
+      }
+
+      const blob = await response.blob()
+      return { data: blob, error: null }
+    } catch (err) {
+      return { data: null, error: 'Network error' }
+    }
+  }
+
+  return { get, post, put, del, request, getBlob }
 }
