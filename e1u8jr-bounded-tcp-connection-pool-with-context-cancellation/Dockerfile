@@ -1,7 +1,11 @@
-# Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
+FROM golang:1.21-alpine
 
-FROM python:3.11-slim
 WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+COPY . .
+
+# Environment variable to detect inside docker
+ENV INSIDE_DOCKER=true
+
+# Command runs the evaluation script
+CMD ["go", "run", "evaluation/eval.go"]
+

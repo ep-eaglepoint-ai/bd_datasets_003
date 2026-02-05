@@ -1,12 +1,25 @@
-# Python
-__pycache__/
-*.pyc
-.venv/
-.env
+# Go
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
 
-# Node
-node_modules/
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Dependency directories
+vendor/
 
 # OS
 .DS_Store
-evaluation/*.json
+
+# Editor/IDE
+.idea/
+.vscode/
+
+evaluation/reports
