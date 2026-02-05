@@ -1,0 +1,62 @@
+services:
+  tests-before:
+    build: .
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: >
+      sh -c "
+      cp tests/*.go repository_before/ &&
+      cd repository_before &&
+      (go test -v -race . || true) &&
+      rm -f aggregator_test.go aggregator_bench_test.go
+      "
+
+  tests-after:
+    build: .
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: >
+      sh -c "
+      cp tests/*.go repository_after/ &&
+      cd repository_after &&
+      go test -v -race . ;
+      TEST_RESULT=$$? &&
+      rm -f aggregator_test.go aggregator_bench_test.go &&
+      exit $$TEST_RESULT
+      "
+
+  evaluation:
+    build: .
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: go run evaluation/evaluation.go
+
+  # Run both test suites sequentially with cleanup
+  test-all:
+    build: .
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: >
+      sh -c "
+      echo 'Testing repository_before...' &&
+      cp tests/*.go repository_before/ &&
+      cd repository_before &&
+      go test -v -race . ;
+      BEFORE_RESULT=$$? &&
+      rm -f aggregator_test.go aggregator_bench_test.go &&
+      cd .. &&
+      echo 'Before tests result:' $$BEFORE_RESULT '(failures expected)' &&
+      echo 'Testing repository_after...' &&
+      cp tests/*.go repository_after/ &&
+      cd repository_after &&
+      go test -v -race . ;
+      AFTER_RESULT=$$? &&
+      rm -f aggregator_test.go aggregator_bench_test.go &&
+      cd .. &&
+      echo 'After tests result:' $$AFTER_RESULT &&
+      if [ $$AFTER_RESULT -eq 0 ]; then exit 0; else exit 1; fi
+      "
