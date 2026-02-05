@@ -1,0 +1,11 @@
+{
+            "instance_id": "VYQ9E9",
+            "problem_statement": "implementing an ACID-compliant transaction engine requires rigorous management of shared mutable state. In a graph environment where transactions frequently touch multiple nodes simultaneously (e.g., A transfers to B, B transfers to A), the risk of Circular Wait Deadlocks is imminent if locks are acquired arbitrarily. A naive implementation that locks resources "on demand" will eventually encounter a situation where Transaction 1 holds Node A and waits for Node B, while Transaction 2 holds Node B and waits for Node A. The engineering solution requires a strict Canonical Lock Ordering strategy (Deterministic Locking), forcing threads to acquire locks in a sorted sequence to mathematically eliminate cycles. Additionally, achieving Isolation prohibits "Dirty Reads," necessitating a Write-Buffering architecture where changes remain local to the transaction scope until the final Commit point.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/vyq9e9-in-memory-graph-transaction-engine-with-deterministic-locking",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
