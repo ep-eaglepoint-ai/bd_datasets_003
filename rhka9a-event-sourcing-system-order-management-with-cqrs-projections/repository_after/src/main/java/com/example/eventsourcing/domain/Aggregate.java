@@ -113,9 +113,11 @@ public abstract class Aggregate<T extends DomainEvent> {
     
     /**
      * Get the next version number for a new event.
+     * Accounts for uncommitted events to ensure sequential versioning when multiple
+     * events are created before saving.
      */
     protected final Long getNextVersion() {
-        return version + 1;
+        return version + uncommittedEvents.size() + 1;
     }
     
     /**

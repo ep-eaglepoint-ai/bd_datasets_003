@@ -37,7 +37,12 @@
                 "shouldEnforceOptimisticLocking",
                 "shouldRebuildFromFullHistory",
                 "snapshotReducesEventsLoadedAfterVersion",
-                "shouldRebuildProjectionFromFullHistory"
+                "shouldRebuildProjectionFromFullHistory",
+                "eventReplayShouldProduceIdenticalState",
+                "multipleReplaysShouldProduceIdenticalState",
+                "replayShouldHandleComplexEventSequences",
+                "projectionFailureShouldNotRollBackCommand",
+                "multipleCommandsShouldSucceedDespiteProjectionFailures"
         ],
         "PASS_TO_PASS": []
         }

@@ -14,6 +14,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -52,9 +53,10 @@ public class OrderProjection {
     /**
      * Handle domain events published by the event store.
      * This method is idempotent - processing the same event multiple times has no effect.
+     * Uses REQUIRES_NEW propagation to ensure projection failures do not roll back command transactions.
      */
     @EventListener
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void handleDomainEvent(DomainEventWrapper wrapper) {
         // Unwrap the DomainEvent from the wrapper
         DomainEvent event = wrapper.getDomainEvent();
@@ -182,7 +184,9 @@ public class OrderProjection {
     /**
      * Rebuild the projection from scratch by replaying all events.
      * Uses streaming/batch loading to keep memory bounded.
-     * This method is designed to not block ongoing operations.
+     * 
+     * Note: This method is synchronous. If async/background rebuild is required,
+     * the caller (e.g., OrderService) should invoke it asynchronously.
      */
     @Transactional
     public void rebuildProjection() {
