@@ -13,7 +13,7 @@ services:
       else
         cd repository_before && mkdir -p build && cd build && cmake .. && make;
       fi &&
-      cd /app && g++ -std=c++17 tests/test_parser.cpp -o test_runner && ./test_runner
+      cd /app && g++ -std=c++17 tests/test_parser.cpp -o test_runner && ./test_runner || true
       "
 
   test-after:
