@@ -1,0 +1,12 @@
+{
+            "instance_id": "22O2RE",
+            "problem_statement": "Simple TCP reassembly tools often fail when analyzing PCAP files from lossy networks. They typically sort by timestamp (unreliable) or simple sequence number concatenation, which corrupts the output when faced with TCP retransmissions (duplicate data), overlaps (different segmentation), or wrap-arounds. A robust engine must strictly follow RFC 793 logic to reconstruct the stream based on SEQ + Payload Length.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/22o2re-forensic-tcp-stream-reassembly-engine",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
