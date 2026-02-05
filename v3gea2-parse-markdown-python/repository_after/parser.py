@@ -38,7 +38,8 @@ def parse_markdown(markdown: str) -> str:
                 delim = text[i:i + 2]
                 end = text.find(delim, i + 2)
                 if end != -1:
-                    result.append("<strong>" + escape(text[i + 2:end]) + "</strong>")
+                    inner = text[i + 2:end]
+                    result.append("<strong>" + parse_inline(inner) + "</strong>")
                     i = end + 2
                 else:
                     result.append(escape(delim))
@@ -46,9 +47,23 @@ def parse_markdown(markdown: str) -> str:
 
             # Italic (* or _)
             elif ch in ("*", "_"):
-                end = text.find(ch, i + 1)
+                if i+1 < L and text[i + 1] == ch:
+                    result.append(escape(ch * 2))
+                    i += 2
+                    continue
+
+                end = i + 1
+                while True:
+                    end = text.find(ch, end)
+                    if end == -1:
+                        break
+                    if not (end + 1 < L and text[end + 1] == ch):
+                        break
+                    end += 2
+
                 if end != -1:
-                    result.append("<em>" + escape(text[i + 1:end]) + "</em>")
+                    inner = text[i + 1:end]
+                    result.append("<em>" + parse_inline(inner) + "</em>")
                     i = end + 1
                 else:
                     result.append(escape(ch))
@@ -130,7 +145,6 @@ def parse_markdown(markdown: str) -> str:
     while i < n:
         line = lines[i]
 
-        # Code block
         if line.startswith("```"):
             lang = line[3:].strip()
             i += 1

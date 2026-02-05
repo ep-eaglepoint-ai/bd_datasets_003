@@ -1,12 +1,16 @@
 diff --git a/repository_after/__init__.py b/repository_after/__init__.py
 new file mode 100644
 index 0000000..e69de29
+diff --git a/repository_after/__pycache__/parser.cpython-311.pyc b/repository_after/__pycache__/parser.cpython-311.pyc
+new file mode 100644
+index 0000000..c70c223
+Binary files /dev/null and b/repository_after/__pycache__/parser.cpython-311.pyc differ
 diff --git a/repository_after/parser.py b/repository_after/parser.py
 new file mode 100644
-index 0000000..1c395a3
+index 0000000..3081dba
 --- /dev/null
 +++ b/repository_after/parser.py
-@@ -0,0 +1,185 @@
+@@ -0,0 +1,199 @@
 +from html import escape
 +from textwrap import dedent
 +
@@ -47,7 +51,8 @@ index 0000000..1c395a3
 +                delim = text[i:i + 2]
 +                end = text.find(delim, i + 2)
 +                if end != -1:
-+                    result.append("<strong>" + escape(text[i + 2:end]) + "</strong>")
++                    inner = text[i + 2:end]
++                    result.append("<strong>" + parse_inline(inner) + "</strong>")
 +                    i = end + 2
 +                else:
 +                    result.append(escape(delim))
@@ -55,9 +60,23 @@ index 0000000..1c395a3
 +
 +            # Italic (* or _)
 +            elif ch in ("*", "_"):
-+                end = text.find(ch, i + 1)
++                if i+1 < L and text[i + 1] == ch:
++                    result.append(escape(ch * 2))
++                    i += 2
++                    continue
++
++                end = i + 1
++                while True:
++                    end = text.find(ch, end)
++                    if end == -1:
++                        break
++                    if not (end + 1 < L and text[end + 1] == ch):
++                        break
++                    end += 2
++
 +                if end != -1:
-+                    result.append("<em>" + escape(text[i + 1:end]) + "</em>")
++                    inner = text[i + 1:end]
++                    result.append("<em>" + parse_inline(inner) + "</em>")
 +                    i = end + 1
 +                else:
 +                    result.append(escape(ch))
@@ -139,7 +158,6 @@ index 0000000..1c395a3
 +    while i < n:
 +        line = lines[i]
 +
-+        # Code block
 +        if line.startswith("```"):
 +            lang = line[3:].strip()
 +            i += 1

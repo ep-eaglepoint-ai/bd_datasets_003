@@ -22,11 +22,14 @@ def test_empty_input():
 
 
 def test_headings():
-    md = "# H1\n## H2 ##\n### H3"
+    md = "# H1\n## H2 ##\n### H3 ###\n#### H4\n##### H5\n###### H6"
     html = parse_markdown(md)
     assert "<h1>H1</h1>" in html
     assert "<h2>H2</h2>" in html
     assert "<h3>H3</h3>" in html
+    assert "<h4>H4</h4>" in html
+    assert "<h5>H5</h5>" in html
+    assert "<h6>H6</h6>" in html
 
 
 def test_paragraph_merging():
@@ -80,18 +83,32 @@ def test_block_javascript_link():
     assert "bad" in html
 
 
-def test_unordered_list():
-    md = "- a\n- b\n- c"
+def test_unordered_list_with_nested():
+    md = "- a\n- b\n- c \n  - nested1\n  - nested2"
     html = parse_markdown(md)
+    print(html)
     assert "<ul>" in html
-    assert html.count("<li>") == 3
+    assert html.count("<li>") == 5
+    assert "<li>c </li><ul><li>nested1</li><li>nested2</li></ul>" in html
+    assert "<li>nested1</li>" in html
 
 
-def test_ordered_list():
-    md = "1. a\n2. b\n3. c"
+def test_ordered_list_with_nested():
+    md = "1. a\n2. b\n3. c \n   1. nested1\n   2. nested2"
     html = parse_markdown(md)
     assert "<ol>" in html
-    assert html.count("<li>") == 3
+    assert html.count("<li>") == 5
+    assert "<li>c </li><ol><li>nested1</li><li>nested2</li></ol>" in html
+    assert "<li>nested1</li>" in html
+
+def test_ordered_unordered_list():
+    md = "1. a\n2. b\n3. c \n   - nested1\n   - nested2"
+    html = parse_markdown(md)
+    assert "<ol>" in html
+    assert "<ul>" in html
+    assert html.count("<li>") == 5
+    assert "<li>c </li><ul><li>nested1</li><li>nested2</li></ul>" in html
+    assert "<li>nested1</li>" in html
 
 
 def test_horizontal_rule():
@@ -110,3 +127,15 @@ def test_large_input_no_crash():
     md = "word " * 50000
     html = parse_markdown(md)
     assert "<p>" in html
+
+def test_inline_formatting():
+    md = "*italic **bold inside italic** more italic* and **bold *italic inside bold* more bold**"
+    html = parse_markdown(md)
+    print("inline formatting html:", html)
+    assert "<em>italic <strong>bold inside italic</strong> more italic</em>" in html
+    assert "<strong>bold <em>italic inside bold</em> more bold</strong>" in html
+
+def test_inline_format_in_paragraph():
+    md = "This is a paragraph with **bold** and *italic* text."
+    html = parse_markdown(md)
+    assert "<p>This is a paragraph with <strong>bold</strong> and <em>italic</em> text.</p>" in html    
