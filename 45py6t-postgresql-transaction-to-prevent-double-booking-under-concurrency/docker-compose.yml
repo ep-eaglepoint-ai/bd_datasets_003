@@ -15,6 +15,7 @@ services:
 
   evaluation:
     build: .
+    entrypoint: []
     depends_on:
       db:
         condition: service_healthy
@@ -22,20 +23,12 @@ services:
       PGPASSWORD: testpass
     volumes:
       - .:/app
-    # Dynamically generate timestamped path (YYYY-MM-DD/HH-MM-SS) and create directory before running psql
-    # Note: Double $$ is required to prevent docker-compose from interpolating variables on the host
-    command: >
-      /bin/sh -c '
-        TIMESTAMP=$$(date +"%Y-%m-%d/%H-%M-%S") &&
-        REPORT_DIR="evaluation/$$TIMESTAMP" &&
-        REPORT_FILE="$$REPORT_DIR/report.json" &&
-        mkdir -p "$$REPORT_DIR" &&
-        echo "Generating report at $$REPORT_FILE" &&
-        psql -h db -U testuser -d testdb -v output_file="$$REPORT_FILE" -f evaluation/evaluation.sql
-      '
-  # Service for manual testing that discards output (device-independent)
+    command: python evaluation/evaluation.py
+
+  # Service for manual testing
   test:
     build: .
+    entrypoint: []
     depends_on:
       db:
         condition: service_healthy
@@ -43,10 +36,4 @@ services:
       PGPASSWORD: testpass
     volumes:
       - .:/app
-    command: >
-      /bin/sh -c '
-        TEMP_FILE=$$(mktemp) &&
-        echo "Running tests (output discarded)..." &&
-        psql -h db -U testuser -d testdb -v output_file="$$TEMP_FILE" -f evaluation/evaluation.sql &&
-        rm -f "$$TEMP_FILE"
-      '
+    command: python -m pytest tests -v
