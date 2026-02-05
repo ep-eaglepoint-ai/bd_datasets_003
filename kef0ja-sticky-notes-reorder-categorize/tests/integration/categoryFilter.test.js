@@ -1,46 +1,54 @@
 // tests/integration/categoryFilter.test.js
-const path = require('path');
+const path = require("path");
 
 // Use require.resolve with explicit paths
-const repoPath = process.env.REPO_PATH || 'repository_before';
+const repoPath = process.env.REPO_PATH || "repository_after";
 
 // First, clear any cached modules
-delete require.cache[require.resolve('react')];
-delete require.cache[require.resolve('@testing-library/react')];
-delete require.cache[require.resolve('@testing-library/jest-dom')];
+delete require.cache[require.resolve("react")];
+delete require.cache[require.resolve("@testing-library/react")];
+delete require.cache[require.resolve("@testing-library/jest-dom")];
 
 // Resolve from repository node_modules
-const React = require(require.resolve('react', {
-  paths: [
-    path.join(__dirname, '..', '..', repoPath, 'node_modules'),
-    path.join(__dirname, '..', '..', 'node_modules')
-  ]
-}));
+const React = require(
+  require.resolve("react", {
+    paths: [
+      path.join(__dirname, "..", "..", repoPath, "node_modules"),
+      path.join(__dirname, "..", "..", "node_modules"),
+    ],
+  }),
+);
 
-const testingLibraryPath = require.resolve('@testing-library/react', {
+const testingLibraryPath = require.resolve("@testing-library/react", {
   paths: [
-    path.join(__dirname, '..', '..', repoPath, 'node_modules'),
-    path.join(__dirname, '..', '..', 'node_modules')
-  ]
+    path.join(__dirname, "..", "..", repoPath, "node_modules"),
+    path.join(__dirname, "..", "..", "node_modules"),
+  ],
 });
-const { render, screen } = require(testingLibraryPath);
+const { render, screen, fireEvent, waitFor } = require(testingLibraryPath);
 
-require(require.resolve('@testing-library/jest-dom', {
-  paths: [
-    path.join(__dirname, '..', '..', repoPath, 'node_modules'),
-    path.join(__dirname, '..', '..', 'node_modules')
-  ]
-}));
+require(
+  require.resolve("@testing-library/jest-dom", {
+    paths: [
+      path.join(__dirname, "..", "..", repoPath, "node_modules"),
+      path.join(__dirname, "..", "..", "node_modules"),
+    ],
+  }),
+);
 
 const getComponents = () => {
-  const StickyNotesGrid = require(`../../${repoPath}/src/components/StickyNotesGrid`).default;
-  const StickyNotesProvider = require(`../../${repoPath}/src/context/StickyNotesContext`).default;
+  const StickyNotesGrid = require(
+    `../../${repoPath}/src/components/StickyNotesGrid`,
+  ).default;
+  const StickyNotesProvider = require(
+    `../../${repoPath}/src/context/StickyNotesContext`,
+  ).default;
   return { StickyNotesGrid, StickyNotesProvider };
 };
 
-describe('Category Filter Integration', () => {
+describe("Category Filter Integration", () => {
   let StickyNotesGrid, StickyNotesProvider;
-  
+
   beforeEach(() => {
     global.localStorage = {
       getItem: jest.fn(() => null),
@@ -48,7 +56,7 @@ describe('Category Filter Integration', () => {
       clear: jest.fn(),
       removeItem: jest.fn(),
     };
-    
+
     const components = getComponents();
     StickyNotesGrid = components.StickyNotesGrid;
     StickyNotesProvider = components.StickyNotesProvider;
@@ -56,14 +64,16 @@ describe('Category Filter Integration', () => {
 
   const renderApp = () => {
     return render(
-      React.createElement(StickyNotesProvider, null, 
-        React.createElement(StickyNotesGrid)
-      )
+      React.createElement(
+        StickyNotesProvider,
+        null,
+        React.createElement(StickyNotesGrid),
+      ),
     );
   };
 
-  test('renders without crashing', () => {
+  test("should display category filter buttons", () => {
     renderApp();
-    expect(screen.queryByText(/all/i) || document.body).toBeTruthy();
+    expect(screen.getByText(/all/i)).toBeInTheDocument();
   });
 });
