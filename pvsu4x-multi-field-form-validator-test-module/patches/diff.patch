@@ -1,0 +1,386 @@
+diff --git a/repository_after/test_form_validator.py b/repository_after/test_form_validator.py
+new file mode 100644
+index 0000000..1065d05
+--- /dev/null
++++ b/repository_after/test_form_validator.py
+@@ -0,0 +1,380 @@
++#!/usr/bin/env python3
++"""
++Unit test suite for form_validator.py
++Tests the validate_form function for username, email, password, 
++confirm_password, and country_code validation.
++"""
++
++import unittest
++from form_validator import validate_form
++
++
++class TestFormValidator(unittest.TestCase):
++    """Test suite for multi-field form validation"""
++    
++    # ========================================
++    # Valid Input Tests
++    # ========================================
++    
++    def test_valid_form_basic(self):
++        """Test with all valid basic inputs"""
++        self.assertTrue(validate_form("user123", "test@example.com", "Pasw0rd!"))
++    
++    def test_valid_form_with_confirm_password(self):
++        """Test valid form with matching confirm_password"""
++        self.assertTrue(validate_form("user123", "test@example.com", "Pasw0rd!", "Pasw0rd!"))
++    
++    def test_valid_form_with_country_code(self):
++        """Test valid form with country code"""
++        self.assertTrue(validate_form("user123", "test@example.com", "Pasw0rd!", None, "US"))
++    
++    def test_valid_form_all_fields(self):
++        """Test valid form with all optional fields"""
++        self.assertTrue(validate_form("user123", "test@example.com", "Pasw0rd!", "Pasw0rd!", "GB"))
++    
++    # ========================================
++    # Username Validation Tests
++    # ========================================
++    
++    def test_username_valid_alphanumeric(self):
++        """Test valid alphanumeric username"""
++        self.assertTrue(validate_form("abc123", "test@example.com", "Pasw0rd!"))
++    
++    def test_username_valid_letters_only(self):
++        """Test valid username with letters only"""
++        self.assertTrue(validate_form("username", "test@example.com", "Pasw0rd!"))
++    
++    def test_username_valid_unicode(self):
++        """Test valid username with Unicode characters"""
++        self.assertTrue(validate_form("user日本", "test@example.com", "Pasw0rd!"))
++    
++    def test_username_minimum_length(self):
++        """Test username at minimum length (3 chars)"""
++        self.assertTrue(validate_form("abc", "test@example.com", "Pasw0rd!"))
++    
++    def test_username_maximum_length(self):
++        """Test username at maximum length (15 chars)"""
++        self.assertTrue(validate_form("abcdefghijklmno", "test@example.com", "Pasw0rd!"))
++    
++    def test_username_too_short(self):
++        """Test username below minimum length"""
++        self.assertFalse(validate_form("ab", "test@example.com", "Pasw0rd!"))
++    
++    def test_username_too_long(self):
++        """Test username above maximum length"""
++        self.assertFalse(validate_form("abcdefghijklmnop", "test@example.com", "Pasw0rd!"))
++    
++    def test_username_empty_string(self):
++        """Test empty username"""
++        self.assertFalse(validate_form("", "test@example.com", "Pasw0rd!"))
++    
++    def test_username_with_spaces(self):
++        """Test username containing spaces"""
++        self.assertFalse(validate_form("user name", "test@example.com", "Pasw0rd!"))
++    
++    def test_username_purely_numeric(self):
++        """Test username that is purely numeric"""
++        self.assertFalse(validate_form("12345", "test@example.com", "Pasw0rd!"))
++    
++    def test_username_with_special_chars(self):
++        """Test username with special characters"""
++        self.assertFalse(validate_form("user@123", "test@example.com", "Pasw0rd!"))
++    
++    def test_username_only_punctuation(self):
++        """Test username with only punctuation"""
++        self.assertFalse(validate_form("!@#$%", "test@example.com", "Pasw0rd!"))
++    
++    def test_username_non_string(self):
++        """Test username as non-string type"""
++        self.assertFalse(validate_form(123, "test@example.com", "Pasw0rd!"))
++    
++    # ========================================
++    # Email Validation Tests
++    # ========================================
++    
++    def test_email_valid_standard(self):
++        """Test valid standard email"""
++        self.assertTrue(validate_form("user123", "user@example.com", "Pasw0rd!"))
++    
++    def test_email_valid_subdomain(self):
++        """Test valid email with subdomain"""
++        self.assertTrue(validate_form("user123", "user@mail.example.com", "Pasw0rd!"))
++    
++    def test_email_valid_with_dots(self):
++        """Test valid email with dots in local part"""
++        self.assertTrue(validate_form("user123", "first.last@example.com", "Pasw0rd!"))
++    
++    def test_email_valid_with_plus(self):
++        """Test valid email with plus sign"""
++        self.assertTrue(validate_form("user123", "user+tag@example.com", "Pasw0rd!"))
++    
++    def test_email_missing_at_symbol(self):
++        """Test email without @ symbol"""
++        self.assertFalse(validate_form("user123", "userexample.com", "Pasw0rd!"))
++    
++    def test_email_multiple_at_symbols(self):
++        """Test email with multiple @ symbols"""
++        self.assertFalse(validate_form("user123", "user@@example.com", "Pasw0rd!"))
++    
++    def test_email_missing_domain(self):
++        """Test email without domain part"""
++        self.assertFalse(validate_form("user123", "user@", "Pasw0rd!"))
++    
++    def test_email_missing_local_part(self):
++        """Test email without local part"""
++        self.assertFalse(validate_form("user123", "@example.com", "Pasw0rd!"))
++    
++    def test_email_no_dot_in_domain(self):
++        """Test email without dot in domain"""
++        self.assertFalse(validate_form("user123", "user@example", "Pasw0rd!"))
++    
++    def test_email_consecutive_dots(self):
++        """Test email with consecutive dots"""
++        self.assertFalse(validate_form("user123", "user..name@example.com", "Pasw0rd!"))
++    
++    def test_email_domain_starts_with_dot(self):
++        """Test email with domain starting with dot"""
++        self.assertFalse(validate_form("user123", "user@.example.com", "Pasw0rd!"))
++    
++    def test_email_domain_ends_with_dot(self):
++        """Test email with domain ending with dot"""
++        self.assertFalse(validate_form("user123", "user@example.com.", "Pasw0rd!"))
++    
++    def test_email_empty_string(self):
++        """Test empty email"""
++        self.assertFalse(validate_form("user123", "", "Pasw0rd!"))
++    
++    def test_email_non_string(self):
++        """Test email as non-string type"""
++        self.assertFalse(validate_form("user123", 12345, "Pasw0rd!"))
++    
++    def test_email_extremely_long(self):
++        """Test extremely long email"""
++        long_email = "a" * 100 + "@example.com"
++        self.assertTrue(validate_form("user123", long_email, "Pasw0rd!"))
++    
++    # ========================================
++    # Password Validation Tests
++    # ========================================
++    
++    def test_password_valid_strong(self):
++        """Test valid strong password"""
++        self.assertTrue(validate_form("user123", "test@example.com", "StrongP@s1"))
++    
++    def test_password_minimum_length(self):
++        """Test password at minimum length (8 chars)"""
++        self.assertTrue(validate_form("user123", "test@example.com", "Pasw0rd!"))
++    
++    def test_password_too_short(self):
++        """Test password below minimum length"""
++        self.assertFalse(validate_form("user123", "test@example.com", "Pas1!"))
++    
++    def test_password_no_uppercase(self):
++        """Test password without uppercase letters"""
++        self.assertFalse(validate_form("user123", "test@example.com", "pasword123!"))
++    
++    def test_password_no_lowercase(self):
++        """Test password without lowercase letters"""
++        self.assertFalse(validate_form("user123", "test@example.com", "PASSWORD123!"))
++    
++    def test_password_all_lowercase(self):
++        """Test password with all lowercase"""
++        self.assertFalse(validate_form("user123", "test@example.com", "pasword!"))
++    
++    def test_password_all_uppercase(self):
++        """Test password with all uppercase"""
++        self.assertFalse(validate_form("user123", "test@example.com", "PASSWORD!"))
++    
++    def test_password_no_numeric(self):
++        """Test password without numeric characters"""
++        self.assertFalse(validate_form("user123", "test@example.com", "Password!"))
++    
++    def test_password_no_special_char(self):
++        """Test password without special characters"""
++        self.assertFalse(validate_form("user123", "test@example.com", "Password123"))
++    
++    def test_password_with_space(self):
++        """Test password containing spaces"""
++        self.assertFalse(validate_form("user123", "test@example.com", "Pas 123!"))
++    
++    def test_password_empty_string(self):
++        """Test empty password"""
++        self.assertFalse(validate_form("user123", "test@example.com", ""))
++    
++    def test_password_non_string(self):
++        """Test password as non-string type"""
++        self.assertFalse(validate_form("user123", "test@example.com", 12345678))
++    
++    def test_password_repeated_sequence_single_char(self):
++        """Test password with repeated single character sequence (consecutive chars)"""
++        self.assertFalse(validate_form("user123", "test@example.com", "AAbc123!"))
++    
++    def test_password_repeated_sequence_double_char(self):
++        """Test password with repeated double character sequence"""
++        self.assertTrue(validate_form("user123", "test@example.com", "Abcd123!"))
++    
++    def test_password_long_numeric_sequence(self):
++        """Test password with very long consecutive numeric sequence"""
++        self.assertFalse(validate_form("user123", "test@example.com", "Pasw123456!"))
++    
++    def test_password_valid_with_five_digits(self):
++        """Test password with 5 consecutive digits (should pass)"""
++        self.assertTrue(validate_form("user123", "test@example.com", "Pasw12345!"))
++    
++    def test_password_unicode_characters(self):
++        """Test password with Unicode characters"""
++        self.assertTrue(validate_form("user123", "test@example.com", "Pasw日本1!"))
++    
++    def test_password_various_special_chars(self):
++        """Test password with various special characters"""
++        self.assertTrue(validate_form("user123", "test@example.com", "P@sw0rd#"))
++        self.assertTrue(validate_form("user123", "test@example.com", "P$sw0rd%"))
++        self.assertTrue(validate_form("user123", "test@example.com", "P&sw0rd*"))
++    
++    def test_password_extremely_long(self):
++        """Test extremely long password"""
++        # Create a long password without repeated sequences
++        long_password = "Abc1@" + "".join(chr(97 + (i % 26)) + str(i % 10) for i in range(50))
++        self.assertTrue(validate_form("user123", "test@example.com", long_password))
++    
++    # ========================================
++    # Confirm Password Validation Tests
++    # ========================================
++    
++    def test_confirm_password_matching(self):
++        """Test matching password and confirm_password"""
++        self.assertTrue(validate_form("user123", "test@example.com", "Pasw0rd!", "Pasw0rd!"))
++    
++    def test_confirm_password_not_matching(self):
++        """Test non-matching password and confirm_password"""
++        self.assertFalse(validate_form("user123", "test@example.com", "Pasw0rd!", "Pasw456!"))
++    
++    def test_confirm_password_case_sensitive(self):
++        """Test confirm_password is case-sensitive"""
++        self.assertFalse(validate_form("user123", "test@example.com", "Pasw0rd!", "pasw0rd!"))
++    
++    def test_confirm_password_none(self):
++        """Test with confirm_password as None (should be ignored)"""
++        self.assertTrue(validate_form("user123", "test@example.com", "Pasw0rd!", None))
++    
++    def test_confirm_password_empty_string(self):
++        """Test with confirm_password as empty string"""
++        self.assertFalse(validate_form("user123", "test@example.com", "Pasw0rd!", ""))
++    
++    # ========================================
++    # Country Code Validation Tests
++    # ========================================
++    
++    def test_country_code_valid_us(self):
++        """Test valid US country code"""
++        self.assertTrue(validate_form("user123", "test@example.com", "Pasw0rd!", None, "US"))
++    
++    def test_country_code_valid_gb(self):
++        """Test valid GB country code"""
++        self.assertTrue(validate_form("user123", "test@example.com", "Pasw0rd!", None, "GB"))
++    
++    def test_country_code_valid_lowercase(self):
++        """Test valid lowercase country code"""
++        self.assertTrue(validate_form("user123", "test@example.com", "Pasw0rd!", None, "fr"))
++    
++    def test_country_code_invalid_length_short(self):
++        """Test country code with length < 2"""
++        self.assertFalse(validate_form("user123", "test@example.com", "Pasw0rd!", None, "U"))
++    
++    def test_country_code_invalid_length_long(self):
++        """Test country code with length > 2"""
++        self.assertFalse(validate_form("user123", "test@example.com", "Pasw0rd!", None, "USA"))
++    
++    def test_country_code_with_numbers(self):
++        """Test country code containing numbers"""
++        self.assertFalse(validate_form("user123", "test@example.com", "Pasw0rd!", None, "U1"))
++    
++    def test_country_code_with_special_chars(self):
++        """Test country code with special characters"""
++        self.assertFalse(validate_form("user123", "test@example.com", "Pasw0rd!", None, "U!"))
++    
++    def test_country_code_none(self):
++        """Test with country_code as None (should be ignored)"""
++        self.assertTrue(validate_form("user123", "test@example.com", "Pasw0rd!", None, None))
++    
++    def test_country_code_empty_string(self):
++        """Test country code as empty string"""
++        self.assertFalse(validate_form("user123", "test@example.com", "Pasw0rd!", None, ""))
++    
++    def test_country_code_non_string(self):
++        """Test country code as non-string type"""
++        self.assertFalse(validate_form("user123", "test@example.com", "Pasw0rd!", None, 12))
++    
++    # ========================================
++    # Edge Cases and Combined Tests
++    # ========================================
++    
++    def test_all_fields_empty(self):
++        """Test with all fields empty"""
++        self.assertFalse(validate_form("", "", ""))
++    
++    def test_all_fields_invalid(self):
++        """Test with all fields invalid"""
++        self.assertFalse(validate_form("ab", "invalid-email", "weak"))
++    
++    def test_username_valid_email_invalid(self):
++        """Test valid username but invalid email"""
++        self.assertFalse(validate_form("user123", "invalid", "Pasw0rd!"))
++    
++    def test_username_email_valid_password_invalid(self):
++        """Test valid username and email but invalid password"""
++        self.assertFalse(validate_form("user123", "test@example.com", "weak"))
++    
++    def test_special_unicode_in_multiple_fields(self):
++        """Test Unicode characters in multiple fields"""
++        self.assertTrue(validate_form("user日本", "test@example.com", "Pasw日本1!"))
++    
++    def test_boundary_username_3_chars(self):
++        """Test username at exact minimum boundary"""
++        self.assertTrue(validate_form("abc", "test@example.com", "Pasw0rd!"))
++    
++    def test_boundary_username_15_chars(self):
++        """Test username at exact maximum boundary"""
++        self.assertTrue(validate_form("abcdefghijklmno", "test@example.com", "Pasw0rd!"))
++    
++    def test_boundary_password_8_chars(self):
++        """Test password at exact minimum boundary"""
++        self.assertTrue(validate_form("user123", "test@example.com", "Pasw0rd!"))
++    
++    def test_password_exactly_6_digits(self):
++        """Test password with exactly 6 consecutive digits (should fail)"""
++        self.assertFalse(validate_form("user123", "test@example.com", "Pasw123456!"))
++    
++    def test_password_5_digits_valid(self):
++        """Test password with 5 consecutive digits (should pass)"""
++        self.assertTrue(validate_form("user123", "test@example.com", "Pasw12345!"))
++    
++    def test_complex_valid_scenario(self):
++        """Test complex valid scenario with all fields"""
++        self.assertTrue(validate_form(
++            "validUser99",
++            "complex.email+tag@sub.example.com",
++            "C0mpl3x!Pasw",
++            "C0mpl3x!Pasw",
++            "DE"
++        ))
++    
++    def test_email_with_numbers_in_local(self):
++        """Test email with numbers in local part"""
++        self.assertTrue(validate_form("user123", "user123@example.com", "Pasw0rd!"))
++    
++    def test_email_with_hyphen_in_domain(self):
++        """Test email with hyphen in domain"""
++        self.assertTrue(validate_form("user123", "user@ex-ample.com", "Pasw0rd!"))
++    
++    def test_password_with_multiple_special_chars(self):
++        """Test password with multiple different special characters"""
++        self.assertTrue(validate_form("user123", "test@example.com", "P@sw!0rd#"))
++    
++    def test_username_mixed_case_alphanumeric(self):
++        """Test username with mixed case letters and numbers"""
++        self.assertTrue(validate_form("User123ABC", "test@example.com", "Pasw0rd!"))
++
++
++if __name__ == "__main__":
++    unittest.main()

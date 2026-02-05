@@ -1,0 +1,22 @@
+services:
+  app:
+    build: .
+    volumes:
+      - .:/app
+    command: tail -f /dev/null
+
+  tests:
+    build: .
+    volumes:
+      - .:/app
+    environment:
+      - TEST_REPO_DIR=repository_after
+    command: pytest -v -s tests/test_form_validator_meta.py
+
+  test-before:
+    build: .
+    volumes:
+      - .:/app
+    environment:
+      - TEST_REPO_DIR=repository_before
+    command: sh -c "pytest -v -s tests/test_form_validator_meta.py || true"
