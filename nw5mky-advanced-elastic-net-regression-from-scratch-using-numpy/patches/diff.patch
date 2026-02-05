@@ -1,0 +1,359 @@
+diff --git a/repository_after/__pycache__/elastic_net.cpython-311.pyc b/repository_after/__pycache__/elastic_net.cpython-311.pyc
+new file mode 100644
+index 0000000..c992b20
+Binary files /dev/null and b/repository_after/__pycache__/elastic_net.cpython-311.pyc differ
+diff --git a/repository_after/elastic_net.py b/repository_after/elastic_net.py
+new file mode 100644
+index 0000000..13fed66
+--- /dev/null
++++ b/repository_after/elastic_net.py
+@@ -0,0 +1,349 @@
++"""
++Advanced Elastic Net Linear Regression Implementation in NumPy.
++This module provides a production-style implementation of Elastic Net regression
++with support for MSE and Huber loss, mini-batch gradient descent, various learning
++rate schedules, early stopping, and automatic feature standardization.
++"""
++
++import numpy as np
++
++class ElasticNetRegression:
++    """
++    Elastic Net Linear Regression with advanced training features.
++    
++    Parameters
++    ----------
++    learning_rate : float
++        Initial learning rate for gradient descent.
++    n_epochs : int
++        Maximum number of training epochs.
++    batch_size : int
++        Size of mini-batches for gradient descent.
++    alpha : float, default=1.0
++        Regularization strength (L1 + L2).
++    l1_ratio : float, default=0.5
++        Mixing parameter for Elastic Net. 
++        0 <= l1_ratio <= 1. 
++        l1_ratio=1 is Lasso, l1_ratio=0 is Ridge.
++    loss : str, default='mse'
++        Loss function to use: 'mse' or 'huber'.
++    huber_delta : float, default=1.0
++        Delta parameter for Huber loss.
++    lr_schedule : str, default='none'
++        Learning rate schedule: 'none', 'step', 'cosine'.
++    val_split : float, default=0.2
++        Fraction of training data to use for validation.
++    patience : int, default=5
++        Number of epochs with no improvement to wait before early stopping.
++    tol : float, default=1e-4
++        Minimum change in validation loss to qualify as an improvement.
++    random_state : int, default=None
++        Seed for reproducibility.
++    """
++    
++    def __init__(self, learning_rate=0.01, n_epochs=1000, batch_size=32,
++                 alpha=0.1, l1_ratio=0.5, loss='mse', huber_delta=1.0,
++                 lr_schedule='none', val_split=0.2, patience=10, tol=1e-4,
++                 random_state=None, verbose=False):
++        self.learning_rate = learning_rate
++        self.n_epochs = n_epochs
++        self.batch_size = batch_size
++        self.alpha = alpha
++        self.l1_ratio = l1_ratio
++        self.loss = loss
++        self.huber_delta = huber_delta
++        self.lr_schedule = lr_schedule
++        self.val_split = val_split
++        self.patience = patience
++        self.tol = tol
++        self.random_state = random_state
++        self.verbose = verbose
++        
++        # Internal state
++        self.weights = None
++        self.bias = None
++        self.history = {'train_loss': [], 'val_loss': [], 'lr': []}
++        self.scaler_mean = None
++        self.scaler_std = None
++        self._rng = None
++
++    def _initialize_weights(self, n_features):
++        """Initialize weights and bias."""
++        # Using simple initialization
++        self.weights = self._rng.randn(n_features) * 0.01
++        self.bias = 0.0
++
++    def _standardize(self, X):
++        """Standardize features using stored mean and std."""
++        # Avoid division by zero
++        std = self.scaler_std.copy()
++        std[std == 0] = 1.0
++        return (X - self.scaler_mean) / std
++
++    def _compute_loss(self, y_true, y_pred, weights):
++        """
++        Compute total loss: data loss + regularization.
++        """
++        n_samples = len(y_true)
++        residuals = y_pred - y_true
++        
++        # 1. Data Loss
++        if self.loss == 'mse':
++            # MSE = (1/2N) * sum((y - y_pred)^2)
++            # Factor of 1/2 makes gradient cleaner
++            data_loss = np.mean(residuals ** 2) * 0.5
++        elif self.loss == 'huber':
++            # Huber loss
++            abs_error = np.abs(residuals)
++            quadratic = np.minimum(abs_error, self.huber_delta)
++            linear = abs_error - quadratic
++            losses = 0.5 * quadratic**2 + self.huber_delta * linear
++            data_loss = np.mean(losses)
++        else:
++            raise ValueError(f"Unknown loss type: {self.loss}")
++
++        # 2. Regularization (Alpha * (l1_ratio * L1 + (1 - l1_ratio) * 0.5 * L2))
++        # Note: Scikit-learn definition: alpha * l1_ratio * ||w||_1 + 0.5 * alpha * (1 - l1_ratio) * ||w||_2^2
++        l1_penalty = self.alpha * self.l1_ratio * np.sum(np.abs(weights))
++        l2_penalty = 0.5 * self.alpha * (1 - self.l1_ratio) * np.sum(weights ** 2)
++        
++        return data_loss + l1_penalty + l2_penalty
++
++    def _compute_gradients(self, X, y_true, y_pred, weights):
++        """Compute gradients for weights and bias."""
++        n_samples = X.shape[0]
++        residuals = y_pred - y_true
++        
++        # dL/d(y_pred)
++        if self.loss == 'mse':
++            # Gradient of 0.5 * MSE w.r.t prediction is (y_pred - y_true) / N
++            # But we sum over batch, so (resid / N) * X
++            # Here we just compute the derivative term for data loss first
++            grad_output = residuals / n_samples
++        elif self.loss == 'huber':
++            # Gradient of Huber
++            grad_output = np.where(np.abs(residuals) <= self.huber_delta,
++                                   residuals,
++                                   self.huber_delta * np.sign(residuals)) / n_samples
++        
++        # Gradients w.r.t weights and bias
++        dw_data = X.T.dot(grad_output)
++        db_data = np.sum(grad_output)
++        
++        # Regularization gradients (Subgradient for L1)
++        # L1 grad: alpha * l1_ratio * sign(w)
++        # L2 grad: alpha * (1 - l1_ratio) * w
++        l1_grad = self.alpha * self.l1_ratio * np.sign(weights)
++        l2_grad = self.alpha * (1 - self.l1_ratio) * weights
++        
++        dw = dw_data + l1_grad + l2_grad
++        db = db_data # Intercept is NOT regularized
++        
++        return dw, db
++
++    def _get_learning_rate(self, epoch):
++        """Compute learning rate based on schedule."""
++        if self.lr_schedule == 'none':
++            return self.learning_rate
++        elif self.lr_schedule == 'step':
++            # Decay by 0.5 every 20% of epochs (example logic)
++            drop_every = max(1, self.n_epochs // 5)
++            factor = 0.5 ** (epoch // drop_every)
++            return self.learning_rate * factor
++        elif self.lr_schedule == 'cosine':
++            # Cosine annealing
++            # lr = 0.5 * lr_max * (1 + cos(pi * epoch / max_epochs))
++            return 0.5 * self.learning_rate * (1 + np.cos(np.pi * epoch / self.n_epochs))
++        else:
++            return self.learning_rate
++
++    def fit(self, X, y):
++        """
++        Fit the model to the data.
++        
++        Parameters
++        ----------
++        X : array-like of shape (n_samples, n_features)
++            Training data.
++        y : array-like of shape (n_samples,)
++            Target values.
++        """
++        # Set seed for reproducibility
++        self._rng = np.random.RandomState(self.random_state)
++        
++        X = np.array(X)
++        y = np.array(y)
++        
++        # Standardize features (fit on whole X provided to fit, then split)
++        # Requirement says: "Feature standardization must be applied using statistics learned from training data only."
++        # This implies we should split FIRST, then compute stats on Train, apply to Val.
++        
++        # Shuffle and Split
++        indices = np.arange(len(X))
++        self._rng.shuffle(indices)
++        
++        split_idx = int(len(X) * (1 - self.val_split))
++        train_idx, val_idx = indices[:split_idx], indices[split_idx:]
++        
++        X_train_raw, y_train = X[train_idx], y[train_idx]
++        X_val_raw, y_val = X[val_idx], y[val_idx]
++        
++        # Compute scaling statistics on training set only
++        self.scaler_mean = np.mean(X_train_raw, axis=0)
++        self.scaler_std = np.std(X_train_raw, axis=0)
++        
++        # Apply standardization
++        X_train = self._standardize(X_train_raw)
++        X_val = self._standardize(X_val_raw)
++        
++        n_samples, n_features = X_train.shape
++        self._initialize_weights(n_features)
++        
++        best_val_loss = float('inf')
++        wait = 0
++        best_weights = None
++        best_bias = None
++        
++        # Training Loop
++        for epoch in range(self.n_epochs):
++            # Mini-batch gradient descent
++            current_lr = self._get_learning_rate(epoch)
++            
++            # Shuffle training data for each epoch
++            perm = self._rng.permutation(n_samples)
++            X_train = X_train[perm]
++            y_train = y_train[perm]
++            
++            epoch_loss = 0.0
++            n_batches = 0
++            
++            for i in range(0, n_samples, self.batch_size):
++                X_batch = X_train[i:i + self.batch_size]
++                y_batch = y_train[i:i + self.batch_size]
++                
++                # Forward pass
++                y_pred = X_batch.dot(self.weights) + self.bias
++                
++                # Compute Gradients
++                dw, db = self._compute_gradients(X_batch, y_batch, y_pred, self.weights)
++                
++                # Update parameters
++                self.weights -= current_lr * dw
++                self.bias -= current_lr * db
++            
++            # Record Validation Loss
++            y_val_pred = X_val.dot(self.weights) + self.bias
++            val_loss = self._compute_loss(y_val, y_val_pred, self.weights)
++            
++            # Record Training Loss (on full set for stats)
++            y_train_full_pred = X_train.dot(self.weights) + self.bias
++            train_loss = self._compute_loss(y_train, y_train_full_pred, self.weights)
++            
++            self.history['train_loss'].append(train_loss)
++            self.history['val_loss'].append(val_loss)
++            self.history['lr'].append(current_lr)
++            
++            # Early Stopping Check
++            if val_loss < best_val_loss - self.tol:
++                best_val_loss = val_loss
++                wait = 0
++                best_weights = self.weights.copy()
++                best_bias = self.bias
++            else:
++                wait += 1
++                
++            if wait >= self.patience:
++                if self.verbose:
++                    print(f"Early stopping at epoch {epoch}")
++                break
++        
++        # Restore best weights
++        if best_weights is not None:
++            self.weights = best_weights
++            self.bias = best_bias
++            
++        return self
++
++    def predict(self, X):
++        """
++        Predict targets for given data.
++        
++        Parameters
++        ----------
++        X : array-like
++            Input features.
++        
++        Returns
++        -------
++        y_pred : array-like
++        """
++        X = np.array(X)
++        if self.scaler_mean is None:
++            raise RuntimeError("Model must be fitted before prediction.")
++            
++        # Standardize using learned stats
++        X_scaled = self._standardize(X)
++        return X_scaled.dot(self.weights) + self.bias
++
++    def score(self, X, y):
++        """Compute R^2 score."""
++        y_pred = self.predict(X)
++        u = ((y - y_pred) ** 2).sum()
++        v = ((y - y.mean()) ** 2).sum()
++        return 1 - u/v
++
++# Demonstration
++if __name__ == "__main__":
++    print("=== Elastic Net Implementation Demonstration ===")
++    
++    # 1. Generate Correlated Synthetic Data
++    np.random.seed(42)
++    n_samples = 500
++    n_features = 20
++    
++    # Create covariance matrix for correlation
++    cov = np.zeros((n_features, n_features))
++    for i in range(n_features):
++        for j in range(n_features):
++            cov[i, j] = 0.8 ** abs(i - j)
++            
++    X = np.random.multivariate_normal(mean=np.zeros(n_features), cov=cov, size=n_samples)
++    
++    # True weights (sparse)
++    true_weights = np.zeros(n_features)
++    true_weights[:5] = [3.0, -1.5, 2.0, 0, 0] # First few are active
++    true_weights[10] = 1.0 
++    
++    noise = np.random.randn(n_samples) * 1.0
++    y = X.dot(true_weights) + 2.5 + noise # Intercept is 2.5
++    
++    print(f"Data generated: {n_samples} samples, {n_features} features")
++    print("True active weights indices: [0, 1, 2, 10]")
++    
++    # 2. Train Model
++    print("\nTraining ElasticNetRegression...")
++    model = ElasticNetRegression(
++        learning_rate=0.05,
++        n_epochs=500,
++        batch_size=32,
++        alpha=0.1,
++        l1_ratio=0.5,
++        loss='mse',
++        lr_schedule='cosine',
++        patience=20,
++        random_state=42
++    )
++    
++    model.fit(X, y)
++    
++    # 3. Results
++    print(f"\nTraining completed in {len(model.history['train_loss'])} epochs")
++    print(f"Final Validation Loss: {model.history['val_loss'][-1]:.4f}")
++    
++    print("\nLearned Weights (First 5 and index 10):")
++    print(f"Indices 0-4: {model.weights[:5]}")
++    print(f"Index 10: {model.weights[10]:.4f}")
++    print(f"Learned Bias: {model.bias:.4f} (True: 2.5)")
++    
++    r2 = model.score(X, y)
++    print(f"\nR² Score on full dataset: {r2:.4f}")
