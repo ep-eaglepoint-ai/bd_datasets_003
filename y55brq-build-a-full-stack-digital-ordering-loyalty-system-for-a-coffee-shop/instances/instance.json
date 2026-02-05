@@ -1,0 +1,15 @@
+{
+            "instance_id": "Y55BRQ",
+            "problem_statement": "A small but growing coffee shop currently takes orders manually, which causes long queues during peak hours, order mistakes, and no reliable way to track repeat customers or reward loyalty.
+
+The business needs a production-ready, full-stack web application that enables customers to place digital orders and allows staff to manage those orders efficiently during busy periods. The system must also support a customer loyalty program that is correct, auditable, and safe under concurrent usage.
+
+The solution must be reliable under peak load (≈40 concurrent users), prevent duplicate or inconsistent orders, and maintain correct product availability and loyalty balances even when requests occur at nearly the same time or when network interruptions happen.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/y55brq-build-a-full-stack-digital-ordering-loyalty-system-for-a-coffee-shop",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
