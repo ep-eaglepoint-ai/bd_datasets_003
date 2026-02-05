@@ -1,0 +1,11 @@
+{
+            "instance_id": "VBRZ4P",
+            "problem_statement": "Optimize the performance of an existing Python user activity analyzer by identifying and improving inefficient code paths. Focus on reducing redundant iterations and unnecessary data structures in frequently used methods, while preserving the analyzer’s behavior and correctness for typical workloads.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/vbrz4p-user-activity-analyzer-performance-optimization",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
