@@ -1,0 +1,12 @@
+{
+            "instance_id": "UDTEMU",
+            "problem_statement": "Detecting patterns in streams requires maintaining state. The "Trap" is assuming a user has only one active state at a time. In reality, a user might trigger the start of the pattern multiple times before completing it. If the model uses a single variable currentState = "WAITING_FOR_RESET", a second LOGIN_FAILED event might overwrite the timestamp of the first one, or be ignored, potentially missing a valid fraud signal or allowing a timeout to be bypassed. The solution requires a list of active state pointers per user (e.g., map[UserID][]*PartialMatch). Additionally, "Zombie States" (partial matches that timed out hours ago) must be removed to avoid O(N) memory growth.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/udtemu-temporal-sequence-detection-with-overlapping-windows",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
