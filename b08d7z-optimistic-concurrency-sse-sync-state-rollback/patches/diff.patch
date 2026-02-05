@@ -13,13 +13,13 @@ index 0000000..69b6778
 \ No newline at end of file
 diff --git a/repository_after/backend/main.go b/repository_after/backend/main.go
 new file mode 100644
-index 0000000..eaca575
+index 0000000..04f203f
 --- /dev/null
 +++ b/repository_after/backend/main.go
-@@ -0,0 +1,193 @@
+@@ -0,0 +1,207 @@
 +// High-Concurrency Seat Reservation Backend
 +// Principal Full Stack Engineer Implementation
-+// 
++//
 +// This module implements a raw HTTP server for seat reservations with:
 +// - Thread-safe seat management using sync.Mutex
 +// - Real-time updates via Server-Sent Events
@@ -37,6 +37,8 @@ index 0000000..eaca575
 +	"fmt"
 +	"log"
 +	"net/http"
++	"os"
++	"strconv"
 +	"sync"
 +)
 +
@@ -45,10 +47,10 @@ index 0000000..eaca575
 +	// REQ-2: sync.Mutex protects the availableSeats counter from race conditions
 +	availableSeats int        // Current number of available seats
 +	seatMutex      sync.Mutex // Protects availableSeats during concurrent access
-+	
++
 +	// Client management for Server-Sent Events broadcasting
-+	sseClients      map[chan string]bool // Active SSE client connections
-+	clientsMutex    sync.Mutex           // Protects sseClients map during concurrent access
++	sseClients   map[chan string]bool // Active SSE client connections
++	clientsMutex sync.Mutex           // Protects sseClients map during concurrent access
 +}
 +
 +// BookingResponse represents the JSON response for booking requests
@@ -84,10 +86,10 @@ index 0000000..eaca575
 +// REQ-4: broadcastSeatUpdate sends seat count updates to all connected SSE clients
 +func (s *SeatReservationServer) broadcastSeatUpdate(seatCount int) {
 +	message := fmt.Sprintf("%d", seatCount)
-+	
++
 +	s.clientsMutex.Lock()
 +	defer s.clientsMutex.Unlock()
-+	
++
 +	// Send update to all connected clients
 +	for clientChannel := range s.sseClients {
 +		select {
@@ -119,7 +121,7 @@ index 0000000..eaca575
 +	s.seatMutex.Lock()
 +	currentSeats := s.availableSeats
 +	s.seatMutex.Unlock()
-+	
++
 +	fmt.Fprintf(w, "data: %d\n\n", currentSeats)
 +	w.(http.Flusher).Flush()
 +
@@ -152,7 +154,7 @@ index 0000000..eaca575
 +
 +	// REQ-2: Critical section - mutex protects seat decrement operation
 +	s.seatMutex.Lock()
-+	
++
 +	if s.availableSeats > 0 {
 +		// Seat available - perform atomic decrement
 +		s.availableSeats--
@@ -169,11 +171,11 @@ index 0000000..eaca575
 +		}
 +		w.WriteHeader(http.StatusOK)
 +		json.NewEncoder(w).Encode(response)
-+		
++
 +	} else {
 +		// No seats available - return conflict
 +		s.seatMutex.Unlock()
-+		
++
 +		response := BookingResponse{
 +			Success: false,
 +			Error:   "No seats available",
@@ -193,24 +195,35 @@ index 0000000..eaca575
 +
 +// REQ-1: main function uses only Go standard library
 +func main() {
-+	// Initialize server with 10 available seats
-+	server := NewSeatReservationServer(10)
++	initialSeats := 10
++	if raw := os.Getenv("INITIAL_SEATS"); raw != "" {
++		if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 0 {
++			initialSeats = parsed
++		}
++	}
++
++	// Initialize server with configurable available seats (default 10)
++	server := NewSeatReservationServer(initialSeats)
 +
 +	// Register HTTP handlers
 +	http.HandleFunc("/events", server.handleSSEEvents)
 +	http.HandleFunc("/book", server.handleSeatBooking)
 +	http.HandleFunc("/", server.handleCORSPreflight)
 +
++	port := os.Getenv("PORT")
++	if port == "" {
++		port = "8080"
++	}
++
 +	// Start HTTP server
-+	log.Println("🚀 High-Concurrency Seat Reservation Server starting on :8080")
++	log.Printf("🚀 High-Concurrency Seat Reservation Server starting on :%s", port)
 +	log.Println("📡 SSE Endpoint: GET /events")
 +	log.Println("🎫 Booking Endpoint: POST /book")
-+	
-+	if err := http.ListenAndServe(":8080", nil); err != nil {
++
++	if err := http.ListenAndServe(":"+port, nil); err != nil {
 +		log.Fatal("❌ Server failed to start:", err)
 +	}
 +}
-\ No newline at end of file
 diff --git a/repository_after/frontend/.gitignore b/repository_after/frontend/.gitignore
 new file mode 100644
 index 0000000..a547bf3

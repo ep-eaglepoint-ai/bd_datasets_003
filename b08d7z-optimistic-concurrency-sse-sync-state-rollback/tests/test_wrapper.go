@@ -191,3 +191,4 @@ func runFrontendTests() bool {
 	fmt.Print(outputStr)
 	return err == nil
 }
+

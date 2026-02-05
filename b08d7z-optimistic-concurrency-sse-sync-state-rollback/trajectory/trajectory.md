@@ -36,8 +36,13 @@ I implemented a high-concurrency seat reservation system with optimistic UI and 
 ### 12. Infrastructure and Tooling
 - **Docker Environment**: Single container with Go and Node.js for unified development and testing environment, working directory set to /app with proper REPO_PATH environment variable handling.
 - **Unified Test Runner**: test_wrapper.go orchestrates both backend Go tests (go test) and frontend Jest tests (npm test), providing pytest-like output format with unified pass/fail reporting and proper exit codes.
+<<<<<<< HEAD
 - **Backend Testing**: Go test suite in `tests/backend/main_test.go` that launches and validates the real backend implementation from `repository_after/backend/main.go`, including concurrency and SSE behavior.
 - **Frontend Testing**: Node-based frontend requirement suite in `tests/ui/run_tests.js` that validates the real hook implementation in `repository_after/frontend/src/hooks/useSeatBooking.ts` and checks requirement-specific optimistic/SSE/rollback logic markers used by the evaluator mapping.
+=======
+- **Backend Testing**: Go test suite in `repository_after/backend/main_test.go` that validates the real backend handlers and concurrency behavior with `httptest` and goroutines.
+- **Frontend Testing**: Jest + Testing Library suite in `tests/ui/useSeatBooking.test.tsx` that imports and tests the real hook from `repository_after/frontend/src/hooks/useSeatBooking.ts` with mocked `fetch` and `EventSource`.
+>>>>>>> b08d7z-optimistic-concurrency-sse-sync-state-rollback
 - **Evaluation System**: evaluation.go runs the unified test suite, parses results from both backend and frontend, maps test outcomes to specific requirements, and generates detailed JSON reports with timestamps and environment information.
 - **Development Workflow**: Docker Compose with single-command execution for tests (`docker compose run --build --rm -e REPO_PATH=repository_after app go run tests/runner.go`) and evaluation (`docker compose run --build --rm app go run ./evaluation/evaluation.go`).
 - **Report Generation**: Automated report creation in evaluation/YYYY-MM-DD/HH-MM-SS/report.json with comprehensive test results, requirement mapping, and success/failure analysis for AI training dataset validation.
