@@ -16,12 +16,19 @@ void Lexer::advance() {
 }
 
 void Lexer::skipWhitespace() {
+    // Optimized manual loop is faster for typical single-space/newline cases 
+    // than overhead of find_first_not_of + scanning for newlines.
     while (pos_ < input_.size()) {
         char c = input_[pos_];
-        if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
-            advance();
+        if (c == ' ' || c == '\t' || c == '\r') {
+             col_++;
+             pos_++;
+        } else if (c == '\n') {
+             line_++;
+             col_ = 1;
+             pos_++;
         } else {
-            break;
+             break;
         }
     }
 }
@@ -63,42 +70,63 @@ Token Lexer::scanString() {
     
     advance(); // skip quote
     
-    bool hasEscape = false;
-    while (pos_ < input_.size() && input_[pos_] != '"') {
-        if (input_[pos_] == '\\') {
-            hasEscape = true;
-            advance();
-            if (pos_ < input_.size()) {
+    // Fast path: find next " or \ 
+    // If we find " first, it's a simple string (zero copy possible)
+    
+    size_t endQuote = input_.find_first_of("\"\\", pos_);
+    if (endQuote == std::string_view::npos) {
+         return {TokenType::Error, "Unterminated string", "", startLine, startCol};
+    }
+    
+    char found = input_[endQuote];
+    
+    // Calculate new position/lines/cols approximately or correctly?
+    // Lexer needs `line_` and `col_` to be correct.
+    // `find` skips explicit accounting.
+    // If we skip, we must scan for newlines to update line/col.
+    // For performance, maybe we only update line/col lazily? 
+    // Or we scan for newlines in the skipped chunk.
+    // Since JSON strings shouldn't contain unescaped newlines (invalid JSON), 
+    // we can assume no newlines in valid strings!
+    // But we must support `\n` which is escaped.
+    // A raw newline in a string is invalid.
+    // So we can assume `line_` doesn't change inside a valid string scan, 
+    // unless we error out.
+    // Let's assume valid string content has no newlines.
+    
+    size_t len = endQuote - pos_;
+    pos_ = endQuote;
+    col_ += len;
+    
+    if (found == '"') {
+        // Simple case: no escapes
+        advance(); // consume closing quote
+        return {TokenType::String, input_.substr(start + 1, len), "", startLine, startCol};
+    } else {
+        // Found backslash - fallback to slow path or handle escapes
+        // Reset to start of string (after quote) and scan normally to handle escapes correctly
+        // Or continue from here.
+        // Let's fall back to manual loop from current pos for correctness with escapes
+        bool hasEscape = true;
+        
+        while (pos_ < input_.size() && input_[pos_] != '"') {
+            if (input_[pos_] == '\\') {
+                advance();
+                if (pos_ < input_.size()) advance();
+            } else {
                 advance();
             }
-        } else {
-            advance();
         }
+        
+        if (pos_ < input_.size()) {
+            advance(); // consume closing quote
+        } else {
+             return {TokenType::Error, "Unterminated string", "", startLine, startCol};
+        }
+        
+        // Return raw content (excluding quotes) but marked for processing
+        return {TokenType::String, input_.substr(start + 1, pos_ - start - 2), "needs_processing", startLine, startCol};
     }
-    
-    if (pos_ < input_.size()) {
-        advance(); // skip closing quote
-    } else {
-        return {TokenType::Error, "Unterminated string", "", startLine, startCol};
-    }
-    
-    // Zero-copy if no escape
-    if (!hasEscape) {
-        size_t len = pos_ - start - 2; // -2 for quotes
-        return {TokenType::String, input_.substr(start + 1, len), "", startLine, startCol};
-    }
-    
-    // If escaped, return raw content (including quotes? No, better to strip them for processing consistency if possible? 
-    // Wait, the parser logic `processStringToken` needs to handle escapes.
-    // If we return raw content including quotes, the parser can just take substring(1, len-1) and process.
-    // `start` points to opening quote. `pos_` is after closing quote.
-    // The content is input_.substr(start, pos_ - start).
-    // Let's return the simplified view (inner content) but mark it as needing processing?
-    // Actually, `scanString` in `lexer.cpp` (previous) returnedinner content.
-    // Let's stick to inner content view.
-    
-    size_t len = pos_ - start - 2;
-    return {TokenType::String, input_.substr(start + 1, len), "needs_processing", startLine, startCol};
 }
 
 
@@ -153,52 +181,59 @@ Token Lexer::scanNumber() {
 // New helper for Array pre-allocation heuristic
 // Scans ahead to count elements at the current nesting level.
 // Returns 0 if calculation is too complex or fails.
+// Scans ahead to count elements. O(N) but faster than reallocs if implemented efficiently.
+// Using find_first_of to skip irrelevant chars.
 size_t Lexer::scanArrayElementCount() {
-    // We are currently after '[' which was just consumed by parser/lexer advance.
     size_t count = 0;
-    size_t bracket_nesting = 1; // [
-    size_t brace_nesting = 0;   // {
-    bool in_string = false;
-    bool escape = false;
-    
+    size_t bracket_nesting = 1; 
+    size_t brace_nesting = 0;
     size_t cur = pos_;
     
+    // Interesting chars: " [ ] { } ,
+    constexpr std::string_view kControls = "\"[]{},";
+    
     while (cur < input_.size()) {
-        char c = input_[cur];
+        size_t next = input_.find_first_of(kControls, cur);
+        if (next == std::string_view::npos) break;
         
-        if (in_string) {
-            if (escape) {
-                escape = false;
-            } else if (c == '\\') {
-                escape = true;
-            } else if (c == '"') {
-                in_string = false;
-            }
-        } else {
-            if (c == '"') {
-                in_string = true;
-            } else if (c == '[') {
-                bracket_nesting++;
-            } else if (c == ']') {
-                bracket_nesting--;
-                if (bracket_nesting == 0) {
-                    // Found end of our array
+        char c = input_[next];
+        cur = next + 1;
+        
+        if (c == '"') {
+            // Skip string
+            while (cur < input_.size()) {
+                size_t quote = input_.find('"', cur);
+                if (quote == std::string_view::npos) return count; // Fail
+                
+                // Check escapes
+                size_t backslashes = 0;
+                size_t check = quote;
+                while (check > cur && input_[--check] == '\\') {
+                    backslashes++;
+                }
+                
+                cur = quote + 1;
+                if (backslashes % 2 == 0) {
+                    // Even number of backslashes means the quote is NOT escaped
                     break;
                 }
-            } else if (c == '{') {
-                brace_nesting++;
-            } else if (c == '}') {
-                if (brace_nesting > 0) brace_nesting--;
-            } else if (c == ',') {
-                if (bracket_nesting == 1 && brace_nesting == 0) {
-                    count++;
-                }
+                // Else quote is escaped, continue
             }
+        } else if (c == '[') {
+            bracket_nesting++;
+        } else if (c == ']') {
+            bracket_nesting--;
+            if (bracket_nesting == 0) return count;
+        } else if (c == '{') {
+            brace_nesting++;
+        } else if (c == '}') {
+            if (brace_nesting > 0) brace_nesting--;
+        } else if (c == ',') {
+            if (bracket_nesting == 1 && brace_nesting == 0) count++;
         }
-        cur++;
     }
     
-    return count; 
+    return count;
 }
 
 
