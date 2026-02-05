@@ -1,0 +1,12 @@
+{
+            "instance_id": "95AHQY",
+            "problem_statement": "The payment-creation path has little or no automated test coverage, or existing tests are flaky, environment-dependent, or miss important edge cases. Failures in this path are only caught manually or in production. The business needs a repeatable test suite that runs in CI, covers the main and edge scenarios for this path, and does not change production behavior or introduce new production dependencies—so that regressions are caught before release and changes can be made with confidence.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/95ahqy-code-testing-reliable-coverage-for-a-critical-path",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
