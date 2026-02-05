@@ -42,6 +42,22 @@ class TestInitialization:
     def test_invalid_merge_non_integer(self):
         with pytest.raises(TypeError, match="must be integers"):
             ByteBPE([("a", "b")])
+    
+    def test_duplicate_merge_rules(self):
+        with pytest.raises(ValueError, match="Duplicate merge rule"):
+            ByteBPE([(1, 2), (3, 4), (1, 2)])
+    
+    def test_invalid_merge_element_negative(self):
+        with pytest.raises(ValueError, match="Invalid merge rule element"):
+            ByteBPE([(-1, 2)])
+    
+    def test_invalid_merge_element_out_of_range(self):
+        with pytest.raises(ValueError, match="Invalid merge rule element"):
+            ByteBPE([(1, 2), (256, 300)])
+    
+    def test_valid_merge_with_previous_token(self):
+        tokenizer = ByteBPE([(1, 2), (256, 3)])
+        assert tokenizer.vocab_size == 258
 
 
 class TestEncoding:
@@ -74,8 +90,7 @@ class TestEncoding:
     
     def test_merge_priority_overlap(self):
         tokenizer = ByteBPE([(1, 2), (2, 3)])
-        result = tokenizer._apply_merge_exhaustive([1, 2, 3], (1, 2), 256)
-        result = tokenizer._apply_merge_exhaustive(result, (2, 3), 257)
+        result = tokenizer.encode(bytes([1, 2, 3]).decode('latin-1'))
         expected = [256, 3]
         assert result == expected
     
@@ -148,6 +163,12 @@ class TestDecoding:
         tokenizer = ByteBPE([(1, 2)])
         with pytest.raises(ValueError, match="exceeds vocabulary size"):
             tokenizer.decode([300])
+    
+    def test_cycle_detection_in_decomposition(self):
+        tokenizer = ByteBPE([(1, 2)])
+        tokenizer.merge_map[256] = (256, 2)
+        with pytest.raises(ValueError, match="Cycle detected"):
+            tokenizer.decode([256])
 
 
 class TestRoundTrip:
@@ -225,9 +246,7 @@ class TestAdversarial:
     
     def test_greedy_vs_priority(self):
         tokenizer = ByteBPE([(1, 2), (2, 3)])
-        tokens = [1, 2, 3]
-        tokens = tokenizer._apply_merge_exhaustive(tokens, (1, 2), 256)
-        tokens = tokenizer._apply_merge_exhaustive(tokens, (2, 3), 257)
+        tokens = tokenizer.encode(bytes([1, 2, 3]).decode('latin-1'))
         assert tokens == [256, 3]
     
     def test_incomplete_merging(self):

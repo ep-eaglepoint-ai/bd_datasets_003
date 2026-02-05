@@ -60,7 +60,7 @@ Critical requirements:
 
 ## Validation
 
-Pass All tests:
+Pass all tests:
 - Initialization and validation
 - UTF-8 byte processing
 - Priority-ordered merging
