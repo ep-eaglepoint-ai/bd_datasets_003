@@ -1,0 +1,14 @@
+{
+            "instance_id": "XESMGO",
+            "problem_statement": "You are building a high-throughput log aggregation service in Go that ingests log entries concurrently from many sources, aggregates them by severity (INFO, WARN, ERROR), and periodically flushes them to a storage function.
+The system must operate under sustained high load with strict latency, scalability, and correctness guarantees. Functional correctness alone is insufficient — the implementation must ensure flush isolation, avoid global lock contention, preserve per-source ordering across flushes, and scale independently per severity bucket.
+The design must remain safe under high contention and long-running execution, with predictable performance characteristics and no hidden blocking paths during ingestion or flushing.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/xesmgo-high-throughput-concurrent-log-aggregator-with-strict-flush-isolation-and-ordering-guarantees",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
