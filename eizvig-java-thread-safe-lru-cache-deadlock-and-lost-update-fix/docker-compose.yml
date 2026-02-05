@@ -1,9 +1,32 @@
+version: '3'
 
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
-  app:
+services:
+  test-before:
+    image: lru-cache-test-image
     build: .
-    command: pytest -q tests
+    command: mvn test -B
+    working_dir: /app/repository_before
     volumes:
       - .:/app
+    # Expected to fail, so we might want to allow failure or handle it in the wrapper.
+    # But user requested "should build but fail tests and exit with 0".
+    # Docker exit code reflects command exit code. If mvn fails, docker exits with non-zero.
+    # To "exit with 0" despite failure, we can execute: mvn test || true
+    entrypoint: [ "/bin/sh", "-c", "mvn test -B || echo 'Tests failed as expected'" ]
+
+  test-after:
+    image: lru-cache-test-image
+    command: mvn test -B
+    working_dir: /app/repository_after
+    volumes:
+      - .:/app
+    depends_on:
+      - test-before
+
+  evaluation:
+    image: lru-cache-test-image
+    command: python3 evaluation/evaluation.py
+    volumes:
+      - .:/app
+    depends_on:
+      - test-before

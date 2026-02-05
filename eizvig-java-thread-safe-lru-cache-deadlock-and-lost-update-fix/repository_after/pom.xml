@@ -5,12 +5,12 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.example</groupId>
-    <artifactId>lru-cache</artifactId>
+    <artifactId>lru-cache-fixed</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>
 
     <name>Thread-Safe LRU Cache</name>
-    <description>LRU Cache implementation for high-traffic applications</description>
+    <description>LRU Cache implementation - Fixed</description>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
@@ -28,7 +28,7 @@
     </dependencies>
 
     <build>
-        <!-- Include the external tests directory so we can verify the buggy code fails the tests -->
+        <!-- Include the external tests directory -->
         <testSourceDirectory>${project.basedir}/../tests</testSourceDirectory>
         <plugins>
             <plugin>

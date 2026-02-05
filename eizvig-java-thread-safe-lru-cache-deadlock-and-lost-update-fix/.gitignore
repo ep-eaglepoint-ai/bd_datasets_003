@@ -10,3 +10,15 @@ node_modules/
 # OS
 .DS_Store
 evaluation/*.json
+evaluation/reports/
+
+# Java / Maven
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.log
+.idea/
+*.iml
+.vscode/
