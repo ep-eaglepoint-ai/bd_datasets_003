@@ -1,11 +1,14 @@
 # F6ESGE - high-contention-connection-pool-stress-test
 
-    ## Before Test Docker Command
-    <docker before command here>
+```bash
+docker compose run test
+```
 
-    ## After Test Docker Command
-    <docker after command here>
+```bash
+docker compose run meta-test
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
+```bash
+docker compose run evaluation
+```
     

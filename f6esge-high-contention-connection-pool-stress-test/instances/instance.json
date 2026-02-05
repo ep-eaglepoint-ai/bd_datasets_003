@@ -1,11 +1,18 @@
 {
-            "instance_id": "F6ESGE",
-            "problem_statement": "Develop a rigorous JUnit 5 test suite for a custom thread-safe database connection pool. The objective is to verify that the pool correctly manages resource limits, enforces timeouts under heavy contention, and prevents resource leaks when worker threads are interrupted.",
-            "base_commit": "repository_before/",
-            "test_patch": "tests/",
-            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/f6esge-high-contention-connection-pool-stress-test",
-            "environment_setup": "Dockerfile",
-            "FAIL_TO_PASS": [],
-            "PASS_TO_PASS": []
-        }
-        
+  "instance_id": "F6ESGE",
+  "problem_statement": "Develop a rigorous JUnit 5 test suite for a custom thread-safe database connection pool. The objective is to verify that the pool correctly manages resource limits, enforces timeouts under heavy contention, and prevents resource leaks when worker threads are interrupted.",
+  "base_commit": "repository_before/",
+  "test_patch": "tests/",
+  "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/f6esge-high-contention-connection-pool-stress-test",
+  "environment_setup": "Dockerfile",
+  "FAIL_TO_PASS": [
+    "com.cloudscale.SimpleConnectionPoolTest::testStressHighContention",
+    "com.cloudscale.SimpleConnectionPoolTest::testTimeoutEnforcement",
+    "com.cloudscale.SimpleConnectionPoolTest::testInterruptionResilience",
+    "com.cloudscale.SimpleConnectionPoolTest::testInterruptionResilience_Improved",
+    "com.cloudscale.SimpleConnectionPoolTest::testPoolSizeOne",
+    "com.cloudscale.SimpleConnectionPoolTest::testShutdown",
+    "com.cloudscale.SimpleConnectionPoolTest::testReleaseNull"
+  ],
+  "PASS_TO_PASS": []
+}

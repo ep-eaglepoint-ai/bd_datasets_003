@@ -218,6 +218,7 @@ class SimpleConnectionPoolTest {
      * Requirement 5: Edge-Case Coverage (Size 1).
      */
     @Test
+    @Timeout(5)
     void testPoolSizeOne() throws InterruptedException, TimeoutException {
         SimpleConnectionPool smallPool = new SimpleConnectionPool(1, 100);
         DatabaseConnection conn1 = smallPool.borrowConnection();
@@ -456,10 +457,10 @@ class SimpleConnectionPoolTest {
      * Exercise catch blocks.
      */
     @Test
-    void testCoverageExceptionPaths() {
-         // This requires mocking or forcing exceptions.
-         // Since I cannot modify SimpleConnectionPool, forcing internal exceptions (like Semaphore throwing InterruptedException) 
-         // without standard interruption is hard.
-         // But I have existing interruption tests.
+    @Timeout(5)
+    void testReleaseNull() {
+        pool.releaseConnection(null);
+        // Should ignore and not crash or change count
+        assertEquals(0, pool.getActiveCount());
     }
 }

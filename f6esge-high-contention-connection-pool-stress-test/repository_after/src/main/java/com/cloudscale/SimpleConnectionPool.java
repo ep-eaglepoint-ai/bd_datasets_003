@@ -1,3 +1,6 @@
+
+// filename: SimpleConnectionPool.java
+
 package com.cloudscale;
 
 import java.util.concurrent.*;
@@ -12,8 +15,9 @@ class DatabaseConnection {
     public void close() { this.isOpen = false; }
 }
 
-/**
- * BROKEN IMPLEMENTATION: Ignores timeout.
+/*
+ * A thread-safe connection pool implementing a fixed-size resource limit.
+ * This is the target for testing. Do not modify.
  */
 public class SimpleConnectionPool {
     private final int maxPoolSize;
@@ -35,9 +39,10 @@ public class SimpleConnectionPool {
     public DatabaseConnection borrowConnection() throws InterruptedException, TimeoutException {
         if (isShutdown) throw new IllegalStateException("Pool is shutdown");
 
-        // BUG: Acquire without timeout or wrong check
-        semaphore.acquire(); // Blocks forever if exhausted
-        
+        if (!semaphore.tryAcquire(acquisitionTimeout, TimeUnit.MILLISECONDS)) {
+            throw new TimeoutException("Could not acquire connection within timeout");
+        }
+
         synchronized (available) {
             DatabaseConnection conn = available.poll();
             activeCount.incrementAndGet();
@@ -54,7 +59,7 @@ public class SimpleConnectionPool {
             activeCount.decrementAndGet();
         }
         semaphore.release();
-    }
+    }  
 
     public int getActiveCount() {
         return activeCount.get();

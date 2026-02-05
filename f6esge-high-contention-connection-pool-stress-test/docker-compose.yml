@@ -2,6 +2,7 @@ version: "3.8"
 
 services:
   test:
+    image: f6esge-test-image
     build: .
     working_dir: /app/repository_after
     command: mvn -Dmaven.test.failure.ignore=false clean test
@@ -9,14 +10,11 @@ services:
       - .:/app
 
   meta-test:
-    build: .
+    image: f6esge-test-image
     working_dir: /app
     command: python3 tests/meta_test.py
-    volumes:
-      - .:/app
-
   evaluation:
-    build: .
+    image: f6esge-test-image
     working_dir: /app
     command: python3 evaluation/evaluation.py
     volumes:
