@@ -9,7 +9,7 @@ COPY repository_after/kanban_app/package.json /app/repository_after/kanban_app/p
 COPY repository_after/kanban_app/package-lock.json /app/repository_after/kanban_app/package-lock.json
 
 WORKDIR /app/repository_after/kanban_app
-RUN npm ci --silent
+RUN npm ci --silent --include=dev
 
 WORKDIR /app
 COPY repository_after/ /app/repository_after/
