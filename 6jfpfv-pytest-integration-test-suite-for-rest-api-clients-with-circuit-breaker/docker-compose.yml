@@ -3,6 +3,8 @@
 services:
   app:
     build: .
-    command: pytest -q tests
+    working_dir: /app
     volumes:
       - .:/app
+    entrypoint: ["bash", "/app/entrypoint.sh"]
+    command: ["evaluate"]

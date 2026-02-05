@@ -1,11 +1,8 @@
 # 6JFPFV - pytest Integration Test Suite for REST API Clients with Circuit Breaker
 
-    ## Before Test Docker Command
-    <docker before command here>
+```bash
+docker compose run --rm app run-tests
+docker compose run --rm app run-metatests
+docker compose run --rm app evaluate
+```
 
-    ## After Test Docker Command
-    <docker after command here>
-
-    ## Evaluation Docker Command
-    <evaluation command here>
-    

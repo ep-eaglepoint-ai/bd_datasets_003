@@ -1,0 +1,1853 @@
+diff --git a/repository_before/src/__init__.py b/repository_after/.gitkeep
+similarity index 100%
+rename from repository_before/src/__init__.py
+rename to repository_after/.gitkeep
+diff --git a/repository_after/__init__.py b/repository_after/__init__.py
+new file mode 100644
+index 0000000..e1670c3
+--- /dev/null
++++ b/repository_after/__init__.py
+@@ -0,0 +1,10 @@
++"""Improved implementation (after) for the API client library."""
++
++from .client import NotificationServiceClient, PaymentServiceClient, UserServiceClient
++
++__all__ = [
++	"NotificationServiceClient",
++	"PaymentServiceClient",
++	"UserServiceClient",
++]
++
+diff --git a/repository_after/__pycache__/__init__.cpython-311.pyc b/repository_after/__pycache__/__init__.cpython-311.pyc
+new file mode 100644
+index 0000000..498b659
+Binary files /dev/null and b/repository_after/__pycache__/__init__.cpython-311.pyc differ
+diff --git a/repository_after/__pycache__/circuit_breaker.cpython-311.pyc b/repository_after/__pycache__/circuit_breaker.cpython-311.pyc
+new file mode 100644
+index 0000000..aa4af71
+Binary files /dev/null and b/repository_after/__pycache__/circuit_breaker.cpython-311.pyc differ
+diff --git a/repository_after/__pycache__/client.cpython-311.pyc b/repository_after/__pycache__/client.cpython-311.pyc
+new file mode 100644
+index 0000000..2f496d4
+Binary files /dev/null and b/repository_after/__pycache__/client.cpython-311.pyc differ
+diff --git a/repository_after/__pycache__/exceptions.cpython-311.pyc b/repository_after/__pycache__/exceptions.cpython-311.pyc
+new file mode 100644
+index 0000000..42ce9fd
+Binary files /dev/null and b/repository_after/__pycache__/exceptions.cpython-311.pyc differ
+diff --git a/repository_after/__pycache__/models.cpython-311.pyc b/repository_after/__pycache__/models.cpython-311.pyc
+new file mode 100644
+index 0000000..53127a4
+Binary files /dev/null and b/repository_after/__pycache__/models.cpython-311.pyc differ
+diff --git a/repository_after/__pycache__/rate_limiter.cpython-311.pyc b/repository_after/__pycache__/rate_limiter.cpython-311.pyc
+new file mode 100644
+index 0000000..c68a53f
+Binary files /dev/null and b/repository_after/__pycache__/rate_limiter.cpython-311.pyc differ
+diff --git a/repository_after/__pycache__/retry.cpython-311.pyc b/repository_after/__pycache__/retry.cpython-311.pyc
+new file mode 100644
+index 0000000..00a41fa
+Binary files /dev/null and b/repository_after/__pycache__/retry.cpython-311.pyc differ
+diff --git a/repository_after/__pycache__/test_clients_integration.cpython-311-pytest-7.4.4.pyc b/repository_after/__pycache__/test_clients_integration.cpython-311-pytest-7.4.4.pyc
+new file mode 100644
+index 0000000..8eeffe3
+Binary files /dev/null and b/repository_after/__pycache__/test_clients_integration.cpython-311-pytest-7.4.4.pyc differ
+diff --git a/repository_after/circuit_breaker.py b/repository_after/circuit_breaker.py
+new file mode 100644
+index 0000000..062d07e
+--- /dev/null
++++ b/repository_after/circuit_breaker.py
+@@ -0,0 +1,80 @@
++from __future__ import annotations
++
++import time
++from dataclasses import dataclass, field
++from enum import Enum
++
++
++class CircuitState(str, Enum):
++    CLOSED = "closed"
++    OPEN = "open"
++    HALF_OPEN = "half_open"
++
++
++@dataclass
++class CircuitBreaker:
++    failure_threshold: int = 5
++    recovery_timeout: float = 30.0
++    half_open_max_calls: int = 3
++
++    state: CircuitState = field(default=CircuitState.CLOSED, init=False)
++    _failure_count: int = field(default=0, init=False)
++    _half_open_calls: int = field(default=0, init=False)
++    _half_open_successes: int = field(default=0, init=False)
++    _opened_at: float | None = field(default=None, init=False)
++
++    def can_execute(self) -> bool:
++        if self.state == CircuitState.CLOSED:
++            return True
++
++        now = time.monotonic()
++        if self.state == CircuitState.OPEN:
++            if self._opened_at is None:
++                return False
++            if (now - self._opened_at) >= self.recovery_timeout:
++                self.state = CircuitState.HALF_OPEN
++                self._half_open_calls = 0
++                self._half_open_successes = 0
++                return True
++            return False
++
++        if self.state == CircuitState.HALF_OPEN:
++            return self._half_open_calls < self.half_open_max_calls
++
++        return False
++
++    def record_success(self) -> None:
++        if self.state == CircuitState.CLOSED:
++            self._failure_count = 0
++            return
++
++        if self.state == CircuitState.HALF_OPEN:
++            self._half_open_successes += 1
++            if self._half_open_successes >= self.half_open_max_calls:
++                self.reset()
++
++    def record_failure(self) -> None:
++        now = time.monotonic()
++        if self.state == CircuitState.HALF_OPEN:
++            self.state = CircuitState.OPEN
++            self._opened_at = now
++            self._failure_count = 0
++            self._half_open_calls = 0
++            self._half_open_successes = 0
++            return
++
++        self._failure_count += 1
++        if self._failure_count >= self.failure_threshold:
++            self.state = CircuitState.OPEN
++            self._opened_at = now
++
++    def reset(self) -> None:
++        self.state = CircuitState.CLOSED
++        self._failure_count = 0
++        self._half_open_calls = 0
++        self._half_open_successes = 0
++        self._opened_at = None
++
++    def _on_half_open_attempt(self) -> None:
++        if self.state == CircuitState.HALF_OPEN:
++            self._half_open_calls += 1
+diff --git a/repository_after/client.py b/repository_after/client.py
+new file mode 100644
+index 0000000..fbccbe5
+--- /dev/null
++++ b/repository_after/client.py
+@@ -0,0 +1,256 @@
++from __future__ import annotations
++
++import json
++import logging
++from typing import Any, List, Optional
++
++import httpx
++from pydantic import ValidationError as PydanticValidationError
++
++from .circuit_breaker import CircuitBreaker, CircuitState
++from .exceptions import (
++    APIError,
++    CircuitBreakerOpen,
++    RateLimitError,
++    TimeoutError,
++    ValidationError,
++)
++from .models import (
++    CreatePaymentRequest,
++    CreateUserRequest,
++    ListUsersResponse,
++    Notification,
++    Payment,
++    RefundRequest,
++    SendNotificationRequest,
++    Transaction,
++    UpdateUserRequest,
++    User,
++)
++from .rate_limiter import RateLimiter
++from .retry import RetryConfig, with_retry
++
++
++logger = logging.getLogger(__name__)
++
++
++class BaseClient:
++    def __init__(
++        self,
++        base_url: str,
++        api_key: str,
++        timeout: float = 30.0,
++        retry_config: Optional[RetryConfig] = None,
++        rate_limiter: Optional[RateLimiter] = None,
++    ):
++        self.base_url = base_url.rstrip("/")
++        self.api_key = api_key
++        self.timeout = timeout
++        self.retry_config = retry_config or RetryConfig()
++        self.rate_limiter = rate_limiter
++
++        # Circuit breaker is internal (not configurable via constructor per prompt).
++        self.circuit_breaker = CircuitBreaker(failure_threshold=5, recovery_timeout=30.0, half_open_max_calls=2)
++
++        self._client: httpx.AsyncClient | None = None
++
++    async def __aenter__(self) -> "BaseClient":
++        self._client = httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout)
++        return self
++
++    async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
++        if self._client is not None:
++            await self._client.aclose()
++            self._client = None
++
++    def _headers(self) -> dict[str, str]:
++        return {
++            "Content-Type": "application/json",
++            "Authorization": f"Bearer {self.api_key}",
++        }
++
++    def _log(self, *, method: str, url: str, request_json: Any | None, response: httpx.Response | None) -> None:
++        # Keep logs structured and safe; avoid huge dumps.
++        try:
++            logger.debug(
++                "http.request",
++                extra={"method": method, "url": url, "json": request_json},
++            )
++        except Exception:
++            pass
++
++        if response is not None:
++            body_preview = None
++            try:
++                body_preview = response.text[:1000]
++            except Exception:
++                body_preview = None
++            try:
++                logger.debug(
++                    "http.response",
++                    extra={"method": method, "url": url, "status_code": response.status_code, "body": body_preview},
++                )
++            except Exception:
++                pass
++
++    async def _request(
++        self,
++        method: str,
++        path: str,
++        *,
++        json_body: dict[str, Any] | None = None,
++        params: dict[str, Any] | None = None,
++    ) -> dict[str, Any]:
++        if self._client is None:
++            raise RuntimeError("Client not initialized. Use 'async with'.")
++
++        if not self.circuit_breaker.can_execute():
++            raise CircuitBreakerOpen(self.__class__.__name__)
++
++        if self.circuit_breaker.state == CircuitState.HALF_OPEN:
++            self.circuit_breaker._on_half_open_attempt()
++
++        if self.rate_limiter is not None:
++            await self.rate_limiter.acquire()
++
++        url = path
++
++        @with_retry(self.retry_config)
++        async def do() -> dict[str, Any]:
++            response: httpx.Response | None = None
++            try:
++                response = await self._client.request(
++                    method,
++                    url,
++                    headers=self._headers(),
++                    json=json_body,
++                    params=params,
++                )
++                self._log(method=method, url=url, request_json=json_body, response=response)
++            except httpx.TimeoutException:
++                raise TimeoutError("Request timed out", timeout_seconds=self.timeout)
++
++            body: dict[str, Any] | None = None
++            try:
++                body = response.json() if response.content else None
++            except json.JSONDecodeError:
++                body = None
++
++            if response.status_code == 429:
++                retry_after = RateLimiter.parse_retry_after(response.headers.get("Retry-After"))
++                raise RateLimitError(
++                    "Rate limit exceeded",
++                    retry_after=retry_after,
++                    response_body=body,
++                )
++
++            if response.status_code >= 400:
++                raise APIError(
++                    f"HTTP {response.status_code}",
++                    status_code=response.status_code,
++                    response_body=body,
++                )
++
++            return body or {}
++
++        try:
++            data = await do()
++            self.circuit_breaker.record_success()
++            return data
++        except (APIError, RateLimitError, TimeoutError) as e:
++            # failures that should count towards circuit breaker if they are transient
++            if isinstance(e, APIError) and e.status_code in self.retry_config.retryable_status_codes:
++                self.circuit_breaker.record_failure()
++            elif isinstance(e, TimeoutError):
++                self.circuit_breaker.record_failure()
++            elif isinstance(e, RateLimitError):
++                # 429 shouldn't open the circuit breaker by default
++                pass
++            else:
++                self.circuit_breaker.record_failure()
++            raise
++
++
++class UserServiceClient(BaseClient):
++    async def get_user(self, user_id: str) -> User:
++        data = await self._request("GET", f"/users/{user_id}")
++        try:
++            return User.model_validate(data)
++        except PydanticValidationError as e:
++            raise ValidationError("Invalid response schema", field_errors=e.errors(), response_body=data)
++
++    async def create_user(self, request: CreateUserRequest) -> User:
++        data = await self._request("POST", "/users", json_body=request.model_dump(mode="json"))
++        try:
++            return User.model_validate(data)
++        except PydanticValidationError as e:
++            raise ValidationError("Invalid response schema", field_errors=e.errors(), response_body=data)
++
++    async def update_user(self, user_id: str, request: UpdateUserRequest) -> User:
++        data = await self._request("PUT", f"/users/{user_id}", json_body=request.model_dump(mode="json"))
++        try:
++            return User.model_validate(data)
++        except PydanticValidationError as e:
++            raise ValidationError("Invalid response schema", field_errors=e.errors(), response_body=data)
++
++    async def list_users(self, page: int = 1, limit: int = 20) -> List[User]:
++        data = await self._request("GET", "/users", params={"page": page, "limit": limit})
++        try:
++            parsed = ListUsersResponse.model_validate(data)
++        except PydanticValidationError as e:
++            raise ValidationError("Invalid response schema", field_errors=e.errors(), response_body=data)
++        return parsed.users
++
++
++class PaymentServiceClient(BaseClient):
++    async def create_payment(self, request: CreatePaymentRequest) -> Payment:
++        data = await self._request("POST", "/payments", json_body=request.model_dump(mode="json"))
++        try:
++            return Payment.model_validate(data)
++        except PydanticValidationError as e:
++            raise ValidationError("Invalid response schema", field_errors=e.errors(), response_body=data)
++
++    async def get_payment(self, payment_id: str) -> Payment:
++        data = await self._request("GET", f"/payments/{payment_id}")
++        try:
++            return Payment.model_validate(data)
++        except PydanticValidationError as e:
++            raise ValidationError("Invalid response schema", field_errors=e.errors(), response_body=data)
++
++    async def refund_payment(self, request: RefundRequest) -> Payment:
++        data = await self._request(
++            "POST",
++            f"/payments/{request.payment_id}/refund",
++            json_body={"amount": request.amount, "reason": request.reason},
++        )
++        try:
++            return Payment.model_validate(data)
++        except PydanticValidationError as e:
++            raise ValidationError("Invalid response schema", field_errors=e.errors(), response_body=data)
++
++    async def get_transaction(self, transaction_id: str) -> Transaction:
++        data = await self._request("GET", f"/transactions/{transaction_id}")
++        try:
++            return Transaction.model_validate(data)
++        except PydanticValidationError as e:
++            raise ValidationError("Invalid response schema", field_errors=e.errors(), response_body=data)
++
++
++class NotificationServiceClient(BaseClient):
++    async def send_notification(self, request: SendNotificationRequest) -> Notification:
++        data = await self._request("POST", "/notifications", json_body=request.model_dump(mode="json"))
++        try:
++            return Notification.model_validate(data)
++        except PydanticValidationError as e:
++            raise ValidationError("Invalid response schema", field_errors=e.errors(), response_body=data)
++
++    async def get_notification(self, notification_id: str) -> Notification:
++        data = await self._request("GET", f"/notifications/{notification_id}")
++        try:
++            return Notification.model_validate(data)
++        except PydanticValidationError as e:
++            raise ValidationError("Invalid response schema", field_errors=e.errors(), response_body=data)
++
++    async def get_notification_status(self, notification_id: str) -> Notification:
++        # API surface only defines GET /notifications/{id} for fetching status.
++        return await self.get_notification(notification_id)
+diff --git a/repository_after/exceptions.py b/repository_after/exceptions.py
+new file mode 100644
+index 0000000..b81ff5d
+--- /dev/null
++++ b/repository_after/exceptions.py
+@@ -0,0 +1,55 @@
++from __future__ import annotations
++
++from typing import Optional
++
++
++class APIError(Exception):
++    def __init__(
++        self,
++        message: str,
++        status_code: Optional[int] = None,
++        response_body: Optional[dict] = None,
++    ):
++        super().__init__(message)
++        self.message = message
++        self.status_code = status_code
++        self.response_body = response_body
++
++
++class ValidationError(Exception):
++    def __init__(
++        self,
++        message: str,
++        field_errors: Optional[dict] = None,
++        response_body: Optional[dict] = None,
++    ):
++        super().__init__(message)
++        self.message = message
++        self.field_errors = field_errors
++        self.response_body = response_body
++
++
++class RateLimitError(Exception):
++    def __init__(
++        self,
++        message: str,
++        retry_after: Optional[int] = None,
++        response_body: Optional[dict] = None,
++    ):
++        super().__init__(message)
++        self.message = message
++        self.retry_after = retry_after
++        self.response_body = response_body
++
++
++class CircuitBreakerOpen(Exception):
++    def __init__(self, service_name: str):
++        super().__init__(f"Circuit breaker open for {service_name}")
++        self.service_name = service_name
++
++
++class TimeoutError(Exception):
++    def __init__(self, message: str, timeout_seconds: float):
++        super().__init__(message)
++        self.message = message
++        self.timeout_seconds = timeout_seconds
+diff --git a/repository_after/models.py b/repository_after/models.py
+new file mode 100644
+index 0000000..be2d86f
+--- /dev/null
++++ b/repository_after/models.py
+@@ -0,0 +1,112 @@
++from __future__ import annotations
++
++from datetime import datetime
++from enum import Enum
++from typing import Any, Dict, List, Optional
++
++from pydantic import BaseModel, Field
++
++
++class UserStatus(str, Enum):
++    ACTIVE = "active"
++    INACTIVE = "inactive"
++    SUSPENDED = "suspended"
++
++
++class PaymentStatus(str, Enum):
++    PENDING = "pending"
++    COMPLETED = "completed"
++    FAILED = "failed"
++    REFUNDED = "refunded"
++
++
++class NotificationChannel(str, Enum):
++    EMAIL = "email"
++    SMS = "sms"
++    PUSH = "push"
++
++
++class NotificationStatus(str, Enum):
++    QUEUED = "queued"
++    SENT = "sent"
++    DELIVERED = "delivered"
++    FAILED = "failed"
++
++
++class User(BaseModel):
++    id: str
++    email: str
++    name: str
++    status: UserStatus
++    created_at: datetime
++    updated_at: Optional[datetime] = None
++    metadata: Dict[str, Any] = Field(default_factory=dict)
++
++
++class CreateUserRequest(BaseModel):
++    email: str
++    name: str
++    metadata: Dict[str, Any] = Field(default_factory=dict)
++
++
++class UpdateUserRequest(BaseModel):
++    name: Optional[str] = None
++    status: Optional[UserStatus] = None
++    metadata: Optional[Dict[str, Any]] = None
++
++
++class Payment(BaseModel):
++    id: str
++    amount: float
++    currency: str
++    status: PaymentStatus
++    customer_id: str
++    description: Optional[str] = None
++    created_at: datetime
++    completed_at: Optional[datetime] = None
++
++
++class CreatePaymentRequest(BaseModel):
++    amount: float
++    currency: str
++    customer_id: str
++    description: Optional[str] = None
++
++
++class RefundRequest(BaseModel):
++    payment_id: str
++    amount: Optional[float] = None
++    reason: Optional[str] = None
++
++
++class Transaction(BaseModel):
++    id: str
++    payment_id: str
++    type: str
++    amount: float
++    status: str
++    created_at: datetime
++
++
++class Notification(BaseModel):
++    id: str
++    channel: NotificationChannel
++    recipient: str
++    subject: Optional[str] = None
++    body: str
++    status: NotificationStatus
++    sent_at: Optional[datetime] = None
++    delivered_at: Optional[datetime] = None
++    error: Optional[str] = None
++
++
++class SendNotificationRequest(BaseModel):
++    channel: NotificationChannel
++    recipient: str
++    subject: Optional[str] = None
++    body: str
++    metadata: Dict[str, Any] = Field(default_factory=dict)
++
++
++class ListUsersResponse(BaseModel):
++    users: List[User]
+diff --git a/repository_after/rate_limiter.py b/repository_after/rate_limiter.py
+new file mode 100644
+index 0000000..c91a3a6
+--- /dev/null
++++ b/repository_after/rate_limiter.py
+@@ -0,0 +1,49 @@
++from __future__ import annotations
++
++import asyncio
++import time
++from dataclasses import dataclass, field
++from typing import Optional
++
++
++@dataclass
++class RateLimiter:
++    requests_per_second: float
++    burst_size: int
++
++    _tokens: float = field(init=False)
++    _last: float = field(init=False)
++    _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
++
++    def __post_init__(self) -> None:
++        self._tokens = float(self.burst_size)
++        self._last = time.monotonic()
++
++    async def acquire(self) -> None:
++        async with self._lock:
++            now = time.monotonic()
++            elapsed = now - self._last
++            self._last = now
++
++            self._tokens = min(float(self.burst_size), self._tokens + elapsed * self.requests_per_second)
++            if self._tokens >= 1.0:
++                self._tokens -= 1.0
++                return
++
++            # Need to wait for enough tokens
++            missing = 1.0 - self._tokens
++            wait = missing / self.requests_per_second if self.requests_per_second > 0 else 0.0
++            self._tokens = 0.0
++
++        if wait > 0:
++            await asyncio.sleep(wait)
++
++    @staticmethod
++    def parse_retry_after(value: Optional[str]) -> Optional[int]:
++        if value is None:
++            return None
++        try:
++            seconds = int(value)
++            return seconds if seconds >= 0 else None
++        except Exception:
++            return None
+diff --git a/repository_before/requirements.txt b/repository_before/requirements.txt
+deleted file mode 100644
+index 281f35b..0000000
+--- a/repository_before/requirements.txt
++++ /dev/null
+@@ -1,6 +0,0 @@
+-httpx==0.26.0
+-pydantic==2.5.3
+-pytest==7.4.4
+-pytest-asyncio==0.23.3
+-respx==0.20.2
+-pytest-cov==4.1.0
+diff --git a/repository_after/retry.py b/repository_after/retry.py
+new file mode 100644
+index 0000000..a4f6f63
+--- /dev/null
++++ b/repository_after/retry.py
+@@ -0,0 +1,77 @@
++from __future__ import annotations
++
++import asyncio
++import random
++from dataclasses import dataclass
++from functools import wraps
++from typing import Any, Awaitable, Callable, ParamSpec, Set, TypeVar
++
++
++P = ParamSpec("P")
++T = TypeVar("T")
++
++
++@dataclass
++class RetryConfig:
++    max_retries: int = 3
++    base_delay: float = 0.5
++    max_delay: float = 10.0
++    exponential_base: float = 2.0
++    jitter: bool = True
++    retryable_status_codes: Set[int] = None  # type: ignore[assignment]
++
++    def __post_init__(self) -> None:
++        if self.retryable_status_codes is None:
++            self.retryable_status_codes = {500, 502, 503, 504}
++
++    def calculate_delay(self, attempt: int) -> float:
++        # attempt is 1-based for readability
++        delay = self.base_delay * (self.exponential_base ** (attempt - 1))
++        delay = min(delay, self.max_delay)
++        if self.jitter:
++            delay = delay * (0.5 + random.random())
++        return delay
++
++
++def with_retry(config: RetryConfig) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Awaitable[T]]]:
++    """Retry decorator for async callables.
++
++    The wrapped function may raise an exception with a `status_code` attribute
++    (e.g., APIError) to trigger status-code based retries.
++    """
++
++    def decorator(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
++        @wraps(func)
++        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
++            last_exc: BaseException | None = None
++            for attempt in range(0, config.max_retries + 1):
++                try:
++                    return await func(*args, **kwargs)
++                except Exception as e:
++                    last_exc = e
++                    status_code = getattr(e, "status_code", None)
++                    retryable_status = status_code in config.retryable_status_codes if status_code is not None else False
++                    # Avoid importing httpx here; treat network/transient failures by class name.
++                    # Typical httpx transport exceptions: ConnectError, ReadError, RemoteProtocolError, WriteError.
++                    retryable_network = e.__class__.__name__ in {
++                        "TransportError",
++                        "ProtocolError",
++                        "ConnectError",
++                        "ReadError",
++                        "WriteError",
++                        "RemoteProtocolError",
++                        "NetworkError",
++                    }
++                    retryable_timeout = e.__class__.__name__ in {"TimeoutError", "ReadTimeout", "ConnectTimeout", "TimeoutException"}
++                    retryable = retryable_status or retryable_network or retryable_timeout
++
++                    if attempt >= config.max_retries or not retryable:
++                        raise
++
++                    await asyncio.sleep(config.calculate_delay(attempt + 1))
++
++            raise last_exc or RuntimeError("retry failed")
++
++        return wrapper
++
++    return decorator
+diff --git a/repository_before/src/__pycache__/__init__.cpython-311.pyc b/repository_before/src/__pycache__/__init__.cpython-311.pyc
+deleted file mode 100644
+index 98ba847..0000000
+Binary files a/repository_before/src/__pycache__/__init__.cpython-311.pyc and /dev/null differ
+diff --git a/repository_before/src/__pycache__/circuit_breaker.cpython-311.pyc b/repository_before/src/__pycache__/circuit_breaker.cpython-311.pyc
+deleted file mode 100644
+index c6b4328..0000000
+Binary files a/repository_before/src/__pycache__/circuit_breaker.cpython-311.pyc and /dev/null differ
+diff --git a/repository_before/src/__pycache__/client.cpython-311.pyc b/repository_before/src/__pycache__/client.cpython-311.pyc
+deleted file mode 100644
+index 005c7ea..0000000
+Binary files a/repository_before/src/__pycache__/client.cpython-311.pyc and /dev/null differ
+diff --git a/repository_before/src/__pycache__/exceptions.cpython-311.pyc b/repository_before/src/__pycache__/exceptions.cpython-311.pyc
+deleted file mode 100644
+index 1e3ceb5..0000000
+Binary files a/repository_before/src/__pycache__/exceptions.cpython-311.pyc and /dev/null differ
+diff --git a/repository_before/src/__pycache__/models.cpython-311.pyc b/repository_before/src/__pycache__/models.cpython-311.pyc
+deleted file mode 100644
+index d3f3ee7..0000000
+Binary files a/repository_before/src/__pycache__/models.cpython-311.pyc and /dev/null differ
+diff --git a/repository_before/src/__pycache__/retry.cpython-311.pyc b/repository_before/src/__pycache__/retry.cpython-311.pyc
+deleted file mode 100644
+index 2ca557a..0000000
+Binary files a/repository_before/src/__pycache__/retry.cpython-311.pyc and /dev/null differ
+diff --git a/repository_before/src/__pycache__/test_clients_integration.cpython-311-pytest-7.4.4.pyc b/repository_before/src/__pycache__/test_clients_integration.cpython-311-pytest-7.4.4.pyc
+deleted file mode 100644
+index 66c6294..0000000
+Binary files a/repository_before/src/__pycache__/test_clients_integration.cpython-311-pytest-7.4.4.pyc and /dev/null differ
+diff --git a/repository_before/src/circuit_breaker.py b/repository_before/src/circuit_breaker.py
+deleted file mode 100644
+index 5a13eb1..0000000
+--- a/repository_before/src/circuit_breaker.py
++++ /dev/null
+@@ -1,89 +0,0 @@
+-import time
+-from enum import Enum
+-from typing import Callable, Any
+-from functools import wraps
+-from src.exceptions import CircuitOpenError, ServiceUnavailableError
+-
+-
+-class CircuitState(str, Enum):
+-    CLOSED = "closed"
+-    OPEN = "open"
+-    HALF_OPEN = "half_open"
+-
+-
+-class CircuitBreaker:
+-    def __init__(
+-        self,
+-        failure_threshold: int = 5,
+-        recovery_timeout: float = 30.0,
+-        half_open_max_calls: int = 3
+-    ):
+-        self.failure_threshold = failure_threshold
+-        self.recovery_timeout = recovery_timeout
+-        self.half_open_max_calls = half_open_max_calls
+-        self.state = CircuitState.CLOSED
+-        self.failure_count = 0
+-        self.success_count = 0
+-        self.last_failure_time = 0.0
+-        self.half_open_calls = 0
+-
+-    def _should_allow_request(self) -> bool:
+-        if self.state == CircuitState.CLOSED:
+-            return True
+-        if self.state == CircuitState.OPEN:
+-            if time.time() - self.last_failure_time >= self.recovery_timeout:
+-                self.state = CircuitState.HALF_OPEN
+-                self.half_open_calls = 0
+-                return True
+-            return False
+-        if self.state == CircuitState.HALF_OPEN:
+-            return self.half_open_calls < self.half_open_max_calls
+-        return False
+-
+-    def record_success(self) -> None:
+-        if self.state == CircuitState.HALF_OPEN:
+-            self.success_count += 1
+-            if self.success_count >= self.half_open_max_calls:
+-                self.state = CircuitState.CLOSED
+-                self.failure_count = 0
+-                self.success_count = 0
+-        elif self.state == CircuitState.CLOSED:
+-            self.failure_count = 0
+-
+-    def record_failure(self) -> None:
+-        self.failure_count += 1
+-        self.last_failure_time = time.time()
+-        if self.state == CircuitState.HALF_OPEN:
+-            self.state = CircuitState.OPEN
+-            self.success_count = 0
+-        elif self.failure_count >= self.failure_threshold:
+-            self.state = CircuitState.OPEN
+-
+-    def call(self, func: Callable, *args, **kwargs) -> Any:
+-        if not self._should_allow_request():
+-            raise CircuitOpenError(func.__name__)
+-        if self.state == CircuitState.HALF_OPEN:
+-            self.half_open_calls += 1
+-        try:
+-            result = func(*args, **kwargs)
+-            self.record_success()
+-            return result
+-        except (ServiceUnavailableError, ConnectionError, TimeoutError) as e:
+-            self.record_failure()
+-            raise
+-
+-    def reset(self) -> None:
+-        self.state = CircuitState.CLOSED
+-        self.failure_count = 0
+-        self.success_count = 0
+-        self.last_failure_time = 0.0
+-        self.half_open_calls = 0
+-
+-
+-def circuit_breaker(breaker: CircuitBreaker):
+-    def decorator(func: Callable) -> Callable:
+-        @wraps(func)
+-        def wrapper(*args, **kwargs):
+-            return breaker.call(func, *args, **kwargs)
+-        return wrapper
+-    return decorator
+diff --git a/repository_before/src/client.py b/repository_before/src/client.py
+deleted file mode 100644
+index e9ac5ff..0000000
+--- a/repository_before/src/client.py
++++ /dev/null
+@@ -1,298 +0,0 @@
+-import httpx
+-from typing import Optional, List, Dict, Any
+-from datetime import datetime
+-from src.models import User, Payment, Notification, PaymentStatus, NotificationChannel, PaginatedResponse
+-from src.exceptions import (
+-    APIError, AuthenticationError, AuthorizationError, NotFoundError,
+-    ValidationError, RateLimitError, ServiceUnavailableError
+-)
+-from src.circuit_breaker import CircuitBreaker
+-from src.retry import RetryPolicy
+-
+-
+-class BaseClient:
+-    def __init__(
+-        self,
+-        base_url: str,
+-        api_key: Optional[str] = None,
+-        timeout: float = 30.0,
+-        circuit_breaker: Optional[CircuitBreaker] = None,
+-        retry_policy: Optional[RetryPolicy] = None
+-    ):
+-        self.base_url = base_url.rstrip('/')
+-        self.api_key = api_key
+-        self.timeout = timeout
+-        self.circuit_breaker = circuit_breaker
+-        self.retry_policy = retry_policy
+-        self._client = httpx.AsyncClient(timeout=timeout)
+-
+-    def _get_headers(self) -> Dict[str, str]:
+-        headers = {"Content-Type": "application/json"}
+-        if self.api_key:
+-            headers["Authorization"] = f"Bearer {self.api_key}"
+-        return headers
+-
+-    def _handle_response(self, response: httpx.Response) -> Dict[str, Any]:
+-        if response.status_code == 401:
+-            raise AuthenticationError()
+-        if response.status_code == 403:
+-            raise AuthorizationError()
+-        if response.status_code == 404:
+-            data = response.json()
+-            raise NotFoundError(data.get("resource", "Resource"), data.get("id", "unknown"))
+-        if response.status_code == 422:
+-            raise ValidationError(response.json().get("errors", {}))
+-        if response.status_code == 429:
+-            retry_after = int(response.headers.get("Retry-After", 60))
+-            raise RateLimitError(retry_after)
+-        if response.status_code == 503:
+-            raise ServiceUnavailableError()
+-        if response.status_code >= 400:
+-            raise APIError(response.text, response.status_code, response.json() if response.text else {})
+-        return response.json()
+-
+-    async def close(self) -> None:
+-        await self._client.aclose()
+-
+-
+-class UserServiceClient(BaseClient):
+-    async def get_user(self, user_id: str) -> User:
+-        response = await self._client.get(
+-            f"{self.base_url}/users/{user_id}",
+-            headers=self._get_headers()
+-        )
+-        data = self._handle_response(response)
+-        return User(
+-            id=data["id"],
+-            email=data["email"],
+-            name=data["name"],
+-            created_at=datetime.fromisoformat(data["created_at"]),
+-            is_active=data.get("is_active", True),
+-            metadata=data.get("metadata")
+-        )
+-
+-    async def create_user(self, email: str, name: str, metadata: Optional[dict] = None) -> User:
+-        response = await self._client.post(
+-            f"{self.base_url}/users",
+-            headers=self._get_headers(),
+-            json={"email": email, "name": name, "metadata": metadata}
+-        )
+-        data = self._handle_response(response)
+-        return User(
+-            id=data["id"],
+-            email=data["email"],
+-            name=data["name"],
+-            created_at=datetime.fromisoformat(data["created_at"]),
+-            is_active=data.get("is_active", True),
+-            metadata=data.get("metadata")
+-        )
+-
+-    async def list_users(self, page: int = 1, per_page: int = 20) -> PaginatedResponse:
+-        response = await self._client.get(
+-            f"{self.base_url}/users",
+-            headers=self._get_headers(),
+-            params={"page": page, "per_page": per_page}
+-        )
+-        data = self._handle_response(response)
+-        users = [
+-            User(
+-                id=u["id"],
+-                email=u["email"],
+-                name=u["name"],
+-                created_at=datetime.fromisoformat(u["created_at"]),
+-                is_active=u.get("is_active", True),
+-                metadata=u.get("metadata")
+-            )
+-            for u in data["items"]
+-        ]
+-        return PaginatedResponse(
+-            items=users,
+-            total=data["total"],
+-            page=data["page"],
+-            per_page=data["per_page"],
+-            has_next=data["has_next"]
+-        )
+-
+-    async def update_user(self, user_id: str, name: Optional[str] = None, metadata: Optional[dict] = None) -> User:
+-        payload = {}
+-        if name is not None:
+-            payload["name"] = name
+-        if metadata is not None:
+-            payload["metadata"] = metadata
+-        response = await self._client.patch(
+-            f"{self.base_url}/users/{user_id}",
+-            headers=self._get_headers(),
+-            json=payload
+-        )
+-        data = self._handle_response(response)
+-        return User(
+-            id=data["id"],
+-            email=data["email"],
+-            name=data["name"],
+-            created_at=datetime.fromisoformat(data["created_at"]),
+-            is_active=data.get("is_active", True),
+-            metadata=data.get("metadata")
+-        )
+-
+-    async def delete_user(self, user_id: str) -> bool:
+-        response = await self._client.delete(
+-            f"{self.base_url}/users/{user_id}",
+-            headers=self._get_headers()
+-        )
+-        if response.status_code == 204:
+-            return True
+-        self._handle_response(response)
+-        return False
+-
+-
+-class PaymentServiceClient(BaseClient):
+-    async def create_payment(self, user_id: str, amount: float, currency: str) -> Payment:
+-        response = await self._client.post(
+-            f"{self.base_url}/payments",
+-            headers=self._get_headers(),
+-            json={"user_id": user_id, "amount": amount, "currency": currency}
+-        )
+-        data = self._handle_response(response)
+-        return Payment(
+-            id=data["id"],
+-            user_id=data["user_id"],
+-            amount=data["amount"],
+-            currency=data["currency"],
+-            status=PaymentStatus(data["status"]),
+-            created_at=datetime.fromisoformat(data["created_at"]),
+-            transaction_id=data.get("transaction_id"),
+-            error_message=data.get("error_message")
+-        )
+-
+-    async def get_payment(self, payment_id: str) -> Payment:
+-        response = await self._client.get(
+-            f"{self.base_url}/payments/{payment_id}",
+-            headers=self._get_headers()
+-        )
+-        data = self._handle_response(response)
+-        return Payment(
+-            id=data["id"],
+-            user_id=data["user_id"],
+-            amount=data["amount"],
+-            currency=data["currency"],
+-            status=PaymentStatus(data["status"]),
+-            created_at=datetime.fromisoformat(data["created_at"]),
+-            transaction_id=data.get("transaction_id"),
+-            error_message=data.get("error_message")
+-        )
+-
+-    async def refund_payment(self, payment_id: str, amount: Optional[float] = None) -> Payment:
+-        payload = {}
+-        if amount is not None:
+-            payload["amount"] = amount
+-        response = await self._client.post(
+-            f"{self.base_url}/payments/{payment_id}/refund",
+-            headers=self._get_headers(),
+-            json=payload
+-        )
+-        data = self._handle_response(response)
+-        return Payment(
+-            id=data["id"],
+-            user_id=data["user_id"],
+-            amount=data["amount"],
+-            currency=data["currency"],
+-            status=PaymentStatus(data["status"]),
+-            created_at=datetime.fromisoformat(data["created_at"]),
+-            transaction_id=data.get("transaction_id"),
+-            error_message=data.get("error_message")
+-        )
+-
+-    async def list_payments(self, user_id: Optional[str] = None, status: Optional[PaymentStatus] = None) -> List[Payment]:
+-        params = {}
+-        if user_id:
+-            params["user_id"] = user_id
+-        if status:
+-            params["status"] = status.value
+-        response = await self._client.get(
+-            f"{self.base_url}/payments",
+-            headers=self._get_headers(),
+-            params=params
+-        )
+-        data = self._handle_response(response)
+-        return [
+-            Payment(
+-                id=p["id"],
+-                user_id=p["user_id"],
+-                amount=p["amount"],
+-                currency=p["currency"],
+-                status=PaymentStatus(p["status"]),
+-                created_at=datetime.fromisoformat(p["created_at"]),
+-                transaction_id=p.get("transaction_id"),
+-                error_message=p.get("error_message")
+-            )
+-            for p in data
+-        ]
+-
+-
+-class NotificationServiceClient(BaseClient):
+-    async def send_notification(
+-        self,
+-        user_id: str,
+-        channel: NotificationChannel,
+-        subject: str,
+-        body: str
+-    ) -> Notification:
+-        response = await self._client.post(
+-            f"{self.base_url}/notifications",
+-            headers=self._get_headers(),
+-            json={
+-                "user_id": user_id,
+-                "channel": channel.value,
+-                "subject": subject,
+-                "body": body
+-            }
+-        )
+-        data = self._handle_response(response)
+-        return Notification(
+-            id=data["id"],
+-            user_id=data["user_id"],
+-            channel=NotificationChannel(data["channel"]),
+-            subject=data["subject"],
+-            body=data["body"],
+-            sent_at=datetime.fromisoformat(data["sent_at"]) if data.get("sent_at") else None,
+-            delivered=data.get("delivered", False)
+-        )
+-
+-    async def get_notification(self, notification_id: str) -> Notification:
+-        response = await self._client.get(
+-            f"{self.base_url}/notifications/{notification_id}",
+-            headers=self._get_headers()
+-        )
+-        data = self._handle_response(response)
+-        return Notification(
+-            id=data["id"],
+-            user_id=data["user_id"],
+-            channel=NotificationChannel(data["channel"]),
+-            subject=data["subject"],
+-            body=data["body"],
+-            sent_at=datetime.fromisoformat(data["sent_at"]) if data.get("sent_at") else None,
+-            delivered=data.get("delivered", False)
+-        )
+-
+-    async def list_notifications(self, user_id: str, channel: Optional[NotificationChannel] = None) -> List[Notification]:
+-        params = {"user_id": user_id}
+-        if channel:
+-            params["channel"] = channel.value
+-        response = await self._client.get(
+-            f"{self.base_url}/notifications",
+-            headers=self._get_headers(),
+-            params=params
+-        )
+-        data = self._handle_response(response)
+-        return [
+-            Notification(
+-                id=n["id"],
+-                user_id=n["user_id"],
+-                channel=NotificationChannel(n["channel"]),
+-                subject=n["subject"],
+-                body=n["body"],
+-                sent_at=datetime.fromisoformat(n["sent_at"]) if n.get("sent_at") else None,
+-                delivered=n.get("delivered", False)
+-            )
+-            for n in data
+-        ]
+diff --git a/repository_before/src/exceptions.py b/repository_before/src/exceptions.py
+deleted file mode 100644
+index cccc5d6..0000000
+--- a/repository_before/src/exceptions.py
++++ /dev/null
+@@ -1,46 +0,0 @@
+-class APIError(Exception):
+-    def __init__(self, message: str, status_code: int = 500, response_body: dict = None):
+-        super().__init__(message)
+-        self.message = message
+-        self.status_code = status_code
+-        self.response_body = response_body or {}
+-
+-
+-class AuthenticationError(APIError):
+-    def __init__(self, message: str = "Authentication failed"):
+-        super().__init__(message, status_code=401)
+-
+-
+-class AuthorizationError(APIError):
+-    def __init__(self, message: str = "Access denied"):
+-        super().__init__(message, status_code=403)
+-
+-
+-class NotFoundError(APIError):
+-    def __init__(self, resource: str, resource_id: str):
+-        super().__init__(f"{resource} with id '{resource_id}' not found", status_code=404)
+-        self.resource = resource
+-        self.resource_id = resource_id
+-
+-
+-class ValidationError(APIError):
+-    def __init__(self, errors: dict):
+-        super().__init__("Validation failed", status_code=422)
+-        self.errors = errors
+-
+-
+-class RateLimitError(APIError):
+-    def __init__(self, retry_after: int = 60):
+-        super().__init__("Rate limit exceeded", status_code=429)
+-        self.retry_after = retry_after
+-
+-
+-class ServiceUnavailableError(APIError):
+-    def __init__(self, message: str = "Service temporarily unavailable"):
+-        super().__init__(message, status_code=503)
+-
+-
+-class CircuitOpenError(Exception):
+-    def __init__(self, service_name: str):
+-        super().__init__(f"Circuit breaker is open for {service_name}")
+-        self.service_name = service_name
+diff --git a/repository_before/src/models.py b/repository_before/src/models.py
+deleted file mode 100644
+index 63c2f66..0000000
+--- a/repository_before/src/models.py
++++ /dev/null
+@@ -1,59 +0,0 @@
+-from dataclasses import dataclass
+-from typing import Optional, List
+-from datetime import datetime
+-from enum import Enum
+-
+-
+-class PaymentStatus(str, Enum):
+-    PENDING = "pending"
+-    COMPLETED = "completed"
+-    FAILED = "failed"
+-    REFUNDED = "refunded"
+-
+-
+-class NotificationChannel(str, Enum):
+-    EMAIL = "email"
+-    SMS = "sms"
+-    PUSH = "push"
+-
+-
+-@dataclass
+-class User:
+-    id: str
+-    email: str
+-    name: str
+-    created_at: datetime
+-    is_active: bool = True
+-    metadata: Optional[dict] = None
+-
+-
+-@dataclass
+-class Payment:
+-    id: str
+-    user_id: str
+-    amount: float
+-    currency: str
+-    status: PaymentStatus
+-    created_at: datetime
+-    transaction_id: Optional[str] = None
+-    error_message: Optional[str] = None
+-
+-
+-@dataclass
+-class Notification:
+-    id: str
+-    user_id: str
+-    channel: NotificationChannel
+-    subject: str
+-    body: str
+-    sent_at: Optional[datetime] = None
+-    delivered: bool = False
+-
+-
+-@dataclass
+-class PaginatedResponse:
+-    items: List
+-    total: int
+-    page: int
+-    per_page: int
+-    has_next: bool
+diff --git a/repository_before/src/rate_limiter.py b/repository_before/src/rate_limiter.py
+deleted file mode 100644
+index 4b68052..0000000
+--- a/repository_before/src/rate_limiter.py
++++ /dev/null
+@@ -1,52 +0,0 @@
+-import time
+-import asyncio
+-from typing import Optional
+-
+-
+-class TokenBucketRateLimiter:
+-    def __init__(self, tokens_per_second: float, max_tokens: int):
+-        self.tokens_per_second = tokens_per_second
+-        self.max_tokens = max_tokens
+-        self.tokens = max_tokens
+-        self.last_update = time.time()
+-        self._lock = asyncio.Lock()
+-
+-    def _refill(self) -> None:
+-        now = time.time()
+-        elapsed = now - self.last_update
+-        self.tokens = min(self.max_tokens, self.tokens + elapsed * self.tokens_per_second)
+-        self.last_update = now
+-
+-    async def acquire(self, tokens: int = 1) -> bool:
+-        async with self._lock:
+-            self._refill()
+-            if self.tokens >= tokens:
+-                self.tokens -= tokens
+-                return True
+-            return False
+-
+-    async def wait_for_token(self, tokens: int = 1, timeout: Optional[float] = None) -> bool:
+-        start_time = time.time()
+-        while True:
+-            if await self.acquire(tokens):
+-                return True
+-            if timeout and (time.time() - start_time) >= timeout:
+-                return False
+-            await asyncio.sleep(0.1)
+-
+-
+-class ConcurrencyLimiter:
+-    def __init__(self, max_concurrent: int):
+-        self.semaphore = asyncio.Semaphore(max_concurrent)
+-        self.max_concurrent = max_concurrent
+-
+-    async def __aenter__(self):
+-        await self.semaphore.acquire()
+-        return self
+-
+-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+-        self.semaphore.release()
+-
+-    @property
+-    def available_slots(self) -> int:
+-        return self.semaphore._value
+diff --git a/repository_before/src/retry.py b/repository_before/src/retry.py
+deleted file mode 100644
+index 81964a1..0000000
+--- a/repository_before/src/retry.py
++++ /dev/null
+@@ -1,59 +0,0 @@
+-import time
+-import random
+-from typing import Callable, Tuple, Type
+-from functools import wraps
+-
+-
+-def exponential_backoff(
+-    max_retries: int = 3,
+-    base_delay: float = 1.0,
+-    max_delay: float = 60.0,
+-    exponential_base: float = 2.0,
+-    jitter: bool = True,
+-    retryable_exceptions: Tuple[Type[Exception], ...] = (ConnectionError, TimeoutError)
+-):
+-    def decorator(func: Callable) -> Callable:
+-        @wraps(func)
+-        def wrapper(*args, **kwargs):
+-            last_exception = None
+-            for attempt in range(max_retries + 1):
+-                try:
+-                    return func(*args, **kwargs)
+-                except retryable_exceptions as e:
+-                    last_exception = e
+-                    if attempt == max_retries:
+-                        raise
+-                    delay = min(base_delay * (exponential_base ** attempt), max_delay)
+-                    if jitter:
+-                        delay = delay * (0.5 + random.random())
+-                    time.sleep(delay)
+-            raise last_exception
+-        return wrapper
+-    return decorator
+-
+-
+-class RetryPolicy:
+-    def __init__(
+-        self,
+-        max_retries: int = 3,
+-        base_delay: float = 1.0,
+-        max_delay: float = 60.0,
+-        exponential_base: float = 2.0,
+-        jitter: bool = True
+-    ):
+-        self.max_retries = max_retries
+-        self.base_delay = base_delay
+-        self.max_delay = max_delay
+-        self.exponential_base = exponential_base
+-        self.jitter = jitter
+-
+-    def get_delay(self, attempt: int) -> float:
+-        delay = min(self.base_delay * (self.exponential_base ** attempt), self.max_delay)
+-        if self.jitter:
+-            delay = delay * (0.5 + random.random())
+-        return delay
+-
+-    def should_retry(self, attempt: int, exception: Exception) -> bool:
+-        if attempt >= self.max_retries:
+-            return False
+-        return isinstance(exception, (ConnectionError, TimeoutError))
+diff --git a/repository_after/test_clients_integration.py b/repository_after/test_clients_integration.py
+new file mode 100644
+index 0000000..f8353f3
+--- /dev/null
++++ b/repository_after/test_clients_integration.py
+@@ -0,0 +1,451 @@
++from __future__ import annotations
++
++import asyncio
++from datetime import datetime
++import time
++
++import httpx
++import pytest
++import pytest_asyncio
++import respx
++
++from repository_after.client import (
++    NotificationServiceClient,
++    PaymentServiceClient,
++    UserServiceClient,
++)
++from repository_after.circuit_breaker import CircuitBreaker, CircuitState
++from repository_after.exceptions import (
++    APIError,
++    CircuitBreakerOpen,
++    RateLimitError,
++    TimeoutError,
++    ValidationError,
++)
++from repository_after.models import (
++    CreatePaymentRequest,
++    CreateUserRequest,
++    NotificationChannel,
++    NotificationStatus,
++    PaymentStatus,
++    RefundRequest,
++    SendNotificationRequest,
++    UpdateUserRequest,
++    UserStatus,
++)
++from repository_after.rate_limiter import RateLimiter
++from repository_after.retry import RetryConfig
++
++
++@pytest.fixture
++def base_url() -> str:
++    return "https://example.test"
++
++
++@pytest.fixture
++def api_key() -> str:
++    return "test-api-key"
++
++
++@pytest.fixture
++def retry_config_no_sleep() -> RetryConfig:
++    # deterministic & fast
++    return RetryConfig(max_retries=2, base_delay=0.0, max_delay=0.0, jitter=False)
++
++
++@pytest_asyncio.fixture
++async def user_client(base_url: str, api_key: str, retry_config_no_sleep: RetryConfig):
++    async with UserServiceClient(
++        base_url=base_url,
++        api_key=api_key,
++        timeout=0.05,
++        retry_config=retry_config_no_sleep,
++        rate_limiter=RateLimiter(requests_per_second=1000, burst_size=1000),
++    ) as c:
++        # Make circuit breaker tests fast
++        c.circuit_breaker = CircuitBreaker(failure_threshold=2, recovery_timeout=0.01, half_open_max_calls=1)
++        yield c
++
++
++@pytest_asyncio.fixture
++async def payment_client(base_url: str, api_key: str, retry_config_no_sleep: RetryConfig):
++    async with PaymentServiceClient(
++        base_url=base_url,
++        api_key=api_key,
++        timeout=0.05,
++        retry_config=retry_config_no_sleep,
++        rate_limiter=RateLimiter(requests_per_second=1000, burst_size=1000),
++    ) as c:
++        c.circuit_breaker = CircuitBreaker(failure_threshold=2, recovery_timeout=0.01, half_open_max_calls=1)
++        yield c
++
++
++@pytest_asyncio.fixture
++async def notification_client(base_url: str, api_key: str, retry_config_no_sleep: RetryConfig):
++    async with NotificationServiceClient(
++        base_url=base_url,
++        api_key=api_key,
++        timeout=0.05,
++        retry_config=retry_config_no_sleep,
++        rate_limiter=RateLimiter(requests_per_second=1000, burst_size=1000),
++    ) as c:
++        c.circuit_breaker = CircuitBreaker(failure_threshold=2, recovery_timeout=0.01, half_open_max_calls=1)
++        yield c
++
++
++def _iso_now() -> str:
++    return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
++
++
++@pytest.mark.asyncio
++async def test_user_get_user_success_contract_validated_and_auth_header(user_client: UserServiceClient, base_url: str, api_key: str):
++    user_id = "u_123"
++    payload = {
++        "id": user_id,
++        "email": "a@example.com",
++        "name": "Alice",
++        "status": "active",
++        "created_at": _iso_now(),
++        "updated_at": None,
++        "metadata": {"k": "v"},
++    }
++
++    with respx.mock(assert_all_called=True, using="httpx") as router:
++        route = router.get(f"{base_url}/users/{user_id}").respond(200, json=payload)
++
++        user = await user_client.get_user(user_id)
++        assert user.id == user_id
++        assert user.status == UserStatus.ACTIVE
++        assert route.calls[0].request.headers.get("Authorization") == f"Bearer {api_key}"
++
++
++@pytest.mark.asyncio
++async def test_user_get_user_invalid_schema_raises_validation_error(user_client: UserServiceClient, base_url: str):
++    user_id = "u_bad"
++    invalid_payload = {
++        "id": user_id,
++        # missing email
++        "name": "Alice",
++        "status": "active",
++        "created_at": _iso_now(),
++        "metadata": {},
++    }
++
++    with respx.mock(assert_all_called=True, using="httpx") as router:
++        router.get(f"{base_url}/users/{user_id}").respond(200, json=invalid_payload)
++
++        with pytest.raises(ValidationError) as exc:
++            await user_client.get_user(user_id)
++        assert exc.value.field_errors
++        assert exc.value.response_body == invalid_payload
++
++
++@pytest.mark.asyncio
++async def test_user_get_user_wrong_type_raises_validation_error(user_client: UserServiceClient, base_url: str):
++    user_id = "u_wrong_type"
++    invalid_payload = {
++        "id": user_id,
++        "email": "a@example.com",
++        "name": "Alice",
++        "status": "active",
++        "created_at": "not-a-datetime",
++        "updated_at": None,
++        "metadata": {},
++    }
++
++    with respx.mock(assert_all_called=True, using="httpx") as router:
++        router.get(f"{base_url}/users/{user_id}").respond(200, json=invalid_payload)
++        with pytest.raises(ValidationError) as exc:
++            await user_client.get_user(user_id)
++        assert exc.value.field_errors
++
++
++@pytest.mark.asyncio
++@pytest.mark.parametrize("status_code", [500, 502, 503, 504])
++async def test_retry_triggers_for_retryable_5xx_and_makes_expected_attempts(
++    user_client: UserServiceClient,
++    base_url: str,
++    status_code: int,
++):
++    user_id = "u_retry"
++    ok_payload = {
++        "id": user_id,
++        "email": "a@example.com",
++        "name": "Alice",
++        "status": "active",
++        "created_at": _iso_now(),
++        "updated_at": None,
++        "metadata": {},
++    }
++
++    with respx.mock(assert_all_called=True, using="httpx") as router:
++        route = router.get(f"{base_url}/users/{user_id}")
++        route.side_effect = [
++            httpx.Response(status_code, json={"error": "boom"}),
++            httpx.Response(status_code, json={"error": "boom"}),
++            httpx.Response(200, json=ok_payload),
++        ]
++
++        user = await user_client.get_user(user_id)
++        assert user.id == user_id
++        assert route.calls.call_count == 3  # initial + 2 retries
++
++
++@pytest.mark.asyncio
++async def test_retry_triggers_for_network_failures(user_client: UserServiceClient, base_url: str):
++    user_id = "u_netfail"
++    ok_payload = {
++        "id": user_id,
++        "email": "a@example.com",
++        "name": "Alice",
++        "status": "active",
++        "created_at": _iso_now(),
++        "updated_at": None,
++        "metadata": {},
++    }
++
++    with respx.mock(assert_all_called=True, using="httpx") as router:
++        route = router.get(f"{base_url}/users/{user_id}")
++        route.side_effect = [
++            httpx.ConnectError("boom"),
++            httpx.ConnectError("boom"),
++            httpx.Response(200, json=ok_payload),
++        ]
++
++        user = await user_client.get_user(user_id)
++        assert user.id == user_id
++        assert route.calls.call_count == 3
++
++
++@pytest.mark.asyncio
++async def test_circuit_breaker_opens_after_consecutive_failures_and_rejects_without_http_call(
++    user_client: UserServiceClient,
++    base_url: str,
++):
++    user_id = "u_cb"
++    with respx.mock(assert_all_called=False, using="httpx") as router:
++        route = router.get(f"{base_url}/users/{user_id}").respond(503, json={"error": "down"})
++
++        with pytest.raises(APIError):
++            await user_client.get_user(user_id)
++        with pytest.raises(APIError):
++            await user_client.get_user(user_id)
++
++        assert user_client.circuit_breaker.state == CircuitState.OPEN
++
++        before = route.calls.call_count
++        with pytest.raises(CircuitBreakerOpen):
++            await user_client.get_user(user_id)
++        assert route.calls.call_count == before  # no HTTP call when open
++
++
++@pytest.mark.asyncio
++async def test_circuit_breaker_recovers_open_to_half_open_to_closed(user_client: UserServiceClient, base_url: str):
++    user_id = "u_cb_recover"
++    ok_payload = {
++        "id": user_id,
++        "email": "a@example.com",
++        "name": "Alice",
++        "status": "active",
++        "created_at": _iso_now(),
++        "updated_at": None,
++        "metadata": {},
++    }
++
++    # Open the circuit deterministically.
++    for _ in range(user_client.circuit_breaker.failure_threshold):
++        user_client.circuit_breaker.record_failure()
++    assert user_client.circuit_breaker.state == CircuitState.OPEN
++
++    # While open, requests should be short-circuited.
++    with pytest.raises(CircuitBreakerOpen):
++        await user_client.get_user(user_id)
++
++    # After recovery_timeout elapses, next request should be allowed and move the circuit to HALF_OPEN.
++    await asyncio.sleep(0.02)  # recovery_timeout is 0.01
++
++    with respx.mock(assert_all_called=False, using="httpx") as router:
++        router.get(f"{base_url}/users/{user_id}").respond(200, json=ok_payload)
++
++        user = await user_client.get_user(user_id)
++        assert user.id == user_id
++        assert user_client.circuit_breaker.state == CircuitState.CLOSED
++
++
++@pytest.mark.asyncio
++async def test_rate_limit_429_raises_rate_limit_error_and_parses_retry_after(user_client: UserServiceClient, base_url: str):
++    user_id = "u_rl"
++    with respx.mock(assert_all_called=True, using="httpx") as router:
++        router.get(f"{base_url}/users/{user_id}").respond(429, json={"error": "rl"}, headers={"Retry-After": "7"})
++
++        with pytest.raises(RateLimitError) as exc:
++            await user_client.get_user(user_id)
++        assert exc.value.retry_after == 7
++        assert exc.value.response_body == {"error": "rl"}
++
++
++@pytest.mark.asyncio
++async def test_rate_limiter_acquire_applies_backoff(monkeypatch: pytest.MonkeyPatch):
++    # Backoff is enforced by RateLimiter.acquire via asyncio.sleep.
++    slept: list[float] = []
++
++    async def fake_sleep(seconds: float) -> None:
++        slept.append(seconds)
++
++    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
++
++    rl = RateLimiter(requests_per_second=1.0, burst_size=1)
++    await rl.acquire()  # consumes token, no sleep
++    await rl.acquire()  # must wait for refill
++    assert slept and slept[0] > 0
++
++
++@pytest.mark.asyncio
++async def test_timeout_raises_typed_timeout_error(base_url: str, api_key: str, retry_config_no_sleep: RetryConfig):
++    # Use an extremely small timeout and simulate an httpx timeout exception.
++    async with UserServiceClient(
++        base_url=base_url,
++        api_key=api_key,
++        timeout=0.01,
++        retry_config=retry_config_no_sleep,
++    ) as c:
++        user_id = "u_to"
++        with respx.mock(assert_all_called=True, using="httpx") as router:
++            router.get(f"{base_url}/users/{user_id}").mock(side_effect=httpx.ReadTimeout("boom"))
++
++            with pytest.raises(TimeoutError) as exc:
++                await c.get_user(user_id)
++            assert exc.value.timeout_seconds == pytest.approx(0.01)
++
++
++@pytest.mark.asyncio
++async def test_user_create_update_list_cover_endpoints_and_auth_header(base_url: str, api_key: str, retry_config_no_sleep: RetryConfig):
++    created_payload = {
++        "id": "u_new",
++        "email": "new@example.com",
++        "name": "New",
++        "status": "active",
++        "created_at": _iso_now(),
++        "updated_at": None,
++        "metadata": {},
++    }
++    updated_payload = {**created_payload, "name": "Newer"}
++    list_payload = {"users": [updated_payload]}
++
++    async with UserServiceClient(
++        base_url=base_url,
++        api_key=api_key,
++        timeout=0.05,
++        retry_config=retry_config_no_sleep,
++        rate_limiter=RateLimiter(requests_per_second=1000, burst_size=1000),
++    ) as c:
++        with respx.mock(assert_all_called=True, using="httpx") as router:
++            r_create = router.post(f"{base_url}/users").respond(200, json=created_payload)
++            r_update = router.put(f"{base_url}/users/u_new").respond(200, json=updated_payload)
++            r_list = router.get(f"{base_url}/users").respond(200, json=list_payload)
++
++            u = await c.create_user(CreateUserRequest(email="new@example.com", name="New"))
++            assert u.id == "u_new"
++            assert r_create.calls[0].request.headers.get("Authorization") == f"Bearer {api_key}"
++
++            u2 = await c.update_user("u_new", UpdateUserRequest(name="Newer"))
++            assert u2.name == "Newer"
++            assert r_update.calls[0].request.headers.get("Authorization") == f"Bearer {api_key}"
++
++            users = await c.list_users(page=1, limit=20)
++            assert len(users) == 1
++            assert users[0].id == "u_new"
++            assert r_list.calls[0].request.headers.get("Authorization") == f"Bearer {api_key}"
++
++
++def test_exception_attributes_are_populated():
++    api = APIError("nope", status_code=500, response_body={"x": 1})
++    assert api.message == "nope"
++    assert api.status_code == 500
++    assert api.response_body == {"x": 1}
++
++    val = ValidationError("bad", field_errors={"a": "b"}, response_body={"raw": True})
++    assert val.message == "bad"
++    assert val.field_errors == {"a": "b"}
++    assert val.response_body == {"raw": True}
++
++    rl = RateLimitError("rl", retry_after=3, response_body={"e": 1})
++    assert rl.message == "rl"
++    assert rl.retry_after == 3
++    assert rl.response_body == {"e": 1}
++
++    cb = CircuitBreakerOpen("UserService")
++    assert cb.service_name == "UserService"
++
++    to = TimeoutError("t", timeout_seconds=1.25)
++    assert to.timeout_seconds == 1.25
++
++
++@pytest.mark.asyncio
++async def test_payment_and_notification_clients_cover_public_methods(
++    payment_client: PaymentServiceClient,
++    notification_client: NotificationServiceClient,
++    base_url: str,
++):
++    payment_payload = {
++        "id": "p_1",
++        "amount": 12.5,
++        "currency": "USD",
++        "status": "pending",
++        "customer_id": "c_1",
++        "description": None,
++        "created_at": _iso_now(),
++        "completed_at": None,
++    }
++    txn_payload = {
++        "id": "t_1",
++        "payment_id": "p_1",
++        "type": "charge",
++        "amount": 12.5,
++        "status": "ok",
++        "created_at": _iso_now(),
++    }
++    notif_payload = {
++        "id": "n_1",
++        "channel": "email",
++        "recipient": "a@example.com",
++        "subject": "hi",
++        "body": "hello",
++        "status": "sent",
++        "sent_at": _iso_now(),
++        "delivered_at": None,
++        "error": None,
++    }
++
++    with respx.mock(assert_all_called=True, using="httpx") as router:
++        router.post(f"{base_url}/payments").respond(200, json=payment_payload)
++        router.get(f"{base_url}/payments/p_1").respond(200, json=payment_payload)
++        router.post(f"{base_url}/payments/p_1/refund").respond(200, json={**payment_payload, "status": "refunded"})
++        router.get(f"{base_url}/transactions/t_1").respond(200, json=txn_payload)
++
++        router.post(f"{base_url}/notifications").respond(200, json=notif_payload)
++        router.get(f"{base_url}/notifications/n_1").respond(200, json=notif_payload)
++
++        p = await payment_client.create_payment(CreatePaymentRequest(amount=12.5, currency="USD", customer_id="c_1"))
++        assert p.status == PaymentStatus.PENDING
++
++        p2 = await payment_client.get_payment("p_1")
++        assert p2.id == "p_1"
++
++        p3 = await payment_client.refund_payment(RefundRequest(payment_id="p_1", amount=None, reason=None))
++        assert p3.status == PaymentStatus.REFUNDED
++
++        t = await payment_client.get_transaction("t_1")
++        assert t.payment_id == "p_1"
++
++        n = await notification_client.send_notification(
++            SendNotificationRequest(
++                channel=NotificationChannel.EMAIL,
++                recipient="a@example.com",
++                subject="hi",
++                body="hello",
++            )
++        )
++        assert n.status == NotificationStatus.SENT
++        n2 = await notification_client.get_notification_status("n_1")
++        assert n2.id == "n_1"
