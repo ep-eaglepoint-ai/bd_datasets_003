@@ -26,6 +26,65 @@ def format_timestamp(dt):
     return dt.isoformat()
 
 
+def get_environment_info():
+    """Get Python version and platform information."""
+    return {
+        "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+        "platform": f"{sys.platform}-{os.uname().machine if hasattr(os, 'uname') else 'unknown'}"
+    }
+
+
+def run_pytest():
+    """Run pytest and capture output and return code."""
+    try:
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "pytest",
+                "tests/",
+                "-v",
+                "--tb=short",
+                "--json-report",
+                "--json-report-file=/tmp/pytest_report.json"
+            ],
+            capture_output=True,
+            text=True,
+            cwd="/app"
+        )
+        
+        # Parse JSON report if available
+        test_details = {
+            "return_code": result.returncode,
+            "output": result.stdout[:1000] + ("..." if len(result.stdout) > 1000 else "")
+        }
+        
+        # Determine if tests passed (return code 0)
+        test_details["passed"] = result.returncode == 0
+        
+        # Try to get more detailed results from JSON report
+        report_file = Path("/tmp/pytest_report.json")
+        if report_file.exists():
+            with open(report_file) as f:
+                pytest_report = json.load(f)
+            
+            summary = pytest_report.get("summary", {})
+            test_details["summary"] = {
+                "passed": summary.get("passed", 0),
+                "failed": summary.get("failed", 0),
+                "errors": summary.get("error", 0),
+                "skipped": summary.get("skipped", 0),
+                "total": summary.get("total", 0)
+            }
+        
+        return test_details, None
+        
+    except Exception as e:
+        return {
+            "passed": False,
+            "return_code": 1,
+            "output": f"Error running tests: {str(e)}"
+        }, str(e)
+
+
 def run_tests():
     """Run pytest and collect results."""
     run_id = generate_run_id()
@@ -37,161 +96,107 @@ def run_tests():
     print(f"{TASK_TITLE.upper()} EVALUATION")
     print("=" * 60)
     print()
+    
+    # Get environment info
+    environment = get_environment_info()
+    print(f"Python version: {environment['python_version']}")
+    print(f"Platform: {environment['platform']}")
+    print()
+    
     print("=" * 60)
     print("RUNNING TESTS (REPOSITORY_AFTER)")
     print("=" * 60)
-    print("Environment: repository_after")
-    print("Tests directory: /app/tests")
     
-    # Run pytest with JSON output
-    result = subprocess.run(
-        [
-            sys.executable, "-m", "pytest",
-            "tests/",
-            "-v",
-            "--tb=short",
-            "--json-report",
-            "--json-report-file=/tmp/pytest_report.json"
-        ],
-        capture_output=True,
-        text=True,
-        cwd="/app"
-    )
+    # Run tests for "after" state
+    after_tests, after_error = run_pytest()
     
-    # Parse results
-    test_results = {
-        "passed": 0,
-        "failed": 0,
-        "errors": 0,
-        "skipped": 0,
-        "total": 0,
-        "tests": []
-    }
-    
-    # Try to read JSON report
-    report_file = Path("/tmp/pytest_report.json")
-    if report_file.exists():
-        with open(report_file) as f:
-            pytest_report = json.load(f)
-        
-        summary = pytest_report.get("summary", {})
-        test_results["passed"] = summary.get("passed", 0)
-        test_results["failed"] = summary.get("failed", 0)
-        test_results["errors"] = summary.get("error", 0)
-        test_results["skipped"] = summary.get("skipped", 0)
-        test_results["total"] = summary.get("total", 0)
-        
-        # Collect individual test results
-        for test in pytest_report.get("tests", []):
-            test_entry = {
-                "nodeId": test.get("nodeid", ""),
-                "status": test.get("outcome", "unknown"),
-                "duration": test.get("duration", 0)
-            }
-            test_results["tests"].append(test_entry)
+    # Print test results summary
+    if after_tests["passed"]:
+        print("[✓] All tests passed")
     else:
-        # Fallback: parse stdout
-        stdout = result.stdout
-        for line in stdout.split("\n"):
-            if " passed" in line:
-                parts = line.split()
-                for i, part in enumerate(parts):
-                    if part == "passed" and i > 0:
-                        try:
-                            test_results["passed"] = int(parts[i-1])
-                        except ValueError:
-                            pass
-        test_results["total"] = test_results["passed"] + test_results["failed"] + test_results["errors"]
+        print("[✗] Some tests failed")
+    print(f"Return code: {after_tests['return_code']}")
     
-    # Print results summary
-    print(f"Results: {test_results['passed']} passed, {test_results['failed']} failed, "
-          f"{test_results['errors']} errors, {test_results['skipped']} skipped "
-          f"(total: {test_results['total']})")
+    if "summary" in after_tests:
+        s = after_tests["summary"]
+        print(f"Test summary: {s['passed']} passed, {s['failed']} failed, "
+              f"{s['errors']} errors, {s['skipped']} skipped (total: {s['total']})")
     
-    # Print individual test results
-    for test in test_results["tests"]:
-        status = test["status"]
-        node_id = test["nodeId"]
-        test_name = node_id.split("::")[-1] if "::" in node_id else node_id
-        
-        if status == "passed":
-            symbol = "✓"
-            status_str = "PASS"
-        elif status == "failed":
-            symbol = "✗"
-            status_str = "FAIL"
-        else:
-            symbol = "○"
-            status_str = status.upper()
-        
-        print(f" [{symbol} {status_str}] {test_name}")
+    # Generate comparison data
+    passed_gate = after_tests["passed"]
     
-    # Print evaluation summary
-    print()
-    print("=" * 60)
-    print("EVALUATION SUMMARY")
-    print("=" * 60)
-    print("Implementation (repository_after):")
-    
-    overall_passed = test_results["failed"] == 0 and test_results["errors"] == 0
-    print(f" Overall: {'PASSED' if overall_passed else 'FAILED'}")
-    print(f" Tests: {test_results['passed']}/{test_results['total']} passed")
-    
-    print()
-    print("=" * 60)
-    print("EXPECTED BEHAVIOR CHECK")
-    print("=" * 60)
-    
-    if overall_passed:
-        print("[✓ OK] All tests passed (expected)")
+    if after_tests["passed"]:
+        improvement_summary = "All tests pass. Implementation meets requirements."
     else:
-        print("[✗ FAIL] Some tests failed")
+        improvement_summary = "Some tests fail. Review implementation against requirements."
     
-    # Generate report
+    # Determine overall success
+    success = after_error is None
+    
+    # Create final report
     end_time = datetime.now()
     duration_seconds = (end_time - start_time).total_seconds()
     
-    # Create report directory
+    report = {
+        "run_id": run_id,
+        "started_at": format_timestamp(start_time),
+        "finished_at": format_timestamp(end_time),
+        "duration_seconds": round(duration_seconds, 2),
+        "environment": environment,
+        "before": {
+            "tests": None,
+            "metrics": {}
+        },
+        "after": {
+            "tests": after_tests,
+            "metrics": {}
+        },
+        "comparison": {
+            "passed_gate": passed_gate,
+            "improvement_summary": improvement_summary
+        },
+        "success": success,
+        "error": after_error
+    }
+    
+    # Save report
     date_path = start_time.strftime("%Y-%m-%d")
     time_path = start_time.strftime("%H-%M-%S")
     report_dir = Path(f"/app/evaluation/reports/{date_path}/{time_path}")
     report_dir.mkdir(parents=True, exist_ok=True)
     
-    # Create report
-    report = {
-        "run_id": run_id,
-        "task_title": TASK_TITLE,
-        "start_time": format_timestamp(start_time),
-        "end_time": format_timestamp(end_time),
-        "duration_seconds": round(duration_seconds, 2),
-        "test_results": {
-            "passed": test_results["passed"],
-            "failed": test_results["failed"],
-            "errors": test_results["errors"],
-            "skipped": test_results["skipped"],
-            "total": test_results["total"],
-            "tests": [{"nodeId": t["nodeId"], "status": t["status"]} for t in test_results["tests"]]
-        },
-        "overall_status": "PASSED" if overall_passed else "FAILED"
-    }
-    
-    # Save report
     report_path = report_dir / "report.json"
     with open(report_path, "w") as f:
         json.dump(report, f, indent=2)
     
-    print(f"Report saved to:")
-    print(f"evaluation/reports/{date_path}/{time_path}/report.json")
-    
+    # Print final summary
     print()
     print("=" * 60)
-    print("EVALUATION COMPLETE")
+    print("EVALUATION SUMMARY")
     print("=" * 60)
     print(f"Run ID: {run_id}")
     print(f"Duration: {duration_seconds:.2f}s")
-    print(f"Success: {'YES' if overall_passed else 'NO'}")
+    print(f"Environment: {environment['python_version']} on {environment['platform']}")
+    print()
+    print("Test Results:")
+    print(f"  Status: {'PASSED' if after_tests['passed'] else 'FAILED'}")
+    print(f"  Return Code: {after_tests['return_code']}")
+    print()
+    print("Comparison:")
+    print(f"  Passed Gate: {passed_gate}")
+    print(f"  Summary: {improvement_summary}")
+    print()
+    print(f"Overall Evaluation Success: {'YES' if success else 'NO'}")
+    if after_error:
+        print(f"Error: {after_error}")
     
-    return 0 if overall_passed else 1
+    print()
+    print("=" * 60)
+    print("REPORT GENERATED")
+    print("=" * 60)
+    print(f"Report saved to: evaluation/reports/{date_path}/{time_path}/report.json")
+    
+    return 0 if success else 1
 
 
 if __name__ == "__main__":
