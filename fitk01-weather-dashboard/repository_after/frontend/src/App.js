@@ -41,12 +41,14 @@ function App() {
         fetch(`${API_BASE_URL}/api/forecast?city=${encodeURIComponent(city)}`)
       ]);
 
-      if (weatherRes.status === 404) {
+      // Check for 404 on EITHER weather OR forecast (Req 5 & 7)
+      if (weatherRes.status === 404 || forecastRes.status === 404) {
         setError('City not found');
         setLoading(false);
         return;
       }
 
+      // Check for 503 on either endpoint
       if (weatherRes.status === 503 || forecastRes.status === 503) {
         setError('Weather service unavailable');
         setLoading(false);
@@ -83,7 +85,10 @@ function App() {
   };
 
   const addFavorite = (city) => {
-    if (!favorites.includes(city)) {
+    // Case-insensitive duplicate check (Req 14)
+    const normalizedCity = city.toLowerCase();
+    const isDuplicate = favorites.some(f => f.toLowerCase() === normalizedCity);
+    if (!isDuplicate) {
       setFavorites([...favorites, city]);
     }
   };
@@ -121,7 +126,7 @@ function App() {
             convertTemp={convertTemp}
             unit={unit}
             onAddFavorite={addFavorite}
-            isFavorite={favorites.includes(weather.city)}
+            isFavorite={favorites.some(f => f.toLowerCase() === weather.city.toLowerCase())}
           />
         )}
 
