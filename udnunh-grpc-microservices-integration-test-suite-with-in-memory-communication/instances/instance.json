@@ -1,0 +1,11 @@
+{
+            "instance_id": "UDNUNH",
+            "problem_statement": "A distributed e-commerce platform consists of three gRPC microservices: User (authentication, CRUD), Order (lifecycle management, payments), and Inventory (stock operations, reservations). The services communicate via gRPC and share state through a coordinated workflow. Integration tests are needed to verify service interactions, streaming RPCs, context propagation, and failure scenarios without requiring network infrastructure or external dependencies",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/udnunh-grpc-microservices-integration-test-suite-with-in-memory-communication",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
