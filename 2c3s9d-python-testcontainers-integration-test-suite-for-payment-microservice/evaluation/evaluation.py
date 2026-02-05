@@ -2,10 +2,11 @@
 """
 Evaluation Script for Payment Microservice Test Suite
 
-Runs tests against repository_before and repository_after using Docker Compose,
+Runs tests against repository_before and repository_after,
 compares results, and generates a JSON report.
 """
 import json
+import re
 import subprocess
 import sys
 import os
@@ -15,22 +16,20 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def run_tests(repo_path: str) -> dict:
-    """Run pytest against the specified repository using Docker Compose."""
-    # Determine PYTHONPATH value based on repo
-    if "repository_after" in repo_path:
-        pythonpath = "/app/repository_after"
-    else:
-        pythonpath = "/app/repository_before"
+    """Run pytest against the specified repository."""
+    env = os.environ.copy()
+    env["PYTHONPATH"] = repo_path
     
     result = subprocess.run(
         [
-            "docker", "compose", "run", "--rm",
-            "-e", f"PYTHONPATH={pythonpath}",
-            "app", "pytest", "-q", "--tb=short", "tests/"
+            sys.executable, "-m", "pytest",
+            "-q", "--tb=short",
+            "tests/"
         ],
         capture_output=True,
         text=True,
         cwd=PROJECT_ROOT,
+        env=env,
         timeout=300  # 5 minute timeout
     )
     
@@ -51,7 +50,6 @@ def run_tests(repo_path: str) -> dict:
     error_count = output.count("ERROR")
     
     # Parse summary line like "34 passed" or "0 passed, 30 failed"
-    import re
     passed_match = re.search(r'(\d+) passed', output)
     failed_match = re.search(r'(\d+) failed', output)
     

@@ -23,7 +23,7 @@ Commands to run tests on repository_after
 ### 3. Run Evaluation
 
 ```bash
-docker compose run --rm app python evaluation/evaluation.py
+python evaluation/evaluation.py
 ```
 
 Commands to run evaluation/evaluation.py and generate reports
