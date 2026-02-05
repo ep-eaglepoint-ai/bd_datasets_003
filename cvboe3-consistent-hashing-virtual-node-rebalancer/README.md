@@ -1,11 +1,27 @@
-# CVBOE3 - Consistent-Hashing-Virtual-Node-Rebalancer
+# Consistent Hashing Virtual Node Rebalancer
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Project Context
+The goal is to implement a high-performance consistent hashing library in Go with virtual node support and rebalance plan generation. The original system used modulo-based partitioning which created hot spots and caused massive key reassignment during cluster changes. This implementation provides O(log N) lookups, thread-safe atomic updates, and minimal data migration when nodes are added or removed.
 
-    ## After Test Docker Command
-    <docker after command here>
+## Commands
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+### 1. Test Before Implementation (Expected to Fail)
+Tests the empty/broken state in `repository_before`.
+
+```bash
+docker compose run --rm -e REPO_PATH=repository_before app bash -c 'cd $REPO_PATH && go test -v ./... || true'
+```
+
+### 2. Test After Implementation (Expected to Pass)
+Runs the comprehensive test suite validating functional correctness, distribution quality, concurrency safety, and memory usage.
+
+```bash
+docker compose run --rm -e REPO_PATH=tests app bash -c 'go test -v ./$REPO_PATH'
+```
+
+### 3. Run Evaluation Script
+Generates the evaluation report comparing before/after states.
+
+```bash
+docker compose run --rm app go run evaluation/evaluate.go
+```
