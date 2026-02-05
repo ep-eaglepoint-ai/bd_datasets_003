@@ -10,5 +10,5 @@ docker compose run --rm app /bin/bash -c 'pytest -v tests/test_app.py'
 
 ### Full Evaluation (Before vs After)
 ```bash
-docker compose run --rm app /bin/bash -c 'python3 evaluation/evaluation.py'
+chmod -R 777 evaluation && docker compose run --rm -v $(pwd)/evaluation:/app/evaluation app /bin/bash -c 'python3 evaluation/evaluation.py'
 ```
