@@ -1,0 +1,11 @@
+{
+            "instance_id": "8L09G3",
+            "problem_statement": "Create a Python script that fetches the top 10 trending repositories on GitHub using GitHub's public API. The script should output the repositories' details in JSON format, including the name, URL, stars, and description of each repository. The script must be fully containerized using Docker, so it can run independently of the local Python environment.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/8l09g3-github-trending-repositories",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        

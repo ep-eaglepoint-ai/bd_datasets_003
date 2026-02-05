@@ -1,0 +1,173 @@
+diff --git a/8l09g3-github-trending-repositories/README.md b/8l09g3-github-trending-repositories/README.md
+index 3280e8b..1ecc9f7 100644
+--- a/8l09g3-github-trending-repositories/README.md
++++ b/8l09g3-github-trending-repositories/README.md
+@@ -4,7 +4,7 @@
+ 
+ ### 1. Before Test (runs tests on the 'before' repository)
+ ```bash
+-docker build -t github-trending . && docker run --rm --entrypoint python github-trending tests/test.py repository_before
++docker build -t github-trending . && docker run --rm --entrypoint python github-trending tests/test.py repository_before || true
+ ```
+ 
+ ### 2. After Test (runs tests on the 'after' repository)
+diff --git a/8l09g3-github-trending-repositories/patches/diff.patch b/8l09g3-github-trending-repositories/patches/diff.patch
+index 97d48fc..e69de29 100644
+--- a/8l09g3-github-trending-repositories/patches/diff.patch
++++ b/8l09g3-github-trending-repositories/patches/diff.patch
+@@ -1,155 +0,0 @@
+-diff --git a/8l09g3-github-trending-repositories/Dockerfile b/8l09g3-github-trending-repositories/Dockerfile
+-index 008403d..615c005 100644
+---- a/8l09g3-github-trending-repositories/Dockerfile
+-+++ b/8l09g3-github-trending-repositories/Dockerfile
+-@@ -1,8 +1,12 @@
+-+FROM python:3.11-slim
+- 
+--        # Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
+--
+--        FROM python:3.11-slim
+- WORKDIR /app
+-+
+-+# Copy the entire project to the container
+- COPY . /app
+-+
+-+# Install dependencies defined in requirements.txt
+- RUN pip install --no-cache-dir -r requirements.txt
+--CMD ["pytest", "-q", "tests"]
+-+
+-+# Run the script from the repository_after directory immediately on start
+-+CMD ["python", "repository_after/script.py"]
+-diff --git a/8l09g3-github-trending-repositories/README.md b/8l09g3-github-trending-repositories/README.md
+-index 0f118e9..3280e8b 100644
+---- a/8l09g3-github-trending-repositories/README.md
+-+++ b/8l09g3-github-trending-repositories/README.md
+-@@ -1,11 +1,22 @@
+- # 8L09G3 - GitHub Trending Repositories
+- 
+--    ## Before Test Docker Command
+--    <docker before command here>
+-+## Docker Commands
+- 
+--    ## After Test Docker Command
+--    <docker after command here>
+-+### 1. Before Test (runs tests on the 'before' repository)
+-+```bash
+-+docker build -t github-trending . && docker run --rm --entrypoint python github-trending tests/test.py repository_before
+-+```
+- 
+--    ## Evaluation Docker Command
+--    <evaluation command here>
+--    
+-\ No newline at end of file
+-+### 2. After Test (runs tests on the 'after' repository)
+-+```bash
+-+docker build -t github-trending . && docker run --rm --entrypoint python github-trending tests/test.py
+-+```
+-+
+-+### 3. Evaluation (Safe Mode)
+-+Runs the full evaluation script and ensures generated reports are owned by your user.
+-+```bash
+-+docker build -t github-trending . && docker run --rm -u $(id -u):$(id -g) -v $(pwd):/app --entrypoint python github-trending evaluation/evaluation.py
+-+```
+-+
+-+> [!TIP]
+-+> The evaluation command uses `-u $(id -u):$(id -g)` to prevent permission denied errors on the generated reports.
+-\ No newline at end of file
+-diff --git a/8l09g3-github-trending-repositories/evaluation/README b/8l09g3-github-trending-repositories/evaluation/README
+-deleted file mode 100644
+-index 77e56dd..0000000
+---- a/8l09g3-github-trending-repositories/evaluation/README
+-+++ /dev/null
+-@@ -1,5 +0,0 @@
+--
+--        # Evaluation Script
+--
+--This script is used to run the before and after tests and generate a json report. You should write your evaluation logic here in this folder and remove this README afterward.
+--*YOUR SCRIPT IN SIMILAR LANGUAGE AS THE PROJECT*
+-diff --git a/8l09g3-github-trending-repositories/requirements.txt b/8l09g3-github-trending-repositories/requirements.txt
+-index b5441b5..f229360 100644
+---- a/8l09g3-github-trending-repositories/requirements.txt
+-+++ b/8l09g3-github-trending-repositories/requirements.txt
+-@@ -1 +1 @@
+--# Add your Python dependencies here if the project is Python-based. If it is not Python-based, you can remove this file and configure the requirements accordingly.
+-+requests
+-diff --git a/8l09g3-github-trending-repositories/trajectory/trajectory.md b/8l09g3-github-trending-repositories/trajectory/trajectory.md
+-index 9a25341..4cb2f53 100644
+---- a/8l09g3-github-trending-repositories/trajectory/trajectory.md
+-+++ b/8l09g3-github-trending-repositories/trajectory/trajectory.md
+-@@ -1,2 +1,74 @@
+--# Trajectory
+-+#  GitHub Trending Repositories
+- 
+-+## 1. Understanding the Problem
+-+When I first received the task, I spent time deeply analyzing the prompt. I realized the core challenge was twofold: 
+-+1.  **Fetching Data**: I needed to communicate with GitHub to find what's popular *without* using any secret passwords (authentication).
+-+2.  **Portability**: The script had to run everywhere without the user needing to install Python. This meant I had to master the "Docker" setup.
+-+
+-+## 2. Research & Discovery
+-+I started by searching for "GitHub Public API trending endpoint." 
+-+*   **Search Query**: `github api trending repositories documentation`
+-+*   **Discovery**: I found that GitHub's official REST API doesn't have a direct `/trending` path.
+-+*   **Alternative**: I researched the [GitHub Search API documentation](https://docs.github.com/en/rest/search/search?apiVersion=2022-11-28#search-repositories). I realized I could simulate "trending" by searching for repositories with at least 1 star and sorting them by the highest star count.
+-+*   **Reference Link**: [GitHub Search API - Repositories](https://api.github.com/search/repositories?q=stars:>1&sort=stars&order=desc&per_page=10)
+-+
+-+## 3. The Requirements Checklist
+-+I listed out exactly what I needed to build to be successful:
+-+- [ ] Create a Python script that fetches the top 10 repos.
+-+- [ ] Use only public APIs (no login required).
+-+- [ ] Output everything in a clean JSON format.
+-+- [ ] Include Name, URL, Stars, and Description for each repo.
+-+- [ ] Provide a Dockerfile that builds and runs the script.
+-+- [ ] Ensure the container runs the script automatically on start.
+-+- [ ] Make the solution self-contained (no local Python needed).
+-+- [ ] Enable building and running with a single Docker command.
+-+- [ ] Ensure both files are complete, production-ready, and easy to use.
+-+
+-+## 4. Design & System Architecture
+-+To make sense of the problem, I designed the system using a **Real-World Metaphor**:
+-+
+-+*   **The Robot Scout (`script.py`)**: This is the brain. It knows how to walk to the "GitHub Library," ask the librarian for the most popular toys, and write the details down in a specific code (JSON).
+-+*   **The Magic Shipping Container (Docker)**: This is how I protect the Robot. I put the Robot inside a container that has its own floor, its own tools, and its own power. Anyone can pick up this container and it will work, regardless of what's on their computer.
+-+
+-+## 5. Implementation - Every Line Explained
+-+
+-+### The Python Robot Scout (`script.py`)
+-+I wrote the script to be robust and precise:
+-+- `import requests, json, sys`: I started by importing the toolsets I need to talk to the internet, format JSON, and handle errors.
+-+- `url = "..."`: I defined the library desk address.
+-+- `params = {"q": "stars:>1", "sort": "stars", "per_page": 10}`: I told the robot exactly how to ask for the data—specifically asking for the **top 10**.
+-+- `response = requests.get(url, params=params)`: I sent the robot to fetch the data.
+-+- `for item in data.get("items", [])`: I instructed the robot to loop through each repo.
+-+- `repo_info = {...}`: Here, I picked out exactly four things: **Name, URL, Stars, and Description**.
+-+- `print(json.dumps(..., indent=4))`: Finally, I made sure the output was in the perfect **JSON format** requested.
+-+
+-+### The Docker Container (`Dockerfile`)
+-+I configured the container to be the ultimate home for my script:
+-+- `FROM python:3.11-slim`: I started with a tiny room that already has Python installed.
+-+- `WORKDIR /app`: I set the working area inside the room.
+-+- `COPY . /app`: I moved all my files into that room.
+-+- `RUN pip install -r requirements.txt`: I installed the "tools" (like the `requests` library) inside the room.
+-+- `CMD ["python", "repository_after/script.py"]`: This is the most important part—I set the "Auto-Start" button so the script runs the second the door opens.
+-+
+-+## 6. Verification - Testing the Solution
+-+To prove that I followed every rule, I wrote a test script called `tests/test.py`.
+-+- **How I wrote it**: I used Python's `subprocess` to run my own script *inside* the Docker container.
+-+- **Verification Strategy**: The test captures the output, checks if it's valid JSON, counts if there are exactly 10 items, and confirms that all required fields (Name, URL, etc.) are present.
+-+
+-+## 7. Requirement Passage Details
+-+I ran the automated test using this command:
+-+`docker run --rm --entrypoint python github-trending tests/test.py`
+-+
+-+**The Results**:
+-+1.  **Req 1: Top 10 Retrieval**: PASSED ✅ (Captured exactly 10 repositories).
+-+2.  **Req 2: No Authentication**: PASSED ✅ (Script fetched data using only public URLs).
+-+3.  **Req 3: JSON Format**: PASSED ✅ (Verified output can be parsed by `json.loads`).
+-+4.  **Req 4: Correct Fields**: PASSED ✅ (Each item contains name, url, stars, and description).
+-+5.  **Req 5: Dockerfile Provision**: PASSED ✅ (The root contains a complete `Dockerfile`).
+-+6.  **Req 6: Automatic Execution**: PASSED ✅ (Verified by checking if script runs without manual intervention inside container).
+-+7.  **Req 7: Self-Contained**: PASSED ✅ (All dependencies like `requests` are installed inside the container environment).
+-+8.  **Req 8: Single Command Build/Run**: PASSED ✅ (Achieved using standard `docker build` and `docker run` commands).
+-+9.  **Req 9: Complete and Easy to Use**: PASSED ✅ (Both files are production-ready with error handling and clear structure).
+-+
+-+## 8. Conclusion
+-+I successfully built a tool that is both light and powerful. By using the search-and-sort method, I found a way to meet the "Trending" requirement using only public tools. My journey taught me how powerful Docker is for making software work "anywhere," and how important it is for a software engineer to plan before they type a single line of code.
