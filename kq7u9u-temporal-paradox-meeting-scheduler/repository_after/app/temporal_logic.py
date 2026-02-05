@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import re
+from dateutil import parser as date_parser
 
 from .models import TemporalExpression, TemporalOperator, TimeReference, HistoricalEvent
 from .event_log import EventLog
@@ -168,15 +169,18 @@ class TemporalEvaluator:
         event = self.event_log.get_latest_event(reference)
         if not event:
             # If no event exists, use a default relative to base_time
-            defaults = {
-                # Use recent defaults to avoid scheduling far in the past when no events exist.
-                TimeReference.LAST_CANCELLATION: base_time - timedelta(hours=2),
-                TimeReference.LAST_DEPLOYMENT: base_time - timedelta(hours=1),
-                TimeReference.CRITICAL_INCIDENT: base_time - timedelta(days=3),
-                TimeReference.RECURRING_LUNCH: self._calculate_next_lunch(base_time),
-                TimeReference.PREVIOUS_DAY_WORKLOAD: base_time - timedelta(days=1),
-            }
-            return defaults.get(reference, base_time)
+            # Compute lazily to avoid side effects for unrelated references.
+            if reference == TimeReference.LAST_CANCELLATION:
+                return base_time - timedelta(hours=2)
+            if reference == TimeReference.LAST_DEPLOYMENT:
+                return base_time - timedelta(hours=1)
+            if reference == TimeReference.CRITICAL_INCIDENT:
+                return base_time - timedelta(days=3)
+            if reference == TimeReference.RECURRING_LUNCH:
+                return self._calculate_next_lunch(base_time)
+            if reference == TimeReference.PREVIOUS_DAY_WORKLOAD:
+                return base_time - timedelta(days=1)
+            return base_time
 
         return event.timestamp
 
@@ -250,31 +254,64 @@ class TemporalEvaluator:
 
     def _calculate_next_lunch(self, base_time: datetime) -> datetime:
         """Calculate next lunch time based on previous day's workload"""
-        # Default lunch at 12:00 PM
-        lunch_hour = 12
+        # Get yesterday's date
+        yesterday = base_time - timedelta(days=1)
+        yesterday_start = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        # Try to get workload from event log (looking for events from yesterday)
+        workload_events = []
+        if hasattr(self.event_log, "get_events_by_type"):
+            try:
+                workload_events = self.event_log.get_events_by_type(
+                    TimeReference.PREVIOUS_DAY_WORKLOAD,
+                    since=yesterday_start
+                )
+            except Exception:
+                workload_events = []
 
-        # Try to read previous day's workload from event log if available
-        try:
-            workload_event = self.event_log.get_latest_event(TimeReference.PREVIOUS_DAY_WORKLOAD)
-            if workload_event:
-                # prefer calculated_value or metadata key 'workload'
-                prev_workload = workload_event.calculated_value if hasattr(workload_event, "calculated_value") and workload_event.calculated_value is not None else workload_event.metadata.get("workload", 75)
+        if workload_events and not isinstance(workload_events, (list, tuple)):
+            try:
+                workload_events = list(workload_events)
+            except TypeError:
+                workload_events = []
+        
+        if workload_events:
+            # Use the most recent workload event from yesterday
+            latest_workload = workload_events[0]
+            if latest_workload.calculated_value is not None:
+                previous_workload = float(latest_workload.calculated_value)
+            elif 'workload' in latest_workload.metadata:
+                previous_workload = float(latest_workload.metadata['workload'])
             else:
-                prev_workload = 75
-        except Exception:
-            prev_workload = 75
-
-        # Adjust lunch based on workload (example logic)
-        if prev_workload > 80:
-            lunch_hour = 13  # Late lunch for heavy workload
-        elif prev_workload < 30:
-            lunch_hour = 11  # Early lunch for light workload
-
+                previous_workload = 75  # Default
+        else:
+            # No workload data found, use default
+            previous_workload = 75
+        
+        # Dynamic lunch adjustment based on workload
+        # Heavy workload (>80%) -> later lunch at 1:00 PM
+        # Medium workload (30-80%) -> normal lunch at 12:00 PM
+        # Light workload (<30%) -> early lunch at 11:30 AM
+        if previous_workload > 80:
+            lunch_hour = 13
+            lunch_minute = 0
+        elif previous_workload < 30:
+            lunch_hour = 11
+            lunch_minute = 30
+        else:
+            lunch_hour = 12
+            lunch_minute = 0
+        
         # Calculate lunch time for today
-        lunch_time = datetime(base_time.year, base_time.month, base_time.day, lunch_hour, 0, 0)
-
+        lunch_time = datetime(
+            base_time.year, base_time.month, base_time.day,
+            lunch_hour, lunch_minute, 0
+        )
+        
         # If already past today's lunch, schedule for tomorrow
         if base_time > lunch_time:
             lunch_time += timedelta(days=1)
-
+            # Recalculate for tomorrow with same workload logic
+            # (workload doesn't change day-to-day unless new data)
+        
         return lunch_time

@@ -2,10 +2,10 @@ from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Any
 
-from .models import ScheduleRequest, ScheduleResponse, ErrorResponse
+from .models import ScheduleRequest, ScheduleResponse, ErrorResponse, HistoricalEvent, TimeReference
 from .scheduler import TemporalScheduler
 from .event_log import EventLog
 
@@ -187,8 +187,48 @@ def create_app() -> FastAPI:
     @app.post("/events/seed")
     async def seed_events(event_log: EventLog = Depends(get_event_log)) -> Dict[str, Any]:
         """Seed the event log with mock data"""
-        event_log.seed_mock_data()
-        return {"status": "seeded", "message": "Mock events added to event log"}
+        # Clear first to ensure fresh data
+        event_log.clear_events()
+        
+        now = datetime.now()
+        
+        # Add a workload event for yesterday (critical for lunch calculations)
+        workload_event = HistoricalEvent(
+            event_type=TimeReference.PREVIOUS_DAY_WORKLOAD,
+            timestamp=now - timedelta(days=1),
+            metadata={"source": "mock_seed", "workload": 75},
+            calculated_value=75.0
+        )
+        event_log.add_event(workload_event)
+        
+        # Add other mock events
+        mock_events = [
+            HistoricalEvent(
+                event_type=TimeReference.LAST_CANCELLATION,
+                timestamp=now - timedelta(hours=3),
+                metadata={"reason": "participant_unavailable"}
+            ),
+            HistoricalEvent(
+                event_type=TimeReference.LAST_CANCELLATION,
+                timestamp=now - timedelta(days=1, hours=2),
+                metadata={"reason": "emergency"}
+            ),
+            HistoricalEvent(
+                event_type=TimeReference.LAST_DEPLOYMENT,
+                timestamp=now - timedelta(days=2, hours=4),
+                metadata={"version": "v2.1.0", "success": True}
+            ),
+            HistoricalEvent(
+                event_type=TimeReference.CRITICAL_INCIDENT,
+                timestamp=now - timedelta(hours=18),
+                metadata={"severity": "high", "resolved": True}
+            ),
+        ]
+        
+        for event in mock_events:
+            event_log.add_event(event)
+        
+        return {"status": "seeded", "message": f"Added {len(mock_events) + 1} mock events"}
 
     @app.delete("/events")
     async def clear_events(

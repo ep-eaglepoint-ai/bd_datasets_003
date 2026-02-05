@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, time
 from typing import Optional, List, Dict, Any, Tuple
 import asyncio
 
-from .models import ScheduleRequest, ScheduleResponse, ErrorResponse, TemporalOperator, TemporalExpression, TimeReference
+from .models import ScheduleRequest, ScheduleResponse, ErrorResponse, TemporalOperator, TemporalExpression, TimeReference, HistoricalEvent
 from .parser import TemporalParser, RuleValidator
 from .temporal_logic import TemporalEvaluator
 from .paradox_detector import TemporalParadoxDetector
@@ -41,6 +41,21 @@ class TemporalScheduler:
     async def schedule_meeting(self, request: ScheduleRequest) -> Tuple[Optional[ScheduleResponse], Optional[ErrorResponse]]:
         """Main scheduling method"""
         try:
+            # Log current workload for recurring lunch calculations BEFORE parsing
+            # This ensures lunch calculations have up-to-date workload data
+            
+            # Get workload from mock API
+            workload = await self.external_apis.get_previous_day_workload()
+            
+            # Store workload in event log for lunch calculations
+            workload_event = HistoricalEvent(
+                event_type=TimeReference.PREVIOUS_DAY_WORKLOAD,
+                timestamp=datetime.now(),
+                metadata={"source": "mock_api", "workload": workload},
+                calculated_value=workload
+            )
+            self.event_log.add_event(workload_event)
+            
             # Basic validation (API and tests expect 400-style errors)
             if request.duration_minutes <= 0:
                 return None, ErrorResponse(
@@ -133,7 +148,6 @@ class TemporalScheduler:
                 )
                 
                 # Log the scheduled meeting as an event
-                from .models import HistoricalEvent, TimeReference
                 meeting_event = HistoricalEvent(
                     event_type=TimeReference.LAST_DEPLOYMENT,  # Using deployment as meeting type
                     timestamp=meeting_time,
@@ -179,7 +193,7 @@ class TemporalScheduler:
                 # For 'only if X' and 'provided X', meeting can only be scheduled if X is true
                 
                 # Check the actual condition
-                condition_result = self._evaluate_specific_condition(cond_expr.conditions[0])
+                condition_result = self._evaluate_specific_condition(cond_expr.conditions[0], meeting_time)
                 
                 if cond_expr.operator == TemporalOperator.UNLESS:
                     return not condition_result
@@ -203,25 +217,27 @@ class TemporalScheduler:
         
         return True
     
-    def _evaluate_specific_condition(self, condition_expr) -> bool:
+    def _evaluate_specific_condition(self, condition_expr, meeting_time: datetime) -> bool:
         """Evaluate specific condition types"""
         if condition_expr.operator == TemporalOperator.WITHIN:
             # 'within X minutes of Y'
             if condition_expr.reference == TimeReference.RECURRING_LUNCH:
                 # Check if within lunch window
-                lunch_time = self.evaluator._calculate_next_lunch(datetime.now())
-                window_minutes = int(str(condition_expr.value).split()[0])  # Extract number
+                lunch_time = self.evaluator._calculate_next_lunch(meeting_time)
+                window_minutes = int(str(condition_expr.value).split()[0]) if isinstance(condition_expr.value, str) else 30
                 window = timedelta(minutes=window_minutes)
                 
-                # This would be checked against the meeting time
-                # For now, return True if we're not currently in lunch window
-                current_time = datetime.now()
-                return not (lunch_time - window <= current_time <= lunch_time + window)
+                # Check if meeting time is within lunch window
+                return not (lunch_time - window <= meeting_time <= lunch_time + window)
         
         elif condition_expr.reference == TimeReference.CRITICAL_INCIDENT:
             # 'only if no critical incident'
             incident = self.event_log.get_latest_event(TimeReference.CRITICAL_INCIDENT)
-            return incident is None  # True if no incident
+            if incident:
+                # Check if incident was within last 12 hours
+                twelve_hours_ago = datetime.now() - timedelta(hours=12)
+                return incident.timestamp < twelve_hours_ago
+            return True  # No incident
         
         # Default: condition is satisfied
         return True

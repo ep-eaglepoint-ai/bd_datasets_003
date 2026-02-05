@@ -302,8 +302,11 @@ class TemporalParadoxDetector:
             if constraint_type == "no_overlap":
                 events = self.event_log.get_events_in_range(start_time, end_time)
                 if events:
-                    event_types = {e.event_type.value for e in events}
-                    violations.append(f"Overlaps with events: {', '.join(event_types)}")
+                    ignored = {TimeReference.PREVIOUS_DAY_WORKLOAD}
+                    blocking_events = [e for e in events if e.event_type not in ignored]
+                    if blocking_events:
+                        event_types = {e.event_type.value for e in blocking_events}
+                        violations.append(f"Overlaps with events: {', '.join(event_types)}")
 
             elif constraint_type == "business_hours":
                 business_start = start_time.replace(hour=9, minute=0, second=0)

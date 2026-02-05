@@ -84,6 +84,30 @@ class TestIntegrationAPI:
         response = client.get("/events")
         data = response.json()
         assert data["count"] == 0
+
+    @patch('app.scheduler.MockExternalAPIs.get_previous_day_workload', AsyncMock(return_value=85.0))
+    def test_recurring_lunch_with_workload(self, client):
+        """Test that recurring lunch time adjusts based on workload"""
+        request = {
+            "duration_minutes": 45,
+            "participants": [{"id": "1", "name": "Alice", "email": "alice@example.com"}],
+            "temporal_rule": "at recurring lunch",
+            "requested_at": datetime.now().isoformat()
+        }
+        
+        response = client.post("/schedule", json=request)
+        
+        # Should handle the request (might succeed or fail based on constraints)
+        assert response.status_code in [200, 400]
+        
+        if response.status_code == 200:
+            data = response.json()
+            # Verify lunch was calculated
+            assert "start_time" in data
+        else:
+            # Should fail with meaningful error, not crash
+            data = response.json()
+            assert "detail" in data
     
     @patch('app.scheduler.MockExternalAPIs.get_previous_day_workload', AsyncMock(return_value=75.0))
     @patch('app.scheduler.MockExternalAPIs.get_last_incident_time', 

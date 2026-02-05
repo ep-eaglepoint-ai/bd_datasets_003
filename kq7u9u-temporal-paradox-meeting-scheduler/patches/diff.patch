@@ -11,11 +11,11 @@ index 0000000..b9d2b0b
 Binary files /dev/null and b/repository_after/app/__pycache__/__init__.cpython-311.pyc differ
 diff --git a/repository_after/app/__pycache__/api.cpython-311.pyc b/repository_after/app/__pycache__/api.cpython-311.pyc
 new file mode 100644
-index 0000000..ccabd1a
+index 0000000..3a09232
 Binary files /dev/null and b/repository_after/app/__pycache__/api.cpython-311.pyc differ
 diff --git a/repository_after/app/__pycache__/event_log.cpython-311.pyc b/repository_after/app/__pycache__/event_log.cpython-311.pyc
 new file mode 100644
-index 0000000..614eab6
+index 0000000..2970269
 Binary files /dev/null and b/repository_after/app/__pycache__/event_log.cpython-311.pyc differ
 diff --git a/repository_after/app/__pycache__/models.cpython-311.pyc b/repository_after/app/__pycache__/models.cpython-311.pyc
 new file mode 100644
@@ -23,7 +23,7 @@ index 0000000..2de0204
 Binary files /dev/null and b/repository_after/app/__pycache__/models.cpython-311.pyc differ
 diff --git a/repository_after/app/__pycache__/paradox_detector.cpython-311.pyc b/repository_after/app/__pycache__/paradox_detector.cpython-311.pyc
 new file mode 100644
-index 0000000..a85191b
+index 0000000..74c5ec6
 Binary files /dev/null and b/repository_after/app/__pycache__/paradox_detector.cpython-311.pyc differ
 diff --git a/repository_after/app/__pycache__/parser.cpython-311.pyc b/repository_after/app/__pycache__/parser.cpython-311.pyc
 new file mode 100644
@@ -31,26 +31,26 @@ index 0000000..f2ea169
 Binary files /dev/null and b/repository_after/app/__pycache__/parser.cpython-311.pyc differ
 diff --git a/repository_after/app/__pycache__/scheduler.cpython-311.pyc b/repository_after/app/__pycache__/scheduler.cpython-311.pyc
 new file mode 100644
-index 0000000..65fc16d
+index 0000000..2c62328
 Binary files /dev/null and b/repository_after/app/__pycache__/scheduler.cpython-311.pyc differ
 diff --git a/repository_after/app/__pycache__/temporal_logic.cpython-311.pyc b/repository_after/app/__pycache__/temporal_logic.cpython-311.pyc
 new file mode 100644
-index 0000000..bb301ac
+index 0000000..0a26e24
 Binary files /dev/null and b/repository_after/app/__pycache__/temporal_logic.cpython-311.pyc differ
 diff --git a/repository_after/app/api.py b/repository_after/app/api.py
 new file mode 100644
-index 0000000..3536580
+index 0000000..031729b
 --- /dev/null
 +++ b/repository_after/app/api.py
-@@ -0,0 +1,212 @@
+@@ -0,0 +1,252 @@
 +from fastapi import FastAPI, HTTPException, Depends, Request
 +from fastapi.middleware.cors import CORSMiddleware
 +from fastapi.exceptions import RequestValidationError
 +from fastapi.responses import JSONResponse
-+from datetime import datetime
++from datetime import datetime, timedelta
 +from typing import Dict, Any
 +
-+from .models import ScheduleRequest, ScheduleResponse, ErrorResponse
++from .models import ScheduleRequest, ScheduleResponse, ErrorResponse, HistoricalEvent, TimeReference
 +from .scheduler import TemporalScheduler
 +from .event_log import EventLog
 +
@@ -232,8 +232,48 @@ index 0000000..3536580
 +    @app.post("/events/seed")
 +    async def seed_events(event_log: EventLog = Depends(get_event_log)) -> Dict[str, Any]:
 +        """Seed the event log with mock data"""
-+        event_log.seed_mock_data()
-+        return {"status": "seeded", "message": "Mock events added to event log"}
++        # Clear first to ensure fresh data
++        event_log.clear_events()
++        
++        now = datetime.now()
++        
++        # Add a workload event for yesterday (critical for lunch calculations)
++        workload_event = HistoricalEvent(
++            event_type=TimeReference.PREVIOUS_DAY_WORKLOAD,
++            timestamp=now - timedelta(days=1),
++            metadata={"source": "mock_seed", "workload": 75},
++            calculated_value=75.0
++        )
++        event_log.add_event(workload_event)
++        
++        # Add other mock events
++        mock_events = [
++            HistoricalEvent(
++                event_type=TimeReference.LAST_CANCELLATION,
++                timestamp=now - timedelta(hours=3),
++                metadata={"reason": "participant_unavailable"}
++            ),
++            HistoricalEvent(
++                event_type=TimeReference.LAST_CANCELLATION,
++                timestamp=now - timedelta(days=1, hours=2),
++                metadata={"reason": "emergency"}
++            ),
++            HistoricalEvent(
++                event_type=TimeReference.LAST_DEPLOYMENT,
++                timestamp=now - timedelta(days=2, hours=4),
++                metadata={"version": "v2.1.0", "success": True}
++            ),
++            HistoricalEvent(
++                event_type=TimeReference.CRITICAL_INCIDENT,
++                timestamp=now - timedelta(hours=18),
++                metadata={"severity": "high", "resolved": True}
++            ),
++        ]
++        
++        for event in mock_events:
++            event_log.add_event(event)
++        
++        return {"status": "seeded", "message": f"Added {len(mock_events) + 1} mock events"}
 +
 +    @app.delete("/events")
 +    async def clear_events(
@@ -258,109 +298,82 @@ index 0000000..3536580
 \ No newline at end of file
 diff --git a/repository_after/app/event_log.py b/repository_after/app/event_log.py
 new file mode 100644
-index 0000000..f51df13
+index 0000000..b07d641
 --- /dev/null
 +++ b/repository_after/app/event_log.py
-@@ -0,0 +1,150 @@
-+from enum import Enum
+@@ -0,0 +1,130 @@
++import json
 +from datetime import datetime, timedelta
 +from typing import List, Optional, Dict, Any
 +from pathlib import Path
 +from tinydb import TinyDB, Query
-+from tinydb.storages import MemoryStorage
++from tinydb.table import Document
 +
 +from .models import HistoricalEvent, TimeReference
 +
 +
 +class EventLog:
 +    """Manages historical events that influence scheduling"""
-+
++    
 +    def __init__(self, db_path: str = "data/event_log.json"):
-+        self.db_path = Path(db_path) if db_path != ":memory:" else None
-+
-+        if db_path == ":memory:":
-+            # Use in-memory TinyDB storage
-+            self.db = TinyDB(storage=MemoryStorage)
-+        else:
-+            # Ensure parent directory exists
-+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
-+            self.db = TinyDB(str(self.db_path))
-+
-+        self.events = self.db.table("events")
-+
-+    def _serialize_event(self, event: HistoricalEvent) -> Dict[str, Any]:
-+        """Return a JSON-serializable dict for TinyDB insertion."""
-+        data = event.model_dump() if hasattr(event, "model_dump") else event.dict()
-+
-+        evt = data.get("event_type")
-+        if isinstance(evt, Enum):
-+            data["event_type"] = evt.value
-+        elif evt is not None:
-+            data["event_type"] = str(evt)
-+
-+        ts = data.get("timestamp")
-+        if isinstance(ts, datetime):
-+            data["timestamp"] = ts.isoformat()
-+        return data
-+
++        self.db_path = Path(db_path)
++        self.db_path.parent.mkdir(exist_ok=True)
++        self.db = TinyDB(self.db_path)
++        self.events = self.db.table('events')
++        
 +    def add_event(self, event: HistoricalEvent) -> str:
 +        """Add a new historical event to the log"""
-+        serialized = self._serialize_event(event)
-+        doc_id = self.events.insert(serialized)
++        # Convert to dict using model_dump for Pydantic v2 compatibility
++        event_dict = event.model_dump() if hasattr(event, 'model_dump') else event.dict()
++        doc_id = self.events.insert(event_dict)
 +        return str(doc_id)
-+
++    
 +    def get_events_by_type(
-+        self,
-+        event_type: TimeReference,
++        self, 
++        event_type: TimeReference, 
 +        limit: int = 10,
-+        since: Optional[datetime] = None,
++        since: Optional[datetime] = None
 +    ) -> List[HistoricalEvent]:
 +        """Get events of a specific type, optionally filtered by time"""
 +        Event = Query()
-+        # event_type stored as string matching TimeReference.value
 +        query = Event.event_type == event_type.value
-+
++        
 +        results = self.events.search(query)
-+
++        
 +        # Sort by timestamp descending (most recent first)
-+        results.sort(key=lambda x: x["timestamp"], reverse=True)
-+
++        results.sort(key=lambda x: x['timestamp'], reverse=True)
++        
 +        if since:
-+            results = [
-+                r for r in results if datetime.fromisoformat(r["timestamp"]) >= since
-+            ]
-+
-+        # Convert to HistoricalEvent objects (Pydantic will parse ISO timestamp)
-+        events = []
-+        for r in results[:limit]:
-+            evt = r.get("event_type")
-+            if isinstance(evt, Enum):
-+                r["event_type"] = evt.value
-+            events.append(HistoricalEvent(**r))
++            results = [r for r in results if datetime.fromisoformat(r['timestamp']) >= since]
++        
++        # Convert to HistoricalEvent objects
++        events = [HistoricalEvent(**r) for r in results[:limit]]
 +        return events
-+
++    
 +    def get_latest_event(self, event_type: TimeReference) -> Optional[HistoricalEvent]:
 +        """Get the most recent event of a specific type"""
 +        events = self.get_events_by_type(event_type, limit=1)
 +        return events[0] if events else None
-+
++    
 +    def get_events_in_range(
-+        self,
-+        start_time: datetime,
-+        end_time: datetime,
++        self, 
++        start_time: datetime, 
++        end_time: datetime
 +    ) -> List[HistoricalEvent]:
 +        """Get all events within a time range"""
++        Event = Query()
++        
 +        # TinyDB doesn't support datetime comparisons directly, so we filter in Python
 +        all_events = self.events.all()
-+
++        
 +        events_in_range = []
 +        for event_dict in all_events:
-+            event_time = datetime.fromisoformat(event_dict["timestamp"])
++            event_time = datetime.fromisoformat(event_dict['timestamp'])
 +            if start_time <= event_time <= end_time:
 +                events_in_range.append(HistoricalEvent(**event_dict))
-+
++        
 +        return sorted(events_in_range, key=lambda x: x.timestamp)
-+
++    
 +    def clear_events(self, event_type: Optional[TimeReference] = None):
 +        """Clear events, optionally filtered by type"""
 +        if event_type:
@@ -368,50 +381,57 @@ index 0000000..f51df13
 +            self.events.remove(Event.event_type == event_type.value)
 +        else:
 +            self.events.truncate()
-+
++    
 +    def seed_mock_data(self):
 +        """Seed the database with mock historical events for testing"""
 +        now = datetime.now()
-+
++        
++        # Clear existing events first
++        self.clear_events()
++        
++        # Add workload event (important for lunch calculations)
++        from .models import HistoricalEvent, TimeReference
++        
++        workload_event = HistoricalEvent(
++            event_type=TimeReference.PREVIOUS_DAY_WORKLOAD,
++            timestamp=now - timedelta(days=1),
++            metadata={"source": "mock_data", "workload": 75},
++            calculated_value=75.0
++        )
++        self.add_event(workload_event)
++        
++        # Add other events
 +        mock_events = [
 +            HistoricalEvent(
 +                event_type=TimeReference.LAST_CANCELLATION,
 +                timestamp=now - timedelta(hours=3),
-+                metadata={"reason": "participant_unavailable"},
++                metadata={"reason": "participant_unavailable"}
 +            ),
 +            HistoricalEvent(
 +                event_type=TimeReference.LAST_CANCELLATION,
 +                timestamp=now - timedelta(days=1, hours=2),
-+                metadata={"reason": "emergency"},
++                metadata={"reason": "emergency"}
 +            ),
 +            HistoricalEvent(
 +                event_type=TimeReference.LAST_DEPLOYMENT,
 +                timestamp=now - timedelta(days=2, hours=4),
-+                metadata={"version": "v2.1.0", "success": True},
++                metadata={"version": "v2.1.0", "success": True}
 +            ),
 +            HistoricalEvent(
 +                event_type=TimeReference.CRITICAL_INCIDENT,
-+                timestamp=now - timedelta(hours=12),
-+                metadata={"severity": "high", "resolved": True},
-+            ),
-+            HistoricalEvent(
-+                event_type=TimeReference.CRITICAL_INCIDENT,
-+                timestamp=now - timedelta(days=3),
-+                metadata={"severity": "medium", "resolved": True},
++                timestamp=now - timedelta(hours=18),
++                metadata={"severity": "high", "resolved": True}
 +            ),
 +        ]
-+
++        
 +        for event in mock_events:
 +            self.add_event(event)
-+
-+        print(f"Seeded {len(mock_events)} mock events")
-+
++        
++        return f"Seeded {len(mock_events) + 1} mock events"
++    
 +    def close(self):
 +        """Close the database connection"""
-+        try:
-+            self.db.close()
-+        except Exception:
-+            pass
++        self.db.close()
 \ No newline at end of file
 diff --git a/repository_after/app/main.py b/repository_after/app/main.py
 new file mode 100644
@@ -544,10 +564,10 @@ index 0000000..4758ded
 \ No newline at end of file
 diff --git a/repository_after/app/paradox_detector.py b/repository_after/app/paradox_detector.py
 new file mode 100644
-index 0000000..51a8574
+index 0000000..3afb895
 --- /dev/null
 +++ b/repository_after/app/paradox_detector.py
-@@ -0,0 +1,328 @@
+@@ -0,0 +1,331 @@
 +from datetime import datetime, timedelta
 +from typing import List, Dict, Any, Optional, Set, Tuple
 +from enum import Enum
@@ -852,8 +872,11 @@ index 0000000..51a8574
 +            if constraint_type == "no_overlap":
 +                events = self.event_log.get_events_in_range(start_time, end_time)
 +                if events:
-+                    event_types = {e.event_type.value for e in events}
-+                    violations.append(f"Overlaps with events: {', '.join(event_types)}")
++                    ignored = {TimeReference.PREVIOUS_DAY_WORKLOAD}
++                    blocking_events = [e for e in events if e.event_type not in ignored]
++                    if blocking_events:
++                        event_types = {e.event_type.value for e in blocking_events}
++                        violations.append(f"Overlaps with events: {', '.join(event_types)}")
 +
 +            elif constraint_type == "business_hours":
 +                business_start = start_time.replace(hour=9, minute=0, second=0)
@@ -1286,15 +1309,15 @@ index 0000000..7f2c764
 \ No newline at end of file
 diff --git a/repository_after/app/scheduler.py b/repository_after/app/scheduler.py
 new file mode 100644
-index 0000000..d32c359
+index 0000000..34c5daa
 --- /dev/null
 +++ b/repository_after/app/scheduler.py
-@@ -0,0 +1,322 @@
+@@ -0,0 +1,338 @@
 +from datetime import datetime, timedelta, time
 +from typing import Optional, List, Dict, Any, Tuple
 +import asyncio
 +
-+from .models import ScheduleRequest, ScheduleResponse, ErrorResponse, TemporalOperator, TemporalExpression, TimeReference
++from .models import ScheduleRequest, ScheduleResponse, ErrorResponse, TemporalOperator, TemporalExpression, TimeReference, HistoricalEvent
 +from .parser import TemporalParser, RuleValidator
 +from .temporal_logic import TemporalEvaluator
 +from .paradox_detector import TemporalParadoxDetector
@@ -1333,6 +1356,21 @@ index 0000000..d32c359
 +    async def schedule_meeting(self, request: ScheduleRequest) -> Tuple[Optional[ScheduleResponse], Optional[ErrorResponse]]:
 +        """Main scheduling method"""
 +        try:
++            # Log current workload for recurring lunch calculations BEFORE parsing
++            # This ensures lunch calculations have up-to-date workload data
++            
++            # Get workload from mock API
++            workload = await self.external_apis.get_previous_day_workload()
++            
++            # Store workload in event log for lunch calculations
++            workload_event = HistoricalEvent(
++                event_type=TimeReference.PREVIOUS_DAY_WORKLOAD,
++                timestamp=datetime.now(),
++                metadata={"source": "mock_api", "workload": workload},
++                calculated_value=workload
++            )
++            self.event_log.add_event(workload_event)
++            
 +            # Basic validation (API and tests expect 400-style errors)
 +            if request.duration_minutes <= 0:
 +                return None, ErrorResponse(
@@ -1425,7 +1463,6 @@ index 0000000..d32c359
 +                )
 +                
 +                # Log the scheduled meeting as an event
-+                from .models import HistoricalEvent, TimeReference
 +                meeting_event = HistoricalEvent(
 +                    event_type=TimeReference.LAST_DEPLOYMENT,  # Using deployment as meeting type
 +                    timestamp=meeting_time,
@@ -1471,7 +1508,7 @@ index 0000000..d32c359
 +                # For 'only if X' and 'provided X', meeting can only be scheduled if X is true
 +                
 +                # Check the actual condition
-+                condition_result = self._evaluate_specific_condition(cond_expr.conditions[0])
++                condition_result = self._evaluate_specific_condition(cond_expr.conditions[0], meeting_time)
 +                
 +                if cond_expr.operator == TemporalOperator.UNLESS:
 +                    return not condition_result
@@ -1495,25 +1532,27 @@ index 0000000..d32c359
 +        
 +        return True
 +    
-+    def _evaluate_specific_condition(self, condition_expr) -> bool:
++    def _evaluate_specific_condition(self, condition_expr, meeting_time: datetime) -> bool:
 +        """Evaluate specific condition types"""
 +        if condition_expr.operator == TemporalOperator.WITHIN:
 +            # 'within X minutes of Y'
 +            if condition_expr.reference == TimeReference.RECURRING_LUNCH:
 +                # Check if within lunch window
-+                lunch_time = self.evaluator._calculate_next_lunch(datetime.now())
-+                window_minutes = int(str(condition_expr.value).split()[0])  # Extract number
++                lunch_time = self.evaluator._calculate_next_lunch(meeting_time)
++                window_minutes = int(str(condition_expr.value).split()[0]) if isinstance(condition_expr.value, str) else 30
 +                window = timedelta(minutes=window_minutes)
 +                
-+                # This would be checked against the meeting time
-+                # For now, return True if we're not currently in lunch window
-+                current_time = datetime.now()
-+                return not (lunch_time - window <= current_time <= lunch_time + window)
++                # Check if meeting time is within lunch window
++                return not (lunch_time - window <= meeting_time <= lunch_time + window)
 +        
 +        elif condition_expr.reference == TimeReference.CRITICAL_INCIDENT:
 +            # 'only if no critical incident'
 +            incident = self.event_log.get_latest_event(TimeReference.CRITICAL_INCIDENT)
-+            return incident is None  # True if no incident
++            if incident:
++                # Check if incident was within last 12 hours
++                twelve_hours_ago = datetime.now() - timedelta(hours=12)
++                return incident.timestamp < twelve_hours_ago
++            return True  # No incident
 +        
 +        # Default: condition is satisfied
 +        return True
@@ -1615,12 +1654,13 @@ index 0000000..d32c359
 \ No newline at end of file
 diff --git a/repository_after/app/temporal_logic.py b/repository_after/app/temporal_logic.py
 new file mode 100644
-index 0000000..9fbb426
+index 0000000..c58e8e2
 --- /dev/null
 +++ b/repository_after/app/temporal_logic.py
-@@ -0,0 +1,280 @@
+@@ -0,0 +1,317 @@
 +from datetime import datetime, timedelta
 +import re
++from dateutil import parser as date_parser
 +
 +from .models import TemporalExpression, TemporalOperator, TimeReference, HistoricalEvent
 +from .event_log import EventLog
@@ -1789,15 +1829,18 @@ index 0000000..9fbb426
 +        event = self.event_log.get_latest_event(reference)
 +        if not event:
 +            # If no event exists, use a default relative to base_time
-+            defaults = {
-+                # Use recent defaults to avoid scheduling far in the past when no events exist.
-+                TimeReference.LAST_CANCELLATION: base_time - timedelta(hours=2),
-+                TimeReference.LAST_DEPLOYMENT: base_time - timedelta(hours=1),
-+                TimeReference.CRITICAL_INCIDENT: base_time - timedelta(days=3),
-+                TimeReference.RECURRING_LUNCH: self._calculate_next_lunch(base_time),
-+                TimeReference.PREVIOUS_DAY_WORKLOAD: base_time - timedelta(days=1),
-+            }
-+            return defaults.get(reference, base_time)
++            # Compute lazily to avoid side effects for unrelated references.
++            if reference == TimeReference.LAST_CANCELLATION:
++                return base_time - timedelta(hours=2)
++            if reference == TimeReference.LAST_DEPLOYMENT:
++                return base_time - timedelta(hours=1)
++            if reference == TimeReference.CRITICAL_INCIDENT:
++                return base_time - timedelta(days=3)
++            if reference == TimeReference.RECURRING_LUNCH:
++                return self._calculate_next_lunch(base_time)
++            if reference == TimeReference.PREVIOUS_DAY_WORKLOAD:
++                return base_time - timedelta(days=1)
++            return base_time
 +
 +        return event.timestamp
 +
@@ -1871,32 +1914,65 @@ index 0000000..9fbb426
 +
 +    def _calculate_next_lunch(self, base_time: datetime) -> datetime:
 +        """Calculate next lunch time based on previous day's workload"""
-+        # Default lunch at 12:00 PM
-+        lunch_hour = 12
++        # Get yesterday's date
++        yesterday = base_time - timedelta(days=1)
++        yesterday_start = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
++        
++        # Try to get workload from event log (looking for events from yesterday)
++        workload_events = []
++        if hasattr(self.event_log, "get_events_by_type"):
++            try:
++                workload_events = self.event_log.get_events_by_type(
++                    TimeReference.PREVIOUS_DAY_WORKLOAD,
++                    since=yesterday_start
++                )
++            except Exception:
++                workload_events = []
 +
-+        # Try to read previous day's workload from event log if available
-+        try:
-+            workload_event = self.event_log.get_latest_event(TimeReference.PREVIOUS_DAY_WORKLOAD)
-+            if workload_event:
-+                # prefer calculated_value or metadata key 'workload'
-+                prev_workload = workload_event.calculated_value if hasattr(workload_event, "calculated_value") and workload_event.calculated_value is not None else workload_event.metadata.get("workload", 75)
++        if workload_events and not isinstance(workload_events, (list, tuple)):
++            try:
++                workload_events = list(workload_events)
++            except TypeError:
++                workload_events = []
++        
++        if workload_events:
++            # Use the most recent workload event from yesterday
++            latest_workload = workload_events[0]
++            if latest_workload.calculated_value is not None:
++                previous_workload = float(latest_workload.calculated_value)
++            elif 'workload' in latest_workload.metadata:
++                previous_workload = float(latest_workload.metadata['workload'])
 +            else:
-+                prev_workload = 75
-+        except Exception:
-+            prev_workload = 75
-+
-+        # Adjust lunch based on workload (example logic)
-+        if prev_workload > 80:
-+            lunch_hour = 13  # Late lunch for heavy workload
-+        elif prev_workload < 30:
-+            lunch_hour = 11  # Early lunch for light workload
-+
++                previous_workload = 75  # Default
++        else:
++            # No workload data found, use default
++            previous_workload = 75
++        
++        # Dynamic lunch adjustment based on workload
++        # Heavy workload (>80%) -> later lunch at 1:00 PM
++        # Medium workload (30-80%) -> normal lunch at 12:00 PM
++        # Light workload (<30%) -> early lunch at 11:30 AM
++        if previous_workload > 80:
++            lunch_hour = 13
++            lunch_minute = 0
++        elif previous_workload < 30:
++            lunch_hour = 11
++            lunch_minute = 30
++        else:
++            lunch_hour = 12
++            lunch_minute = 0
++        
 +        # Calculate lunch time for today
-+        lunch_time = datetime(base_time.year, base_time.month, base_time.day, lunch_hour, 0, 0)
-+
++        lunch_time = datetime(
++            base_time.year, base_time.month, base_time.day,
++            lunch_hour, lunch_minute, 0
++        )
++        
 +        # If already past today's lunch, schedule for tomorrow
 +        if base_time > lunch_time:
 +            lunch_time += timedelta(days=1)
-+
++            # Recalculate for tomorrow with same workload logic
++            # (workload doesn't change day-to-day unless new data)
++        
 +        return lunch_time
 \ No newline at end of file
