@@ -1,0 +1,12 @@
+{
+            "instance_id": "Z4RH1D",
+            "problem_statement": "Create a Recipe Finder application that helps users discover recipes based on ingredients they already have available in their kitchen. The user should be able to select a set of available ingredients from a predefined list, and the application should filter and display recipes that can be made with those selected ingredients. This type of application solves a common real-world problem where people open their refrigerator wanting to cook but need inspiration for what to make with their current supplies.
+You are building this as a frontend-only application with no backend API, so you will need to create a static dataset of mock recipes stored in a local TypeScript file. Use Next.js with the App Router, TypeScript for type safety, and Tailwind CSS for styling. The core complexity lies in the filtering algorithm where you efficiently compare the user's selected ingredients against the requirements of each recipe and render the matching results dynamically as the selection changes.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/z4rh1d-recipie-fidner",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
