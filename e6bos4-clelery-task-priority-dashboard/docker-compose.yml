@@ -45,7 +45,7 @@ services:
 
   worker:
     image: app-backend # Reuses the same image built by 'backend'
-    command: celery -A app.celery_app worker --loglevel=info -Q high,medium,low -c 4
+    command: celery -A app.celery_app worker --loglevel=info -Q high,medium,low -c 1 --prefetch-multiplier=1
     environment: *app_env
     depends_on: *app_deps
     profiles: [ app ]

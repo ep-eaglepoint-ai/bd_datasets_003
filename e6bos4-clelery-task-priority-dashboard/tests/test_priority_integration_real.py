@@ -36,67 +36,98 @@ class TestRealPriorityIntegration:
         """
         Scenario: Push 10 Low tasks, then 1 High task.
         Verify High task is executed FIRST by the worker.
+        
+        Strategy: Submit ALL tasks FIRST, verify queue state, THEN start worker.
+        This ensures worker sees complete queue state and consumes high priority first.
         """
         r.delete("execution_log")
         
-        # We use the statically defined task in app/tasks.py
-        # Task Name: app.tasks.priority_test_task
+        # Task name registered in app/tasks.py
         task_name = "app.tasks.priority_test_task"
 
-        # 1. Submit 10 Low Tasks
+        # STEP 1: Submit 10 Low priority tasks
+        print("DEBUG: Submitting 10 low priority tasks...")
         for i in range(10):
             celery_app.send_task(
                 task_name,
                 args=["low"],
                 queue="low",
-                routing_key="low"
+                routing_key="low",
+                priority=9  # Low priority (0=highest, 9=lowest)
             )
+        
+        # Small delay to ensure low tasks are routed
+        time.sleep(0.2)
 
-        # 2. Submit 1 High Task
+        # STEP 2: Submit 1 High priority task
+        print("DEBUG: Submitting 1 high priority task...")
         celery_app.send_task(
             task_name,
             args=["high"],
             queue="high",
-            routing_key="high"
+            routing_key="high",
+            priority=0  # High priority (0=highest, 9=lowest)
         )
 
-        # Wait/Poll for queues to be populated
-        print("DEBUG: Waiting for tasks to persist in Redis...")
-        for _ in range(100): 
-            if r.llen("high") == 1 and r.llen("low") == 10:
+        # STEP 3: Wait and verify all tasks are in correct priority sub-queues
+        # With priority_steps, Redis creates sub-queues like "low\x06\x169" for priority 9
+        print("DEBUG: Waiting for tasks to be routed to priority sub-queues...")
+        max_wait_iterations = 100
+        
+        # Check all Redis keys to find the priority sub-queues
+        for i in range(max_wait_iterations):
+            # Get all queue keys
+            all_keys = r.keys("*")
+            
+            # Count tasks in high priority sub-queues (priority 0)
+            high_count = sum(r.llen(k) for k in all_keys if k.startswith(b"high"))
+            
+            # Count tasks in low priority sub-queues (priority 9)
+            low_count = sum(r.llen(k) for k in all_keys if k.startswith(b"low"))
+            
+            if high_count == 1 and low_count == 10:
+                print(f"DEBUG: Queue routing complete - High priority tasks: {high_count}, Low priority tasks: {low_count}")
+                print(f"DEBUG: All queue keys: {[k.decode() for k in all_keys if not k.startswith(b'_')]}")
                 break
+            
+            if i == max_wait_iterations - 1:
+                print(f"DEBUG: All queue keys: {[k.decode() for k in all_keys if not k.startswith(b'_')]}")
+                raise AssertionError(
+                    f"Queue routing failed after {max_wait_iterations * 0.1}s. "
+                    f"Expected High=1, Low=10. Got High={high_count}, Low={low_count}"
+                )
+            
             time.sleep(0.1)
         
-        # Verify Queue State
-        high_len = r.llen("high")
-        low_len = r.llen("low")
-        print(f"DEBUG: Queue State -> High: {high_len}, Low: {low_len}")
+        # Additional delay to ensure Redis has fully committed all tasks
+        time.sleep(1.0)
         
-        assert high_len == 1, f"Routing Failure: High queue has {high_len} tasks"
-        assert low_len == 10, f"Routing Failure: Low queue has {low_len} tasks"
+        # Verify final queue state before starting worker
+        all_keys = r.keys("*")
+        high_count = sum(r.llen(k) for k in all_keys if k.startswith(b"high"))
+        low_count = sum(r.llen(k) for k in all_keys if k.startswith(b"low"))
+        print(f"DEBUG: Final queue state before worker start - High: {high_count}, Low: {low_count}")
+        assert high_count == 1, f"High priority queues should have 1 task, has {high_count}"
+        assert low_count == 10, f"Low priority queues should have 10 tasks, has {low_count}"
 
-        # 3. Start Worker (Subprocess)
-        # Using sys.executable to ensure we use the same python environment
-        # STRICT PRIORITY: -Q high,medium,low
-        # Disable gossip/mingle to ensure strict queue priority
+        # STEP 4: NOW start the worker (after all tasks are queued)
         cmd = [
             sys.executable, "-m", "celery",
             "-A", "app.celery_app",
             "worker",
             "--loglevel=info",
-            "--pool=solo",  # Use solo pool for strict ordering
+            "--pool=solo",
+            "--concurrency=1",  # Single worker for strict priority ordering
             "--without-gossip",
             "--without-mingle",
             "--without-heartbeat",
             "--prefetch-multiplier=1",
-            "-Q", "high,medium,low"
+            "-Q", "high,medium,low"  # Worker will consume high queue first
         ]
         
-        print(f"DEBUG: Starting worker subprocess: {' '.join(cmd)}")
+        print(f"DEBUG: Starting worker AFTER tasks are queued: {' '.join(cmd)}")
         
         env = os.environ.copy()
-        # Use existing PYTHONPATH from environment (set by docker-compose)
-        # or fallback to repository_after/backend if not set
         if "PYTHONPATH" not in env:
             backend_path = os.path.join(os.getcwd(), "repository_after", "backend")
             if os.path.exists(backend_path):
@@ -107,23 +138,39 @@ class TestRealPriorityIntegration:
         self.worker_process = subprocess.Popen(
             cmd,
             stdout=sys.stdout,
-            stderr=sys.stderr, # Capture stderr to debug if tasks are unknown
+            stderr=sys.stderr,
             env=env
         )
+        
+        print("DEBUG: Worker started, waiting for task execution...")
 
-        # 4. Wait for processing 
-        for _ in range(60):
-            if r.llen("execution_log") >= 11:
+        # STEP 5: Wait for all tasks to be processed
+        max_wait_seconds = 30
+        for i in range(max_wait_seconds * 2):  # Check every 0.5s
+            execution_count = r.llen("execution_log")
+            if execution_count >= 11:
+                print(f"DEBUG: All 11 tasks executed after {i * 0.5}s")
                 break
             time.sleep(0.5)
+        else:
+            execution_count = r.llen("execution_log")
+            raise AssertionError(
+                f"Timeout: Only {execution_count}/11 tasks executed after {max_wait_seconds}s"
+            )
 
-        # 5. Verify High priority processed first
+        # STEP 6: Verify execution order - High task MUST be first
         logs = [x.decode() for x in r.lrange("execution_log", 0, -1)]
-        print(f"Execution Log: {logs}")
+        print(f"DEBUG: Execution order: {logs}")
 
-        assert len(logs) == 11, "Not all tasks were processed"
-        assert logs[0] == "high", f"High priority executed at index {logs.index('high') if 'high' in logs else 'missing'}. Full logs: {logs}"
-        assert all(p == "low" for p in logs[1:]), "Remaining tasks should be low"
+        assert len(logs) == 11, f"Expected 11 tasks executed, got {len(logs)}"
+        assert logs[0] == "high", (
+            f"PRIORITY VIOLATION: High priority task executed at position "
+            f"{logs.index('high') if 'high' in logs else 'MISSING'}. "
+            f"Expected position 0. Full execution order: {logs}"
+        )
+        assert all(p == "low" for p in logs[1:]), (
+            f"Expected remaining 10 tasks to be 'low', got: {logs[1:]}"
+        )
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -37,11 +37,19 @@ celery_app.conf.update(
     task_track_started=True,
     task_send_sent_event=True,
     
-    # Worker settings
-    worker_prefetch_multiplier=1,  # Important for priority ordering
+    # Worker settings - CRITICAL for priority ordering
+    worker_prefetch_multiplier=1,  # Fetch one task at a time for proper prioritization
     worker_concurrency=4,
     
+    # Redis broker transport options for priority support
+    # priority_steps creates sub-queues for each priority level (0=highest, 9=lowest)
+    broker_transport_options={
+        'priority_steps': list(range(10)),  # 0-9 priority levels
+        'queue_order_strategy': 'priority',  # Consume from highest priority first
+    },
+    
     # Priority queue configuration with explicit exchanges
+    # Note: With priority_steps, these queues will have sub-queues for each priority level
     task_queues=(
         Queue("high", Exchange("high", type="direct"), routing_key="high"),
         Queue("medium", Exchange("medium", type="direct"), routing_key="medium"),
