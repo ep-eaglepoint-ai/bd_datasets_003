@@ -1,0 +1,11 @@
+{
+            "instance_id": "99WJ61",
+            "problem_statement": "The existing TransactionEngine handles high-value internal transfers involving balance checks, ledger updates, and external webhook notifications. While functional, the current design triggers side effects without transactional guarantees, scatters idempotency handling, and risks inconsistent states during partial failures or concurrent execution. Webhook failures, retries, and concurrency bursts can lead to race conditions, double spends, or unclear audit trails. The task is to refactor the TransactionEngine into a production-grade design that enforces atomicity, centralized idempotency, concurrency safety, and deterministic auditability while preserving the existing API contract. The solution must ensure ledger correctness under failures, retries, and concurrent load, with strong validation, observability, and performance guarantees.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/99wj61-refactor-transactionengine-for-atomic-idempotent-and-auditable-ledger-transfers",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
