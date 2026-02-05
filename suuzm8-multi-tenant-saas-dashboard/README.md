@@ -12,4 +12,6 @@ docker compose run --rm test
 
 ## Evaluation
 
-- `docker compose run --rm client`
+```bash
+docker compose run --rm test python3 evaluation/evaluation.py
+```

@@ -145,17 +145,20 @@ def parse_vitest_output(rr: RunResults) -> None:
         line = raw.rstrip("\r")
         # Examples:
         #  ✓ ../../tests/client/Dashboard.test.tsx (2)
+        #  ✓ ../../tests/client/Dashboard.test.tsx > Dashboard > renders metrics once loaded
         #  × test name
         m_pass = re.match(r"^\s*[✓√]\s+(.*)$", line)
         if m_pass:
             name = (m_pass.group(1) or "").strip()
-            if name:
+            # Only count individual test cases (verbose reporter prints them with ' > ' separators).
+            # Avoid treating file summary lines like "...Dashboard.test.tsx (2)" as a test.
+            if name and " > " in name:
                 _unique_push(rr.tests, name, "passed")
             continue
         m_fail = re.match(r"^\s*[×✗xX✕]\s+(.*)$", line)
         if m_fail:
             name = (m_fail.group(1) or "").strip()
-            if name:
+            if name and " > " in name:
                 _unique_push(rr.tests, name, "failed")
             continue
 
@@ -185,27 +188,31 @@ def has_docker_compose() -> bool:
 def run_server_suite(project_root: Path, timeout_s: int) -> RunResults:
     rr = RunResults(success=False, exit_code=-1, tests=[], output="")
 
-    if not has_docker_compose():
-        rr.exit_code = -1
-        rr.output = truncate_output("docker compose not available\n")
-        _tests_push(rr.tests, "server:runner", "error")
-        rr.success = False
-        return rr
-
-    cmd = [
-        "docker",
-        "compose",
-        "run",
-        "--rm",
-        "--entrypoint",
-        "pytest",
-        "app",
-        "-q",
-        "-vv",
-        "--cov=repository_after/server",
-        "--cov-report=term-missing",
-        "tests",
-    ]
+    if has_docker_compose():
+        cmd = [
+            "docker",
+            "compose",
+            "run",
+            "--rm",
+            "--entrypoint",
+            "pytest",
+            "test",
+            "-q",
+            "-vv",
+            "--cov=repository_after/server",
+            "--cov-report=term-missing",
+            "tests",
+        ]
+    else:
+        # Fallback for when this evaluator is executed inside the test container.
+        cmd = [
+            "pytest",
+            "-q",
+            "-vv",
+            "--cov=repository_after/server",
+            "--cov-report=term-missing",
+            "tests",
+        ]
 
     exit_code, output = run_command_merged(
         cmd,
@@ -232,25 +239,31 @@ def run_server_suite(project_root: Path, timeout_s: int) -> RunResults:
 def run_client_suite(project_root: Path, timeout_s: int) -> RunResults:
     rr = RunResults(success=False, exit_code=-1, tests=[], output="")
 
-    if not has_docker_compose():
-        rr.exit_code = -1
-        rr.output = truncate_output("docker compose not available\n")
-        _tests_push(rr.tests, "client:runner", "error")
-        rr.success = False
-        return rr
-
-    # Run vitest with verbose reporter to improve parsing.
-    cmd = [
-        "docker",
-        "compose",
-        "run",
-        "--rm",
-        "--entrypoint",
-        "sh",
-        "client",
-        "-lc",
-        "npm install --silent && ./node_modules/.bin/vitest run --config vitest.config.ts --reporter verbose",
-    ]
+    if has_docker_compose():
+        # Run vitest with verbose reporter to improve parsing.
+        cmd = [
+            "docker",
+            "compose",
+            "run",
+            "--rm",
+            "--entrypoint",
+            "sh",
+            "test",
+            "-lc",
+            "cd /app/repository_after/client && ./node_modules/.bin/vitest run --config vitest.config.ts --reporter verbose",
+        ]
+    else:
+        # Fallback for when this evaluator is executed inside the test container.
+        client_dir = project_root / "repository_after" / "client"
+        vitest_bin = client_dir / "node_modules" / ".bin" / "vitest"
+        install_cmd = ""
+        if not vitest_bin.exists():
+            install_cmd = "npm ci --silent && "
+        cmd = [
+            "sh",
+            "-lc",
+            f"cd {client_dir} && {install_cmd}./node_modules/.bin/vitest run --config vitest.config.ts --reporter verbose",
+        ]
 
     exit_code, output = run_command_merged(
         cmd,

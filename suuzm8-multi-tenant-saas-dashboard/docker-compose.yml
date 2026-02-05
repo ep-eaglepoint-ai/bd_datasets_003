@@ -21,29 +21,6 @@ services:
       timeout: 2s
       retries: 30
 
-  app:
-    build: .
-    environment:
-      DJANGO_SETTINGS_MODULE: saas_dashboard.settings
-      DATABASE_URL: postgres://app:app@postgres:5432/app
-      REDIS_URL: redis://redis:6379/1
-      PYTHONPATH: /app/repository_after/server
-    command: pytest -q --cov=repository_after/server --cov-report=term-missing tests
-    volumes:
-      - .:/app
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-
-  client:
-    image: node:20
-    working_dir: /app/repository_after/client
-    command: sh -lc "npm install --silent && ./node_modules/.bin/vitest run --config vitest.config.ts"
-    volumes:
-      - .:/app
-
   test:
     build:
       context: .
