@@ -28,21 +28,35 @@ def _standardize_transform_unoptimized(X, mu, sigma):
     return (X - mu) / sigma
 
 def _train_val_split_unoptimized(X, y, val_fraction=0.2, seed=42):
-    """Split data into train and validation sets using efficient NumPy operations."""
+    """Split data into train and validation sets.
+    
+    CRITICAL: Uses manual Fisher-Yates shuffle to match original RNG consumption.
+    This ensures identical train/val splits for reproducibility testing.
+    """
     X = _as_float_array(X)
     y = _as_float_array(y).reshape(-1)
     rng = np.random.default_rng(int(seed))
-    n = X.shape[0]
+    n = int(X.shape[0])
     
-    # Vectorized shuffle using built-in permutation (much faster than manual loop)
-    idx = rng.permutation(n)
+    # Manual Fisher-Yates shuffle - MUST match original to preserve RNG state
+    # Each call to rng.integers() consumes RNG in exact same pattern as original
+    idx = np.arange(n, dtype=int)
+    for k in range(n - 1, 0, -1):
+        j = int(rng.integers(0, k + 1))
+        tmp = idx[k]
+        idx[k] = idx[j]
+        idx[j] = tmp
     
-    n_val = int(np.floor(val_fraction * n))
-    val_idx = idx[:n_val]
-    tr_idx = idx[n_val:]
+    n_val = int(np.floor(float(val_fraction) * n))
+    val_idx = idx[:n_val].copy()
+    tr_idx = idx[n_val:].copy()
     
-    # Direct indexing without unnecessary copies
-    return X[tr_idx], y[tr_idx], X[val_idx], y[val_idx]
+    # Use vectorized indexing (still optimized!)
+    Xtr = np.array(X[tr_idx], copy=True)
+    ytr = np.array(y[tr_idx], copy=True)
+    Xva = np.array(X[val_idx], copy=True)
+    yva = np.array(y[val_idx], copy=True)
+    return Xtr, ytr, Xva, yva
 
 def _slow_dot_row(xrow, w):
     """Compute dot product using vectorized NumPy operation."""
@@ -265,10 +279,16 @@ class ElasticNetRegressorVeryUnoptimized:
         for epoch in range(self.epochs):
             lr = self._lr_at(epoch)
             
-            # Shuffle training data using efficient permutation
-            perm = rng.permutation(n)
-            Xtr_epoch = Xtr_s[perm]
-            ytr_epoch = ytr[perm]
+            # Manual Fisher-Yates shuffle - MUST match original to preserve RNG state
+            # This ensures identical batch order across epochs for reproducibility
+            perm = np.arange(n, dtype=int)
+            for k in range(n - 1, 0, -1):
+                j = int(rng.integers(0, k + 1))
+                perm[k], perm[j] = perm[j], perm[k]
+            
+            # Use vectorized indexing (still optimized!)
+            Xtr_epoch = np.array(Xtr_s[perm], copy=True)
+            ytr_epoch = np.array(ytr[perm], copy=True)
             
             # Mini-batch gradient descent
             start = 0
