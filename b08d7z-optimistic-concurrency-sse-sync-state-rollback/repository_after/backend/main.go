@@ -1,6 +1,6 @@
 // High-Concurrency Seat Reservation Backend
 // Principal Full Stack Engineer Implementation
-// 
+//
 // This module implements a raw HTTP server for seat reservations with:
 // - Thread-safe seat management using sync.Mutex
 // - Real-time updates via Server-Sent Events
@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"strconv"
 	"sync"
 )
 
@@ -26,10 +28,10 @@ type SeatReservationServer struct {
 	// REQ-2: sync.Mutex protects the availableSeats counter from race conditions
 	availableSeats int        // Current number of available seats
 	seatMutex      sync.Mutex // Protects availableSeats during concurrent access
-	
+
 	// Client management for Server-Sent Events broadcasting
-	sseClients      map[chan string]bool // Active SSE client connections
-	clientsMutex    sync.Mutex           // Protects sseClients map during concurrent access
+	sseClients   map[chan string]bool // Active SSE client connections
+	clientsMutex sync.Mutex           // Protects sseClients map during concurrent access
 }
 
 // BookingResponse represents the JSON response for booking requests
@@ -65,10 +67,10 @@ func (s *SeatReservationServer) removeSSEClient(clientChannel chan string) {
 // REQ-4: broadcastSeatUpdate sends seat count updates to all connected SSE clients
 func (s *SeatReservationServer) broadcastSeatUpdate(seatCount int) {
 	message := fmt.Sprintf("%d", seatCount)
-	
+
 	s.clientsMutex.Lock()
 	defer s.clientsMutex.Unlock()
-	
+
 	// Send update to all connected clients
 	for clientChannel := range s.sseClients {
 		select {
@@ -100,7 +102,7 @@ func (s *SeatReservationServer) handleSSEEvents(w http.ResponseWriter, r *http.R
 	s.seatMutex.Lock()
 	currentSeats := s.availableSeats
 	s.seatMutex.Unlock()
-	
+
 	fmt.Fprintf(w, "data: %d\n\n", currentSeats)
 	w.(http.Flusher).Flush()
 
@@ -133,7 +135,7 @@ func (s *SeatReservationServer) handleSeatBooking(w http.ResponseWriter, r *http
 
 	// REQ-2: Critical section - mutex protects seat decrement operation
 	s.seatMutex.Lock()
-	
+
 	if s.availableSeats > 0 {
 		// Seat available - perform atomic decrement
 		s.availableSeats--
@@ -150,11 +152,11 @@ func (s *SeatReservationServer) handleSeatBooking(w http.ResponseWriter, r *http
 		}
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(response)
-		
+
 	} else {
 		// No seats available - return conflict
 		s.seatMutex.Unlock()
-		
+
 		response := BookingResponse{
 			Success: false,
 			Error:   "No seats available",
@@ -174,20 +176,32 @@ func (s *SeatReservationServer) handleCORSPreflight(w http.ResponseWriter, r *ht
 
 // REQ-1: main function uses only Go standard library
 func main() {
-	// Initialize server with 10 available seats
-	server := NewSeatReservationServer(10)
+	initialSeats := 10
+	if raw := os.Getenv("INITIAL_SEATS"); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 0 {
+			initialSeats = parsed
+		}
+	}
+
+	// Initialize server with configurable available seats (default 10)
+	server := NewSeatReservationServer(initialSeats)
 
 	// Register HTTP handlers
 	http.HandleFunc("/events", server.handleSSEEvents)
 	http.HandleFunc("/book", server.handleSeatBooking)
 	http.HandleFunc("/", server.handleCORSPreflight)
 
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
 	// Start HTTP server
-	log.Println("🚀 High-Concurrency Seat Reservation Server starting on :8080")
+	log.Printf("🚀 High-Concurrency Seat Reservation Server starting on :%s", port)
 	log.Println("📡 SSE Endpoint: GET /events")
 	log.Println("🎫 Booking Endpoint: POST /book")
-	
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+
+	if err := http.ListenAndServe(":"+port, nil); err != nil {
 		log.Fatal("❌ Server failed to start:", err)
 	}
 }

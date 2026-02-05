@@ -25,7 +25,7 @@ var (
 func main() {
 	flag.Parse()
 	startTime = time.Now()
-	
+
 	fmt.Println("============================= test session starts ==============================")
 	fmt.Printf("platform %s -- Go %s\n", runtime.GOOS, runtime.Version())
 	fmt.Println()
@@ -100,10 +100,10 @@ func runBackendTests() bool {
 	cmd := exec.Command("go", "test", "-timeout", "30s", "-v", "./...")
 	cmd.Dir = backendTestsDir
 	cmd.Env = append(os.Environ(), fmt.Sprintf("REPO_PATH=%s", os.Getenv("REPO_PATH")))
-	
+
 	output, err := cmd.CombinedOutput()
 	outputStr := string(output)
-	
+
 	// Parse test results
 	lines := strings.Split(outputStr, "\n")
 	for _, line := range lines {
@@ -124,7 +124,7 @@ func runBackendTests() bool {
 			})
 		}
 	}
-	
+
 	// If compilation failed, add a general failure
 	if err != nil && len(testResults) == 0 {
 		testResults = append(testResults, TestResult{
@@ -133,7 +133,7 @@ func runBackendTests() bool {
 			Message: fmt.Sprintf("Backend compilation failed: %v", err),
 		})
 	}
-	
+
 	fmt.Print(outputStr)
 	return err == nil
 }
@@ -141,13 +141,14 @@ func runBackendTests() bool {
 func runFrontendTests() bool {
 	fmt.Println("\n=== Running Frontend Tests ===")
 	frontendTestsDir := "ui"
+
 	cmd := exec.Command("npm", "test")
 	cmd.Dir = frontendTestsDir
 	cmd.Env = append(os.Environ(), fmt.Sprintf("REPO_PATH=%s", os.Getenv("REPO_PATH")))
-	
+
 	output, err := cmd.CombinedOutput()
 	outputStr := string(output)
-	
+
 	if err != nil {
 		testResults = append(testResults, TestResult{
 			Name:    "frontend::setup",
@@ -158,7 +159,7 @@ func runFrontendTests() bool {
 		fmt.Print(outputStr)
 		return false
 	}
-	
+
 	// Parse Jest results more accurately
 	lines := strings.Split(outputStr, "\n")
 	testCount := 0
@@ -178,7 +179,7 @@ func runFrontendTests() bool {
 			})
 		}
 	}
-	
+
 	// If no specific test results found, add a general result
 	if testCount == 0 {
 		testResults = append(testResults, TestResult{
@@ -186,7 +187,7 @@ func runFrontendTests() bool {
 			Passed: err == nil,
 		})
 	}
-	
+
 	fmt.Print(outputStr)
 	return err == nil
 }
