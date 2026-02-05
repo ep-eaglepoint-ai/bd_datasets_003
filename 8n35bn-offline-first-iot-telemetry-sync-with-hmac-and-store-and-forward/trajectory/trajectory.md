@@ -1,7 +1,6 @@
 # Offline-First IoT Telemetry Sync with HMAC and Store-and-Forward
 
 
-
 ## 1. Problem Statement
 
 Based on the prompt requirements, I identified the core engineering challenge: designing a reliable telemetry synchronization subsystem for "AquaSmart" water refill stations that must operate in intermittent network environments (subway terminals, basements).
