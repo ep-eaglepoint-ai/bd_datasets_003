@@ -1,0 +1,11 @@
+{
+            "instance_id": "ARZ2Z0",
+            "problem_statement": "CNC software combines high-level geometry with low-level hardware constraints. Mid-tier models typically fail at two specific points. First, the Path Optimization: they treat the input SVG paths as an immutable list and generate G-Code in the original order, ignoring the prompt's requirement to minimize airtime. This results in inefficient machine operation. Second, the Buffer Management: hardware UARTs are slow and have limited RAM. A naive solution sends all data immediately. The correct solution requires a request-response cycle (send command -> wait for 'ok' -> send next) or a token-bucket strategy. Additionally, rendering G-Code on a Canvas requires translating Cartesian machine coordinates (0,0 at bottom-left) to Screen coordinates (0,0 at top-left), which models often flip vertically.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/arz2z0-cnc-path-optimization-and-flow-controlled-g-code-streaming",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        

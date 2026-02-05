@@ -1,0 +1,25 @@
+services:
+  test-after:
+    build: .
+    command: bash -c "pytest /app/tests -v && cd /app/tests/frontend && npm test"
+    volumes:
+      - ./evaluation:/app/evaluation
+      - ./patches:/app/patches
+    environment:
+      - PYTHONPATH=/app/repository_after
+
+  evaluation:
+    build: .
+    command: python /app/evaluation/evaluation.py
+    volumes:
+      - ./evaluation:/app/evaluation # Save report to host
+    environment:
+      - PYTHONPATH=/app/repository_after
+
+  app:
+    build: .
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONPATH=/app/repository_after

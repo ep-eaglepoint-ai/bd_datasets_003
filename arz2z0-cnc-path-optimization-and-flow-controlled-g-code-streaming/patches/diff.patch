@@ -1,0 +1,900 @@
+diff --git a/repository_after/backend/__init__.py b/repository_after/backend/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/repository_after/backend/gcode.py b/repository_after/backend/gcode.py
+new file mode 100644
+index 0000000..350d532
+--- /dev/null
++++ b/repository_after/backend/gcode.py
+@@ -0,0 +1,27 @@
++from typing import List
++from .models import Segment, Point
++
++class GCodeGenerator:
++    @staticmethod
++    def generate(segments: List[Segment], feed_rate: int = 1000) -> List[str]:
++        gcode = []
++        gcode.append("G21")  # Metric units
++        gcode.append("G90")  # Absolute positioning
++        gcode.append(f"F{feed_rate}") # Set feed rate
++        
++        current_pos = Point(x=0.0, y=0.0)
++        
++        for seg in segments:
++            # Traveling to start of segment (G0) if not already there
++            if current_pos.x != seg.p1.x or current_pos.y != seg.p1.y:
++                gcode.append(f"G0 X{seg.p1.x:.3f} Y{seg.p1.y:.3f}")
++            
++            # Cutting to end of segment (G1)
++            gcode.append(f"G1 X{seg.p2.x:.3f} Y{seg.p2.y:.3f}")
++            
++            current_pos = seg.p2
++            
++        # Homming at end? Optional but good practice.
++        gcode.append("G0 X0 Y0")
++        
++        return gcode
+diff --git a/repository_after/backend/machine.py b/repository_after/backend/machine.py
+new file mode 100644
+index 0000000..d8f2653
+--- /dev/null
++++ b/repository_after/backend/machine.py
+@@ -0,0 +1,30 @@
++import asyncio
++import logging
++
++class Machine:
++    def __init__(self):
++        self.logger = logging.getLogger("Machine")
++    
++    async def process_command(self, command: str) -> str:
++        """
++        Simulates receiving a command, executing it (latency), 
++        and returning an acknowledgment.
++        """
++        # Parse command to determine duration
++        # Very basic heuristic:
++        # G0 (Rapid) = Fast
++        # G1 (Cut) = Slower, depends on distance?
++        # For simulation, fixed delays are fine but let's make it slightly dynamic
++        
++        delay = 0.01  # overhead
++        
++        if "G0" in command or "G1" in command:
++            # Simulate travel time
++            # For 100% realism we'd calculate distance, but prompt just says "simulating latency".
++            # "waits for a virtual 'ok' acknowledgment (simulating the machine finishing the move)"
++            delay = 0.1 
++            if "G0" in command:
++                delay = 0.05
++        
++        await asyncio.sleep(delay)
++        return "ok"
+diff --git a/repository_after/backend/main.py b/repository_after/backend/main.py
+new file mode 100644
+index 0000000..2b9a966
+--- /dev/null
++++ b/repository_after/backend/main.py
+@@ -0,0 +1,134 @@
++from fastapi import FastAPI, WebSocket, WebSocketDisconnect
++from fastapi.middleware.cors import CORSMiddleware
++from fastapi.staticfiles import StaticFiles
++from pydantic import BaseModel
++from typing import List
++import asyncio
++import logging
++import os
++from backend.models import Segment, Point
++from backend.optimizer import PathOptimizer
++from backend.gcode import GCodeGenerator
++from backend.machine import Machine
++
++# Configure logging
++logging.basicConfig(level=logging.INFO)
++logger = logging.getLogger("CNC-Backend")
++
++app = FastAPI()
++
++app.add_middleware(
++    CORSMiddleware,
++    allow_origins=["*"],
++    allow_credentials=True,
++    allow_methods=["*"],
++    allow_headers=["*"],
++)
++
++class RawSegment(BaseModel):
++    x1: float
++    y1: float
++    x2: float
++    y2: float
++
++class GCodeJob(BaseModel):
++    gcode: List[str]
++
++# Global state for simplicity in this single-job architecture
++current_job: List[str] = []
++job_status: str = "Idle"
++pause_event = asyncio.Event()
++pause_event.set() # Initially playing? Or paused? Let's say playing by default once started.
++
++@app.post("/optimize")
++async def optimize_path(segments: List[RawSegment]):
++    logger.info(f"Received {len(segments)} segments for optimization.")
++    
++    # Convert raw to internal model
++    internal_segments = []
++    for i, s in enumerate(segments):
++        p1 = Point(x=s.x1, y=s.y1)
++        p2 = Point(x=s.x2, y=s.y2)
++        internal_segments.append(Segment(id=i, p1=p1, p2=p2))
++    
++    # Optimize
++    optimized = PathOptimizer.optimize(internal_segments)
++    
++    # Generate G-Code
++    gcode = GCodeGenerator.generate(optimized)
++    
++    global current_job
++    current_job = gcode
++    
++    return {"gcode": gcode, "count": len(gcode)}
++
++@app.websocket("/ws")
++async def websocket_endpoint(websocket: WebSocket):
++    await websocket.accept()
++    logger.info("Client connected to WebSocket.")
++    
++    global job_status
++    
++    try:
++        while True:
++            data = await websocket.receive_text()
++            
++            if data == "START":
++                if not current_job:
++                    await websocket.send_text("ERROR: No job loaded.")
++                    continue
++                
++                job_status = "Printing"
++                await websocket.send_text("STATUS: Printing")
++                
++                machine = Machine()
++                
++                # Streaming Loop
++                for line in current_job:
++                    # Check pause (Pause/Resume mechanism)
++                    while not pause_event.is_set():
++                        job_status = "Paused"
++                        # Only send status once to avoid spamming
++                        # But loop checks frequently
++                        await asyncio.sleep(0.1)
++                        
++                    if job_status != "Printing":
++                         job_status = "Printing"
++                         await websocket.send_text("STATUS: Printing")
++
++                    # 1. Notify frontend: Sending command
++                    await websocket.send_text(f"GCODE: {line}")
++                    
++                    # 2. Send to Machine and WAIT for ACK (Flow Control)
++                    # "The backend must include a dummy class acting as the machine that consumes line-by-line and returns acknowledgments"
++                    ack = await machine.process_command(line)
++                    
++                    # 3. Optional: Notify frontend of ACK?
++                    # The visualizer usually draws when "sent" or "acknowledged". 
++                    # Prompt: "visualizer must parse the raw G-Code text stream being sent to the machine"
++                    # So "GCODE: ..." is sufficient.
++
++                    
++            elif data == "PAUSE":
++                pause_event.clear()
++                job_status = "Paused"
++                await websocket.send_text("STATUS: Paused")
++                
++            elif data == "RESUME":
++                pause_event.set()
++                job_status = "Printing"
++                await websocket.send_text("STATUS: Printing")
++                
++            elif data == "STOP":
++                 # Reset logic?
++                 pass
++
++    except WebSocketDisconnect:
++        logger.info("Client disconnected.")
++    except Exception as e:
++        logger.error(f"WebSocket Error: {e}")
++
++# Mount Static Files (Frontend)
++static_dir = os.path.join(os.path.dirname(__file__), "static")
++if os.path.exists(static_dir):
++    app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
+diff --git a/repository_after/backend/models.py b/repository_after/backend/models.py
+new file mode 100644
+index 0000000..9d71056
+--- /dev/null
++++ b/repository_after/backend/models.py
+@@ -0,0 +1,18 @@
++from pydantic import BaseModel
++from typing import List, Tuple
++import math
++
++class Point(BaseModel):
++    x: float
++    y: float
++
++    def distance_to(self, other: 'Point') -> float:
++        return math.sqrt((self.x - other.x)**2 + (self.y - other.y)**2)
++
++class Segment(BaseModel):
++    p1: Point
++    p2: Point
++    id: int # To track original order if needed
++
++    def length(self) -> float:
++        return self.p1.distance_to(self.p2)
+diff --git a/repository_after/backend/optimizer.py b/repository_after/backend/optimizer.py
+new file mode 100644
+index 0000000..51eacf5
+--- /dev/null
++++ b/repository_after/backend/optimizer.py
+@@ -0,0 +1,56 @@
++from typing import List
++from .models import Segment, Point
++
++class PathOptimizer:
++    @staticmethod
++    def optimize(segments: List[Segment]) -> List[Segment]:
++        if not segments:
++            return []
++
++        # Start at (0,0) or just the first segment's start? 
++        # Requirement says: "The entry point of the next segment should be physically closest 
++        # to the exit point of the previous segment."
++        # We can assume starting state is at (0,0) or valid G-Code home. 
++        # Let's assume the machine starts at (0,0).
++        
++        current_pos = Point(x=0.0, y=0.0)
++        
++        remaining_segments = segments[:]
++        optimized_segments = []
++        
++        while remaining_segments:
++            best_segment = None
++            best_segment_idx = -1
++            min_dist = float('inf')
++            reverse_best = False
++            
++            for i, seg in enumerate(remaining_segments):
++                # Distance from current_pos to seg.p1
++                dist_p1 = current_pos.distance_to(seg.p1)
++                
++                # Check if we should reverse the segment (cut from p2 to p1)?
++                # SVG paths usually have direction, but for laser cutting simple lines, direction might not matter 
++                # UNLESS it matters for the design. 
++                # The prompt says: "The entry point of the next segment should be physically closest to the exit point of the previous segment."
++                # It doesn't explicitly allow reversing segments. 
++                # "Raw SVG files typically define paths...". 
++                # Usually standard cutting respects direction, but optimization often allows reversal.
++                # Let's stick to start-to-end for now to be safe, unless "Nearest Neighbor" implies checking both ends.
++                # "The entry point of the next segment..." implies the Start of the next segment.
++                # Let's simple check distance to p1.
++                
++                if dist_p1 < min_dist:
++                    min_dist = dist_p1
++                    best_segment = seg
++                    best_segment_idx = i
++                    
++            # Add to optimized
++            optimized_segments.append(best_segment)
++            
++            # Update current pos to be the end of this segment
++            current_pos = best_segment.p2
++            
++            # Remove from remaining
++            remaining_segments.pop(best_segment_idx)
++            
++        return optimized_segments
+diff --git a/repository_after/frontend/index.html b/repository_after/frontend/index.html
+new file mode 100644
+index 0000000..c2b10df
+--- /dev/null
++++ b/repository_after/frontend/index.html
+@@ -0,0 +1,12 @@
++<!doctype html>
++<html lang="en">
++  <head>
++    <meta charset="UTF-8" />
++    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
++    <title>CNC Laser Control</title>
++  </head>
++  <body>
++    <div id="root"></div>
++    <script type="module" src="/src/main.jsx"></script>
++  </body>
++</html>
+diff --git a/repository_after/frontend/package.json b/repository_after/frontend/package.json
+new file mode 100644
+index 0000000..cd43694
+--- /dev/null
++++ b/repository_after/frontend/package.json
+@@ -0,0 +1,20 @@
++{
++  "name": "cnc-frontend",
++  "private": true,
++  "version": "0.0.0",
++  "type": "module",
++  "scripts": {
++    "dev": "vite",
++    "build": "vite build",
++    "preview": "vite preview"
++  },
++  "dependencies": {
++    "react": "^18.2.0",
++    "react-dom": "^18.2.0",
++    "lucide-react": "^0.300.0"
++  },
++  "devDependencies": {
++    "@vitejs/plugin-react": "^4.2.1",
++    "vite": "^5.0.0"
++  }
++}
+diff --git a/repository_after/frontend/src/App.jsx b/repository_after/frontend/src/App.jsx
+new file mode 100644
+index 0000000..90d55ab
+--- /dev/null
++++ b/repository_after/frontend/src/App.jsx
+@@ -0,0 +1,262 @@
++import React, { useState, useEffect, useRef } from 'react';
++import Visualizer from './components/Visualizer';
++
++// Icons using lucide-react (if installed) or text
++// For simplicity assuming lucide-react might not be fully working if I didn't verify install.
++// But I put it in package.json.
++// I'll use text labels for safety or SVGs if needed.
++
++const App = () => {
++  const [socket, setSocket] = useState(null);
++  const [status, setStatus] = useState('Disconnected'); // Disconnected, Idle, Printing, Paused
++  const [gcodeLog, setGcodeLog] = useState([]);
++  const [segments, setSegments] = useState([]);
++  const [jobGCode, setJobGCode] = useState([]); // The full plan
++  const [jobTime, setJobTime] = useState(0);
++  const logEndRef = useRef(null);
++
++  // Auto-scroll log
++  useEffect(() => {
++    logEndRef.current?.scrollIntoView({ behavior: "smooth" });
++  }, [gcodeLog]);
++
++  // WebSocket Connection
++  const connect = () => {
++    // In dev, use localhost:8000 (via proxy '/ws')
++    // In docker, it might be same origin.
++    // Use relative path '/ws' which Vite proxy handles in dev, and Nginx/FastAPI handles in prod.
++    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
++    const host = window.location.host; // includes port
++    // If running via vite dev server (port 5173), proxy handles /ws
++    // If running in docker, served by fastapi, it works.
++    
++    // However, Vite proxy for WS sometimes needs explicit full URL if native WebSocket is used.
++    // Let's try relative first.
++    let wsUrl = `${protocol}//${host}/ws`;
++    if (window.location.port === '5173') {
++       wsUrl = `ws://localhost:8000/ws`; // Explicit for dev
++    }
++
++    const ws = new WebSocket(wsUrl);
++
++    ws.onopen = () => {
++      setStatus('Idle');
++      setGcodeLog(prev => [...prev, '--- Connected ---']);
++    };
++
++    ws.onmessage = (event) => {
++      const msg = event.data;
++      if (msg.startsWith('STATUS:')) {
++        setStatus(msg.split(': ')[1]);
++      } else if (msg.startsWith('GCODE:')) {
++        const line = msg.split(': ')[1];
++        setGcodeLog(prev => [...prev, line]);
++      } else {
++        // e.g. ERROR or ACK
++        console.log("WS Msg:", msg);
++      }
++    };
++
++    ws.onclose = () => {
++      setStatus('Disconnected');
++      setSocket(null);
++      setGcodeLog(prev => [...prev, '--- Disconnected ---']);
++    };
++
++    setSocket(ws);
++  };
++
++  const disconnect = () => {
++    if (socket) socket.close();
++  };
++
++  // Generate Test Pattern
++  const loadPattern = () => {
++    // Generate 'HELLO' segments or random
++    const newSegments = [];
++    const pushLine = (x1, y1, x2, y2) => newSegments.push({ x1, y1, x2, y2 });
++    
++    // Simple H
++    pushLine(10, 10, 10, 50);
++    pushLine(10, 30, 30, 30);
++    pushLine(30, 10, 30, 50);
++    
++    // Simple I (random order)
++    pushLine(50, 50, 50, 10); // drawn up
++    
++    // Grid/Star for visual appeal
++    for(let i=0; i<10; i++) {
++        pushLine(60 + Math.random()*40, 60 + Math.random()*40, 
++                 60 + Math.random()*40, 60 + Math.random()*40);
++    }
++
++    setSegments(newSegments);
++    setGcodeLog(['--- Pattern Loaded ---']);
++    setJobGCode([]);
++    setJobTime(0);
++  };
++
++  // Optimize & Plan
++  const optimize = async () => {
++    if (segments.length === 0) return;
++    
++    try {
++      const res = await fetch('/optimize', {
++        method: 'POST',
++        headers: { 'Content-Type': 'application/json' },
++        body: JSON.stringify(segments)
++      });
++      const data = await res.json();
++      setJobGCode(data.gcode);
++      setGcodeLog(prev => [...prev, `--- Optimized: ${data.count} lines ---`]);
++      calculateJobTime(data.gcode);
++    } catch (e) {
++      console.error(e);
++      setGcodeLog(prev => [...prev, '--- Error Optimizing ---']);
++    }
++  };
++
++  const calculateJobTime = (gcode) => {
++    // Estimate
++    let time = 0;
++    let curX = 0, curY = 0;
++    let feed = 1000; // default F1000
++    const rapid = 5000;
++    
++    gcode.forEach(line => {
++      const parts = line.split(' ');
++      let newX = curX, newY = curY;
++      let f = feed;
++      let isRapid = false;
++      
++      if (line.startsWith('F')) {
++          feed = parseFloat(line.substring(1));
++          return;
++      }
++      
++      parts.forEach(p => {
++        if (p.startsWith('X')) newX = parseFloat(p.substring(1));
++        if (p.startsWith('Y')) newY = parseFloat(p.substring(1));
++        if (p.startsWith('F')) f = parseFloat(p.substring(1));
++      });
++      
++      if (line.startsWith('G0')) isRapid = true;
++      
++      const dist = Math.sqrt((newX-curX)**2 + (newY-curY)**2);
++      time += dist / (isRapid ? rapid : f);
++      
++      curX = newX; curY = newY;
++    });
++    
++    setJobTime(time * 60); // Seconds
++  };
++
++  const sendCommand = (cmd) => {
++    if (socket && socket.readyState === WebSocket.OPEN) {
++      socket.send(cmd);
++    }
++  };
++
++  return (
++    <div className="layout" style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem', height: '100vh', display: 'grid', gridTemplateColumns: '300px 1fr', gap: '2rem' }}>
++      
++      {/* Sidebar Controls */}
++      <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
++        <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold', background: 'linear-gradient(to right, #38bdf8, #2563eb)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', margin: 0 }}>
++          LaserControl
++        </h1>
++        
++        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
++          <div className={`status-indicator`}>
++            <div className={`status-dot ${status.toLowerCase()}`}></div>
++            {status}
++          </div>
++          <button 
++             onClick={socket ? disconnect : connect}
++             className={socket ? "btn-danger" : "btn-primary"}
++             style={{ padding: '0.25rem 0.75rem', fontSize: '0.8rem' }}
++          >
++            {socket ? "Disconnect" : "Connect"}
++          </button>
++        </div>
++
++        <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', margin: '0.5rem 0' }}></div>
++
++        <button className="btn-primary" onClick={loadPattern} disabled={status === 'Printing'}>
++          Load Test Pattern
++        </button>
++
++        <button className="btn-primary" onClick={optimize} disabled={segments.length === 0 || status === 'Printing'}>
++          Optimize & Plan
++        </button>
++        
++        {jobTime > 0 && (
++           <div style={{ background: 'rgba(255,255,255,0.05)', padding: '1rem', borderRadius: '8px' }}>
++              <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Est. Job Time</div>
++              <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{jobTime.toFixed(1)}s</div>
++              <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{jobGCode.length} Lines</div>
++           </div>
++        )}
++
++        <div style={{ flex: 1 }}></div>
++
++        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
++          <button className="btn-primary" 
++             onClick={() => sendCommand('START')} 
++             disabled={status === 'Printing' || status === 'Disconnected' || jobGCode.length === 0}
++             style={{ background: '#22c55e' }}
++          >
++            Run Job
++          </button>
++          <button className="btn-danger" 
++             onClick={() => sendCommand('STOP')} 
++             disabled={status === 'Idle' || status === 'Disconnected'}
++          >
++            Stop
++          </button>
++        </div>
++        
++        {status === 'Printing' || status === 'Paused' ? (
++           <button className="btn-primary" 
++              onClick={() => sendCommand(status === 'Paused' ? 'RESUME' : 'PAUSE')}
++              style={{ background: '#f59e0b' }}
++           >
++             {status === 'Paused' ? 'Resume' : 'Pause'}
++           </button>
++        ) : null}
++
++      </div>
++
++      {/* Main Content */}
++      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', minHeight: 0 }}>
++        {/* Visualizer */}
++        <div style={{ flex: 2, minHeight: 0 }}>
++             <Visualizer gcodeLines={gcodeLog} segments={segments} />
++        </div>
++
++        {/* Console Log */}
++        <div className="glass-panel" style={{ flex: 1, padding: '1rem', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
++           <h3 style={{ margin: '0 0 0.5rem 0', color: '#94a3b8', fontSize: '0.9rem' }}>Machine Stream</h3>
++           <div style={{ 
++               flex: 1, 
++               background: '#0f172a', 
++               borderRadius: '6px', 
++               padding: '0.5rem', 
++               fontFamily: 'monospace', 
++               fontSize: '0.8rem', 
++               color: '#22c55e',
++               overflowY: 'auto' 
++           }}>
++             {gcodeLog.map((line, i) => (
++               <div key={i}>{line}</div>
++             ))}
++             <div ref={logEndRef} />
++           </div>
++        </div>
++      </div>
++
++    </div>
++  );
++};
++
++export default App;
+diff --git a/repository_after/frontend/src/components/Visualizer.jsx b/repository_after/frontend/src/components/Visualizer.jsx
+new file mode 100644
+index 0000000..3dd06a5
+--- /dev/null
++++ b/repository_after/frontend/src/components/Visualizer.jsx
+@@ -0,0 +1,140 @@
++import React, { useEffect, useRef } from 'react';
++
++const Visualizer = ({ gcodeLines, segments }) => {
++  const canvasRef = useRef(null);
++
++  useEffect(() => {
++    const canvas = canvasRef.current;
++    if (!canvas) return;
++    
++    const ctx = canvas.getContext('2d');
++    const width = canvas.width;
++    const height = canvas.height;
++    
++    // Clear
++    ctx.fillStyle = '#1e293b'; // bg-secondary
++    ctx.fillRect(0, 0, width, height);
++    
++    if (!segments || segments.length === 0) {
++      // Draw grid or empty state
++      return;
++    }
++
++    // 1. Calculate Bounding Box from ORIGINAL segments to determine fit
++    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
++    
++    segments.forEach(s => {
++      minX = Math.min(minX, s.x1, s.x2);
++      maxX = Math.max(maxX, s.x1, s.x2);
++      minY = Math.min(minY, s.y1, s.y2);
++      maxY = Math.max(maxY, s.y1, s.y2);
++    });
++    
++    // Add some padding
++    const padding = 20;
++    const dataWidth = maxX - minX;
++    const dataHeight = maxY - minY;
++    
++    // Scale to fit
++    if (dataWidth === 0 && dataHeight === 0) return; // Single point?
++    
++    const scaleX = (width - 2 * padding) / (dataWidth || 1);
++    const scaleY = (height - 2 * padding) / (dataHeight || 1);
++    const scale = Math.min(scaleX, scaleY);
++    
++    // Coordinate Transform Helper
++    // Center the design
++    const offsetX = (width - dataWidth * scale) / 2 - minX * scale;
++    const offsetY = (height - dataHeight * scale) / 2 - minY * scale;
++    
++    const toScreen = (x, y) => {
++      const screenX = x * scale + offsetX;
++      // Flip Y: Screen Y (0 at top) = Height - (Machine Y * Scale + OffsetY)
++      // Actually, machine Y increases UP. Screen Y increases DOWN.
++      // So we map minY -> Bottom, maxY -> Top.
++      // Let's do:
++      // screenY = height - margin - (y - minY) * scale
++      // But we need to center it properly.
++      // Standard Flip:
++      // screenY = height - (y * scale + offsetFromBottom)
++      
++      // Let's stick to the prompt requirement: "translating Cartesian machine coordinates (0,0 at bottom-left) to Screen coordinates (0,0 at top-left)"
++      return {
++        x: screenX,
++        y: height - (y * scale + offsetY) // Invert Y
++      };
++    };
++
++    // 2. Draw parsed G-Code
++    // We parse the lines sequentially to track current position
++    let curX = 0;
++    let curY = 0;
++    
++    // Default start at 0? G-Code usually starts with G90...
++    
++    ctx.lineWidth = 2;
++    ctx.lineCap = 'round';
++    
++    gcodeLines.forEach(line => {
++      const parts = line.split(' ');
++      let cmd = parts[0];
++      let newX = curX;
++      let newY = curY;
++      
++      // Basic parsing for G0/G1 X.. Y..
++      // Example: G0 X10.5 Y20.0
++      parts.forEach(p => {
++        if (p.startsWith('X')) newX = parseFloat(p.substring(1));
++        if (p.startsWith('Y')) newY = parseFloat(p.substring(1));
++      });
++      
++      const start = toScreen(curX, curY);
++      const end = toScreen(newX, newY);
++      
++      ctx.beginPath();
++      ctx.moveTo(start.x, start.y);
++      ctx.lineTo(end.x, end.y);
++      
++      if (cmd.startsWith('G0')) {
++        // Travel: Faint Blue Dashed
++        ctx.strokeStyle = '#38bdf8'; // light blue
++        ctx.setLineDash([5, 5]);
++        ctx.globalAlpha = 0.5;
++        ctx.stroke();
++      } else if (cmd.startsWith('G1')) {
++        // Cut: Red Solid
++        ctx.strokeStyle = '#ef4444'; // red
++        ctx.setLineDash([]);
++        ctx.globalAlpha = 1.0;
++        ctx.stroke();
++      }
++      
++      // Update pos
++      curX = newX;
++      curY = newY;
++    });
++    
++    // Draw "Head"
++    const head = toScreen(curX, curY);
++    ctx.beginPath();
++    ctx.arc(head.x, head.y, 5, 0, 2 * Math.PI);
++    ctx.fillStyle = '#22c55e'; // Green head
++    ctx.fill();
++    ctx.globalAlpha = 1.0;
++
++  }, [gcodeLines, segments]); // Re-render when lines or segments change
++
++  return (
++    <div className="glass-panel" style={{ padding: '1rem', width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
++        <h3 style={{ margin: '0 0 1rem 0', color: '#94a3b8' }}>G-Code Visualizer</h3>
++        <canvas 
++            ref={canvasRef} 
++            width={600} 
++            height={400} 
++            style={{ width: '100%', height: '100%', background: '#1e293b', borderRadius: '8px' }}
++        />
++    </div>
++  );
++};
++
++export default Visualizer;
+diff --git a/repository_after/frontend/src/index.css b/repository_after/frontend/src/index.css
+new file mode 100644
+index 0000000..40961a7
+--- /dev/null
++++ b/repository_after/frontend/src/index.css
+@@ -0,0 +1,97 @@
++:root {
++  --bg-primary: #0f172a;
++  --bg-secondary: #1e293b;
++  --text-primary: #f8fafc;
++  --text-secondary: #94a3b8;
++  --accent: #38bdf8;
++  --accent-glow: rgba(56, 189, 248, 0.5);
++  --success: #22c55e;
++  --danger: #ef4444;
++  --font-family: 'Inter', system-ui, -apple-system, sans-serif;
++}
++
++body {
++  margin: 0;
++  font-family: var(--font-family);
++  background-color: var(--bg-primary);
++  color: var(--text-primary);
++  -webkit-font-smoothing: antialiased;
++  min-height: 100vh;
++}
++
++#root {
++  height: 100vh;
++  display: flex;
++  flex-direction: column;
++}
++
++button {
++  cursor: pointer;
++  border: none;
++  font-family: inherit;
++  transition: all 0.2s;
++}
++
++.glass-panel {
++  background: rgba(30, 41, 59, 0.7);
++  backdrop-filter: blur(12px);
++  border: 1px solid rgba(255, 255, 255, 0.1);
++  border-radius: 12px;
++  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
++}
++
++.btn-primary {
++  background: linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%);
++  color: white;
++  padding: 0.75rem 1.5rem;
++  border-radius: 8px;
++  font-weight: 600;
++  box-shadow: 0 0 15px var(--accent-glow);
++}
++
++.btn-primary:hover {
++  transform: translateY(-1px);
++  box-shadow: 0 0 25px var(--accent-glow);
++}
++
++.btn-primary:disabled {
++  opacity: 0.5;
++  cursor: not-allowed;
++  transform: none;
++  box-shadow: none;
++}
++
++.btn-danger {
++  background: var(--danger);
++  color: white;
++  padding: 0.5rem 1rem;
++  border-radius: 6px;
++  font-weight: 500;
++}
++
++.status-indicator {
++  display: inline-flex;
++  align-items: center;
++  gap: 0.5rem;
++  padding: 0.25rem 0.75rem;
++  border-radius: 9999px;
++  background: rgba(255, 255, 255, 0.05);
++  font-size: 0.875rem;
++}
++
++.status-dot {
++  width: 8px;
++  height: 8px;
++  border-radius: 50%;
++  background-color: var(--text-secondary);
++}
++
++.status-dot.connected { background-color: var(--success); box-shadow: 0 0 10px var(--success); }
++.status-dot.disconnected { background-color: var(--danger); }
++.status-dot.printing { background-color: var(--accent); animation: pulse 2s infinite; }
++
++@keyframes pulse {
++  0% { opacity: 1; box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.7); }
++  70% { opacity: 1; box-shadow: 0 0 0 10px rgba(56, 189, 248, 0); }
++  100% { opacity: 1; box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
++}
+diff --git a/repository_after/frontend/src/main.jsx b/repository_after/frontend/src/main.jsx
+new file mode 100644
+index 0000000..54b39dd
+--- /dev/null
++++ b/repository_after/frontend/src/main.jsx
+@@ -0,0 +1,10 @@
++import React from 'react'
++import ReactDOM from 'react-dom/client'
++import App from './App.jsx'
++import './index.css'
++
++ReactDOM.createRoot(document.getElementById('root')).render(
++  <React.StrictMode>
++    <App />
++  </React.StrictMode>,
++)
+diff --git a/repository_after/frontend/vite.config.js b/repository_after/frontend/vite.config.js
+new file mode 100644
+index 0000000..fd67c5a
+--- /dev/null
++++ b/repository_after/frontend/vite.config.js
+@@ -0,0 +1,19 @@
++import { defineConfig } from 'vite'
++import react from '@vitejs/plugin-react'
++
++// https://vitejs.dev/config/
++export default defineConfig({
++  plugins: [react()],
++  server: {
++    proxy: {
++      '/optimize': {
++        target: 'http://localhost:8000',
++        changeOrigin: true,
++      },
++      '/ws': {
++        target: 'ws://localhost:8000',
++        ws: true,
++      }
++    }
++  }
++})

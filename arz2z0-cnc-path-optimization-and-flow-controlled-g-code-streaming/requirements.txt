@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+websockets
+pydantic
+numpy
+pytest
+pytest-asyncio
+pytest-json-report
+requests
+httpx
+svg.path
