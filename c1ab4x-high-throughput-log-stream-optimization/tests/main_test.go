@@ -2,14 +2,17 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io"
 	"os"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Helper function to generate test log lines
@@ -999,5 +1002,379 @@ func TestAllocationCount(t *testing.T) {
 	// (old impl had ~3 allocations per line for bytes.Trim and slicing)
 	if allocations > 50 {
 		t.Logf("Warning: High allocations detected: %d (target: near-zero per line)", allocations)
+	}
+}
+
+// =============================================================================
+// EXACT OUTPUT VERIFICATION: Compare with json.Unmarshal behavior
+// =============================================================================
+
+// TestExactOutput_MatchesJsonUnmarshal verifies that escape decoding produces
+// byte-identical output to what json.Unmarshal would produce
+func TestExactOutput_MatchesJsonUnmarshal(t *testing.T) {
+	type LogEntry struct {
+		Level string `json:"level"`
+		Msg   string `json:"msg"`
+	}
+
+	testCases := []struct {
+		name  string
+		input string
+	}{
+		{"simple", `{"level":"ERROR","msg":"simple message"}`},
+		{"escaped_quote", `{"level":"ERROR","msg":"say \"hello\""}`},
+		{"escaped_backslash", `{"level":"ERROR","msg":"path C:\\Users\\test"}`},
+		{"escaped_newline", `{"level":"ERROR","msg":"line1\nline2"}`},
+		{"escaped_tab", `{"level":"ERROR","msg":"col1\tcol2"}`},
+		{"escaped_carriage_return", `{"level":"ERROR","msg":"before\rafter"}`},
+		{"escaped_formfeed", `{"level":"ERROR","msg":"page\fbreak"}`},
+		{"escaped_backspace", `{"level":"ERROR","msg":"back\bspace"}`},
+		{"escaped_slash", `{"level":"ERROR","msg":"http:\/\/example.com"}`},
+		{"unicode_escape", `{"level":"ERROR","msg":"letter \u0041 and \u0042"}`},
+		{"unicode_chinese", `{"level":"ERROR","msg":"chinese: \u4e2d\u6587"}`},
+		{"multiple_escapes", `{"level":"ERROR","msg":"\"hello\"\npath: C:\\test\ttab"}`},
+		{"empty_msg", `{"level":"ERROR","msg":""}`},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Get expected output using json.Unmarshal (the reference implementation)
+			var entry LogEntry
+			if err := json.Unmarshal([]byte(tc.input), &entry); err != nil {
+				t.Fatalf("json.Unmarshal failed: %v", err)
+			}
+			expected := fmt.Sprintf("[%s] %s\n", entry.Level, entry.Msg)
+
+			// Get actual output from ProcessLogStream
+			var output bytes.Buffer
+			err := ProcessLogStream(strings.NewReader(tc.input), &output)
+			if err != nil {
+				t.Fatalf("ProcessLogStream failed: %v", err)
+			}
+
+			// Compare byte-for-byte
+			if output.String() != expected {
+				t.Errorf("Output mismatch with json.Unmarshal\nInput:    %s\nExpected: %q (bytes: %v)\nGot:      %q (bytes: %v)",
+					tc.input, expected, []byte(expected), output.String(), output.Bytes())
+			}
+		})
+	}
+}
+
+// TestExactBytes_AllEscapeSequences verifies exact byte output for all JSON escape sequences
+func TestExactBytes_AllEscapeSequences(t *testing.T) {
+	testCases := []struct {
+		name     string
+		input    string
+		expected []byte
+	}{
+		{
+			name:     "escaped_quote",
+			input:    `{"level":"ERROR","msg":"a\"b"}`,
+			expected: []byte("[ERROR] a\"b\n"),
+		},
+		{
+			name:     "escaped_backslash",
+			input:    `{"level":"ERROR","msg":"a\\b"}`,
+			expected: []byte("[ERROR] a\\b\n"),
+		},
+		{
+			name:     "escaped_slash",
+			input:    `{"level":"ERROR","msg":"a\/b"}`,
+			expected: []byte("[ERROR] a/b\n"),
+		},
+		{
+			name:     "escaped_newline",
+			input:    `{"level":"ERROR","msg":"a\nb"}`,
+			expected: []byte("[ERROR] a\nb\n"),
+		},
+		{
+			name:     "escaped_tab",
+			input:    `{"level":"ERROR","msg":"a\tb"}`,
+			expected: []byte("[ERROR] a\tb\n"),
+		},
+		{
+			name:     "escaped_carriage_return",
+			input:    `{"level":"ERROR","msg":"a\rb"}`,
+			expected: []byte("[ERROR] a\rb\n"),
+		},
+		{
+			name:     "escaped_formfeed",
+			input:    `{"level":"ERROR","msg":"a\fb"}`,
+			expected: []byte("[ERROR] a\fb\n"),
+		},
+		{
+			name:     "escaped_backspace",
+			input:    `{"level":"ERROR","msg":"a\bb"}`,
+			expected: []byte("[ERROR] a\bb\n"),
+		},
+		{
+			name:     "unicode_A",
+			input:    `{"level":"ERROR","msg":"\u0041"}`,
+			expected: []byte("[ERROR] A\n"),
+		},
+		{
+			name:     "unicode_chinese",
+			input:    `{"level":"ERROR","msg":"\u4e2d"}`,
+			expected: []byte("[ERROR] 中\n"),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var output bytes.Buffer
+			err := ProcessLogStream(strings.NewReader(tc.input), &output)
+			if err != nil {
+				t.Fatalf("ProcessLogStream failed: %v", err)
+			}
+
+			if !bytes.Equal(output.Bytes(), tc.expected) {
+				t.Errorf("Byte mismatch\nInput:    %s\nExpected: %v (%q)\nGot:      %v (%q)",
+					tc.input, tc.expected, string(tc.expected), output.Bytes(), output.String())
+			}
+		})
+	}
+}
+
+// =============================================================================
+// STRUCTURAL CORRECTNESS: Keys appearing inside string values
+// =============================================================================
+
+// TestStructural_ExactOutput_KeysInValues verifies exact byte output when
+// "level" or "msg" appear as substrings inside other field values
+func TestStructural_ExactOutput_KeysInValues(t *testing.T) {
+	testCases := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "level_in_other_value",
+			input:    `{"data":"the level is high","level":"ERROR","msg":"correct"}`,
+			expected: "[ERROR] correct\n",
+		},
+		{
+			name:     "msg_in_other_value",
+			input:    `{"info":"msg: some text","level":"ERROR","msg":"actual message"}`,
+			expected: "[ERROR] actual message\n",
+		},
+		{
+			name:     "quoted_level_key_in_value",
+			input:    `{"x":"field \"level\" here","level":"ERROR","msg":"yes"}`,
+			expected: "[ERROR] yes\n",
+		},
+		{
+			name:     "quoted_msg_key_in_value",
+			input:    `{"x":"field \"msg\" here","level":"ERROR","msg":"yes"}`,
+			expected: "[ERROR] yes\n",
+		},
+		{
+			name:     "level_colon_in_value",
+			input:    `{"text":"level:DEBUG","level":"ERROR","msg":"real error"}`,
+			expected: "[ERROR] real error\n",
+		},
+		{
+			name:     "both_keys_in_value",
+			input:    `{"note":"level and msg mentioned","level":"ERROR","msg":"true message"}`,
+			expected: "[ERROR] true message\n",
+		},
+		{
+			name:     "fake_level_error_in_value",
+			input:    `{"fake":"level\":\"ERROR","level":"ERROR","msg":"valid"}`,
+			expected: "[ERROR] valid\n",
+		},
+		{
+			name:     "nested_object_with_level",
+			input:    `{"meta":{"level":"DEBUG"},"level":"ERROR","msg":"outer error"}`,
+			expected: "[ERROR] outer error\n",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var output bytes.Buffer
+			err := ProcessLogStream(strings.NewReader(tc.input), &output)
+			if err != nil {
+				t.Fatalf("ProcessLogStream failed: %v", err)
+			}
+
+			if output.String() != tc.expected {
+				t.Errorf("Structural test failed\nInput:    %s\nExpected: %q\nGot:      %q",
+					tc.input, tc.expected, output.String())
+			}
+		})
+	}
+}
+
+// =============================================================================
+// PERFORMANCE VERIFICATION: 90% allocation reduction, 50% time improvement
+// =============================================================================
+
+// baselineProcessLogStream is the original json.Unmarshal-based implementation
+// used as baseline for performance comparison
+func baselineProcessLogStream(r io.Reader, w io.Writer) error {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var entry struct {
+			Level string `json:"level"`
+			Msg   string `json:"msg"`
+		}
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			continue
+		}
+		if entry.Level == "ERROR" {
+			fmt.Fprintf(w, "[%s] %s\n", entry.Level, entry.Msg)
+		}
+	}
+	return nil
+}
+
+// TestPerformance_AllocationReduction verifies at least 90% allocation reduction
+func TestPerformance_AllocationReduction(t *testing.T) {
+	// Generate test input with ERROR logs
+	var sb strings.Builder
+	for i := 0; i < 1000; i++ {
+		sb.WriteString(generateLogLine("ERROR", fmt.Sprintf("Error message %d", i)))
+		sb.WriteString("\n")
+	}
+	input := sb.String()
+	inputBytes := []byte(input)
+
+	// Measure baseline allocations
+	runtime.GC()
+	var m1 runtime.MemStats
+	runtime.ReadMemStats(&m1)
+
+	var baselineOutput bytes.Buffer
+	baselineProcessLogStream(bytes.NewReader(inputBytes), &baselineOutput)
+
+	runtime.GC()
+	var m2 runtime.MemStats
+	runtime.ReadMemStats(&m2)
+	baselineAllocs := m2.TotalAlloc - m1.TotalAlloc
+
+	// Measure optimized allocations
+	runtime.GC()
+	var m3 runtime.MemStats
+	runtime.ReadMemStats(&m3)
+
+	var optimizedOutput bytes.Buffer
+	ProcessLogStream(bytes.NewReader(inputBytes), &optimizedOutput)
+
+	runtime.GC()
+	var m4 runtime.MemStats
+	runtime.ReadMemStats(&m4)
+	optimizedAllocs := m4.TotalAlloc - m3.TotalAlloc
+
+	// Calculate reduction percentage
+	if baselineAllocs == 0 {
+		t.Fatal("Baseline allocations is zero, cannot calculate reduction")
+	}
+	reductionPercent := 100.0 * float64(baselineAllocs-optimizedAllocs) / float64(baselineAllocs)
+
+	t.Logf("Allocation comparison:")
+	t.Logf("  Baseline (json.Unmarshal): %d bytes", baselineAllocs)
+	t.Logf("  Optimized:                 %d bytes", optimizedAllocs)
+	t.Logf("  Reduction:                 %.1f%%", reductionPercent)
+
+	// Verify at least 90% reduction
+	if reductionPercent < 90.0 {
+		t.Errorf("FAILED: Allocation reduction is %.1f%%, required at least 90%%", reductionPercent)
+	}
+
+	// Verify outputs match
+	if baselineOutput.String() != optimizedOutput.String() {
+		t.Error("FAILED: Optimized output does not match baseline output")
+	}
+}
+
+// TestPerformance_ExecutionTimeImprovement verifies at least 50% execution time improvement
+func TestPerformance_ExecutionTimeImprovement(t *testing.T) {
+	// Generate test input
+	var sb strings.Builder
+	for i := 0; i < 1000; i++ {
+		sb.WriteString(generateLogLine("ERROR", fmt.Sprintf("Error message %d with some additional content", i)))
+		sb.WriteString("\n")
+	}
+	input := sb.String()
+	inputBytes := []byte(input)
+
+	// Warm up both implementations
+	for i := 0; i < 10; i++ {
+		var out bytes.Buffer
+		baselineProcessLogStream(bytes.NewReader(inputBytes), &out)
+		ProcessLogStream(bytes.NewReader(inputBytes), &out)
+	}
+
+	// Measure baseline time (average of multiple runs)
+	iterations := 100
+	var baselineTotalTime time.Duration
+	for i := 0; i < iterations; i++ {
+		var output bytes.Buffer
+		start := time.Now()
+		baselineProcessLogStream(bytes.NewReader(inputBytes), &output)
+		baselineTotalTime += time.Since(start)
+	}
+	baselineAvg := baselineTotalTime / time.Duration(iterations)
+
+	// Measure optimized time (average of multiple runs)
+	var optimizedTotalTime time.Duration
+	for i := 0; i < iterations; i++ {
+		var output bytes.Buffer
+		start := time.Now()
+		ProcessLogStream(bytes.NewReader(inputBytes), &output)
+		optimizedTotalTime += time.Since(start)
+	}
+	optimizedAvg := optimizedTotalTime / time.Duration(iterations)
+
+	// Calculate improvement percentage
+	if baselineAvg == 0 {
+		t.Fatal("Baseline time is zero, cannot calculate improvement")
+	}
+	improvementPercent := 100.0 * float64(baselineAvg-optimizedAvg) / float64(baselineAvg)
+
+	t.Logf("Execution time comparison (avg of %d runs):", iterations)
+	t.Logf("  Baseline (json.Unmarshal): %v", baselineAvg)
+	t.Logf("  Optimized:                 %v", optimizedAvg)
+	t.Logf("  Improvement:               %.1f%%", improvementPercent)
+
+	// Verify at least 50% improvement
+	if improvementPercent < 50.0 {
+		t.Errorf("FAILED: Execution time improvement is %.1f%%, required at least 50%%", improvementPercent)
+	}
+}
+
+// BenchmarkComparison_Baseline benchmarks the baseline json.Unmarshal implementation
+func BenchmarkComparison_Baseline(b *testing.B) {
+	input := generateTestInput(1000)
+	inputBytes := []byte(input)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		var output bytes.Buffer
+		baselineProcessLogStream(bytes.NewReader(inputBytes), &output)
+	}
+}
+
+// BenchmarkComparison_Optimized benchmarks the optimized implementation
+func BenchmarkComparison_Optimized(b *testing.B) {
+	input := generateTestInput(1000)
+	inputBytes := []byte(input)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		var output bytes.Buffer
+		ProcessLogStream(bytes.NewReader(inputBytes), &output)
 	}
 }

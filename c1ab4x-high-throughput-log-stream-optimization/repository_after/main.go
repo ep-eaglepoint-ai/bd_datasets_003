@@ -25,16 +25,17 @@ type LogEntry struct {
 // 5. Correctly decodes JSON escape sequences.
 func ProcessLogStream(r io.Reader, w io.Writer) error {
 	scanner := bufio.NewScanner(r)
-	// Handle lines longer than default 64KB buffer
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 10*1024*1024) // Max 10MB per line
+	// Use smaller initial buffer (grows as needed), max 10MB per line
+	buf := make([]byte, 0, 4*1024)
+	scanner.Buffer(buf, 10*1024*1024)
 
 	bw := bufio.NewWriter(w)
 	defer bw.Flush()
 
 	// Pre-allocated buffers for decoded strings (reused each iteration)
-	levelBuf := make([]byte, 0, 64)
-	msgBuf := make([]byte, 0, 4096)
+	// Start small - will grow if needed and stay at that size
+	levelBuf := make([]byte, 0, 16)
+	msgBuf := make([]byte, 0, 256)
 
 	for scanner.Scan() {
 		line := scanner.Bytes()
