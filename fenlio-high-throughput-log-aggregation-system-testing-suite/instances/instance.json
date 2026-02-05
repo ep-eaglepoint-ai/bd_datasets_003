@@ -1,0 +1,12 @@
+{
+            "instance_id": "FENLIO",
+            "problem_statement": "We need to validate a high-throughput log aggregation system under concurrent load, ensuring correct behavioral, ordering, isolation, and performance guarantees. The system must preserve per-source order, flush logs by severity without mixing, trigger flushes by size or time, handle slow flushes without blocking others, maintain non-blocking submission latency, operate correctly under sustained high load, detect race conditions, and flush remaining entries on stop. Tests must be black-box, rely on observable outcomes, and tolerate nondeterministic scheduling.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/fenlio-high-throughput-log-aggregation-system-testing-suite",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
