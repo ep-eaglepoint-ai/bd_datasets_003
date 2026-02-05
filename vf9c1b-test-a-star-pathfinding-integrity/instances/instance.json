@@ -1,0 +1,11 @@
+{
+            "instance_id": "VF9C1B",
+            "problem_statement": "The project GridBound utilizes a custom A-Star pathfinding implementation for NPC navigation. Recent QA reports indicate that NPCs become unresponsive when navigating near zero-cost Teleporter tiles or when boxed into corners. Additionally, performance logs suggest that the paths generated are not always the shortest possible distance, implying an issue with the heuristic admissibility or the priority queue management. You must deliver a robust Jest test suite that deterministically identifies these logical failures within the existing codebase.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/vf9c1b-test-a-star-pathfinding-integrity",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
