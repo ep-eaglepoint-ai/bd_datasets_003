@@ -42,6 +42,15 @@ def test_requirements():
         results["Req 4: Correct Fields (name, url, stars, description)"] = all_fields_present and script_exists
         results["Check: Exactly 10 items"] = has_10_items and script_exists
         
+        # New Requirement Check: Trending logic (must have trending or 30 days in docstring or script)
+        with open(script_path, 'r') as f:
+            content = f.read()
+            has_trending_logic = "last 30 days" in content.lower() or "trending" in content.lower()
+            # Verify it's not the old generic search
+            is_generic_search = "stars:>1" in content and "created" not in content
+            
+        results["Req: Trending Logic (Recent Stars/Activity)"] = has_trending_logic and not is_generic_search and script_exists
+        
     except json.JSONDecodeError:
         results["Req 3: JSON Format"] = False
         results["Req 4: Correct Fields (name, url, stars, description)"] = False

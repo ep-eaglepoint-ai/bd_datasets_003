@@ -1,16 +1,19 @@
 import requests
 import json
 import sys
+from datetime import datetime, timedelta
 
 def fetch_trending_repos():
     """
     Fetches the top 10 trending repositories from GitHub using the public Search API.
-    A proxy for 'trending' is the most starred repositories created or active recently.
-    For this task, we fetch the top 10 most starred repositories overall.
+    A proxy for 'trending' is the most starred repositories created in the last 30 days.
     """
+    # Calculate the date 30 days ago
+    date_30_days_ago = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+    
     url = "https://api.github.com/search/repositories"
     params = {
-        "q": "stars:>1",
+        "q": f"created:>{date_30_days_ago}",
         "sort": "stars",
         "order": "desc",
         "per_page": 10
