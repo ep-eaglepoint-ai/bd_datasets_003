@@ -1,0 +1,11 @@
+{
+            "instance_id": "UV0ELQ",
+            "problem_statement": "Dashboard aggregation is slow and scales poorly when tenants request metrics over large date ranges or high-volume event streams. The service does four separate passes over the event list and sorts the full user-count list just to obtain the top 10 users, which is unnecessary and costly when there are many distinct users. Key order in the output (event_counts and percentiles_p95) must remain in first-occurrence order of event_type so that existing clients and tests that rely on deterministic key order do not break. The goal is to preserve identical output and key ordering while reducing the number of passes over the data and replacing the full sort for top-10 with a bounded-cost selection method.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/uv0elq-optimizing-a-dashboard-aggregation-service-for-a-saas-analytics-product",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
