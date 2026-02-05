@@ -1,0 +1,55 @@
+services:
+  backend:
+    build: .
+    working_dir: /app/repository_after/backend
+    command: go run main.go
+    ports:
+      - "8080:8080"
+    volumes:
+      - .:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/state"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+      start_period: 5s
+
+  frontend:
+    build: .
+    working_dir: /app/repository_after/frontend
+    command: npm run dev -- --host
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  tests:
+    build: .
+    command: node --test tests/test-consensus.js
+    environment:
+      - BACKEND_URL=http://backend:8080
+      - FRONTEND_DIR=/app/repository_after/frontend
+    volumes:
+      - .:/app
+    depends_on:
+      backend:
+        condition: service_healthy
+    profiles:
+      - tests
+
+  evaluation:
+    build: .
+    command: node evaluation/evaluation.js
+    environment:
+      - BACKEND_URL=http://backend:8080
+      - DOCKER_CONTAINER=true
+    volumes:
+      - .:/app
+    depends_on:
+      backend:
+        condition: service_healthy
+    profiles:
+      - evaluation
