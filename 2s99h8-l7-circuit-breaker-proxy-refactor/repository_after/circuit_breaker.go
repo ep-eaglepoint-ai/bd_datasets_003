@@ -56,14 +56,18 @@ func (cb *FastCircuitBreaker) RoundTrip(req *http.Request) (*http.Response, erro
 	}
 
 	now := time.Now().UnixNano()
-	state := atomic.LoadInt32(&cb.state)
+	
+	// Single atomic load to avoid race conditions
+	initialState := atomic.LoadInt32(&cb.state)
+	isProbe := false
 
 	// Handle Open state
-	if state == StateOpen {
+	if initialState == StateOpen {
 		if now-atomic.LoadInt64(&cb.lastFailureTime) > cb.sleepWindow {
 			// Sleep window expired, try to transition to half-open
 			if atomic.CompareAndSwapInt32(&cb.state, StateOpen, StateHalfOpen) {
-				// Successfully transitioned to half-open, continue
+				// Successfully transitioned to half-open, this becomes the probe
+				isProbe = true
 			} else {
 				// Another goroutine transitioned, reject this request
 				return cb.gen503(req), ErrCircuitOpen
@@ -72,16 +76,14 @@ func (cb *FastCircuitBreaker) RoundTrip(req *http.Request) (*http.Response, erro
 			// Still in sleep window
 			return cb.gen503(req), ErrCircuitOpen
 		}
-	}
-
-	// Handle Half-Open state - enforce single probe
-	if atomic.LoadInt32(&cb.state) == StateHalfOpen {
-		// Try to become the single probe
+	} else if initialState == StateHalfOpen {
+		// Handle Half-Open state - enforce single probe
 		if !atomic.CompareAndSwapInt32(&cb.probeInProgress, 0, 1) {
 			// Another probe is already in progress
 			return cb.gen503(req), ErrCircuitOpen
 		}
 		// This goroutine is now the probe
+		isProbe = true
 		defer atomic.StoreInt32(&cb.probeInProgress, 0)
 	}
 
@@ -93,10 +95,8 @@ func (cb *FastCircuitBreaker) RoundTrip(req *http.Request) (*http.Response, erro
 	isFailure := err != nil || (resp != nil && resp.StatusCode >= 500)
 	cb.recordResult(isFailure)
 
-	// Handle state transitions
-	currentState := atomic.LoadInt32(&cb.state)
-	
-	if currentState == StateHalfOpen {
+	// Handle state transitions based on the initial state we acted upon
+	if isProbe {
 		// We're the probe, decide the next state
 		if isFailure {
 			// Probe failed, go back to open
@@ -107,8 +107,8 @@ func (cb *FastCircuitBreaker) RoundTrip(req *http.Request) (*http.Response, erro
 			cb.resetWindow()
 			atomic.StoreInt32(&cb.state, StateClosed)
 		}
-	} else if currentState == StateClosed && isFailure {
-		// Check if we should trip
+	} else if initialState == StateClosed && isFailure {
+		// Check if we should trip (only if we started in closed state)
 		if cb.shouldTrip() {
 			if atomic.CompareAndSwapInt32(&cb.state, StateClosed, StateOpen) {
 				atomic.StoreInt64(&cb.lastFailureTime, time.Now().UnixNano())
