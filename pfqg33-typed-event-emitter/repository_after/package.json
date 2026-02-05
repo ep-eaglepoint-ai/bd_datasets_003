@@ -1,0 +1,16 @@
+{
+  "name": "repository_after",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "scripts": {
+    "test": "ts-node --compiler-options \"{\\\"module\\\":\\\"commonjs\\\"}\" ../tests/event-emitter.test.ts"
+  },
+  "dependencies": {
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3",
+    "@types/node": "^20.11.0"
+  }
+}

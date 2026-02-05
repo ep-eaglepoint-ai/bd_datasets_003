@@ -1,0 +1,9 @@
+# Docker Compose file for running tests. You should customize this as needed.
+
+services:
+  app:
+    build: .
+    volumes:
+      - .:/app
+    command: node evaluation/evaluate.js
+
