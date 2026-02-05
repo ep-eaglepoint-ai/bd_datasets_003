@@ -1,4 +1,3 @@
-
 export type NotificationEvent = {
   eventId: string;
   recipientId: string;
@@ -27,29 +26,37 @@ export interface ProcessingReport {
     type: string;
     timestamp: number;
     outcome: ProcessingOutcome;
-    reason?: string;
+    reason: string | undefined;
   }>;
 }
 
-const STATUS_ORDER: Record<NotificationState["status"], number> = {
-  NONE: 0,
-  SENT: 1,
-  DELIVERED: 2,
-  ACKED: 3,
+
+const VALID_TRANSITIONS: Record<
+  NotificationState["status"],
+  NotificationState["status"][]
+> = {
+  NONE: ["SENT", "DELIVERED"], 
+  SENT: ["DELIVERED"],
+  DELIVERED: ["ACKED"],
+  ACKED: [],
 };
 
-function canTransition(current: NotificationState["status"], next: NotificationState["status"]): boolean {
-  return STATUS_ORDER[next] > STATUS_ORDER[current];
+
+function canTransition(
+  from: NotificationState["status"],
+  to: NotificationState["status"]
+): boolean {
+  return VALID_TRANSITIONS[from].includes(to);
 }
 
-
-export function processNotificationEvents(events: NotificationEvent[]): {
+export function processNotificationEvents(
+  events: NotificationEvent[]
+): {
   states: Record<string, NotificationState>;
   report: ProcessingReport;
 } {
   const states: Record<string, NotificationState> = {};
-  
-  const appliedEventIds = new Set<string>();
+  const seenEventIds = new Set<string>();
 
   const report: ProcessingReport = {
     totalInputEvents: events.length,
@@ -59,74 +66,90 @@ export function processNotificationEvents(events: NotificationEvent[]): {
     eventsProcessed: [],
   };
 
-
-  const reject = (entry: ProcessingReport['eventsProcessed'][number], reason: string, label: string) => {
-    report.rejected[label] = (report.rejected[label] || 0) + 1;
-    entry.outcome = "rejected";
-    entry.reason = reason;
-    report.eventsProcessed.push(entry);
-  };
-
-  events.forEach((ev, index) => {
-   
-    const entry: ProcessingReport['eventsProcessed'][number] = {
+  for (const [index, ev] of events.entries()) {
+    const entry = {
       eventIndex: index,
       eventId: ev.eventId,
       notificationId: ev.notificationId,
       type: ev.type,
       timestamp: ev.timestamp,
-      outcome: "rejected", 
+      outcome: "rejected" as ProcessingOutcome,
+      reason: undefined as string | undefined,
     };
 
-
-    if (!ev.notificationId || ev.notificationId.trim() === "") {
-      return reject(entry, "missing or empty notificationId", "missing_or_empty_notificationId");
-    }
-
-    if (appliedEventIds.has(ev.eventId)) {
-      report.duplicates++;
-      entry.outcome = "duplicate";
+   
+    if (!ev.notificationId?.trim()) {
+      entry.reason = "missing or empty notificationId";
+      report.rejected.missing_or_empty_notificationId =
+        (report.rejected.missing_or_empty_notificationId || 0) + 1;
       report.eventsProcessed.push(entry);
-      return;
+      continue;
     }
 
+    if (seenEventIds.has(ev.eventId)) {
+      entry.outcome = "duplicate";
+      report.duplicates++;
+      report.eventsProcessed.push(entry);
+      continue;
+    }
+    seenEventIds.add(ev.eventId);
+
+   
     if (!["SENT", "DELIVERED", "ACKED"].includes(ev.type)) {
-      return reject(entry, "invalid event type", "invalid_event_type");
+      entry.reason = "invalid event type";
+      report.rejected.invalid_event_type =
+        (report.rejected.invalid_event_type || 0) + 1;
+      report.eventsProcessed.push(entry);
+      continue;
     }
 
+    const currentState: NotificationState =
+      states[ev.notificationId] ?? {
+        status: "NONE",
+        lastSeenAt: 0,
+        ackCount: 0,
+      };
 
-    const currentState = states[ev.notificationId] || { status: "NONE", lastSeenAt: 0, ackCount: 0 };
 
     if (currentState.status === "ACKED") {
-      return reject(entry, "already ACKED (terminal)", "terminal_state_ACKED");
+      entry.reason = "already ACKED (terminal state)";
+      report.rejected.terminal_state_ACKED =
+        (report.rejected.terminal_state_ACKED || 0) + 1;
+      report.eventsProcessed.push(entry);
+      continue;
     }
+
 
     if (!canTransition(currentState.status, ev.type)) {
       const label = `invalid_transition_${currentState.status}_to_${ev.type}`;
-      return reject(entry, `cannot transition ${currentState.status} → ${ev.type}`, label);
+      entry.reason = `cannot transition from ${currentState.status} to ${ev.type}`;
+      report.rejected[label] = (report.rejected[label] || 0) + 1;
+      report.eventsProcessed.push(entry);
+      continue;
+    }
+
+    if (ev.timestamp < currentState.lastSeenAt) {
+      entry.reason = "timestamp older than lastSeenAt";
+      report.rejected.timestamp_regression =
+        (report.rejected.timestamp_regression || 0) + 1;
+      report.eventsProcessed.push(entry);
+      continue;
     }
 
  
-    if (!states[ev.notificationId]) {
-      states[ev.notificationId] = { ...currentState };
-    }
-    
-    const state = states[ev.notificationId];
-    
-   
-    state.status = ev.type;
-    state.lastSeenAt = Math.max(state.lastSeenAt, ev.timestamp);
-    if (ev.type === "ACKED") {
-      state.ackCount += 1;
-    }
+    states[ev.notificationId] = {
+      status: ev.type,
+      lastSeenAt: ev.timestamp,
+      ackCount:
+        ev.type === "ACKED"
+          ? currentState.ackCount + 1
+          : currentState.ackCount,
+    };
 
-
-    appliedEventIds.add(ev.eventId);
     report.applied++;
-    
     entry.outcome = "applied";
     report.eventsProcessed.push(entry);
-  });
+  }
 
   return { states, report };
 }
