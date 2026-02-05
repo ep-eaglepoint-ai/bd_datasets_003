@@ -1,11 +1,16 @@
 # 80M8FV - Text Stream Optimization: Eliminating pop and String Concatenation
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Before Test Docker Command
+```bash
+docker compose run --rm app-before
+```
 
-    ## After Test Docker Command
-    <docker after command here>
+## After Test Docker Command
+```bash
+docker compose run --rm app-after
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## Evaluation Docker Command
+```bash
+docker compose run --rm evaluation
+```

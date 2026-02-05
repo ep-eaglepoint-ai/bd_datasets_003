@@ -1,12 +1,18 @@
 # Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 .venv/
 .env
+.pytest_cache/
 
-# Node
-node_modules/
+# Evaluation reports
+evaluation/*/
 
 # OS
 .DS_Store
-evaluation/*.json
+
+# IDE
+.vscode/
+.idea/
