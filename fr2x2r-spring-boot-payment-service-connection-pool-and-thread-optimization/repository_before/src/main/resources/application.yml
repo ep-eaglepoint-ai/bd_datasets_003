@@ -1,0 +1,23 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/payments
+    username: postgres
+    password: postgres
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+  redis:
+    host: localhost
+    port: 6379
+
+bank:
+  api:
+    url: http://bank-service:8080
+
+fraud:
+  api:
+    url: http://fraud-service:8080
+
+server:
+  port: 8080
