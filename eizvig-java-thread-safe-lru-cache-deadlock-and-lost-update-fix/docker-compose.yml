@@ -1,0 +1,36 @@
+version: '3'
+
+services:
+  test-before:
+    image: lru-cache-test-image
+    build: .
+    # Use failure.ignore to prevent "BUILD FAILURE" on test failures, ensuring container exits with 0
+    # while still displaying the test failure logs requested by the user.
+    command: mvn test -B -Dmaven.test.failure.ignore=true
+    working_dir: /app/repository_before
+    volumes:
+      - .:/app
+      - maven-repo:/root/.m2
+    # Removed valid entrypoint to allow command override if needed, 
+    # relying on the default 'mvn' behavior or the command defined above.
+
+  test-after:
+    image: lru-cache-test-image
+    command: mvn test -B
+    working_dir: /app/repository_after
+    volumes:
+      - .:/app
+      - maven-repo:/root/.m2
+    depends_on:
+      - test-before
+
+  evaluation:
+    image: lru-cache-test-image
+    command: python3 evaluation/evaluation.py
+    volumes:
+      - .:/app
+    depends_on:
+      - test-before
+
+volumes:
+  maven-repo:
