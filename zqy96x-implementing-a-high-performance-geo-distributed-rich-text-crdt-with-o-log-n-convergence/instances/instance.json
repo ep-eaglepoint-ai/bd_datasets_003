@@ -1,0 +1,11 @@
+{
+            "instance_id": "ZQY96X",
+            "problem_statement": "Our distributed document platform is experiencing critical performance degradation as document length increases. Current implementations rely on linear array traversals and per-character metadata, leading to a "UI Freeze" during concurrent synchronization of large files (100k+ characters). To maintain a competitive edge against Google Docs, we must eliminate the linear scaling bottleneck and resolve "formatting drift"—where concurrent styling of the same paragraph results in fragmented, inconsistent visual states across global replicas.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/zqy96x-implementing-a-high-performance-geo-distributed-rich-text-crdt-with-o-log-n-convergence",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
