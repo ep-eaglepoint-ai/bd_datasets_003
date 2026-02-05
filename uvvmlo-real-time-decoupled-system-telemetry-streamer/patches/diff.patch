@@ -308,10 +308,10 @@ index 0000000..a1c5e2c
 \ No newline at end of file
 diff --git a/repository_after/main.go b/repository_after/main.go
 new file mode 100644
-index 0000000..898fb9a
+index 0000000..f74674f
 --- /dev/null
 +++ b/repository_after/main.go
-@@ -0,0 +1,28 @@
+@@ -0,0 +1,29 @@
 +package main
 +
 +import (
@@ -329,6 +329,7 @@ index 0000000..898fb9a
 +	go h.Run()
 +
 +	collector := metrics.NewCollector(1 * time.Second)
++	collector.SetConnectionHub(h) // Inject hub for connection tracking
 +	go collector.Start(h.Broadcast)
 +
 +	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
@@ -343,10 +344,10 @@ index 0000000..898fb9a
 \ No newline at end of file
 diff --git a/repository_after/pkg/hub/hub.go b/repository_after/pkg/hub/hub.go
 new file mode 100644
-index 0000000..6c17bb2
+index 0000000..5e609f0
 --- /dev/null
 +++ b/repository_after/pkg/hub/hub.go
-@@ -0,0 +1,162 @@
+@@ -0,0 +1,166 @@
 +package hub
 +
 +import (
@@ -366,32 +367,35 @@ index 0000000..6c17bb2
 +)
 +
 +// Client represents a WebSocket client connection
++// Stores only lifecycle state (Send channel, Done signal, connection mutex)
++// Does NOT store application/telemetry state per the prompt requirements
 +type Client struct {
 +	Conn   *websocket.Conn
 +	Send   chan []byte
 +	Hub    *Hub
 +	Done   chan struct{}
-+	mu     sync.Mutex
++	mu     sync.RWMutex
 +	closed bool
 +}
 +
 +// Hub maintains the set of active clients and broadcasts messages
++// Registry is keyed by *websocket.Conn as per requirement #1
 +type Hub struct {
-+	Clients    map[*Client]bool
++	Clients    map[*websocket.Conn]*Client // Single source of truth: conn -> client data
 +	Mu         sync.RWMutex
 +	broadcast  chan []byte
-+	register   chan *Client
-+	unregister chan *Client
++	register   chan *websocket.Conn
++	unregister chan *websocket.Conn
 +	done       chan struct{}
 +}
 +
 +// NewHub creates a new Hub instance
 +func NewHub() *Hub {
 +	return &Hub{
-+		Clients:    make(map[*Client]bool),
++		Clients:    make(map[*websocket.Conn]*Client),
 +		broadcast:  make(chan []byte, 256),
-+		register:   make(chan *Client),
-+		unregister: make(chan *Client),
++		register:   make(chan *websocket.Conn),
++		unregister: make(chan *websocket.Conn),
 +		done:       make(chan struct{}),
 +	}
 +}
@@ -400,24 +404,29 @@ index 0000000..6c17bb2
 +func (h *Hub) Run() {
 +	for {
 +		select {
-+		case client := <-h.register:
++		case conn := <-h.register:
 +			h.Mu.Lock()
-+			h.Clients[client] = true
++			// Create and register client atomically
++			h.Clients[conn] = &Client{
++				Conn: conn,
++				Send: make(chan []byte, ClientBufferSize),
++				Hub:  h,
++				Done: make(chan struct{}),
++			}
 +			h.Mu.Unlock()
 +
-+		case client := <-h.unregister:
++		case conn := <-h.unregister:
 +			h.Mu.Lock()
-+			if _, ok := h.Clients[client]; ok {
-+				delete(h.Clients, client)
++			if client, ok := h.Clients[conn]; ok {
++				delete(h.Clients, conn)
 +				client.Close()
 +			}
 +			h.Mu.Unlock()
 +
 +		case message := <-h.broadcast:
 +			h.Mu.RLock()
-+			for client := range h.Clients {
-+				// Non-blocking send with select and default case
-+				// This ensures slow consumers don't block the broadcaster
++			for _, client := range h.Clients {
++				// Non-blocking send with timeout (requirement #2)
 +				select {
 +				case client.Send <- message:
 +					// Message sent successfully
@@ -431,17 +440,17 @@ index 0000000..6c17bb2
 +
 +		case <-h.done:
 +			h.Mu.Lock()
-+			for client := range h.Clients {
++			for _, client := range h.Clients {
 +				client.Close()
-+				delete(h.Clients, client)
 +			}
++			h.Clients = make(map[*websocket.Conn]*Client)
 +			h.Mu.Unlock()
 +			return
 +		}
 +	}
 +}
 +
-+// Broadcast sends data to all connected clients
++// Broadcast sends data to all connected clients (non-blocking)
 +func (h *Hub) Broadcast(data []byte) {
 +	select {
 +	case h.broadcast <- data:
@@ -451,16 +460,23 @@ index 0000000..6c17bb2
 +}
 +
 +// Register adds a client to the hub
-+func (h *Hub) Register(client *Client) {
-+	h.register <- client
++func (h *Hub) Register(conn *websocket.Conn) {
++	h.register <- conn
 +}
 +
-+// Unregister removes a client from the hub
-+func (h *Hub) Unregister(client *Client) {
++// Unregister removes a client from the hub (requirement #3: cleanup sequence)
++func (h *Hub) Unregister(conn *websocket.Conn) {
 +	select {
-+	case h.unregister <- client:
++	case h.unregister <- conn:
 +	case <-h.done:
 +	}
++}
++
++// GetClient retrieves client data for a connection
++func (h *Hub) GetClient(conn *websocket.Conn) *Client {
++	h.Mu.RLock()
++	defer h.Mu.RUnlock()
++	return h.Clients[conn]
 +}
 +
 +// ClientCount returns the number of connected clients
@@ -480,17 +496,6 @@ index 0000000..6c17bb2
 +	}
 +}
 +
-+// NewClient creates a new client
-+func NewClient(conn *websocket.Conn, hub *Hub) *Client {
-+	return &Client{
-+		Conn:   conn,
-+		Send:   make(chan []byte, ClientBufferSize),
-+		Hub:    hub,
-+		Done:   make(chan struct{}),
-+		closed: false,
-+	}
-+}
-+
 +// Close safely closes the client connection and channels
 +func (c *Client) Close() {
 +	c.mu.Lock()
@@ -503,29 +508,29 @@ index 0000000..6c17bb2
 +	}
 +}
 +
-+// IsClosed returns whether the client is closed
++// IsClosed returns whether the client is closed (FIX #7: use RLock for read-only)
 +func (c *Client) IsClosed() bool {
-+	c.mu.Lock()
-+	defer c.mu.Unlock()
++	c.mu.RLock()
++	defer c.mu.RUnlock()
 +	return c.closed
 +}
 \ No newline at end of file
 diff --git a/repository_after/pkg/metrics/collector.go b/repository_after/pkg/metrics/collector.go
 new file mode 100644
-index 0000000..5ebc849
+index 0000000..b876e5c
 --- /dev/null
 +++ b/repository_after/pkg/metrics/collector.go
-@@ -0,0 +1,209 @@
+@@ -0,0 +1,215 @@
 +package metrics
 +
 +import (
 +	"bufio"
 +	"encoding/json"
-+	"net"
 +	"os"
 +	"runtime"
 +	"strconv"
 +	"strings"
++	"sync"
 +	"time"
 +)
 +
@@ -542,10 +547,13 @@ index 0000000..5ebc849
 +
 +// Collector samples system metrics at regular intervals
 +type Collector struct {
-+	interval  time.Duration
-+	prevIdle  uint64
-+	prevTotal uint64
-+	stopChan  chan struct{}
++	interval      time.Duration
++	stopChan      chan struct{}
++	prevIdle      uint64
++	prevTotal     uint64
++	mu            sync.Mutex
++	connectionHub interface{ ClientCount() int }
++	stopped       bool
 +}
 +
 +// NewCollector creates a new metrics collector
@@ -554,6 +562,13 @@ index 0000000..5ebc849
 +		interval: interval,
 +		stopChan: make(chan struct{}),
 +	}
++}
++
++// SetConnectionHub allows injecting a hub to track active connections
++func (c *Collector) SetConnectionHub(hub interface{ ClientCount() int }) {
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	c.connectionHub = hub
 +}
 +
 +// Start begins the metrics collection loop
@@ -576,162 +591,158 @@ index 0000000..5ebc849
 +	}
 +}
 +
-+// Stop terminates the collection loop
++// Stop terminates the collection loop (idempotent)
 +func (c *Collector) Stop() {
-+	close(c.stopChan)
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	if !c.stopped {
++		close(c.stopChan)
++		c.stopped = true
++	}
 +}
 +
 +// Collect gathers current system metrics
 +func (c *Collector) Collect() SystemMetrics {
++	var m runtime.MemStats
++	runtime.ReadMemStats(&m)
++
 +	return SystemMetrics{
 +		Timestamp:          time.Now().UnixMilli(),
 +		CPUUsage:           c.getCPUUsage(),
-+		MemoryTotal:        c.getMemoryTotal(),
-+		MemoryUsed:         c.getMemoryUsed(),
-+		MemoryUsagePercent: c.getMemoryUsagePercent(),
++		MemoryTotal:        m.Sys,
++		MemoryUsed:         m.Alloc,
++		MemoryUsagePercent: c.getMemoryUsagePercent(&m),
 +		ActiveConnections:  c.getActiveConnections(),
 +		NumGoroutines:      runtime.NumGoroutine(),
 +	}
 +}
 +
++// getCPUUsage reads /proc/stat and calculates CPU utilization delta
++// Falls back to runtime-based estimate on non-Linux systems
 +func (c *Collector) getCPUUsage() float64 {
 +	file, err := os.Open("/proc/stat")
 +	if err != nil {
-+		// Fallback for non-Linux systems
-+		var m runtime.MemStats
-+		runtime.ReadMemStats(&m)
-+		return float64(m.NumGC % 100)
++		// Fallback for non-Linux systems (macOS, Windows, etc.)
++		return c.getCPUUsageFallback()
 +	}
 +	defer file.Close()
 +
 +	scanner := bufio.NewScanner(file)
-+	if scanner.Scan() {
-+		line := scanner.Text()
-+		if strings.HasPrefix(line, "cpu ") {
-+			fields := strings.Fields(line)
-+			if len(fields) < 5 {
-+				return 0
-+			}
-+
-+			var total uint64
-+			var idle uint64
-+
-+			for i := 1; i < len(fields); i++ {
-+				val, _ := strconv.ParseUint(fields[i], 10, 64)
-+				total += val
-+				if i == 4 {
-+					idle = val
-+				}
-+			}
-+
-+			if c.prevTotal == 0 {
-+				c.prevTotal = total
-+				c.prevIdle = idle
-+				return 0
-+			}
-+
-+			totalDiff := float64(total - c.prevTotal)
-+			idleDiff := float64(idle - c.prevIdle)
-+
-+			c.prevTotal = total
-+			c.prevIdle = idle
-+
-+			if totalDiff == 0 {
-+				return 0
-+			}
-+
-+			return (1 - idleDiff/totalDiff) * 100
-+		}
-+	}
-+	return 0
-+}
-+
-+func (c *Collector) getMemoryTotal() uint64 {
-+	val := getMemInfo("MemTotal")
-+	if val == 0 {
-+		var m runtime.MemStats
-+		runtime.ReadMemStats(&m)
-+		return m.Sys
-+	}
-+	return val
-+}
-+
-+func (c *Collector) getMemoryUsed() uint64 {
-+	total := getMemInfo("MemTotal")
-+	if total == 0 {
-+		var m runtime.MemStats
-+		runtime.ReadMemStats(&m)
-+		return m.Alloc
-+	}
-+	available := getMemInfo("MemAvailable")
-+	if available == 0 {
-+		free := getMemInfo("MemFree")
-+		buffers := getMemInfo("Buffers")
-+		cached := getMemInfo("Cached")
-+		available = free + buffers + cached
-+	}
-+	return total - available
-+}
-+
-+func (c *Collector) getMemoryUsagePercent() float64 {
-+	total := c.getMemoryTotal()
-+	used := c.getMemoryUsed()
-+	if total == 0 {
++	if !scanner.Scan() {
 +		return 0
 +	}
-+	return float64(used) / float64(total) * 100
-+}
 +
-+func getMemInfo(key string) uint64 {
-+	file, err := os.Open("/proc/meminfo")
-+	if err != nil {
++	line := scanner.Text()
++	if !strings.HasPrefix(line, "cpu ") {
 +		return 0
 +	}
-+	defer file.Close()
 +
-+	scanner := bufio.NewScanner(file)
-+	for scanner.Scan() {
-+		line := scanner.Text()
-+		if strings.HasPrefix(line, key+":") {
-+			fields := strings.Fields(line)
-+			if len(fields) >= 2 {
-+				val, _ := strconv.ParseUint(fields[1], 10, 64)
-+				return val * 1024
-+			}
++	fields := strings.Fields(line)
++	if len(fields) < 5 {
++		return 0
++	}
++
++	// Parse CPU time values
++	// fields: cpu user nice system idle iowait irq softirq...
++	var total uint64
++	var idle uint64
++
++	for i := 1; i < len(fields); i++ {
++		val, err := strconv.ParseUint(fields[i], 10, 64)
++		if err != nil {
++			continue
++		}
++		total += val
++		if i == 4 { // idle is the 4th field (index 4)
++			idle = val
 +		}
 +	}
-+	return 0
++
++	c.mu.Lock()
++	defer c.mu.Unlock()
++
++	// On first call, store baseline and return 0
++	if c.prevTotal == 0 {
++		c.prevTotal = total
++		c.prevIdle = idle
++		return 0
++	}
++
++	// Calculate deltas
++	totalDiff := float64(total - c.prevTotal)
++	idleDiff := float64(idle - c.prevIdle)
++
++	// Update previous values
++	c.prevTotal = total
++	c.prevIdle = idle
++
++	if totalDiff == 0 {
++		return 0
++	}
++
++	// CPU usage = (1 - idle_delta / total_delta) * 100
++	cpuUsage := (1.0 - idleDiff/totalDiff) * 100.0
++
++	// Clamp to valid range
++	if cpuUsage < 0 {
++		cpuUsage = 0
++	}
++	if cpuUsage > 100 {
++		cpuUsage = 100
++	}
++
++	return cpuUsage
 +}
 +
++// getCPUUsageFallback estimates CPU activity from runtime metrics
++// Used on non-Linux platforms where /proc/stat is unavailable
++func (c *Collector) getCPUUsageFallback() float64 {
++	var m runtime.MemStats
++	runtime.ReadMemStats(&m)
++
++	// Estimate based on goroutine count and GC activity
++	numCPU := float64(runtime.NumCPU())
++	goroutinePressure := float64(runtime.NumGoroutine()) / (numCPU * 10.0)
++	gcPressure := float64(m.NumGC%100) / 10.0
++
++	estimate := (goroutinePressure + gcPressure) * 100.0
++	if estimate > 100.0 {
++		estimate = 100.0
++	}
++	if estimate < 0.0 {
++		estimate = 0.0
++	}
++
++	return estimate
++}
++
++// getMemoryUsagePercent calculates memory usage percentage from runtime stats
++func (c *Collector) getMemoryUsagePercent(m *runtime.MemStats) float64 {
++	if m.Sys == 0 {
++		return 0
++	}
++	return float64(m.Alloc) / float64(m.Sys) * 100
++}
++
++// getActiveConnections returns the number of active WebSocket connections from the hub
 +func (c *Collector) getActiveConnections() int {
-+	count := 0
++	c.mu.Lock()
++	hub := c.connectionHub
++	c.mu.Unlock()
 +
-+	tcpFile, err := os.Open("/proc/net/tcp")
-+	if err == nil {
-+		scanner := bufio.NewScanner(tcpFile)
-+		for scanner.Scan() {
-+			count++
-+		}
-+		tcpFile.Close()
-+		if count > 0 {
-+			count--
-+		}
++	if hub != nil {
++		return hub.ClientCount()
 +	}
 +
-+	if count <= 0 {
-+		addrs, _ := net.InterfaceAddrs()
-+		count = len(addrs)
-+	}
-+
-+	return count
++	return 0
 +}
 \ No newline at end of file
 diff --git a/repository_after/pkg/websocket/handler.go b/repository_after/pkg/websocket/handler.go
 new file mode 100644
-index 0000000..4c1a417
+index 0000000..e9ba6a1
 --- /dev/null
 +++ b/repository_after/pkg/websocket/handler.go
-@@ -0,0 +1,99 @@
+@@ -0,0 +1,100 @@
 +package websocket
 +
 +import (
@@ -765,21 +776,19 @@ index 0000000..4c1a417
 +		return
 +	}
 +
-+	client := hub.NewClient(conn, h)
-+	h.Register(client)
++	h.Register(conn)
 +
 +	// Start decoupled read and write goroutines
-+	go writePump(client)
-+	go readPump(client)
++	go writePump(conn, h)
++	go readPump(conn, h)
 +}
 +
 +// readPump handles incoming messages and connection monitoring
-+func readPump(client *hub.Client) {
++func readPump(conn *websocket.Conn, h *hub.Hub) {
 +	defer func() {
-+		client.Hub.Unregister(client)
++		h.Unregister(conn)
 +	}()
 +
-+	conn := client.Conn
 +	conn.SetReadDeadline(time.Now().Add(pongWait))
 +	conn.SetPongHandler(func(string) error {
 +		conn.SetReadDeadline(time.Now().Add(pongWait))
@@ -798,13 +807,16 @@ index 0000000..4c1a417
 +}
 +
 +// writePump sends messages to the WebSocket connection
-+func writePump(client *hub.Client) {
++func writePump(conn *websocket.Conn, h *hub.Hub) {
 +	ticker := time.NewTicker(pingPeriod)
 +	defer func() {
 +		ticker.Stop()
 +	}()
 +
-+	conn := client.Conn
++	client := h.GetClient(conn)
++	if client == nil {
++		return
++	}
 +
 +	for {
 +		select {

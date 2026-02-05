@@ -3,11 +3,11 @@ package metrics
 import (
 	"bufio"
 	"encoding/json"
-	"net"
 	"os"
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -24,10 +24,13 @@ type SystemMetrics struct {
 
 // Collector samples system metrics at regular intervals
 type Collector struct {
-	interval  time.Duration
-	prevIdle  uint64
-	prevTotal uint64
-	stopChan  chan struct{}
+	interval      time.Duration
+	stopChan      chan struct{}
+	prevIdle      uint64
+	prevTotal     uint64
+	mu            sync.Mutex
+	connectionHub interface{ ClientCount() int }
+	stopped       bool
 }
 
 // NewCollector creates a new metrics collector
@@ -36,6 +39,13 @@ func NewCollector(interval time.Duration) *Collector {
 		interval: interval,
 		stopChan: make(chan struct{}),
 	}
+}
+
+// SetConnectionHub allows injecting a hub to track active connections
+func (c *Collector) SetConnectionHub(hub interface{ ClientCount() int }) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.connectionHub = hub
 }
 
 // Start begins the metrics collection loop
@@ -58,152 +68,148 @@ func (c *Collector) Start(broadcast func([]byte)) {
 	}
 }
 
-// Stop terminates the collection loop
+// Stop terminates the collection loop (idempotent)
 func (c *Collector) Stop() {
-	close(c.stopChan)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.stopped {
+		close(c.stopChan)
+		c.stopped = true
+	}
 }
 
 // Collect gathers current system metrics
 func (c *Collector) Collect() SystemMetrics {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+
 	return SystemMetrics{
 		Timestamp:          time.Now().UnixMilli(),
 		CPUUsage:           c.getCPUUsage(),
-		MemoryTotal:        c.getMemoryTotal(),
-		MemoryUsed:         c.getMemoryUsed(),
-		MemoryUsagePercent: c.getMemoryUsagePercent(),
+		MemoryTotal:        m.Sys,
+		MemoryUsed:         m.Alloc,
+		MemoryUsagePercent: c.getMemoryUsagePercent(&m),
 		ActiveConnections:  c.getActiveConnections(),
 		NumGoroutines:      runtime.NumGoroutine(),
 	}
 }
 
+// getCPUUsage reads /proc/stat and calculates CPU utilization delta
+// Falls back to runtime-based estimate on non-Linux systems
 func (c *Collector) getCPUUsage() float64 {
 	file, err := os.Open("/proc/stat")
 	if err != nil {
-		// Fallback for non-Linux systems
-		var m runtime.MemStats
-		runtime.ReadMemStats(&m)
-		return float64(m.NumGC % 100)
+		// Fallback for non-Linux systems (macOS, Windows, etc.)
+		return c.getCPUUsageFallback()
 	}
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
-	if scanner.Scan() {
-		line := scanner.Text()
-		if strings.HasPrefix(line, "cpu ") {
-			fields := strings.Fields(line)
-			if len(fields) < 5 {
-				return 0
-			}
-
-			var total uint64
-			var idle uint64
-
-			for i := 1; i < len(fields); i++ {
-				val, _ := strconv.ParseUint(fields[i], 10, 64)
-				total += val
-				if i == 4 {
-					idle = val
-				}
-			}
-
-			if c.prevTotal == 0 {
-				c.prevTotal = total
-				c.prevIdle = idle
-				return 0
-			}
-
-			totalDiff := float64(total - c.prevTotal)
-			idleDiff := float64(idle - c.prevIdle)
-
-			c.prevTotal = total
-			c.prevIdle = idle
-
-			if totalDiff == 0 {
-				return 0
-			}
-
-			return (1 - idleDiff/totalDiff) * 100
-		}
-	}
-	return 0
-}
-
-func (c *Collector) getMemoryTotal() uint64 {
-	val := getMemInfo("MemTotal")
-	if val == 0 {
-		var m runtime.MemStats
-		runtime.ReadMemStats(&m)
-		return m.Sys
-	}
-	return val
-}
-
-func (c *Collector) getMemoryUsed() uint64 {
-	total := getMemInfo("MemTotal")
-	if total == 0 {
-		var m runtime.MemStats
-		runtime.ReadMemStats(&m)
-		return m.Alloc
-	}
-	available := getMemInfo("MemAvailable")
-	if available == 0 {
-		free := getMemInfo("MemFree")
-		buffers := getMemInfo("Buffers")
-		cached := getMemInfo("Cached")
-		available = free + buffers + cached
-	}
-	return total - available
-}
-
-func (c *Collector) getMemoryUsagePercent() float64 {
-	total := c.getMemoryTotal()
-	used := c.getMemoryUsed()
-	if total == 0 {
+	if !scanner.Scan() {
 		return 0
 	}
-	return float64(used) / float64(total) * 100
-}
 
-func getMemInfo(key string) uint64 {
-	file, err := os.Open("/proc/meminfo")
-	if err != nil {
+	line := scanner.Text()
+	if !strings.HasPrefix(line, "cpu ") {
 		return 0
 	}
-	defer file.Close()
 
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.HasPrefix(line, key+":") {
-			fields := strings.Fields(line)
-			if len(fields) >= 2 {
-				val, _ := strconv.ParseUint(fields[1], 10, 64)
-				return val * 1024
-			}
+	fields := strings.Fields(line)
+	if len(fields) < 5 {
+		return 0
+	}
+
+	// Parse CPU time values
+	// fields: cpu user nice system idle iowait irq softirq...
+	var total uint64
+	var idle uint64
+
+	for i := 1; i < len(fields); i++ {
+		val, err := strconv.ParseUint(fields[i], 10, 64)
+		if err != nil {
+			continue
+		}
+		total += val
+		if i == 4 { // idle is the 4th field (index 4)
+			idle = val
 		}
 	}
-	return 0
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// On first call, store baseline and return 0
+	if c.prevTotal == 0 {
+		c.prevTotal = total
+		c.prevIdle = idle
+		return 0
+	}
+
+	// Calculate deltas
+	totalDiff := float64(total - c.prevTotal)
+	idleDiff := float64(idle - c.prevIdle)
+
+	// Update previous values
+	c.prevTotal = total
+	c.prevIdle = idle
+
+	if totalDiff == 0 {
+		return 0
+	}
+
+	// CPU usage = (1 - idle_delta / total_delta) * 100
+	cpuUsage := (1.0 - idleDiff/totalDiff) * 100.0
+
+	// Clamp to valid range
+	if cpuUsage < 0 {
+		cpuUsage = 0
+	}
+	if cpuUsage > 100 {
+		cpuUsage = 100
+	}
+
+	return cpuUsage
 }
 
+// getCPUUsageFallback estimates CPU activity from runtime metrics
+// Used on non-Linux platforms where /proc/stat is unavailable
+func (c *Collector) getCPUUsageFallback() float64 {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+
+	// Estimate based on goroutine count and GC activity
+	numCPU := float64(runtime.NumCPU())
+	goroutinePressure := float64(runtime.NumGoroutine()) / (numCPU * 10.0)
+	gcPressure := float64(m.NumGC%100) / 10.0
+
+	estimate := (goroutinePressure + gcPressure) * 100.0
+	if estimate > 100.0 {
+		estimate = 100.0
+	}
+	if estimate < 0.0 {
+		estimate = 0.0
+	}
+
+	return estimate
+}
+
+// getMemoryUsagePercent calculates memory usage percentage from runtime stats
+func (c *Collector) getMemoryUsagePercent(m *runtime.MemStats) float64 {
+	if m.Sys == 0 {
+		return 0
+	}
+	return float64(m.Alloc) / float64(m.Sys) * 100
+}
+
+// getActiveConnections returns the number of active WebSocket connections from the hub
 func (c *Collector) getActiveConnections() int {
-	count := 0
+	c.mu.Lock()
+	hub := c.connectionHub
+	c.mu.Unlock()
 
-	tcpFile, err := os.Open("/proc/net/tcp")
-	if err == nil {
-		scanner := bufio.NewScanner(tcpFile)
-		for scanner.Scan() {
-			count++
-		}
-		tcpFile.Close()
-		if count > 0 {
-			count--
-		}
+	if hub != nil {
+		return hub.ClientCount()
 	}
 
-	if count <= 0 {
-		addrs, _ := net.InterfaceAddrs()
-		count = len(addrs)
-	}
-
-	return count
+	return 0
 }

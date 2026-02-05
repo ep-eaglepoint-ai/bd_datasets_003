@@ -17,32 +17,35 @@ const (
 )
 
 // Client represents a WebSocket client connection
+// Stores only lifecycle state (Send channel, Done signal, connection mutex)
+// Does NOT store application/telemetry state per the prompt requirements
 type Client struct {
 	Conn   *websocket.Conn
 	Send   chan []byte
 	Hub    *Hub
 	Done   chan struct{}
-	mu     sync.Mutex
+	mu     sync.RWMutex
 	closed bool
 }
 
 // Hub maintains the set of active clients and broadcasts messages
+// Registry is keyed by *websocket.Conn as per requirement #1
 type Hub struct {
-	Clients    map[*Client]bool
+	Clients    map[*websocket.Conn]*Client // Single source of truth: conn -> client data
 	Mu         sync.RWMutex
 	broadcast  chan []byte
-	register   chan *Client
-	unregister chan *Client
+	register   chan *websocket.Conn
+	unregister chan *websocket.Conn
 	done       chan struct{}
 }
 
 // NewHub creates a new Hub instance
 func NewHub() *Hub {
 	return &Hub{
-		Clients:    make(map[*Client]bool),
+		Clients:    make(map[*websocket.Conn]*Client),
 		broadcast:  make(chan []byte, 256),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
+		register:   make(chan *websocket.Conn),
+		unregister: make(chan *websocket.Conn),
 		done:       make(chan struct{}),
 	}
 }
@@ -51,24 +54,29 @@ func NewHub() *Hub {
 func (h *Hub) Run() {
 	for {
 		select {
-		case client := <-h.register:
+		case conn := <-h.register:
 			h.Mu.Lock()
-			h.Clients[client] = true
+			// Create and register client atomically
+			h.Clients[conn] = &Client{
+				Conn: conn,
+				Send: make(chan []byte, ClientBufferSize),
+				Hub:  h,
+				Done: make(chan struct{}),
+			}
 			h.Mu.Unlock()
 
-		case client := <-h.unregister:
+		case conn := <-h.unregister:
 			h.Mu.Lock()
-			if _, ok := h.Clients[client]; ok {
-				delete(h.Clients, client)
+			if client, ok := h.Clients[conn]; ok {
+				delete(h.Clients, conn)
 				client.Close()
 			}
 			h.Mu.Unlock()
 
 		case message := <-h.broadcast:
 			h.Mu.RLock()
-			for client := range h.Clients {
-				// Non-blocking send with select and default case
-				// This ensures slow consumers don't block the broadcaster
+			for _, client := range h.Clients {
+				// Non-blocking send with timeout (requirement #2)
 				select {
 				case client.Send <- message:
 					// Message sent successfully
@@ -82,17 +90,17 @@ func (h *Hub) Run() {
 
 		case <-h.done:
 			h.Mu.Lock()
-			for client := range h.Clients {
+			for _, client := range h.Clients {
 				client.Close()
-				delete(h.Clients, client)
 			}
+			h.Clients = make(map[*websocket.Conn]*Client)
 			h.Mu.Unlock()
 			return
 		}
 	}
 }
 
-// Broadcast sends data to all connected clients
+// Broadcast sends data to all connected clients (non-blocking)
 func (h *Hub) Broadcast(data []byte) {
 	select {
 	case h.broadcast <- data:
@@ -102,16 +110,23 @@ func (h *Hub) Broadcast(data []byte) {
 }
 
 // Register adds a client to the hub
-func (h *Hub) Register(client *Client) {
-	h.register <- client
+func (h *Hub) Register(conn *websocket.Conn) {
+	h.register <- conn
 }
 
-// Unregister removes a client from the hub
-func (h *Hub) Unregister(client *Client) {
+// Unregister removes a client from the hub (requirement #3: cleanup sequence)
+func (h *Hub) Unregister(conn *websocket.Conn) {
 	select {
-	case h.unregister <- client:
+	case h.unregister <- conn:
 	case <-h.done:
 	}
+}
+
+// GetClient retrieves client data for a connection
+func (h *Hub) GetClient(conn *websocket.Conn) *Client {
+	h.Mu.RLock()
+	defer h.Mu.RUnlock()
+	return h.Clients[conn]
 }
 
 // ClientCount returns the number of connected clients
@@ -131,17 +146,6 @@ func (h *Hub) Stop() {
 	}
 }
 
-// NewClient creates a new client
-func NewClient(conn *websocket.Conn, hub *Hub) *Client {
-	return &Client{
-		Conn:   conn,
-		Send:   make(chan []byte, ClientBufferSize),
-		Hub:    hub,
-		Done:   make(chan struct{}),
-		closed: false,
-	}
-}
-
 // Close safely closes the client connection and channels
 func (c *Client) Close() {
 	c.mu.Lock()
@@ -154,9 +158,9 @@ func (c *Client) Close() {
 	}
 }
 
-// IsClosed returns whether the client is closed
+// IsClosed returns whether the client is closed (FIX #7: use RLock for read-only)
 func (c *Client) IsClosed() bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return c.closed
 }

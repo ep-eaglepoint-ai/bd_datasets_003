@@ -31,21 +31,19 @@ func HandleConnection(w http.ResponseWriter, r *http.Request, h *hub.Hub) {
 		return
 	}
 
-	client := hub.NewClient(conn, h)
-	h.Register(client)
+	h.Register(conn)
 
 	// Start decoupled read and write goroutines
-	go writePump(client)
-	go readPump(client)
+	go writePump(conn, h)
+	go readPump(conn, h)
 }
 
 // readPump handles incoming messages and connection monitoring
-func readPump(client *hub.Client) {
+func readPump(conn *websocket.Conn, h *hub.Hub) {
 	defer func() {
-		client.Hub.Unregister(client)
+		h.Unregister(conn)
 	}()
 
-	conn := client.Conn
 	conn.SetReadDeadline(time.Now().Add(pongWait))
 	conn.SetPongHandler(func(string) error {
 		conn.SetReadDeadline(time.Now().Add(pongWait))
@@ -64,13 +62,16 @@ func readPump(client *hub.Client) {
 }
 
 // writePump sends messages to the WebSocket connection
-func writePump(client *hub.Client) {
+func writePump(conn *websocket.Conn, h *hub.Hub) {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()
 	}()
 
-	conn := client.Conn
+	client := h.GetClient(conn)
+	if client == nil {
+		return
+	}
 
 	for {
 		select {

@@ -6,58 +6,30 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"telemetry-streamer/pkg/hub"
 	"telemetry-streamer/pkg/metrics"
+	wshandler "telemetry-streamer/pkg/websocket"
 )
 
+// TestFullIntegration uses PRODUCTION WebSocket handler (FIX #4)
 func TestFullIntegration(t *testing.T) {
 	h := hub.NewHub()
 	go h.Run()
 	defer h.Stop()
 
 	collector := metrics.NewCollector(100 * time.Millisecond)
+	collector.SetConnectionHub(h)
 	go collector.Start(h.Broadcast)
 	defer collector.Stop()
 
-	upgrader := websocket.Upgrader{}
+	// Use production handler instead of reimplementing
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := upgrader.Upgrade(w, r, nil)
-		if err != nil {
-			return
-		}
-		client := hub.NewClient(conn, h)
-		h.Register(client)
-
-		go func() {
-			defer h.Unregister(client)
-			for {
-				_, _, err := conn.ReadMessage()
-				if err != nil {
-					return
-				}
-			}
-		}()
-
-		go func() {
-			for {
-				select {
-				case msg, ok := <-client.Send:
-					if !ok {
-						return
-					}
-					conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-					if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
-						return
-					}
-				case <-client.Done:
-					return
-				}
-			}
-		}()
+		wshandler.HandleConnection(w, r, h)
 	}))
 	defer server.Close()
 
@@ -90,46 +62,14 @@ func TestFullIntegration(t *testing.T) {
 		m.CPUUsage, m.MemoryUsagePercent, m.NumGoroutines)
 }
 
+// TestMultipleClientsReceiveMetrics uses production handler
 func TestMultipleClientsReceiveMetrics(t *testing.T) {
 	h := hub.NewHub()
 	go h.Run()
 	defer h.Stop()
 
-	upgrader := websocket.Upgrader{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := upgrader.Upgrade(w, r, nil)
-		if err != nil {
-			return
-		}
-		client := hub.NewClient(conn, h)
-		h.Register(client)
-
-		go func() {
-			defer h.Unregister(client)
-			for {
-				_, _, err := conn.ReadMessage()
-				if err != nil {
-					return
-				}
-			}
-		}()
-
-		go func() {
-			for {
-				select {
-				case msg, ok := <-client.Send:
-					if !ok {
-						return
-					}
-					conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-					if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
-						return
-					}
-				case <-client.Done:
-					return
-				}
-			}
-		}()
+		wshandler.HandleConnection(w, r, h)
 	}))
 	defer server.Close()
 

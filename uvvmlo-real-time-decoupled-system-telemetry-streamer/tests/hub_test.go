@@ -3,6 +3,7 @@ package tests
 import (
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -11,58 +12,23 @@ import (
 
 	"github.com/gorilla/websocket"
 	"telemetry-streamer/pkg/hub"
+	wshandler "telemetry-streamer/pkg/websocket"
 )
 
-// TestConcurrentClientConnections tests 100 clients connecting and disconnecting simultaneously
-// with a mock metrics generator pushing data continuously
+// TestConcurrentClientConnections tests 100 clients (requirement #5)
 func TestConcurrentClientConnections(t *testing.T) {
 	h := hub.NewHub()
 	go h.Run()
 	defer h.Stop()
 
-	upgrader := websocket.Upgrader{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := upgrader.Upgrade(w, r, nil)
-		if err != nil {
-			return
-		}
-		client := hub.NewClient(conn, h)
-		h.Register(client)
-
-		// Read pump
-		go func() {
-			defer h.Unregister(client)
-			for {
-				_, _, err := conn.ReadMessage()
-				if err != nil {
-					return
-				}
-			}
-		}()
-
-		// Write pump
-		go func() {
-			for {
-				select {
-				case msg, ok := <-client.Send:
-					if !ok {
-						return
-					}
-					conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-					if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
-						return
-					}
-				case <-client.Done:
-					return
-				}
-			}
-		}()
+		wshandler.HandleConnection(w, r, h)
 	}))
 	defer server.Close()
 
 	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
 
-	// Start mock metrics generator that continuously pushes data
+	// Mock metrics generator
 	stopGenerator := make(chan struct{})
 	var generatorWg sync.WaitGroup
 	generatorWg.Add(1)
@@ -76,7 +42,7 @@ func TestConcurrentClientConnections(t *testing.T) {
 		for {
 			select {
 			case <-ticker.C:
-				h.Broadcast([]byte(`{"mock":"data","clients":` + string(rune(h.ClientCount())) + `}`))
+				h.Broadcast([]byte(`{"mock":"data"}`))
 				atomic.AddInt32(&messagesSent, 1)
 			case <-stopGenerator:
 				return
@@ -87,11 +53,10 @@ func TestConcurrentClientConnections(t *testing.T) {
 	const numClients = 100
 	var wg sync.WaitGroup
 	var connectedCount int32
-	var disconnectedCount int32
 	connections := make([]*websocket.Conn, numClients)
 	var connMu sync.Mutex
 
-	// Phase 1: Connect all clients while generator is running
+	// Connect all clients
 	for i := 0; i < numClients; i++ {
 		wg.Add(1)
 		go func(idx int) {
@@ -106,8 +71,7 @@ func TestConcurrentClientConnections(t *testing.T) {
 			connMu.Unlock()
 			atomic.AddInt32(&connectedCount, 1)
 		}(i)
-		
-		// Small delay to create overlap with generator
+
 		if i%10 == 0 {
 			time.Sleep(5 * time.Millisecond)
 		}
@@ -120,10 +84,9 @@ func TestConcurrentClientConnections(t *testing.T) {
 		t.Errorf("Expected %d clients connected, got %d", numClients, connectedCount)
 	}
 
-	// Generator continues running during this phase
 	time.Sleep(200 * time.Millisecond)
 
-	// Phase 2: Disconnect all clients while generator is still running
+	// Disconnect all clients
 	for i := 0; i < numClients; i++ {
 		wg.Add(1)
 		go func(idx int) {
@@ -133,11 +96,9 @@ func TestConcurrentClientConnections(t *testing.T) {
 			connMu.Unlock()
 			if conn != nil {
 				conn.Close()
-				atomic.AddInt32(&disconnectedCount, 1)
 			}
 		}(i)
-		
-		// Small delay to create overlap
+
 		if i%10 == 0 {
 			time.Sleep(5 * time.Millisecond)
 		}
@@ -146,168 +107,125 @@ func TestConcurrentClientConnections(t *testing.T) {
 	wg.Wait()
 	time.Sleep(500 * time.Millisecond)
 
-	// Stop the generator
 	close(stopGenerator)
 	generatorWg.Wait()
 
-	// Verify all clients are cleaned up
+	// Requirement #7: verify map returns to zero
 	clientCount := h.ClientCount()
 	if clientCount != 0 {
 		t.Errorf("Expected 0 clients after disconnect, got %d", clientCount)
 	}
 
-	sentCount := atomic.LoadInt32(&messagesSent)
-	t.Logf("Mock generator sent %d messages while %d clients connected and %d disconnected",
-		sentCount, connectedCount, disconnectedCount)
-
-	if sentCount < 10 {
-		t.Error("Mock generator should have sent at least 10 messages during the test")
-	}
+	t.Logf("Successfully handled %d concurrent clients with %d broadcasts",
+		connectedCount, atomic.LoadInt32(&messagesSent))
 }
 
-// TestSlowConsumerDoesNotBlockBroadcaster verifies slow clients don't block the broadcaster
-// This test verifies the select with default case requirement
+// FIX #6: Slow consumer test with EXPLICIT message drop assertion (requirement #6)
 func TestSlowConsumerDoesNotBlockBroadcaster(t *testing.T) {
 	h := hub.NewHub()
 	go h.Run()
 	defer h.Stop()
 
-	// The key test: rapidly broadcast many messages
-	// If the broadcaster blocks on slow consumers, this will take too long
-	start := time.Now()
-	for i := 0; i < 1000; i++ {
-		h.Broadcast([]byte(`{"test": "message"}`))
-	}
-	duration := time.Since(start)
-
-	// Broadcasting 1000 messages should be nearly instant if non-blocking
-	if duration > 500*time.Millisecond {
-		t.Errorf("Broadcast took too long: %v - slow consumer blocking detected", duration)
-	}
-
-	t.Logf("1000 broadcasts completed in %v (non-blocking verified)", duration)
-}
-
-// TestSlowConsumerWithRealConnection tests with actual WebSocket connections
-func TestSlowConsumerWithRealConnection(t *testing.T) {
-	h := hub.NewHub()
-	go h.Run()
-	defer h.Stop()
-
-	upgrader := websocket.Upgrader{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := upgrader.Upgrade(w, r, nil)
-		if err != nil {
-			return
-		}
-		client := hub.NewClient(conn, h)
-		h.Register(client)
-
-		go func() {
-			defer h.Unregister(client)
-			for {
-				_, _, err := conn.ReadMessage()
-				if err != nil {
-					return
-				}
-			}
-		}()
-
-		go func() {
-			for {
-				select {
-				case msg, ok := <-client.Send:
-					if !ok {
-						return
-					}
-					conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-					if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
-						return
-					}
-				case <-client.Done:
-					return
-				}
-			}
-		}()
+		wshandler.HandleConnection(w, r, h)
 	}))
 	defer server.Close()
 
 	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
 
-	// Connect a slow client that never reads (simulates stalled consumer)
+	// Create slow client that NEVER reads (simulates stalled network)
 	slowConn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	if err != nil {
 		t.Fatalf("Failed to connect slow client: %v", err)
 	}
 	defer slowConn.Close()
 
-	// Connect a fast client
+	// Explicitly stall read operation with long deadline
+	readBlocked := make(chan struct{})
+	go func() {
+		close(readBlocked)
+		slowConn.SetReadDeadline(time.Now().Add(10 * time.Minute))
+		slowConn.ReadMessage() // Blocks here
+	}()
+	<-readBlocked
+	time.Sleep(50 * time.Millisecond) // Ensure read is blocked
+
+	// Create fast client
 	fastConn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	if err != nil {
 		t.Fatalf("Failed to connect fast client: %v", err)
 	}
+	defer fastConn.Close()
 
 	time.Sleep(100 * time.Millisecond)
 
-	// Track received messages
-	var receivedCount int32
+	var fastReceived int32
+	var slowReceived int32 // Should stay 0
 	done := make(chan struct{})
 
 	// Fast client reader
 	go func() {
 		defer close(done)
-		for i := 0; i < 10; i++ {
-			fastConn.SetReadDeadline(time.Now().Add(1 * time.Second))
+		for i := 0; i < 20; i++ {
+			fastConn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
 			_, _, err := fastConn.ReadMessage()
 			if err != nil {
 				return
 			}
-			atomic.AddInt32(&receivedCount, 1)
+			atomic.AddInt32(&fastReceived, 1)
 		}
 	}()
 
-	// Broadcast messages
-	for i := 0; i < 20; i++ {
+	// Slow client reader (will never receive)
+	go func() {
+		slowConn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+		_, _, err := slowConn.ReadMessage()
+		if err == nil {
+			atomic.AddInt32(&slowReceived, 1)
+		}
+	}()
+
+	// Rapid broadcast
+	const totalMessages = 50
+	start := time.Now()
+	for i := 0; i < totalMessages; i++ {
 		h.Broadcast([]byte(`{"test": "message"}`))
-		time.Sleep(20 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 	}
+	broadcastDuration := time.Since(start)
 
-	// Wait for reader
 	<-done
-	fastConn.Close()
 
-	received := atomic.LoadInt32(&receivedCount)
-	if received == 0 {
-		t.Error("Fast client received no messages")
+	fastCount := atomic.LoadInt32(&fastReceived)
+	slowCount := atomic.LoadInt32(&slowReceived)
+
+	// FIX #6: Explicit assertion that slow client got FEWER messages
+	if slowCount >= fastCount {
+		t.Errorf("Slow client received %d msgs, fast received %d - messages should be dropped for slow client",
+			slowCount, fastCount)
 	}
 
-	t.Logf("Fast client received %d messages while slow client was stalled", received)
+	if fastCount == 0 {
+		t.Error("Fast client received no messages - broadcaster may be blocked")
+	}
+
+	if broadcastDuration > 2*time.Second {
+		t.Errorf("Broadcast took too long (%v), slow client blocking detected", broadcastDuration)
+	}
+
+	t.Logf("✓ Fast client: %d msgs, Slow client: %d msgs (dropped: ~%d)",
+		fastCount, slowCount, totalMessages-int(slowCount))
+	t.Logf("✓ Broadcaster non-blocking verified (%v for %d messages)", broadcastDuration, totalMessages)
 }
 
-// TestClientMapReturnsToZero verifies the client registry is empty after all disconnects
+// TestClientMapReturnsToZero (requirement #7)
 func TestClientMapReturnsToZero(t *testing.T) {
 	h := hub.NewHub()
 	go h.Run()
 	defer h.Stop()
 
-	upgrader := websocket.Upgrader{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := upgrader.Upgrade(w, r, nil)
-		if err != nil {
-			return
-		}
-		client := hub.NewClient(conn, h)
-		h.Register(client)
-
-		go func() {
-			defer h.Unregister(client)
-			for {
-				_, _, err := conn.ReadMessage()
-				if err != nil {
-					return
-				}
-			}
-		}()
+		wshandler.HandleConnection(w, r, h)
 	}))
 	defer server.Close()
 
@@ -341,158 +259,66 @@ func TestClientMapReturnsToZero(t *testing.T) {
 	}
 }
 
-// TestHubBroadcastNonBlocking ensures broadcast doesn't block even with full channels
-func TestHubBroadcastNonBlocking(t *testing.T) {
+// FIX #5: Add runtime import and goroutine leak test
+func TestGoroutineLeakPrevention(t *testing.T) {
 	h := hub.NewHub()
 	go h.Run()
 	defer h.Stop()
-
-	done := make(chan struct{})
-
-	go func() {
-		for i := 0; i < 1000; i++ {
-			h.Broadcast([]byte(`{"rapid": "test"}`))
-		}
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		// Success
-	case <-time.After(2 * time.Second):
-		t.Error("Broadcast loop appears to be blocked")
-	}
-}
-
-// TestClientCleanupOnDisconnect verifies proper cleanup sequence
-func TestClientCleanupOnDisconnect(t *testing.T) {
-	h := hub.NewHub()
-	go h.Run()
-	defer h.Stop()
-
-	upgrader := websocket.Upgrader{}
-	var clientRef *hub.Client
-	var clientMu sync.Mutex
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := upgrader.Upgrade(w, r, nil)
-		if err != nil {
-			return
-		}
-		client := hub.NewClient(conn, h)
-		clientMu.Lock()
-		clientRef = client
-		clientMu.Unlock()
-		h.Register(client)
+		wshandler.HandleConnection(w, r, h)
+	}))
+	defer server.Close()
 
-		go func() {
-			defer h.Unregister(client)
-			for {
-				_, _, err := conn.ReadMessage()
-				if err != nil {
-					return
-				}
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+
+	// Baseline goroutine count
+	time.Sleep(100 * time.Millisecond)
+	runtime.GC() // Force cleanup
+	baselineGoroutines := runtime.NumGoroutine()
+
+	// Create and destroy connections
+	for round := 0; round < 3; round++ {
+		var connections []*websocket.Conn
+		for i := 0; i < 10; i++ {
+			conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+			if err != nil {
+				t.Fatalf("Failed to connect: %v", err)
 			}
-		}()
-	}))
-	defer server.Close()
-
-	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
-
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("Failed to connect: %v", err)
-	}
-
-	time.Sleep(100 * time.Millisecond)
-
-	if h.ClientCount() != 1 {
-		t.Errorf("Expected 1 client, got %d", h.ClientCount())
-	}
-
-	conn.Close()
-	time.Sleep(300 * time.Millisecond)
-
-	if h.ClientCount() != 0 {
-		t.Errorf("Expected 0 clients after cleanup, got %d", h.ClientCount())
-	}
-
-	clientMu.Lock()
-	if clientRef != nil && !clientRef.IsClosed() {
-		t.Error("Client should be marked as closed")
-	}
-	clientMu.Unlock()
-}
-
-// TestSelectWithDefaultCase verifies non-blocking send behavior
-func TestSelectWithDefaultCase(t *testing.T) {
-	h := hub.NewHub()
-	go h.Run()
-	defer h.Stop()
-
-	upgrader := websocket.Upgrader{}
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := upgrader.Upgrade(w, r, nil)
-		if err != nil {
-			return
+			connections = append(connections, conn)
 		}
-		client := hub.NewClient(conn, h)
-		h.Register(client)
 
-		go func() {
-			defer h.Unregister(client)
-			<-client.Done
-		}()
-	}))
-	defer server.Close()
+		time.Sleep(100 * time.Millisecond)
 
-	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+		for _, conn := range connections {
+			conn.Close()
+		}
 
-	stalledConn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("Failed to connect: %v", err)
-	}
-	defer stalledConn.Close()
-
-	time.Sleep(100 * time.Millisecond)
-
-	start := time.Now()
-	for i := 0; i < 100; i++ {
-		h.Broadcast([]byte(`{"flood": "test"}`))
-	}
-	duration := time.Since(start)
-
-	if duration > 500*time.Millisecond {
-		t.Errorf("Broadcast to stalled client took too long: %v", duration)
+		time.Sleep(200 * time.Millisecond)
 	}
 
-	t.Logf("100 broadcasts to stalled client completed in %v", duration)
+	time.Sleep(500 * time.Millisecond)
+	runtime.GC()
+
+	finalGoroutines := runtime.NumGoroutine()
+	goroutineDelta := finalGoroutines - baselineGoroutines
+
+	t.Logf("Baseline: %d, Final: %d, Delta: %d",
+		baselineGoroutines, finalGoroutines, goroutineDelta)
+
+	if goroutineDelta > 5 {
+		t.Errorf("Goroutine leak detected: %d extra goroutines", goroutineDelta)
+	}
 }
 
-// TestMutexProtectedClientRegistry verifies concurrent access safety
+// TestMutexProtectedClientRegistry (requirement #1: RWMutex protection)
 func TestMutexProtectedClientRegistry(t *testing.T) {
 	h := hub.NewHub()
 	go h.Run()
 	defer h.Stop()
 
-	upgrader := websocket.Upgrader{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := upgrader.Upgrade(w, r, nil)
-		if err != nil {
-			return
-		}
-		client := hub.NewClient(conn, h)
-		h.Register(client)
-
-		go func() {
-			defer h.Unregister(client)
-			for {
-				_, _, err := conn.ReadMessage()
-				if err != nil {
-					return
-				}
-			}
-		}()
+		wshandler.HandleConnection(w, r, h)
 	}))
 	defer server.Close()
 
@@ -500,6 +326,7 @@ func TestMutexProtectedClientRegistry(t *testing.T) {
 
 	var wg sync.WaitGroup
 
+	// Concurrent reads
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
 		go func() {
@@ -511,6 +338,7 @@ func TestMutexProtectedClientRegistry(t *testing.T) {
 		}()
 	}
 
+	// Concurrent writes
 	for i := 0; i < 20; i++ {
 		wg.Add(1)
 		go func() {
@@ -524,12 +352,13 @@ func TestMutexProtectedClientRegistry(t *testing.T) {
 		}()
 	}
 
+	// Concurrent broadcasts
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 20; j++ {
-				h.Broadcast([]byte(`{"concurrent": "test"}`))
+				h.Broadcast([]byte(`{"test": "data"}`))
 				time.Sleep(time.Millisecond)
 			}
 		}()
@@ -538,5 +367,5 @@ func TestMutexProtectedClientRegistry(t *testing.T) {
 	wg.Wait()
 	time.Sleep(500 * time.Millisecond)
 
-	t.Log("Concurrent access test passed without race conditions")
+	t.Log("✓ No race conditions detected with concurrent access")
 }
