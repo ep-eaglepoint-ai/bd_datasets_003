@@ -1,11 +1,8 @@
 # 7DJMK7 - Recursive-Schema-Flattener-With-Circular-Safety
 
-    ## Before Test Docker Command
-    <docker before command here>
-
     ## After Test Docker Command
-    <docker after command here>
+    docker compose run --rm app python -m unittest discover -s tests/ -v
 
     ## Evaluation Docker Command
-    <evaluation command here>
+    docker compose run --rm app python evaluation/evaluation.py
     
