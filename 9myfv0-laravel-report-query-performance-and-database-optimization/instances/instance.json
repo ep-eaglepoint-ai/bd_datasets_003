@@ -1,0 +1,11 @@
+{
+            "instance_id": "9MYFV0",
+            "problem_statement": "The Laravel reporting module generates business reports (sales, inventory, customer analytics) that consistently timeout or take over 45 seconds to load. Running reports during business hours causes the main application to become unresponsive, and database CPU spikes to 100% during report generation. The report services in app/Services/Reports/ use Eloquent queries that load entire tables into memory, iterate with foreach loops causing N+1 queries, and apply PHP functions on date columns preventing index usage. The caching layer is non-existent, so identical reports are regenerated on every request.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/9myfv0-laravel-report-query-performance-and-database-optimization",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
