@@ -1,0 +1,11 @@
+{
+            "instance_id": "6A3HZK",
+            "problem_statement": "Implement a comprehensive set of unit tests for a token bucket–based rate limiter written in Go. The rate limiter restricts the number of allowed requests within a fixed time window by issuing and consuming tokens. Each request consumes a token if available; once all tokens are exhausted, further requests are rejected until tokens are refilled. The rate limiter supports token refilling based on elapsed time and allows injection of a custom time source.  The goal is to validate the core rate-limiting behavior, ensure correct token refill logic over time, and verify accurate tracking of token consumption.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/6a3hzk-token-bucket-rate-limiter",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
