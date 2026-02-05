@@ -1,0 +1,10 @@
+# Node.js
+node_modules
+.next
+.env
+.DS_Store
+evaluation/reports/*.json
+!evaluation/reports/.gitkeep
+
+# Task Specific
+reports/

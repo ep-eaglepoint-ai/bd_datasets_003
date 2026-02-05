@@ -1,0 +1,9 @@
+services:
+  app:
+    build: .
+    command: npm test
+    volumes:
+      - ./tests:/app/tests
+      - ./evaluation:/app/evaluation
+    environment:
+      - NODE_ENV=test
