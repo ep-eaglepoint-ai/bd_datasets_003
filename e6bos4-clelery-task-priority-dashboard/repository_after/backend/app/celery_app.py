@@ -42,11 +42,11 @@ celery_app.conf.update(
     worker_concurrency=4,
     
     # Priority queue configuration
-    # task_queues=(
-    #     Queue("high", routing_key="high"),
-    #     Queue("medium", routing_key="medium"),
-    #     Queue("low", routing_key="low"),
-    # ),
+    task_queues=(
+        Queue("high", routing_key="high"),
+        Queue("medium", routing_key="medium"),
+        Queue("low", routing_key="low"),
+    ),
     
     # Default queue
     task_default_queue="medium",
@@ -65,9 +65,9 @@ celery_app.conf.update(
     task_reject_on_worker_lost=True,
     
     # Transport options
-    # broker_transport_options={
-    #     "queue_order_strategy": "priority"
-    # },
+    broker_transport_options={
+        "queue_order_strategy": "priority"
+    },
 )
 
 

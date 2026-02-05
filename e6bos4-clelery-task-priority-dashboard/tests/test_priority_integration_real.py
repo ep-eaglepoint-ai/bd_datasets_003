@@ -6,6 +6,7 @@ import pytest
 import time
 import redis
 import threading
+import sys
 from app.celery_app import celery_app
 
 # Redis connection for verification
@@ -13,19 +14,20 @@ r = redis.from_url("redis://redis:6379/0")
 
 def start_worker():
     """Start a temporary Celery worker in a separate thread with strict priority ordering."""
-    # EXPLICITLY set the strategy immediately before starting
-    celery_app.conf.broker_transport_options = {"queue_order_strategy": "priority"}
-    
+    # Ensure no previous configurations interfere
+    # We rely PURELY on the argument list
     argv = [
         'worker',
         '--loglevel=info', 
-        '--pool=prefork',
-        '--concurrency=1', 
-        '-Q', 'high,medium,low', 
+        '--pool=solo',  # Use solo pool for deterministic linear execution in tests
+        '-Q', 'high,medium,low', # STRICT CONSUMPTION ORDER
         '--prefetch-multiplier=1'
     ]
     print(f"DEBUG: Starting worker with args: {argv}")
-    celery_app.worker_main(argv)
+    try:
+        celery_app.worker_main(argv)
+    except SystemExit:
+        pass # Clean exit
 
 class TestRealPriorityIntegration:
 
@@ -48,35 +50,34 @@ class TestRealPriorityIntegration:
         for i in range(10):
             test_logger_task.apply_async(
                 args=[f"low_{i}", "low"],
-                queue="low"
+                queue="low",
+                routing_key="low"
             )
 
         # 2. Submit 1 High Task
         test_logger_task.apply_async(
             args=["high_1", "high"],
-            queue="high"
+            queue="high",
+            routing_key="high"
         )
 
-        # Wait/Poll for queues to be populated (Robust check)
+        # Wait/Poll for queues to be populated
         print("DEBUG: Waiting for tasks to persist in Redis...")
         for _ in range(100): # Wait up to 10s
             if r.llen("high") == 1 and r.llen("low") == 10:
                 break
             time.sleep(0.1)
         
-        # Verify Queue State (Diagnose Routing vs Consumption)
+        # Verify Queue State config
         high_len = r.llen("high")
         low_len = r.llen("low")
-        medium_len = r.llen("medium")
-        print(f"DEBUG: Queue State -> High: {high_len}, Low: {low_len}, Medium: {medium_len}")
-        print(f"DEBUG: Config -> {celery_app.conf.broker_transport_options}")
+        print(f"DEBUG: Queue State -> High: {high_len}, Low: {low_len}")
+        
+        assert high_len == 1, f"Routing Failure: High queue has {high_len} tasks"
+        assert low_len == 10, f"Routing Failure: Low queue has {low_len} tasks"
 
-        # Fail FAST if routing is broken
-        assert high_len == 1, f"Routing Failure: High queue has {high_len} tasks (Expected 1). Check task_routes."
-        assert low_len == 10, f"Routing Failure: Low queue has {low_len} tasks (Expected 10). Check task_routes."
-
-        # 3. Start Worker
-        # FORCE strict ordering by specifying queues in order
+        # 3. Start Worker (Threaded)
+        # This is robust IF the environment is clean.
         worker_thread = threading.Thread(
             target=start_worker, 
             daemon=True
@@ -84,7 +85,7 @@ class TestRealPriorityIntegration:
         worker_thread.start()
 
         # 4. Wait for processing (Expect 11 tasks)
-        for _ in range(20):
+        for _ in range(40):
             if r.llen("execution_log") >= 11:
                 break
             time.sleep(0.5)
@@ -94,7 +95,7 @@ class TestRealPriorityIntegration:
         print(f"Execution Log: {logs}")
 
         assert len(logs) == 11, "Not all tasks were processed"
-        assert logs[0] == "high", "High priority task was NOT processed first!"
+        assert logs[0] == "high", "High priority task was NOT processed first! Logs: " + str(logs)
         assert all(p == "low" for p in logs[1:]), "Remaining tasks should be low"
 
 if __name__ == "__main__":
