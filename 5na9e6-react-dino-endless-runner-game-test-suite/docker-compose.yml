@@ -1,0 +1,21 @@
+services:
+    noop:
+        image: alpine
+        command: ['true']
+
+    test-runner:
+        build: .
+        volumes:
+            - ./tests:/app/tests
+            - ./repository_after:/app/repository_after
+        working_dir: /app/tests
+        command: node test_dino_meta.test.js
+
+    evaluation:
+        build: .
+        volumes:
+            - ./tests:/app/tests
+            - ./repository_after:/app/repository_after
+            - ./evaluation:/app/evaluation
+        working_dir: /app/tests
+        command: node ../evaluation/evaluate.js
