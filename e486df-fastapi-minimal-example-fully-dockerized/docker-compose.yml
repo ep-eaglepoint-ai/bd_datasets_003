@@ -1,9 +1,17 @@
-
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
+services:
   app:
     build: .
-    command: pytest -q tests
+    ports:
+      - "8000:8000"
     volumes:
       - .:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONPATH=/app/repository_after:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
