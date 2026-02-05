@@ -141,6 +141,20 @@ func runBackendTests() bool {
 func runFrontendTests() bool {
 	fmt.Println("\n=== Running Frontend Tests ===")
 	frontendTestsDir := "ui"
+	install := exec.Command("npm", "install", "--no-audit", "--no-fund")
+	install.Dir = frontendTestsDir
+	install.Env = append(os.Environ(), fmt.Sprintf("REPO_PATH=%s", os.Getenv("REPO_PATH")))
+	if installOutput, installErr := install.CombinedOutput(); installErr != nil {
+		testResults = append(testResults, TestResult{
+			Name:    "frontend::setup",
+			Passed:  false,
+			Message: fmt.Sprintf("Frontend dependency install failed: %v", installErr),
+		})
+		fmt.Printf("Frontend dependency install failed: %v\n", installErr)
+		fmt.Print(string(installOutput))
+		return false
+	}
+
 	cmd := exec.Command("npm", "test")
 	cmd.Dir = frontendTestsDir
 	cmd.Env = append(os.Environ(), fmt.Sprintf("REPO_PATH=%s", os.Getenv("REPO_PATH")))
