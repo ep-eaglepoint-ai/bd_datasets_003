@@ -1,0 +1,11 @@
+{
+            "instance_id": "4TJJWG",
+            "problem_statement": "You need to enhance an existing paginated and sortable list by adding a status-based filter without changing the current behavior when no filter is applied. The filtered list must integrate seamlessly with existing pagination and sorting: filter first, then sort, then paginate. The current filter, page, and sort must be reflected in the URL for shareability and bookmarkability. The feature must work with JavaScript disabled, persist the filter for the session (or have documented reload behavior), reject invalid filter values with HTTP 400, and return HTTP 200 with an empty list when no records match. The implementation must fit into the existing Python/Flask (or FastAPI) stack, use the current frontend and storage, and not introduce new infrastructure or break existing tests and contracts.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/4tjjwg-add-status-filter-to-paginated-sortable-list",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
