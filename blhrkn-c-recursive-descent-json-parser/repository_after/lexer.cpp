@@ -101,6 +101,7 @@ Token Lexer::scanString() {
     return {TokenType::String, input_.substr(start + 1, len), "needs_processing", startLine, startCol};
 }
 
+
 Token Lexer::scanNumber() {
     size_t startLine = line_;
     size_t startCol = col_;
@@ -110,24 +111,25 @@ Token Lexer::scanNumber() {
     
     if (pos_ < input_.size() && input_[pos_] == '0') {
          advance();
-         // Critical Fix: Leading zeros not allowed if followed by digit
          if (pos_ < input_.size() && std::isdigit(input_[pos_])) {
              return {TokenType::Error, "Leading zero not allowed in number", "", startLine, startCol}; 
          }
     } else {
+         // Optimization: unchecked increment for digits (can't be newline)
          while (pos_ < input_.size() && std::isdigit(input_[pos_])) {
-             advance();
+             pos_++;
+             col_++; 
          }
     }
     
     if (pos_ < input_.size() && input_[pos_] == '.') {
         advance();
-        // Critical Fix: Decimal point must be followed by at least one digit
         if (pos_ >= input_.size() || !std::isdigit(input_[pos_])) {
             return {TokenType::Error, "Decimal point must be followed by digit", "", startLine, startCol};
         }
         while (pos_ < input_.size() && std::isdigit(input_[pos_])) {
-            advance();
+            pos_++;
+            col_++; 
         }
     }
     
@@ -136,12 +138,12 @@ Token Lexer::scanNumber() {
         if (pos_ < input_.size() && (input_[pos_] == '+' || input_[pos_] == '-')) {
             advance();
         }
-        // Critical Fix: Exponent must be followed by at least one digit
         if (pos_ >= input_.size() || !std::isdigit(input_[pos_])) {
              return {TokenType::Error, "Exponent must be followed by digit", "", startLine, startCol};
         }
         while (pos_ < input_.size() && std::isdigit(input_[pos_])) {
-            advance();
+            pos_++;
+            col_++;
         }
     }
     

@@ -17,22 +17,23 @@ using JsonNull = std::nullptr_t;
 using JsonBool = bool;
 using JsonNumber = double;
 using JsonString = std::string;
+using JsonStringView = std::string_view;
 using JsonArray = std::vector<JsonValue>;
 using JsonObject = std::unordered_map<std::string, JsonValue>;
 
 class JsonValue {
 public:
-    using Value = std::variant<JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject>;
+    using Value = std::variant<JsonNull, JsonBool, JsonNumber, JsonString, JsonStringView, JsonArray, JsonObject>;
     
     JsonValue() : value_(nullptr) {}
     JsonValue(std::nullptr_t) : value_(nullptr) {}
     JsonValue(bool b) : value_(b) {}
     JsonValue(double n) : value_(n) {}
     JsonValue(int n) : value_(static_cast<double>(n)) {}
-    JsonValue(const std::string& s) : value_(s) {}
-    JsonValue(std::string&& s) : value_(std::move(s)) {}
-    JsonValue(const char* s) : value_(std::string(s)) {}
-    JsonValue(std::string_view s) : value_(std::string(s)) {}
+    JsonValue(const std::string& s) : value_(std::in_place_type<JsonString>, s) {}
+    JsonValue(std::string&& s) : value_(std::in_place_type<JsonString>, std::move(s)) {}
+    JsonValue(const char* s) : value_(std::in_place_type<JsonString>, s) {}
+    JsonValue(std::string_view s) : value_(std::in_place_type<JsonStringView>, s) {}
     JsonValue(const JsonArray& arr) : value_(arr) {}
     JsonValue(JsonArray&& arr) : value_(std::move(arr)) {}
     JsonValue(const JsonObject& obj) : value_(obj) {}
@@ -41,13 +42,24 @@ public:
     bool isNull() const { return std::holds_alternative<JsonNull>(value_); }
     bool isBool() const { return std::holds_alternative<JsonBool>(value_); }
     bool isNumber() const { return std::holds_alternative<JsonNumber>(value_); }
-    bool isString() const { return std::holds_alternative<JsonString>(value_); }
+    bool isString() const { 
+        return std::holds_alternative<JsonString>(value_) || std::holds_alternative<JsonStringView>(value_); 
+    }
     bool isArray() const { return std::holds_alternative<JsonArray>(value_); }
     bool isObject() const { return std::holds_alternative<JsonObject>(value_); }
     
     bool asBool() const { return std::get<JsonBool>(value_); }
     double asNumber() const { return std::get<JsonNumber>(value_); }
-    const std::string& asString() const { return std::get<JsonString>(value_); }
+    
+    // Returns string_view to avoid copy. 
+    // WARNING: If holding std::string, view is valid as long as JsonValue is valid.
+    std::string_view asString() const { 
+        if (std::holds_alternative<JsonString>(value_)) {
+            return std::get<JsonString>(value_);
+        }
+        return std::get<JsonStringView>(value_);
+    }
+    
     const JsonArray& asArray() const { return std::get<JsonArray>(value_); }
     const JsonObject& asObject() const { return std::get<JsonObject>(value_); }
     
@@ -143,7 +155,7 @@ private:
     void expect(TokenType type);
     
     // String processing happens during parsing of the value from token
-    std::string processStringToken(const Token& token);
+    JsonValue processStringToken(const Token& token);
     void parseEscapeSequence(std::string_view input, size_t& pos, std::string& out, size_t line, size_t col);
 };
 

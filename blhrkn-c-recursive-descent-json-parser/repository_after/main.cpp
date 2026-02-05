@@ -2,6 +2,8 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <chrono>
+#include <string>
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
@@ -15,13 +17,21 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    std::string content = buffer.str();
+    // Optimized file reading to avoid double allocation (stringstream + string)
+    file.seekg(0, std::ios::end);
+    size_t size = file.tellg();
+    std::string content(size, ' ');
+    file.seekg(0);
+    file.read(&content[0], size);
     
     try {
         json::JsonParser parser;
+        
+        auto start = std::chrono::high_resolution_clock::now();
         json::JsonValue value = parser.parse(content);
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double, std::milli> elapsed = end - start;
+        std::cout << "Parse time: " << elapsed.count() << " ms" << std::endl;
         
         // Output dump if requested for verification
         if (argc > 2 && std::string(argv[2]) == "--dump") {
