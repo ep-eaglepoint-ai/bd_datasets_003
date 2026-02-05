@@ -1,6 +1,6 @@
 diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.md -x migrations -x .DS_Store -x package-lock.json repository_before/app/entry.client.tsx repository_after/app/entry.client.tsx
 --- repository_before/app/entry.client.tsx	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/app/entry.client.tsx	2026-02-03 18:50:46.962718103 +0300
++++ repository_after/app/entry.client.tsx	2026-02-05 14:30:07.301256130 +0300
 @@ -0,0 +1,12 @@
 +import { HydratedRouter } from "react-router/dom";
 +import { startTransition, StrictMode } from "react";
@@ -16,7 +16,7 @@ diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.
 +});
 diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.md -x migrations -x .DS_Store -x package-lock.json repository_before/app/entry.server.tsx repository_after/app/entry.server.tsx
 --- repository_before/app/entry.server.tsx	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/app/entry.server.tsx	2026-02-03 17:01:26.406389926 +0300
++++ repository_after/app/entry.server.tsx	2026-02-05 14:30:07.301256130 +0300
 @@ -0,0 +1,62 @@
 +import { PassThrough } from "node:stream";
 +
@@ -82,7 +82,7 @@ diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.
 +}
 diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.md -x migrations -x .DS_Store -x package-lock.json repository_before/app/root.tsx repository_after/app/root.tsx
 --- repository_before/app/root.tsx	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/app/root.tsx	2026-02-03 20:25:46.193161990 +0300
++++ repository_after/app/root.tsx	2026-02-05 14:30:07.302255882 +0300
 @@ -0,0 +1,75 @@
 +import {
 +  isRouteErrorResponse,
@@ -161,7 +161,7 @@ diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.
 +}
 diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.md -x migrations -x .DS_Store -x package-lock.json repository_before/app/routes/api/save.ts repository_after/app/routes/api/save.ts
 --- repository_before/app/routes/api/save.ts	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/app/routes/api/save.ts	2026-02-03 18:50:11.717521285 +0300
++++ repository_after/app/routes/api/save.ts	2026-02-05 14:30:07.302255882 +0300
 @@ -0,0 +1,34 @@
 +import type { ActionFunction, LoaderFunction } from "react-router";
 +import { prisma } from "~/utils/prisma.server";
@@ -199,7 +199,7 @@ diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.
 +};
 diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.md -x migrations -x .DS_Store -x package-lock.json repository_before/app/routes/auth.callback.tsx repository_after/app/routes/auth.callback.tsx
 --- repository_before/app/routes/auth.callback.tsx	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/app/routes/auth.callback.tsx	2026-02-03 18:03:48.965017655 +0300
++++ repository_after/app/routes/auth.callback.tsx	2026-02-05 14:30:07.302255882 +0300
 @@ -0,0 +1,38 @@
 +import { redirect, type LoaderFunctionArgs } from "react-router";
 +import { prisma } from "~/utils/prisma.server";
@@ -241,7 +241,7 @@ diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.
 +}
 diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.md -x migrations -x .DS_Store -x package-lock.json repository_before/app/routes/history.tsx repository_after/app/routes/history.tsx
 --- repository_before/app/routes/history.tsx	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/app/routes/history.tsx	2026-02-03 19:10:51.340386540 +0300
++++ repository_after/app/routes/history.tsx	2026-02-05 14:30:07.302255882 +0300
 @@ -0,0 +1,171 @@
 +import { useState, useMemo } from "react";
 +import { useLoaderData, Link, redirect, type LoaderFunctionArgs } from "react-router";
@@ -416,7 +416,7 @@ diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.
 +}
 diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.md -x migrations -x .DS_Store -x package-lock.json repository_before/app/routes/home.tsx repository_after/app/routes/home.tsx
 --- repository_before/app/routes/home.tsx	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/app/routes/home.tsx	2026-02-03 19:39:30.977971720 +0300
++++ repository_after/app/routes/home.tsx	2026-02-05 14:30:07.303255634 +0300
 @@ -0,0 +1,270 @@
 +import { useFetcher, useLoaderData, redirect, type LoaderFunctionArgs, type ActionFunctionArgs } from "react-router";
 +import { useEffect, useState, useRef } from "react";
@@ -690,7 +690,7 @@ diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.
 +}
 diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.md -x migrations -x .DS_Store -x package-lock.json repository_before/app/routes/login.tsx repository_after/app/routes/login.tsx
 --- repository_before/app/routes/login.tsx	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/app/routes/login.tsx	2026-02-03 19:11:39.420773992 +0300
++++ repository_after/app/routes/login.tsx	2026-02-05 14:30:07.303255634 +0300
 @@ -0,0 +1,106 @@
 +import { Form, useActionData, useNavigation, redirect, type ActionFunctionArgs, type LoaderFunctionArgs } from "react-router";
 +import { getSession } from "~/utils/session.server";
@@ -800,7 +800,7 @@ diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.
 +}
 diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.md -x migrations -x .DS_Store -x package-lock.json repository_before/app/routes/logout.tsx repository_after/app/routes/logout.tsx
 --- repository_before/app/routes/logout.tsx	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/app/routes/logout.tsx	2026-02-03 18:05:07.760975301 +0300
++++ repository_after/app/routes/logout.tsx	2026-02-05 14:30:07.303255634 +0300
 @@ -0,0 +1,11 @@
 +import { redirect, type ActionFunctionArgs } from "react-router";
 +import { getSession, destroySession } from "~/utils/session.server";
@@ -815,7 +815,7 @@ diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.
 +}
 diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.md -x migrations -x .DS_Store -x package-lock.json repository_before/app/routes/stats.tsx repository_after/app/routes/stats.tsx
 --- repository_before/app/routes/stats.tsx	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/app/routes/stats.tsx	2026-02-04 11:12:41.296135501 +0300
++++ repository_after/app/routes/stats.tsx	2026-02-05 14:30:07.303255634 +0300
 @@ -0,0 +1,231 @@
 +import { useLoaderData, Link, redirect, type LoaderFunctionArgs } from "react-router";
 +import { useState } from "react";
@@ -1051,7 +1051,7 @@ diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.
 \ No newline at end of file
 diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.md -x migrations -x .DS_Store -x package-lock.json repository_before/app/routes.ts repository_after/app/routes.ts
 --- repository_before/app/routes.ts	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/app/routes.ts	2026-02-03 19:05:30.140996845 +0300
++++ repository_after/app/routes.ts	2026-02-05 14:30:07.302255882 +0300
 @@ -0,0 +1,12 @@
 +import { type RouteConfig, index, route } from "@react-router/dev/routes";
 +
@@ -1067,7 +1067,7 @@ diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.
 +] satisfies RouteConfig;
 diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.md -x migrations -x .DS_Store -x package-lock.json repository_before/app/styles/tailwind.css repository_after/app/styles/tailwind.css
 --- repository_before/app/styles/tailwind.css	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/app/styles/tailwind.css	2026-02-03 19:13:55.953264196 +0300
++++ repository_after/app/styles/tailwind.css	2026-02-05 14:30:07.303255634 +0300
 @@ -0,0 +1,46 @@
 +@import "tailwindcss";
 +
@@ -1118,7 +1118,7 @@ diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.
 \ No newline at end of file
 diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.md -x migrations -x .DS_Store -x package-lock.json repository_before/app/utils/prisma.server.ts repository_after/app/utils/prisma.server.ts
 --- repository_before/app/utils/prisma.server.ts	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/app/utils/prisma.server.ts	2026-02-03 17:42:37.540813379 +0300
++++ repository_after/app/utils/prisma.server.ts	2026-02-05 14:30:07.304255385 +0300
 @@ -0,0 +1,19 @@
 +import { PrismaClient } from "@prisma/client";
 +
@@ -1141,7 +1141,7 @@ diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.
 +export { prisma };
 diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.md -x migrations -x .DS_Store -x package-lock.json repository_before/app/utils/session.server.ts repository_after/app/utils/session.server.ts
 --- repository_before/app/utils/session.server.ts	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/app/utils/session.server.ts	2026-02-03 19:07:58.443029346 +0300
++++ repository_after/app/utils/session.server.ts	2026-02-05 14:30:07.304255385 +0300
 @@ -0,0 +1,15 @@
 +import { createCookieSessionStorage } from "react-router";
 +
@@ -5783,7 +5783,7 @@ diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.
 \ No newline at end of file
 diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.md -x migrations -x .DS_Store -x package-lock.json repository_before/Dockerfile repository_after/Dockerfile
 --- repository_before/Dockerfile	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/Dockerfile	2026-02-03 16:44:05.159408716 +0300
++++ repository_after/Dockerfile	2026-02-05 14:30:07.301256130 +0300
 @@ -0,0 +1,22 @@
 +FROM node:20-alpine AS development-dependencies-env
 +COPY . /app
@@ -5810,7 +5810,7 @@ diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.
 \ No newline at end of file
 diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.md -x migrations -x .DS_Store -x package-lock.json repository_before/.dockerignore repository_after/.dockerignore
 --- repository_before/.dockerignore	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/.dockerignore	2026-02-03 16:44:05.159408716 +0300
++++ repository_after/.dockerignore	2026-02-05 14:30:07.301256130 +0300
 @@ -0,0 +1,4 @@
 +.react-router
 +build
@@ -10266,7 +10266,7 @@ diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.
 \ No newline at end of file
 diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.md -x migrations -x .DS_Store -x package-lock.json repository_before/.gitignore repository_after/.gitignore
 --- repository_before/.gitignore	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/.gitignore	2026-02-03 17:07:29.920686426 +0300
++++ repository_after/.gitignore	2026-02-05 14:30:07.301256130 +0300
 @@ -0,0 +1,9 @@
 +.DS_Store
 +.env
@@ -10279,7 +10279,7 @@ diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.
 +/generated/prisma
 diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.md -x migrations -x .DS_Store -x package-lock.json repository_before/package.json repository_after/package.json
 --- repository_before/package.json	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/package.json	2026-02-03 21:08:02.215707582 +0300
++++ repository_after/package.json	2026-02-05 14:30:07.304255385 +0300
 @@ -0,0 +1,41 @@
 +{
 +  "name": "repository_after",
@@ -10325,7 +10325,7 @@ diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.
 \ No newline at end of file
 diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.md -x migrations -x .DS_Store -x package-lock.json repository_before/prisma/schema.prisma repository_after/prisma/schema.prisma
 --- repository_before/prisma/schema.prisma	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/prisma/schema.prisma	2026-02-03 18:28:46.160641192 +0300
++++ repository_after/prisma/schema.prisma	2026-02-05 14:30:07.304255385 +0300
 @@ -0,0 +1,30 @@
 +generator client {
 +  provider = "prisma-client-js"
@@ -10359,7 +10359,7 @@ diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.
 +}
 diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.md -x migrations -x .DS_Store -x package-lock.json repository_before/prisma.config.ts repository_after/prisma.config.ts
 --- repository_before/prisma.config.ts	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/prisma.config.ts	2026-02-03 17:36:16.766101108 +0300
++++ repository_after/prisma.config.ts	2026-02-05 14:30:07.304255385 +0300
 @@ -0,0 +1,7 @@
 +import { defineConfig } from "prisma/config";
 +
@@ -10371,7 +10371,7 @@ diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.
 Binary files repository_before/public/favicon.ico and repository_after/public/favicon.ico differ
 diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.md -x migrations -x .DS_Store -x package-lock.json repository_before/react-router.config.ts repository_after/react-router.config.ts
 --- repository_before/react-router.config.ts	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/react-router.config.ts	2026-02-03 16:44:05.159408716 +0300
++++ repository_after/react-router.config.ts	2026-02-05 14:30:07.305255137 +0300
 @@ -0,0 +1,7 @@
 +import type { Config } from "@react-router/dev/config";
 +
@@ -10382,7 +10382,7 @@ diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.
 +} satisfies Config;
 diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.md -x migrations -x .DS_Store -x package-lock.json repository_before/tsconfig.json repository_after/tsconfig.json
 --- repository_before/tsconfig.json	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/tsconfig.json	2026-02-03 16:44:05.158408744 +0300
++++ repository_after/tsconfig.json	2026-02-05 14:30:07.305255137 +0300
 @@ -0,0 +1,27 @@
 +{
 +  "include": [
@@ -10411,9 +10411,29 @@ diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.
 +    "strict": true
 +  }
 +}
+diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.md -x migrations -x .DS_Store -x package-lock.json repository_before/.vite/deps/_metadata.json repository_after/.vite/deps/_metadata.json
+--- repository_before/.vite/deps/_metadata.json	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/.vite/deps/_metadata.json	2026-02-04 16:48:25.597507743 +0300
+@@ -0,0 +1,8 @@
++{
++  "hash": "24470382",
++  "configHash": "50322abd",
++  "lockfileHash": "904256bb",
++  "browserHash": "68dd2bdc",
++  "optimized": {},
++  "chunks": {}
++}
+\ No newline at end of file
+diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.md -x migrations -x .DS_Store -x package-lock.json repository_before/.vite/deps/package.json repository_after/.vite/deps/package.json
+--- repository_before/.vite/deps/package.json	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/.vite/deps/package.json	2026-02-04 16:48:25.559505170 +0300
+@@ -0,0 +1,3 @@
++{
++  "type": "module"
++}
 diff -ruN -x node_modules -x .react-router -x build -x '*.db' -x .env -x README.md -x migrations -x .DS_Store -x package-lock.json repository_before/vite.config.ts repository_after/vite.config.ts
 --- repository_before/vite.config.ts	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/vite.config.ts	2026-02-03 16:44:05.160408688 +0300
++++ repository_after/vite.config.ts	2026-02-05 14:30:07.305255137 +0300
 @@ -0,0 +1,8 @@
 +import { reactRouter } from "@react-router/dev/vite";
 +import tailwindcss from "@tailwindcss/vite";

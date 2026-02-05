@@ -28,7 +28,13 @@ beforeAll(async () => {
     vi.doMock("~/utils/prisma.server", () => ({
         prisma: {
             entry: {
-                findMany: vi.fn(async () => []), // default empty; override per test
+                findMany: vi.fn(async () => []),
+                findUnique: vi.fn(async () => null),
+                upsert: vi.fn(async () => ({})),
+            },
+            user: {
+                findUnique: vi.fn(async () => null),
+                update: vi.fn(async () => ({})),
             },
         },
     }));
@@ -135,5 +141,68 @@ describe(`Gratitude Journal Logic (${REPO_NAME})`, () => {
         const words = result.topWords.map(([w]: any) => w);
         expect(words).not.toContain("is");
         expect(words).not.toContain("the");
+    });
+});
+
+describe(`Auth & Home Logic (${REPO_NAME})`, () => {
+    let authModule: any = null;
+    let homeModule: any = null;
+
+    beforeAll(async () => {
+        const callbackPath = path.resolve(__dirname, `../${REPO_NAME}/app/routes/auth.callback.tsx`);
+        const homePath = path.resolve(__dirname, `../${REPO_NAME}/app/routes/home.tsx`);
+        authModule = await import(/* @vite-ignore */ callbackPath);
+        homeModule = await import(/* @vite-ignore */ homePath);
+    });
+
+    const makeRequest = (url: string) => new Request(url, { headers: { Cookie: "session=valid" } });
+
+    it("Auth Callback: should reject expired tokens", async () => {
+        const prisma = (await import("~/utils/prisma.server")).prisma;
+
+        // Mock user with expired token
+        (prisma.user.findUnique as any).mockResolvedValue({
+            id: 1,
+            email: "test@example.com",
+            magicToken: "123",
+            tokenExpiry: new Date(Date.now() - 10000), // Expired 10s ago
+        });
+
+        const request = makeRequest("http://localhost/auth/callback?token=123&email=test@example.com");
+
+        try {
+            await authModule.loader({ request });
+        } catch (response: any) {
+            // Remix redirects by throwing/returning a Response
+            expect(response.status).toBe(302);
+            expect(response.headers.get("Location")).toBe("/login");
+        }
+    });
+
+    it("Home Loader: 'On This Day' should only match 1 year ago exactly", async () => {
+        const today = new Date();
+        const oneYearAgo = new Date(today);
+        oneYearAgo.setFullYear(today.getFullYear() - 1);
+
+        const twoYearsAgo = new Date(today);
+        twoYearsAgo.setFullYear(today.getFullYear() - 2);
+
+        const prisma = (await import("~/utils/prisma.server")).prisma;
+
+        // Mock findUnique (Today's entry - null)
+        (prisma.entry.findUnique as any).mockResolvedValue(null);
+
+        // Mock findMany (Past entries)
+        (prisma.entry.findMany as any).mockResolvedValue([
+            { id: 1, date: oneYearAgo, item1: "One Year Ago" },
+            { id: 2, date: twoYearsAgo, item1: "Two Years Ago" }
+        ]);
+
+        const result = await homeModule.loader({ request: makeRequest("http://localhost/") });
+
+        expect(result.onThisDay).not.toBeNull();
+        expect(new Date(result.onThisDay.date).getFullYear()).toBe(today.getFullYear() - 1);
+        // Should NOT pick the 2 year ago one, even if it exists
+        expect(result.onThisDay.item1).toBe("One Year Ago");
     });
 });
