@@ -195,6 +195,34 @@ func TestReq2_MaskingSupport(t *testing.T) {
 	tensorsApproxEqual(t, gotOut, refOut, 1e-5)
 }
 
+func TestReq2b_MaskingNonSquare(t *testing.T) {
+	defer func() { RecordResult("TestReq2b_MaskingNonSquare", !t.Failed(), "") }()
+	// Non-square spatial dims to validate flat index mapping.
+	rand.Seed(46)
+	N, C, H, W := 1, 2, 3, 5
+	content := randomTensor([]int{N, C, H, W})
+	style := randomTensor([]int{N, C, H, W})
+
+	mask := NewTestTensor([]int{N, 1, H, W})
+	for i := 0; i < H; i++ {
+		for j := 0; j < W; j++ {
+			if (i+j)%3 == 0 {
+				mask.Data[mask.Index(0, 0, i, j)] = 1.0
+			} else {
+				mask.Data[mask.Index(0, 0, i, j)] = 0.0
+			}
+		}
+	}
+
+	refOut := refApplyAdaIN(toRef(content), toRef(style), 1.0, 1e-5, toRef(mask), toRef(mask))
+	gotOut, err := TestApplyAdaIN(content, style, 1.0, 1e-5, mask, mask)
+	if err != nil {
+		t.Fatalf("ApplyAdaIN failed: %v", err)
+	}
+
+	tensorsApproxEqual(t, gotOut, refOut, 1e-5)
+}
+
 func TestReq3_AlphaBlending(t *testing.T) {
 	defer func() { RecordResult("TestReq3_AlphaBlending", !t.Failed(), "") }()
 	// Req 3: Preserve alpha-based blending with the original content.
