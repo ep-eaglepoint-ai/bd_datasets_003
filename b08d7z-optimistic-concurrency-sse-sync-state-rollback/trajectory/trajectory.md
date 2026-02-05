@@ -36,7 +36,7 @@ I implemented a high-concurrency seat reservation system with optimistic UI and 
 ### 12. Infrastructure and Tooling
 - **Docker Environment**: Single container with Go and Node.js for unified development and testing environment, working directory set to /app with proper REPO_PATH environment variable handling.
 - **Unified Test Runner**: test_wrapper.go orchestrates both backend Go tests (go test) and frontend Jest tests (npm test), providing pytest-like output format with unified pass/fail reporting and proper exit codes.
-- **Backend Testing**: Go test suite in `tests/backend/main_test.go` that launches and validates the real backend implementation from `repository_after/backend/main.go`, including concurrency and SSE behavior.
+- **Backend Testing**: Go test suite in `repository_after/backend/main_test.go` that validates the real backend handlers and concurrency behavior with `httptest` and goroutines.
 - **Frontend Testing**: Jest + Testing Library suite in `tests/ui/useSeatBooking.test.tsx` that imports and tests the real hook from `repository_after/frontend/src/hooks/useSeatBooking.ts` with mocked `fetch` and `EventSource`.
 - **Evaluation System**: evaluation.go runs the unified test suite, parses results from both backend and frontend, maps test outcomes to specific requirements, and generates detailed JSON reports with timestamps and environment information.
 - **Development Workflow**: Docker Compose with single command execution for tests (`docker compose run --rm -e REPO_PATH=repository_after app go run tests/runner.go`) and evaluation (`docker compose run --rm app go run ./evaluation/evaluation.go`).
