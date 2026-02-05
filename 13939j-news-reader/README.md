@@ -1,9 +1,13 @@
 # 13939J - news-reader
 
-## Run Tests
+## Docker Command
 
+test repository_after
+```bash
 docker compose run app npm test
+```
 
-## Run Evaluation
-
+Run Evaluation
+```bash
 docker compose run app npm run evaluate
+```
