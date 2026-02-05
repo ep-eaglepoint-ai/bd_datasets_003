@@ -1,0 +1,13 @@
+{
+            "instance_id": "IVXJC2",
+            "problem_statement": "
+The task evaluates an in-memory canonical status engine that ingests shipment status reports from multiple conflicting sources and deterministically resolves them into a single authoritative status per shipment. The system must safely handle invalid inputs, duplicate reports, and contradictory updates while preserving auditability through structured trace entries. The evaluation focuses on correctness, determinism, and defensive logic under adversarial or evolving inputs, ensuring that the same inputs always produce the same canonical outcome and that future schema changes cannot silently corrupt decision logic.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ivxjc2-canonical-shipment-status-engine-determinism-and-safety-evaluation",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
