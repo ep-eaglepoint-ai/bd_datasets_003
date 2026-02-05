@@ -1,0 +1,11 @@
+{
+            "instance_id": "XCDSEL",
+            "problem_statement": "The order-management service has no audit trail or event replay. When debugging disputes or investigating “what happened when,” the team cannot see a complete, ordered history of changes per order or reconstruct past state. The business needs a durable, append-only record of state-changing events per order, a way to retrieve that history, and the ability to replay events to reconstruct order state at a point in time—without changing existing order API behavior or introducing new infrastructure.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/xcdsel-add-audit-trail-and-event-replay",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
