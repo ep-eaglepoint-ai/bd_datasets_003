@@ -1,0 +1,11 @@
+{
+            "instance_id": "D6CJ2B",
+            "problem_statement": "High-concurrency weather lookups suffer from cache fragmentation due to floating-point precision and "Thundering Herd" spikes upon cache expiration. A robust solution is needed to discretize coordinates into shared buckets and coalesce simultaneous requests for the same bucket into a single upstream API call, preventing rate-limit exhaustion.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/d6cj2b-geospatial-cache-with-async-request-coalescing",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
