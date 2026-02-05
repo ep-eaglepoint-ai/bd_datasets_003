@@ -7,5 +7,3 @@ services:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONPATH=/app/repository_after:/app
-    volumes:
-      - ./evaluation:/app/evaluation
