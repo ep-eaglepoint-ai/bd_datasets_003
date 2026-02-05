@@ -1,0 +1,11 @@
+{
+            "instance_id": "L1Y21J",
+            "problem_statement": "The seed model produced an O(N) space complexity solution that materializes the entire log in memory. For a distributed system processing millions of events, a senior architect must implement a stream-based reverse-pass compactor that prioritizes the "Final State" while respecting memory pressure.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/l1y21j-architecting-a-memory-efficient-event-log-compactor-for-high-throughput-replay",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
