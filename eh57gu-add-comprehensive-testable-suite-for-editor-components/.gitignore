@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.env
+
+# Node
+node_modules/
+dist/
+build/
+coverage/
+.vite/
+.vitest/
+
+# OS
+.DS_Store
+*.log
+
+# Evaluation
+evaluation/*/
+!evaluation/*.js
+
+# Patches
+patches/*.patch
+!patches/.gitkeep
