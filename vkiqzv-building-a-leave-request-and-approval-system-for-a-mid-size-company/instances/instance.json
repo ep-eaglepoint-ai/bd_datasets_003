@@ -1,0 +1,12 @@
+{
+            "instance_id": "VKIQZV",
+            "problem_statement": "Need a fullstack Leave Request and Approval System in C# where staff submit leave and managers approve or reject. The backend must expose a REST API with strict validation (date ranges, leave types, status transitions) and correct HTTP status codes, while the Blazor WebAssembly frontend must allow submitting requests, viewing "my requests," and—for managers—viewing pending requests and approving or rejecting them. Issues to avoid: business logic in controllers, synchronous I/O, hardcoded API URL in the client, and inconsistent or leaking error responses. Success is measurable via Swagger, migrations, seed data, and completing the main user flows without unhandled errors.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/vkiqzv-building-a-leave-request-and-approval-system-for-a-mid-size-company",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
