@@ -1,0 +1,11 @@
+{
+            "instance_id": "5KS85W",
+            "problem_statement": "A high-throughput web service creates expensive database connection objects for each incoming request. Object creation takes 50 milliseconds on average, and under load the service handles 500 requests per second, causing severe latency as threads wait for new connections. The team needs a generic object pooling solution that reuses expensive objects across requests while handling concurrent access safely. The system needs to limit the maximum number of pooled objects, block callers when the pool is exhausted until an object becomes available, and validate objects before returning them to ensure they are still usable. Load testing revealed that naive synchronization on the pool caused thread contention that reduced throughput by 60 percent, objects left in the pool overnight became stale and caused errors when reused, and the pool had no mechanism to grow or shrink based on demand.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/5ks85w-thread-safe-generic-object-pool",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
