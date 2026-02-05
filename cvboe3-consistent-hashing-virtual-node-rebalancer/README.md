@@ -9,14 +9,14 @@ The goal is to implement a high-performance consistent hashing library in Go wit
 Tests the empty/broken state in `repository_before`.
 
 ```bash
-docker compose run --rm -e REPO_PATH=repository_before app bash -c 'cd $REPO_PATH && go test -v ./... || true'
+docker compose run --rm app bash -c 'cd repository_before && go test -v ./... || true'
 ```
 
 ### 2. Test After Implementation (Expected to Pass)
 Runs the comprehensive test suite validating functional correctness, distribution quality, concurrency safety, and memory usage.
 
 ```bash
-docker compose run --rm -e REPO_PATH=tests app bash -c 'go test -v ./$REPO_PATH'
+docker compose run --rm app bash -c 'cd tests && go test -v .'
 ```
 
 ### 3. Run Evaluation Script

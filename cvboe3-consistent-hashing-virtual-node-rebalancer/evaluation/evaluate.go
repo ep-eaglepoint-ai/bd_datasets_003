@@ -45,9 +45,6 @@ func main() {
 	// Generate a run ID (using timestamp for uniqueness)
 	runID := fmt.Sprintf("%d-%s", start.Unix(), "consistent-hash")
 
-	// Create reports directory
-	os.MkdirAll("evaluation/reports", 0755)
-
 	report := Report{
 		RunID:     runID,
 		StartedAt: start.Format(time.RFC3339),
@@ -138,9 +135,9 @@ func writeReport(r Report) {
 	if err != nil {
 		panic(err)
 	}
-	err = os.WriteFile("evaluation/reports/report.json", data, 0644)
+	err = os.WriteFile("evaluation/report.json", data, 0644)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("\n📄 Report generated at: evaluation/reports/report.json")
+	fmt.Println("\n📄 Report generated at: evaluation/report.json")
 }
