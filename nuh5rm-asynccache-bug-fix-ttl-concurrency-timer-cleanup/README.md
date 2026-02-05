@@ -11,7 +11,7 @@ docker compose run --rm app python3 evaluation/evaluation.py
 ### Test repository_before (Original)
 
 ```bash
-docker compose run --rm app node tests/test_runner.js repository_before/AysncCache.js
+docker compose run --rm app node tests/test_runner.js repository_before/AysncCache.js || true
 ```
 
 ### Test repository_after (Fixed)
