@@ -124,7 +124,38 @@ func runGoTestWithConfig(repoDirName, testsDir, label string) TestResult {
 	fmt.Printf("Target Repository Directory: %s\n", repoDirName)
 	fmt.Printf("Tests directory: %s\n", testsDir)
 
-	cmd := exec.Command("go", "test", "-v", "-race", "./"+repoDirName+"/...")
+	// The most reliable approach in Go is to temporarily copy the test file
+	// This is equivalent to how Python can dynamically set PYTHONPATH
+	// but Go's module system requires files to be in the same directory
+	testFile := testsDir + "/websocket_chat_test.go"
+	targetTestFile := repoDirName + "/websocket_chat_test.go"
+	
+	// Read test file content
+	testContent, err := os.ReadFile(testFile)
+	if err != nil {
+		return TestResult{
+			Passed:     false,
+			ReturnCode: 1,
+			Output:     "Failed to read test file: " + err.Error(),
+		}
+	}
+	
+	// Write test file to repository directory
+	err = os.WriteFile(targetTestFile, testContent, 0644)
+	if err != nil {
+		return TestResult{
+			Passed:     false,
+			ReturnCode: 1,
+			Output:     "Failed to write test file: " + err.Error(),
+		}
+	}
+	
+	// Clean up test file after execution
+	defer os.Remove(targetTestFile)
+
+	// Run tests in the repository directory
+	cmd := exec.Command("go", "test", "-v", "-race", ".")
+	cmd.Dir = repoDirName
 	cmd.Env = append(os.Environ(), "REDIS_ADDR=redis:6379")
 
 	out, _ := cmd.CombinedOutput()
@@ -157,11 +188,26 @@ func runGoTestWithConfig(repoDirName, testsDir, label string) TestResult {
 
 	// If go test failed but no tests were parsed, it's likely a build/runtime error
 	if exitCode != 0 && len(tests) == 0 {
-		errors = 1
+		// Check if it's a build failure
+		if strings.Contains(output, "[build failed]") || strings.Contains(output, "# ") {
+			errors = 1
+			fmt.Printf("\nBuild failed - this is expected for the 'before' implementation")
+		} else {
+			errors = 1
+		}
 	}
 
-	fmt.Printf("\nResults: %d passed, %d failed, %d errors, %d skipped (total: %d)\n",
+	fmt.Printf("\nResults: %d passed, %d failed, %d errors, %d skipped (total: %d)", 
 		passed, failed, errors, skipped, len(tests))
+	
+	if exitCode != 0 && len(tests) == 0 {
+		if strings.Contains(output, "[build failed]") {
+			fmt.Printf(" - Build failed (compilation errors)")
+		} else {
+			fmt.Printf(" - Runtime error")
+		}
+	}
+	fmt.Printf("\n")
 
 	for _, t := range tests {
 		icon := "❓"
@@ -174,6 +220,11 @@ func runGoTestWithConfig(repoDirName, testsDir, label string) TestResult {
 			icon = "⏭️"
 		}
 		fmt.Printf("  %s %s: %s\n", icon, t.NodeID, t.Outcome)
+	}
+	
+	// If build failed, show that this was expected for the before implementation
+	if exitCode != 0 && len(tests) == 0 && strings.Contains(output, "[build failed]") && strings.Contains(repoDirName, "before") {
+		fmt.Printf("  ℹ️  Build failure is expected for the 'before' implementation\n")
 	}
 
 	testPassed := exitCode == 0 && len(tests) > 0 && failed == 0 && errors == 0

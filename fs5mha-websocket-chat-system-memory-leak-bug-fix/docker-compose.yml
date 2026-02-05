@@ -12,8 +12,11 @@ services:
       - REDIS_ADDR=redis:6379
     command: >
       sh -c "go mod tidy &&
+             cp tests/websocket_chat_test.go repository_before/ &&
              cd repository_before && 
-             go test -v -race . || true"
+             (go test -v -race . || true) &&
+             cd .. &&
+             rm -f repository_before/websocket_chat_test.go"
     volumes:
       - .:/app
 
@@ -25,8 +28,11 @@ services:
       - REDIS_ADDR=redis:6379
     command: >
       sh -c "go mod tidy &&
+             cp tests/websocket_chat_test.go repository_after/ &&
              cd repository_after && 
-             go test -v -race ."
+             go test -v -race . &&
+             cd .. &&
+             rm -f repository_after/websocket_chat_test.go"
     volumes:
       - .:/app
 
