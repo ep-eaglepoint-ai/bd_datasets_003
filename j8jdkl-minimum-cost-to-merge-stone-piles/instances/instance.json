@@ -1,0 +1,11 @@
+{
+            "instance_id": "J8JDKL",
+            "problem_statement": "You are given n piles of stones arranged in a row, where the i-th pile contains stones[i] stones. In one move, you may merge exactly k consecutive piles into one pile, incurring a cost equal to the sum of those piles. Repeat the process until exactly one pile remains, or determine that it is impossible. Return the minimum total cost and one optimal merge sequence, choosing the lexicographically smallest sequence if multiple solutions exist.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/j8jdkl-minimum-cost-to-merge-stone-piles",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
