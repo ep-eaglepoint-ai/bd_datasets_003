@@ -64,7 +64,7 @@ const StartScreen: React.FC<StartScreenProps> = ({ onStart }) => {
           >
             <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
             <span className="relative flex items-center justify-center gap-3">
-              Start Challenge <Play className="w-5 h-5 fill-current" />
+              Start Quiz <Play className="w-5 h-5 fill-current" />
             </span>
           </button>
         </motion.div>

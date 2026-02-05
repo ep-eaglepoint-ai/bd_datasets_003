@@ -79,7 +79,7 @@ const QuestionScreen: React.FC<QuestionScreenProps> = ({
            </div>
            <div className="flex justify-between mt-2 text-sm text-slate-400 font-medium tracking-wide">
              <span>Start</span>
-             <span>Question {currentQuestionIndex + 1} / {totalQuestions}</span>
+             <span>Question {currentQuestionIndex + 1} of {totalQuestions}</span>
              <span>Finish</span>
            </div>
        </div>

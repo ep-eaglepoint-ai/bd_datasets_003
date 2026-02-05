@@ -93,24 +93,13 @@ const ResultScreen: React.FC<ResultScreenProps> = ({ score, totalQuestions, onRe
            <h2 className="text-3xl font-bold text-white mb-2">Quiz Complete</h2>
            <p className={clsx("text-lg font-medium mb-8", feedbackColor)}>{feedbackMessage}</p>
 
-           <div className="grid grid-cols-2 gap-4 mb-8">
-              <div className="p-4 rounded-2xl bg-white/5 border border-white/5 flex flex-col items-center justify-center">
-                 <p className="text-sm text-slate-400 uppercase tracking-wider font-bold mb-1">Score</p>
-                 <motion.div 
-                   key={animatedScore}
-                   initial={{ scale: 1.2, color: '#fff' }}
-                   animate={{ scale: 1, color: '#e2e8f0' }}
-                   className="text-4xl font-black text-slate-200"
-                 >
-                   {animatedScore} <span className="text-lg text-slate-500 font-medium">/ {totalQuestions}</span>
-                 </motion.div>
-              </div>
-              <div className="p-4 rounded-2xl bg-white/5 border border-white/5 flex flex-col items-center justify-center">
-                 <p className="text-sm text-slate-400 uppercase tracking-wider font-bold mb-1">Accuracy</p>
-                 <div className="text-4xl font-black text-slate-200">
-                   {percentage}<span className="text-2xl">%</span>
-                 </div>
-              </div>
+           <div className="mb-8 p-6 rounded-2xl bg-white/5 border border-white/5 flex flex-col items-center justify-center">
+               <p className="text-slate-200 text-xl font-bold">
+                 You scored <span className="text-3xl text-white">{animatedScore}</span> out of <span className="text-3xl text-white">{totalQuestions}</span>
+               </p>
+               <div className="mt-2 text-slate-400 font-medium">
+                  Accuracy: {percentage}%
+               </div>
            </div>
 
            <button
@@ -118,7 +107,7 @@ const ResultScreen: React.FC<ResultScreenProps> = ({ score, totalQuestions, onRe
              className="w-full py-4 px-6 bg-white hover:bg-slate-50 text-slate-900 font-bold rounded-xl shadow-lg transform transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2 group"
            >
              <RefreshCcw className="w-5 h-5 group-hover:rotate-180 transition-transform duration-500" />
-             Try Again
+             Restart Quiz
            </button>
         </div>
       </motion.div>
