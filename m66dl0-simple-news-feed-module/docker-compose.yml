@@ -1,0 +1,6 @@
+services:
+  app:
+    build: .
+    command: python -m pytest -v tests
+    volumes:
+      - .:/app
