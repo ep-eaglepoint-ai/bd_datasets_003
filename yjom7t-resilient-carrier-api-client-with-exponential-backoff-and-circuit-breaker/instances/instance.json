@@ -1,0 +1,12 @@
+{
+            "instance_id": "YJOM7T",
+            "problem_statement": "Our Logistics-Link service integrates with external shipping carriers that frequently experience transient failures such as network instability, rate-limiting (429), and intermittent 5xx errors. The current CarrierClient implementation follows a naive “try-once” model, causing fulfillment workflows to fail immediately on transient issues. This behavior leads to unprocessed orders, operational backlogs, and manual recovery efforts that do not scale during peak traffic periods.
+The objective is to refactor the existing CarrierClient into a resilient outbound API client that implements Exponential Backoff with Full Jitter and a Circuit Breaker pattern. The solution must gracefully handle transient failures, protect upstream services from overload, and improve overall system stability—without altering the external interface of the client.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/yjom7t-resilient-carrier-api-client-with-exponential-backoff-and-circuit-breaker",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
