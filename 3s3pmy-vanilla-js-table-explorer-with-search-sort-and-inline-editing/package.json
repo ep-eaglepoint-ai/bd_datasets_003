@@ -1,0 +1,17 @@
+{
+  "name": "table-explorer-tests",
+  "version": "1.0.0",
+  "description": "Tests for Vanilla JS Table Explorer",
+  "scripts": {
+    "test": "npx playwright test",
+    "test:before": "TEST_URL=http://localhost:3001/index.html npx playwright test --reporter=json > test-results-before.json || true",
+    "test:after": "TEST_URL=http://localhost:3000/index.html npx playwright test --reporter=json > test-results-after.json || true",
+    "serve:before": "npx http-server repository_before -p 3001 -s",
+    "serve:after": "npx http-server repository_after -p 3000 -s",
+    "evaluate": "node evaluation/evaluate.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "http-server": "^14.1.1"
+  }
+}

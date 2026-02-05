@@ -1,9 +1,35 @@
+version: '3.8'
 
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
-  app:
-    build: .
-    command: pytest -q tests
+services:
+  test-before:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - TEST_URL=http://localhost:3001/index.html
+    command: >
+      sh -c "npx http-server repository_before -p 3001 -s & sleep 2 &&
+             TEST_URL=http://localhost:3001/index.html npx playwright test --reporter=list || true"
     volumes:
-      - .:/app
+      - ./test-results-before:/app/test-results
+
+  test-after:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - TEST_URL=http://localhost:3000/index.html
+    command: >
+      sh -c "npx http-server repository_after -p 3000 -s & sleep 2 &&
+             TEST_URL=http://localhost:3000/index.html npx playwright test --reporter=list"
+    volumes:
+      - ./test-results-after:/app/test-results
+
+  evaluation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: >
+      sh -c "node evaluation/evaluate.js"
+    volumes:
+      - ./:/app/output
