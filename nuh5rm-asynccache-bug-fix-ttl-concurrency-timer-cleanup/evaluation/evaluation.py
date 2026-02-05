@@ -10,10 +10,13 @@ import json
 import os
 import sys
 
+# Use current working directory instead of hardcoded /app
+APP_DIR = os.getcwd()
+
 def run_node_tests(module_path):
     """Run Node.js tests on specified module"""
-    os.chdir('/app')
-    
+    os.chdir(APP_DIR)
+
     try:
         result = subprocess.run(
             ['node', 'tests/test_runner.js', module_path],
@@ -21,19 +24,19 @@ def run_node_tests(module_path):
             text=True,
             timeout=60
         )
-        
+
         output = result.stdout + result.stderr
-        
+
         # Parse test results
         passed = 0
         failed = 0
-        
+
         for line in output.split('\n'):
             if line.startswith('Passed:'):
                 passed = int(line.split(':')[1].strip())
             elif line.startswith('Failed:'):
                 failed = int(line.split(':')[1].strip())
-        
+
         return {
             'passed': passed,
             'failed': failed,
@@ -61,19 +64,20 @@ def run_node_tests(module_path):
 def main():
     """Run evaluation on both repositories"""
     print("=== AsyncCache Evaluation ===\n")
-    
+    print(f"Working directory: {APP_DIR}\n")
+
     # Test repository_before
     print("Testing repository_before (original)...")
     before_result = run_node_tests('repository_before/AysncCache.js')
     before_result['repository'] = 'before'
     print(f"  Passed: {before_result['passed']}, Failed: {before_result['failed']}\n")
-    
+
     # Test repository_after
     print("Testing repository_after (fixed)...")
     after_result = run_node_tests('repository_after/AsyncCache.js')
     after_result['repository'] = 'after'
     print(f"  Passed: {after_result['passed']}, Failed: {after_result['failed']}\n")
-    
+
     # Generate combined report
     report = {
         'evaluation': 'NUH5RM - AsyncCache Bug Fix: TTL, Concurrency & Timer Cleanup',
@@ -89,21 +93,22 @@ def main():
             'after_working': after_result['success']
         }
     }
-    
+
     # Ensure evaluation directory exists
-    os.makedirs('/app/evaluation', exist_ok=True)
-    
+    eval_dir = os.path.join(APP_DIR, 'evaluation')
+    os.makedirs(eval_dir, exist_ok=True)
+
     # Write report.json
-    report_path = '/app/evaluation/report.json'
+    report_path = os.path.join(eval_dir, 'report.json')
     with open(report_path, 'w') as f:
         json.dump(report, f, indent=2)
-    
+
     print("=== Evaluation Summary ===")
     print(f"Before: {before_result['passed']}/{before_result['total']} passed")
     print(f"After: {after_result['passed']}/{after_result['total']} passed")
     print(f"Improvement: {report['summary']['improvement']} additional tests passing")
     print(f"\nReport saved to: {report_path}")
-    
+
     # Exit with after result status
     sys.exit(0 if after_result['success'] else 1)
 

@@ -17,8 +17,8 @@ if (!modulePath) {
   process.exit(1);
 }
 
-// Resolve to absolute path from /app
-const appDir = '/app';
+// Use current working directory instead of hardcoded /app
+const appDir = process.cwd();
 const resolvedPath = path.join(appDir, modulePath);
 
 // Read the original test file
@@ -60,6 +60,6 @@ nodeProcess.on('close', (code) => {
   try {
     fs.unlinkSync(tempTestPath);
   } catch (e) {}
-  
+
   process.exit(code);
 });
