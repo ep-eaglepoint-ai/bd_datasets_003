@@ -11,6 +11,7 @@ import java.util.Optional;
 @Repository
 public interface OrderProjectionRepository extends JpaRepository<OrderProjectionEntity, String> {
     boolean existsByOrderId(String orderId);
+    boolean existsByOrderIdAndLastProcessedEventId(String orderId, String lastProcessedEventId);
     Optional<OrderProjectionEntity> findByOrderId(String orderId);
     List<OrderProjectionEntity> findByCustomerId(String customerId);
     List<OrderProjectionEntity> findByStatus(OrderStatus status);

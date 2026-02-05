@@ -65,8 +65,8 @@ public class EventStore {
         long nextVersion = expectedVersion + 1;
         
         for (DomainEvent event : events) {
-            // Update the event version to the correct sequence number
-            DomainEvent eventWithVersion = updateEventVersion(event, nextVersion);
+            // Ensure the event version matches the expected next version
+            DomainEvent eventWithVersion = ensureEventVersion(event, nextVersion);
             
             // Serialize and persist the event
             EventEntity entity = toEntity(eventWithVersion);
@@ -189,16 +189,15 @@ public class EventStore {
     }
     
     /**
-     * Update the version of an event to the correct sequence number.
+     * Ensure that the event version matches the expected sequence number.
+     * This enforces correct versioning while keeping events immutable.
      */
-    private DomainEvent updateEventVersion(DomainEvent event, Long newVersion) {
-        try {
-            // Create a new event with the updated version
-            DomainEvent updatedEvent = objectMapper.readValue(
-                    objectMapper.writeValueAsString(event), (Class<? extends DomainEvent>) event.getClass());
-            return updatedEvent;
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("Failed to update event version", e);
+    private DomainEvent ensureEventVersion(DomainEvent event, Long expectedVersion) {
+        if (!expectedVersion.equals(event.getVersion())) {
+            throw new IllegalStateException(String.format(
+                    "Event version mismatch for aggregate %s: expected %d but was %d",
+                    event.getAggregateId(), expectedVersion, event.getVersion()));
         }
+        return event;
     }
 }

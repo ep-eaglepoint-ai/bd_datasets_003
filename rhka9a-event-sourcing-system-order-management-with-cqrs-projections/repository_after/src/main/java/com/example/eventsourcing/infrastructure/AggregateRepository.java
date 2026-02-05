@@ -11,7 +11,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -58,7 +60,9 @@ public class AggregateRepository<T extends Aggregate<E>, E extends DomainEvent> 
         logger.debug("Loading aggregate {}", aggregateId);
         
         // Try to load from snapshot first
-        SnapshotEntity snapshot = snapshotRepository.findLatestSnapshot(aggregateId).orElse(null);
+        SnapshotEntity snapshot = snapshotRepository
+                .findTopByAggregateIdOrderByVersionDesc(aggregateId)
+                .orElse(null);
         Long snapshotVersion = snapshot != null ? snapshot.getVersion() : 0L;
         
         T aggregate = aggregateFactory.get();
@@ -135,6 +139,7 @@ public class AggregateRepository<T extends Aggregate<E>, E extends DomainEvent> 
     
     /**
      * Save a new aggregate with its first event.
+     * Ensures the initial event is marked as committed so it won't be re-appended on subsequent saves.
      */
     @Transactional
     public T saveNew(T aggregate, E initialEvent) {
@@ -143,14 +148,19 @@ public class AggregateRepository<T extends Aggregate<E>, E extends DomainEvent> 
         logger.debug("Saving new aggregate {}", aggregateId);
         
         // Append the initial event (with optimistic locking check)
-        eventStore.appendInitialEvent(aggregateId, initialEvent);
+        DomainEvent persistedEvent = eventStore.appendInitialEvent(aggregateId, initialEvent);
         
-        // Apply the event to the aggregate
-        aggregate.apply(initialEvent);
-        aggregate.setVersion(initialEvent.getVersion());
+        // Apply the event to the aggregate using the persisted version
+        @SuppressWarnings("unchecked")
+        E appliedEvent = (E) persistedEvent;
+        aggregate.apply(appliedEvent);
+        aggregate.setVersion(appliedEvent.getVersion());
+        
+        // Mark the initial event as committed so it is not re-appended on the next save()
+        aggregate.markEventsAsCommitted();
         
         // Publish event for projections
-        eventStore.publishEvent(initialEvent);
+        eventStore.publishEvent(persistedEvent);
         
         logger.info("Saved new aggregate {} with version {}", aggregateId, aggregate.getVersion());
         return aggregate;
@@ -162,11 +172,11 @@ public class AggregateRepository<T extends Aggregate<E>, E extends DomainEvent> 
      */
     private void checkAndCreateSnapshot(T aggregate) {
         int snapshotThreshold = properties.getSnapshot().getThreshold();
-        int uncommittedEventCount = aggregate.getUncommittedEventCount();
         
-        // Check if we've reached the snapshot threshold since last snapshot
-        if (aggregate.getVersion() % snapshotThreshold == 0) {
-            // Create snapshot in a separate transaction (async)
+        // Check if we've reached the snapshot threshold
+        if (snapshotThreshold > 0 && aggregate.getVersion() > 0
+                && aggregate.getVersion() % snapshotThreshold == 0) {
+            // Create snapshot in a separate transaction (async, non-blocking)
             createSnapshotAsync(aggregate);
         }
     }
@@ -175,6 +185,7 @@ public class AggregateRepository<T extends Aggregate<E>, E extends DomainEvent> 
      * Create a snapshot asynchronously in a separate transaction.
      * This ensures snapshot creation doesn't block command processing.
      */
+    @Async("eventTaskExecutor")
     public void createSnapshotAsync(T aggregate) {
         String aggregateId = aggregate.getAggregateId();
         
@@ -191,7 +202,7 @@ public class AggregateRepository<T extends Aggregate<E>, E extends DomainEvent> 
      * Create a snapshot of the aggregate state.
      * This method runs in a separate transaction to avoid blocking command processing.
      */
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void createSnapshot(T aggregate) {
         String aggregateId = aggregate.getAggregateId();
         

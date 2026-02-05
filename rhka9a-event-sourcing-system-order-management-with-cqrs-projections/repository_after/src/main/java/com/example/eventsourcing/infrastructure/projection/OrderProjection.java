@@ -5,6 +5,7 @@ import com.example.eventsourcing.domain.order.*;
 import com.example.eventsourcing.infrastructure.DomainEventWrapper;
 import com.example.eventsourcing.infrastructure.persistence.EventEntity;
 import com.example.eventsourcing.infrastructure.persistence.EventRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,7 +21,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
 
 /**
  * Projection that maintains a denormalized view of orders.
@@ -34,15 +34,19 @@ public class OrderProjection {
     
     private final OrderProjectionRepository projectionRepository;
     private final EventRepository eventRepository;
+    private final ObjectMapper objectMapper;
     
-    // Track processed events for idempotency
+    // In-memory cache of processed event IDs for fast idempotency within a JVM,
+    // complemented by the persisted lastProcessedEventId in the projection entity.
     private final Map<String, Instant> processedEventIds = new ConcurrentHashMap<>();
     
     @Autowired
-    public OrderProjection(OrderProjectionRepository projectionRepository, 
-                          EventRepository eventRepository) {
+    public OrderProjection(OrderProjectionRepository projectionRepository,
+                           EventRepository eventRepository,
+                           ObjectMapper objectMapper) {
         this.projectionRepository = projectionRepository;
         this.eventRepository = eventRepository;
+        this.objectMapper = objectMapper;
     }
     
     /**
@@ -56,8 +60,8 @@ public class OrderProjection {
         DomainEvent event = wrapper.getDomainEvent();
         String eventId = event.getEventId();
         
-        // Check if this event has already been processed (idempotency)
-        if (isEventProcessed(eventId)) {
+        // Check if this event has already been processed for this order (idempotency)
+        if (isEventProcessed(event)) {
             logger.debug("Event {} already processed, skipping", eventId);
             return;
         }
@@ -75,8 +79,8 @@ public class OrderProjection {
             handleOrderSubmitted((OrderSubmittedEvent) event);
         }
         
-        // Mark event as processed
-        markEventAsProcessed(eventId);
+        // Mark event as processed for this order
+        markEventAsProcessed(event);
     }
     
     /**
@@ -99,7 +103,7 @@ public class OrderProjection {
                 0,
                 event.getTimestamp()
         );
-        
+        projection.setLastProcessedEventId(event.getEventId());
         projectionRepository.save(projection);
         logger.info("Created order projection for order {}", orderId);
     }
@@ -122,7 +126,7 @@ public class OrderProjection {
         // Update the projection
         projection.setTotalAmount(event.getTotalAmount());
         projection.setItemCount(projection.getItemCount() + 1);
-        
+        projection.setLastProcessedEventId(event.getEventId());
         projectionRepository.save(projection);
         logger.debug("Updated order projection {} after adding item", orderId);
     }
@@ -146,7 +150,7 @@ public class OrderProjection {
         // Update the projection using the new total from the event
         projection.setTotalAmount(event.getNewTotalAmount());
         projection.setItemCount(Math.max(0, projection.getItemCount() - 1));
-        
+        projection.setLastProcessedEventId(event.getEventId());
         projectionRepository.save(projection);
         logger.debug("Updated order projection {} after removing item", orderId);
     }
@@ -169,6 +173,7 @@ public class OrderProjection {
         // Update the projection
         projection.setStatus(OrderStatus.SUBMITTED);
         projection.setSubmittedAt(event.getTimestamp());
+        projection.setLastProcessedEventId(event.getEventId());
         
         projectionRepository.save(projection);
         logger.info("Updated order projection {} to SUBMITTED status", orderId);
@@ -185,6 +190,7 @@ public class OrderProjection {
         
         // Clear the projection
         projectionRepository.deleteAll();
+        // Clear in-memory idempotency cache so that all events are eligible for replay
         processedEventIds.clear();
         
         // Get total count for logging
@@ -221,8 +227,8 @@ public class OrderProjection {
     private void handleDomainEventForRebuild(DomainEvent event) {
         String eventId = event.getEventId();
         
-        // Check if this event has already been processed (idempotency)
-        if (isEventProcessed(eventId)) {
+        // Check if this event has already been processed for this order (idempotency)
+        if (isEventProcessed(event)) {
             logger.debug("Event {} already processed during rebuild, skipping", eventId);
             return;
         }
@@ -241,7 +247,7 @@ public class OrderProjection {
         }
         
         // Mark event as processed
-        markEventAsProcessed(eventId);
+        markEventAsProcessed(event);
     }
     
     /**
@@ -254,9 +260,6 @@ public class OrderProjection {
         // Delete all projections that were created after the timestamp
         List<OrderProjectionEntity> oldProjections = projectionRepository.findByCreatedAtAfter(timestamp);
         projectionRepository.deleteAll(oldProjections);
-        
-        // Clear processed events after the timestamp
-        processedEventIds.entrySet().removeIf(entry -> entry.getValue().isAfter(timestamp));
         
         // Load events after the timestamp in batches
         int pageSize = 100;
@@ -283,16 +286,15 @@ public class OrderProjection {
     
     /**
      * Reconstruct a DomainEvent from an EventEntity.
-     * Uses the persisted event_type for polymorphic deserialization.
+     * Uses the persisted event_type for polymorphic deserialization and the same
+     * ObjectMapper configuration as the EventStore so numeric types (e.g. BigDecimal)
+     * and type metadata are handled consistently.
      */
     private DomainEvent reconstructEvent(EventEntity entity) {
         try {
-            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            mapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
-            // Use the persisted event_type for polymorphic deserialization
-            Class<? extends DomainEvent> eventClass = (Class<? extends DomainEvent>) 
-                    Class.forName(entity.getEventType());
-            return mapper.readValue(entity.getPayload(), eventClass);
+            Class<? extends DomainEvent> eventClass =
+                    (Class<? extends DomainEvent>) Class.forName(entity.getEventType());
+            return objectMapper.readValue(entity.getPayload(), eventClass);
         } catch (Exception e) {
             logger.error("Failed to reconstruct event {}", entity.getEventId(), e);
             return null;
@@ -300,17 +302,31 @@ public class OrderProjection {
     }
     
     /**
-     * Check if an event has already been processed.
+     * Check if an event has already been processed for its aggregate.
+     * Uses an in-memory cache for fast idempotency within the current JVM and
+     * falls back to the persisted lastProcessedEventId for resilience across restarts.
      */
-    private boolean isEventProcessed(String eventId) {
-        return processedEventIds.containsKey(eventId);
+    private boolean isEventProcessed(DomainEvent event) {
+        String eventId = event.getEventId();
+        if (processedEventIds.containsKey(eventId)) {
+            return true;
+        }
+        
+        boolean persisted = projectionRepository.existsByOrderIdAndLastProcessedEventId(
+                event.getAggregateId(), eventId);
+        if (persisted) {
+            processedEventIds.put(eventId, Instant.now());
+        }
+        return persisted;
     }
     
     /**
-     * Mark an event as processed.
+     * Mark an event as processed for its aggregate by updating the in-memory cache.
+     * The projection handlers themselves are responsible for persisting lastProcessedEventId
+     * on the entity before saving, so we avoid an extra save() call here.
      */
-    private void markEventAsProcessed(String eventId) {
-        processedEventIds.put(eventId, Instant.now());
+    private void markEventAsProcessed(DomainEvent event) {
+        processedEventIds.put(event.getEventId(), Instant.now());
     }
     
     /**

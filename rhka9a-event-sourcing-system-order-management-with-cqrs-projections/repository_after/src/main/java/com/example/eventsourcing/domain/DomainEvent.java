@@ -14,19 +14,15 @@ import java.util.UUID;
 public abstract class DomainEvent {
     
     @JsonProperty("eventId")
-    private String eventId;
+    private final String eventId;
     @JsonProperty("aggregateId")
-    private String aggregateId;
+    private final String aggregateId;
     @JsonProperty("version")
-    private Long version;
+    private final Long version;
     @JsonProperty("timestamp")
-    private Instant timestamp;
+    private final Instant timestamp;
     @JsonProperty("eventType")
-    private String eventType;
-    
-    protected DomainEvent() {
-        // Default constructor for Jackson
-    }
+    private final String eventType;
     
     protected DomainEvent(
             @JsonProperty("eventId") String eventId,

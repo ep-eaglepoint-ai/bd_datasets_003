@@ -32,7 +32,12 @@
                 "shouldUpdateStatusToSubmitted",
                 "shouldRebuildFromAllEvents",
                 "shouldGetOrderById",
-                "shouldGetOrdersByCustomer"
+                "shouldGetOrdersByCustomer",
+                "shouldPersistAndLoadEventsInOrder",
+                "shouldEnforceOptimisticLocking",
+                "shouldRebuildFromFullHistory",
+                "snapshotReducesEventsLoadedAfterVersion",
+                "shouldRebuildProjectionFromFullHistory"
         ],
         "PASS_TO_PASS": []
         }

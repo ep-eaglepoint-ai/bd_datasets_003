@@ -4,6 +4,7 @@ import com.example.eventsourcing.domain.order.*;
 import com.example.eventsourcing.infrastructure.DomainEventWrapper;
 import com.example.eventsourcing.infrastructure.persistence.EventEntity;
 import com.example.eventsourcing.infrastructure.persistence.EventRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -39,12 +40,15 @@ class OrderProjectionTest {
     
     @Mock
     private EventRepository eventRepository;
+
+    @Mock
+    private ObjectMapper objectMapper;
     
     private OrderProjection orderProjection;
     
     @BeforeEach
     void setUp() {
-        orderProjection = new OrderProjection(projectionRepository, eventRepository);
+        orderProjection = new OrderProjection(projectionRepository, eventRepository, objectMapper);
     }
     
     @Nested

@@ -1,8 +1,6 @@
 package com.example.eventsourcing.infrastructure.persistence;
 
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
@@ -20,10 +18,9 @@ public interface SnapshotRepository extends JpaRepository<SnapshotEntity, String
     
     /**
      * Find the snapshot with the highest version for an aggregate.
+     * Uses Spring Data method naming instead of non-portable JPQL LIMIT.
      */
-    @Query("SELECT s FROM SnapshotEntity s WHERE s.aggregateId = :aggregateId " +
-           "ORDER BY s.version DESC LIMIT 1")
-    Optional<SnapshotEntity> findLatestSnapshot(@Param("aggregateId") String aggregateId);
+    Optional<SnapshotEntity> findTopByAggregateIdOrderByVersionDesc(String aggregateId);
     
     /**
      * Delete all snapshots for an aggregate.
