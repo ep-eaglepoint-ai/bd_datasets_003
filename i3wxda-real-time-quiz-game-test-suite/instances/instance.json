@@ -1,0 +1,11 @@
+{
+            "instance_id": "I3WXDA",
+            "problem_statement": "The Real-Time Quiz Game allows multiple players to join a live quiz session, answer timed questions, and receive scores based on their responses. Since the system operates in real time and supports concurrent player interactions, incorrect handling of timing, scoring, or shared state could lead to inconsistent results or unfair gameplay. The objective of this task is to create a comprehensive Go test suite that validates the quiz API’s behavior across game creation, player participation, question delivery, answer submission, scoring, and concurrency scenarios, ensuring correctness and thread safety.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/i3wxda-real-time-quiz-game-test-suite",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
