@@ -1,0 +1,11 @@
+{
+            "instance_id": "CCXYOV",
+            "problem_statement": "The current onboarding UI is a single long form causing high drop-off due to lack of progress saving and real-time validation. The task is to build a multi-step React wizard in TypeScript that persists state to localStorage, validates inputs step-by-step, supports dynamic branching based on industry, synchronizes state across tabs, and meets accessibility standards including focus management and ARIA roles. It must also prevent illegal navigation, sanitize inputs, simulate atomic submission, and allow dynamic team management with proper focus handling.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ccxyov-react-onboardingwizard-component-with-multi-step-persistence-validation-accessibility",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
