@@ -1,11 +1,7 @@
-# 5RITKB - personalized reading tracker
-
-    ## Before Test Docker Command
-    <docker before command here>
-
+```bash
     ## After Test Docker Command
-    <docker after command here>
+docker compose run --rm -e REPO_PATH=repository_after app pytest tests/test_api.py
 
     ## Evaluation Docker Command
-    <evaluation command here>
+docker compose run --rm app python evaluation/evaluation.py
     

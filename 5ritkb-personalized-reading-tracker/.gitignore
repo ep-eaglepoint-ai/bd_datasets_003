@@ -1,12 +1,28 @@
-# Python
+# Python / Pytest
 __pycache__/
 *.pyc
+.pytest_cache/
 .venv/
+venv/
 .env
 
-# Node
-node_modules/
+# Database (Keep your local DB out of the repo)
+*.db
+repository_after/backend/reading_tracker.db
 
-# OS
+# Node / Frontend
+node_modules/
+dist/
+.eslintcache
+
+# OS Files
 .DS_Store
+Thumbs.db
+
+# Evaluation Reports 
 evaluation/*.json
+!evaluation/reports/report.json 
+report.json
+
+# Project specific
+repository_before/
