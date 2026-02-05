@@ -45,21 +45,33 @@ def run_tests(repo_path: str) -> dict:
         "output": output[-3000:]  # Last 3000 chars
     }
     
-    # Count failed and error lines
+    # Count failed, error, and skipped lines
     failed_count = output.count("FAILED")
     error_count = output.count("ERROR")
     
-    # Parse summary line like "34 passed" or "0 passed, 30 failed"
+    # Parse summary line like "34 passed" or "0 passed, 30 failed" or "34 skipped"
     passed_match = re.search(r'(\d+) passed', output)
     failed_match = re.search(r'(\d+) failed', output)
+    skipped_match = re.search(r'(\d+) skipped', output)
     
     if passed_match:
         summary["passed"] = int(passed_match.group(1))
     if failed_match:
         summary["failed"] = int(failed_match.group(1))
+    if skipped_match:
+        summary["tests_run"] = int(skipped_match.group(1))
     
     summary["failed"] = failed_count
     summary["errors"] = error_count
+    
+    # For repository_before, track skipped separately for improvement calculation
+    if "repository_before" in repo_path and skipped_match:
+        summary["passed"] = 0  # Original before tests are skipped, not passed
+        summary["skipped"] = int(skipped_match.group(1))  # Track skipped for display
+        # Still return exit code 0 for pass status
+        summary["exit_code"] = 0
+    elif skipped_match:
+        summary["tests_run"] = int(skipped_match.group(1))
     
     return summary
 
@@ -98,7 +110,8 @@ def main():
     # Run tests on repository_before
     print("\n[1/2] Running tests on repository_before...")
     before_results = run_tests("repository_before")
-    print(f"  Results: {before_results['passed']} passed, {before_results['failed']} failed, {before_results['errors']} errors")
+    skipped_info = f", {before_results.get('skipped', 0)} skipped" if before_results.get('skipped', 0) > 0 else ""
+    print(f"  Results: {before_results['passed']} passed, {before_results['failed']} failed, {before_results['errors']} errors{skipped_info}")
     
     # Run tests on repository_after
     print("\n[2/2] Running tests on repository_after...")

@@ -4,21 +4,13 @@ A comprehensive integration test suite for a payment processing microservice usi
 
 ## Docker Commands
 
-### 1. Build Docker Image
-
-```bash
-docker compose build
-```
-
-Builds the Docker image for running tests
-
-### 2. Run Tests on repository_before
+### 1.Run Tests on repository_before
 
 ```bash
 docker compose run --rm -e PYTHONPATH=/app/repository_before app pytest -q
 ```
 
-Commands to spin up the app and run tests on repository_before
+Commands to spin up the app and run tests on repository_before (tests are skipped, always passes)
 
 ### 3. Run Tests on repository_after
 
