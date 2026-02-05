@@ -131,6 +131,11 @@ def main():
     try:
         path.write_text(json.dumps(report, indent=2))
         print(f"Report written to {path}")
+        
+        # Also copy to evaluation/latest.json for CI compatibility
+        ci_path = ROOT / "evaluation" / "latest.json"
+        ci_path.write_text(json.dumps(report, indent=2))
+        print(f"Report also written to {ci_path} for CI")
     except PermissionError:
         print(f"ERROR: Permission denied writing report to {path}")
         return 1
