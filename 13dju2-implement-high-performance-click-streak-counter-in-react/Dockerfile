@@ -5,6 +5,11 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm install
 
+COPY repository_after/package.json repository_after/package-lock.json* ./repository_after/
+RUN cd repository_after && npm install
+
 COPY . .
 
-CMD ["npx", "jest", "--config", "tests/jest.config.js"]
+EXPOSE 5173
+
+CMD ["npx", "jest"]
