@@ -1,11 +1,13 @@
 # ZK4I3U - Optimization and Refactoring of an Intentionally Inefficient Whitening Algorithm
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Before Test Docker Command
 
-    ## After Test Docker Command
-    <docker after command here>
+docker compose run --rm -e REPO_UNDER_TEST=repository_before app pytest -q tests
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## After Test Docker Command
+
+docker compose run --rm -e REPO_UNDER_TEST=repository_after app pytest -q tests
+
+## Evaluation Docker Command
+
+docker compose run --rm app python evaluation/run_evaluation.py
