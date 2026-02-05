@@ -1,0 +1,11 @@
+{
+            "instance_id": "YOX4E1",
+            "problem_statement": "The analytics platform relies on an in-memory database query engine to process large volumes of customer data for reporting and analysis, but the current implementation suffers from high query latency, excessive memory usage, and poor scalability. Naive algorithms for table scans, joins, and aggregations cause queries that should complete in seconds to take minutes, and memory inefficiencies lead to instability under heavy workloads. The objective of this task is to optimize the existing query engine implementation to significantly improve performance, reduce memory consumption, and ensure efficient execution of complex queries while preserving correctness.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/yox4e1-database-query-engine-performance-optimization",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
