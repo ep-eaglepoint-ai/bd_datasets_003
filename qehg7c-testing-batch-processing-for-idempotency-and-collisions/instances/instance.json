@@ -1,0 +1,11 @@
+{
+            "instance_id": "QEHG7C",
+            "problem_statement": "Our current batch-delivery infrastructure lacks the architectural safeguards required for mission-critical reliability. In production, we are seeing two significant business risks: first, **Retry Storms**, where immediate re-attempts on transient failures overwhelm downstream services, leading to total system outages; and second, **State Inconsistency**, where duplicate entries in a batch or non-idempotent send operations cause data corruption. We require a sophisticated validation suite that proves the system can handle duplicate inputs without state-leakage and confirms that the retry logic is "environment-aware"—incorporating backoff strategies that protect our infrastructure during periods of high volatility.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/qehg7c-testing-batch-processing-for-idempotency-and-collisions",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
