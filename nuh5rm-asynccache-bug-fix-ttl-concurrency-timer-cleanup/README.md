@@ -1,11 +1,21 @@
 # NUH5RM - AsyncCache Bug Fix: TTL, Concurrency & Timer Cleanup
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Docker Commands for Evaluation
 
-    ## After Test Docker Command
-    <docker after command here>
+### Run Full Evaluation (Before and After)
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+```bash
+docker compose run --rm app python3 evaluation/evaluation.py
+```
+
+### Test repository_before (Original)
+
+```bash
+docker compose run --rm app node tests/test_runner.js repository_before/AysncCache.js
+```
+
+### Test repository_after (Fixed)
+
+```bash
+docker compose run --rm app node tests/test_runner.js repository_after/AsyncCache.js
+```

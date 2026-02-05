@@ -9,4 +9,9 @@ node_modules/
 
 # OS
 .DS_Store
+
+# Evaluation
 evaluation/*.json
+
+# Modules (training materials - not for submission)
+modules/
