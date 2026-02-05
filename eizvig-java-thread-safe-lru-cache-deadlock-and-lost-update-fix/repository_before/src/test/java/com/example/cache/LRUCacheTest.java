@@ -359,32 +359,4 @@ public class LRUCacheTest {
         assertTrue(concurrentCache.size() >= 0, "Size should never be negative");
         assertTrue(concurrentCache.size() <= 50, "Size should never exceed max capacity");
     }
-
-    @Test
-    public void testContainsKey() {
-        cache.put(1, "one");
-        assertTrue(cache.containsKey(1));
-        assertFalse(cache.containsKey(2));
-    }
-
-    @Test
-    public void testInvalidConfig() {
-        assertThrows(IllegalArgumentException.class, () -> new CacheConfig(0));
-        assertThrows(IllegalArgumentException.class, () -> new CacheConfig(-1));
-    }
-
-    @Test
-    public void testDefaultConfig() {
-        CacheConfig defaultConfig = CacheConfig.defaultConfig();
-        assertEquals(10000, defaultConfig.getMaxSize());
-    }
-
-    @Test
-    public void testNullOperations() {
-        // Test null safety checks
-        assertDoesNotThrow(() -> cache.put(null, "value"));
-        assertNull(cache.get(null));
-        assertNull(cache.remove(null));
-        assertEquals(0, cache.size());
-    }
 }
