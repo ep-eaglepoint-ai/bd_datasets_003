@@ -1,0 +1,11 @@
+{
+            "instance_id": "E7WOF0",
+            "problem_statement": "Manual handling of financial transactions in a fintech environment can lead to delayed processing, incorrect balances, and incomplete audit records. The objective of this project is to build a Node.js–based Financial Transaction Processor that manages bank accounts and supports deposits, withdrawals, and transfers while enforcing strict validation rules. The system must accurately track balances, prevent invalid transactions, and maintain a complete transaction history to ensure correctness, reliability, and auditability.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/e7wof0-financial-transaction-processor",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
