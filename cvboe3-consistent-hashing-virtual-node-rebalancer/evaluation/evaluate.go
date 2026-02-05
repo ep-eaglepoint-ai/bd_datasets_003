@@ -135,9 +135,9 @@ func writeReport(r Report) {
 	if err != nil {
 		panic(err)
 	}
-	err = os.WriteFile("evaluation/reports/report.json", data, 0644)
+	err = os.WriteFile("evaluation/report.json", data, 0644)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("\n📄 Report generated at: evaluation/reports/report.json")
+	fmt.Println("\n📄 Report generated at: evaluation/report.json")
 }
