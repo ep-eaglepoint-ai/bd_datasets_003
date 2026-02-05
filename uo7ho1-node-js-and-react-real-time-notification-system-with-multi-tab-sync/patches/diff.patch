@@ -1,0 +1,2844 @@
+diff -ruN repository_before/backend/package.json repository_after/backend/package.json
+--- repository_before/backend/package.json	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/backend/package.json	2026-02-03 09:01:40.449019400 +0300
+@@ -0,0 +1,32 @@
++{
++  "name": "notification-backend",
++  "version": "1.0.0",
++  "type": "module",
++  "scripts": {
++    "dev": "tsx watch src/index.ts",
++    "build": "tsc",
++    "start": "node dist/index.js",
++    "prisma:generate": "prisma generate",
++    "prisma:migrate": "prisma migrate dev"
++  },
++  "dependencies": {
++    "@prisma/client": "^5.10.0",
++    "cookie-parser": "^1.4.6",
++    "cors": "^2.8.5",
++    "express": "^4.18.2",
++    "express-session": "^1.18.0",
++    "socket.io": "^4.7.4",
++    "uuid": "^9.0.1"
++  },
++  "devDependencies": {
++    "@types/cookie-parser": "^1.4.6",
++    "@types/cors": "^2.8.17",
++    "@types/express": "^4.17.21",
++    "@types/express-session": "^1.18.0",
++    "@types/node": "^20.11.0",
++    "@types/uuid": "^9.0.8",
++    "prisma": "^5.10.0",
++    "tsx": "^4.7.0",
++    "typescript": "^5.3.3"
++  }
++}
+diff -ruN repository_before/backend/prisma/schema.prisma repository_after/backend/prisma/schema.prisma
+--- repository_before/backend/prisma/schema.prisma	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/backend/prisma/schema.prisma	2026-02-03 09:02:01.520968700 +0300
+@@ -0,0 +1,109 @@
++// Prisma schema for notification system
++// Requirement 13: Proper indexes for efficient queries
++
++generator client {
++  provider = "prisma-client-js"
++}
++
++datasource db {
++  provider = "postgresql"
++  url      = env("DATABASE_URL")
++}
++
++model User {
++  id            String         @id @default(uuid())
++  email         String         @unique
++  name          String
++  createdAt     DateTime       @default(now())
++  updatedAt     DateTime       @updatedAt
++  notifications Notification[]
++  sessions      Session[]
++}
++
++model Session {
++  id        String   @id @default(uuid())
++  userId    String
++  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
++  expiresAt DateTime
++  createdAt DateTime @default(now())
++
++  @@index([userId])
++}
++
++model Notification {
++  id           String            @id @default(uuid())
++  userId       String
++  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
++  type         NotificationType
++  title        String
++  message      String
++  resourceType ResourceType
++  resourceId   String
++  isRead       Boolean           @default(false)
++  createdAt    DateTime          @default(now())
++  readAt       DateTime?
++
++  // Requirement 13: Composite index on userId and createdAt for pagination queries
++  @@index([userId, createdAt(sort: Desc)])
++  // Requirement 13: Composite index on userId and isRead for unread count queries
++  @@index([userId, isRead])
++}
++
++model Task {
++  id          String     @id @default(uuid())
++  title       String
++  description String?
++  status      TaskStatus @default(TODO)
++  assigneeId  String?
++  projectId   String
++  project     Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
++  createdAt   DateTime   @default(now())
++  updatedAt   DateTime   @updatedAt
++
++  @@index([assigneeId])
++  @@index([projectId])
++}
++
++model Project {
++  id          String   @id @default(uuid())
++  name        String
++  description String?
++  tasks       Task[]
++  comments    Comment[]
++  createdAt   DateTime @default(now())
++  updatedAt   DateTime @updatedAt
++}
++
++model Comment {
++  id        String   @id @default(uuid())
++  content   String
++  authorId  String
++  projectId String
++  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
++  taskId    String?
++  createdAt DateTime @default(now())
++  updatedAt DateTime @updatedAt
++
++  @@index([projectId])
++  @@index([taskId])
++}
++
++enum NotificationType {
++  task_assigned
++  task_updated
++  task_completed
++  mention
++  comment
++}
++
++enum ResourceType {
++  task
++  project
++  comment
++}
++
++enum TaskStatus {
++  TODO
++  IN_PROGRESS
++  DONE
++}
+diff -ruN repository_before/backend/src/index.ts repository_after/backend/src/index.ts
+--- repository_before/backend/src/index.ts	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/backend/src/index.ts	2026-02-03 09:03:36.370558100 +0300
+@@ -0,0 +1,52 @@
++// Main server entry point
++import express from 'express';
++import { createServer } from 'http';
++import cors from 'cors';
++import cookieParser from 'cookie-parser';
++import session from 'express-session';
++import { initializeSocket } from './socket.js';
++import notificationRoutes from './routes/notifications.js';
++
++const app = express();
++const httpServer = createServer(app);
++
++// Middleware
++app.use(cors({
++  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
++  credentials: true,
++}));
++app.use(express.json());
++app.use(cookieParser());
++
++// Session configuration
++app.use(session({
++  secret: process.env.SESSION_SECRET || 'notification-system-secret',
++  resave: false,
++  saveUninitialized: false,
++  cookie: {
++    httpOnly: true,  // Requirement 1: HTTP-only cookies
++    secure: process.env.NODE_ENV === 'production',
++    sameSite: 'lax',
++    maxAge: 24 * 60 * 60 * 1000, // 24 hours
++  },
++  name: 'session_id',
++}));
++
++// Initialize Socket.io
++initializeSocket(httpServer);
++
++// Routes
++app.use('/api/notifications', notificationRoutes);
++
++// Health check
++app.get('/health', (req, res) => {
++  res.json({ status: 'ok' });
++});
++
++const PORT = process.env.PORT || 3001;
++
++httpServer.listen(PORT, () => {
++  console.log(`Server running on port ${PORT}`);
++});
++
++export { app, httpServer };
+diff -ruN repository_before/backend/src/middleware/auth.ts repository_after/backend/src/middleware/auth.ts
+--- repository_before/backend/src/middleware/auth.ts	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/backend/src/middleware/auth.ts	2026-02-03 09:02:44.481172300 +0300
+@@ -0,0 +1,56 @@
++// Authentication middleware
++// Requirement 1: Session cookie authentication (not URL tokens)
++
++import { Request, Response, NextFunction } from 'express';
++import { PrismaClient } from '@prisma/client';
++
++const prisma = new PrismaClient();
++
++export interface AuthenticatedRequest extends Request {
++  userId?: string;
++}
++
++// Middleware to verify user is authenticated via session
++export const requireAuth = async (
++  req: AuthenticatedRequest,
++  res: Response,
++  next: NextFunction
++): Promise<void> => {
++  const userId = req.session?.userId;
++
++  if (!userId) {
++    res.status(401).json({ error: 'Authentication required' });
++    return;
++  }
++
++  // Verify user exists
++  const user = await prisma.user.findUnique({
++    where: { id: userId },
++    select: { id: true },
++  });
++
++  if (!user) {
++    req.session.destroy(() => {});
++    res.status(401).json({ error: 'Invalid session' });
++    return;
++  }
++
++  req.userId = userId;
++  next();
++};
++
++// Helper to get user ID from session (for socket auth)
++export const getUserIdFromSession = async (
++  sessionId: string
++): Promise<string | null> => {
++  const session = await prisma.session.findUnique({
++    where: { id: sessionId },
++    select: { userId: true, expiresAt: true },
++  });
++
++  if (!session || session.expiresAt < new Date()) {
++    return null;
++  }
++
++  return session.userId;
++};
+diff -ruN repository_before/backend/src/routes/notifications.ts repository_after/backend/src/routes/notifications.ts
+--- repository_before/backend/src/routes/notifications.ts	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/backend/src/routes/notifications.ts	2026-02-03 09:03:26.890211200 +0300
+@@ -0,0 +1,131 @@
++// Notification REST API routes
++// Requirement 8: Cursor-based pagination
++
++import { Router, Response } from 'express';
++import { notificationService } from '../services/notificationService.js';
++import { requireAuth, AuthenticatedRequest } from '../middleware/auth.js';
++import { broadcastNotification, broadcastUnreadCount } from '../socket.js';
++import { NotificationType, ResourceType } from '@prisma/client';
++
++const router = Router();
++
++// GET /api/notifications - list notifications with cursor-based pagination
++// Requirement 8: cursor and limit params, returns data, nextCursor, hasMore
++router.get('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
++  try {
++    const userId = req.userId!;
++    const cursor = req.query.cursor as string | undefined;
++    const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
++
++    const result = await notificationService.getNotifications(
++      userId,
++      cursor || null,
++      limit
++    );
++
++    res.json(result);
++  } catch (error) {
++    console.error('Error fetching notifications:', error);
++    res.status(500).json({ error: 'Failed to fetch notifications' });
++  }
++});
++
++// GET /api/notifications/unread-count
++router.get('/unread-count', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
++  try {
++    const userId = req.userId!;
++    const count = await notificationService.getUnreadCount(userId);
++    res.json({ count });
++  } catch (error) {
++    console.error('Error fetching unread count:', error);
++    res.status(500).json({ error: 'Failed to fetch unread count' });
++  }
++});
++
++// PATCH /api/notifications/:id/read - mark single notification as read
++router.patch('/:id/read', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
++  try {
++    const userId = req.userId!;
++    const notificationId = req.params.id;
++
++    const notification = await notificationService.markAsRead(notificationId, userId);
++
++    if (!notification) {
++      res.status(404).json({ error: 'Notification not found' });
++      return;
++    }
++
++    // Requirement 6: Server broadcasts authoritative unread count
++    const unreadCount = await notificationService.getUnreadCount(userId);
++    broadcastUnreadCount(userId, unreadCount);
++
++    res.json({ notification, unreadCount });
++  } catch (error) {
++    console.error('Error marking notification as read:', error);
++    res.status(500).json({ error: 'Failed to mark notification as read' });
++  }
++});
++
++// PATCH /api/notifications/read-all - mark all notifications as read
++router.patch('/read-all', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
++  try {
++    const userId = req.userId!;
++
++    const updatedCount = await notificationService.markAllAsRead(userId);
++
++    // Requirement 6: Server broadcasts authoritative unread count
++    const unreadCount = await notificationService.getUnreadCount(userId);
++    broadcastUnreadCount(userId, unreadCount);
++
++    res.json({ updatedCount, unreadCount });
++  } catch (error) {
++    console.error('Error marking all notifications as read:', error);
++    res.status(500).json({ error: 'Failed to mark all notifications as read' });
++  }
++});
++
++// POST /api/notifications - create a new notification (internal/admin use)
++router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
++  try {
++    const { userId, type, title, message, resourceType, resourceId } = req.body;
++
++    if (!userId || !type || !title || !message || !resourceType || !resourceId) {
++      res.status(400).json({ error: 'Missing required fields' });
++      return;
++    }
++
++    // Validate enum values
++    if (!Object.values(NotificationType).includes(type)) {
++      res.status(400).json({ error: 'Invalid notification type' });
++      return;
++    }
++
++    if (!Object.values(ResourceType).includes(resourceType)) {
++      res.status(400).json({ error: 'Invalid resource type' });
++      return;
++    }
++
++    const notification = await notificationService.createNotification({
++      userId,
++      type,
++      title,
++      message,
++      resourceType,
++      resourceId,
++    });
++
++    // Broadcast to user via socket
++    broadcastNotification(userId, notification);
++
++    // Update unread count
++    const unreadCount = await notificationService.getUnreadCount(userId);
++    broadcastUnreadCount(userId, unreadCount);
++
++    res.status(201).json(notification);
++  } catch (error) {
++    console.error('Error creating notification:', error);
++    res.status(500).json({ error: 'Failed to create notification' });
++  }
++});
++
++export default router;
+diff -ruN repository_before/backend/src/services/notificationService.ts repository_after/backend/src/services/notificationService.ts
+--- repository_before/backend/src/services/notificationService.ts	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/backend/src/services/notificationService.ts	2026-02-03 09:02:34.598733300 +0300
+@@ -0,0 +1,212 @@
++// Notification service with N+1 query prevention
++// Requirement 14: Batch fetch related resources
++
++import { PrismaClient, NotificationType, ResourceType } from '@prisma/client';
++import {
++  NotificationData,
++  NotificationWithResource,
++  PaginatedResponse,
++  CreateNotificationInput,
++  TaskResource,
++  ProjectResource,
++  CommentResource,
++} from '../types/index.js';
++
++const prisma = new PrismaClient();
++
++export class NotificationService {
++  // Requirement 14: Batch fetch related resources to avoid N+1
++  private async attachResources(
++    notifications: NotificationData[]
++  ): Promise<NotificationWithResource[]> {
++    if (notifications.length === 0) return [];
++
++    // Group notifications by resource type
++    const taskIds: string[] = [];
++    const projectIds: string[] = [];
++    const commentIds: string[] = [];
++
++    for (const notification of notifications) {
++      switch (notification.resourceType) {
++        case 'task':
++          taskIds.push(notification.resourceId);
++          break;
++        case 'project':
++          projectIds.push(notification.resourceId);
++          break;
++        case 'comment':
++          commentIds.push(notification.resourceId);
++          break;
++      }
++    }
++
++    // Batch fetch all resources in parallel
++    const [tasks, projects, comments] = await Promise.all([
++      taskIds.length > 0
++        ? prisma.task.findMany({
++            where: { id: { in: taskIds } },
++            select: { id: true, title: true, status: true, projectId: true },
++          })
++        : [],
++      projectIds.length > 0
++        ? prisma.project.findMany({
++            where: { id: { in: projectIds } },
++            select: { id: true, name: true },
++          })
++        : [],
++      commentIds.length > 0
++        ? prisma.comment.findMany({
++            where: { id: { in: commentIds } },
++            select: { id: true, content: true, taskId: true },
++          })
++        : [],
++    ]);
++
++    // Create lookup maps
++    const taskMap = new Map<string, TaskResource>(
++      tasks.map((t) => [t.id, t])
++    );
++    const projectMap = new Map<string, ProjectResource>(
++      projects.map((p) => [p.id, p])
++    );
++    const commentMap = new Map<string, CommentResource>(
++      comments.map((c) => [c.id, c])
++    );
++
++    // Attach resources to notifications
++    return notifications.map((notification) => {
++      let resource: TaskResource | ProjectResource | CommentResource | null = null;
++
++      switch (notification.resourceType) {
++        case 'task':
++          resource = taskMap.get(notification.resourceId) || null;
++          break;
++        case 'project':
++          resource = projectMap.get(notification.resourceId) || null;
++          break;
++        case 'comment':
++          resource = commentMap.get(notification.resourceId) || null;
++          break;
++      }
++
++      return { ...notification, resource };
++    });
++  }
++
++  // Requirement 8: Cursor-based pagination
++  async getNotifications(
++    userId: string,
++    cursor: string | null,
++    limit: number = 20
++  ): Promise<PaginatedResponse<NotificationWithResource>> {
++    const notifications = await prisma.notification.findMany({
++      where: {
++        userId,
++        ...(cursor ? { createdAt: { lt: new Date(cursor) } } : {}),
++      },
++      orderBy: { createdAt: 'desc' },
++      take: limit + 1, // Fetch one extra to determine hasMore
++    });
++
++    const hasMore = notifications.length > limit;
++    const data = hasMore ? notifications.slice(0, limit) : notifications;
++
++    const notificationsWithResources = await this.attachResources(data);
++
++    return {
++      data: notificationsWithResources,
++      nextCursor: hasMore && data.length > 0
++        ? data[data.length - 1].createdAt.toISOString()
++        : null,
++      hasMore,
++    };
++  }
++
++  // Get notifications created after a specific notification (for reconnection)
++  // Requirement 5: Offline notification recovery
++  async getMissedNotifications(
++    userId: string,
++    lastNotificationId: string | null
++  ): Promise<NotificationWithResource[]> {
++    let whereClause: { userId: string; createdAt?: { gt: Date } } = { userId };
++
++    if (lastNotificationId) {
++      const lastNotification = await prisma.notification.findUnique({
++        where: { id: lastNotificationId },
++        select: { createdAt: true },
++      });
++
++      if (lastNotification) {
++        whereClause = {
++          ...whereClause,
++          createdAt: { gt: lastNotification.createdAt },
++        };
++      }
++    }
++
++    const notifications = await prisma.notification.findMany({
++      where: whereClause,
++      orderBy: { createdAt: 'asc' },
++    });
++
++    return this.attachResources(notifications);
++  }
++
++  async getUnreadCount(userId: string): Promise<number> {
++    return prisma.notification.count({
++      where: { userId, isRead: false },
++    });
++  }
++
++  async markAsRead(
++    notificationId: string,
++    userId: string
++  ): Promise<NotificationData | null> {
++    const notification = await prisma.notification.findFirst({
++      where: { id: notificationId, userId },
++    });
++
++    if (!notification) return null;
++
++    return prisma.notification.update({
++      where: { id: notificationId },
++      data: { isRead: true, readAt: new Date() },
++    });
++  }
++
++  // Requirement 6: Server is authoritative for unread count
++  async markAllAsRead(userId: string): Promise<number> {
++    const result = await prisma.notification.updateMany({
++      where: { userId, isRead: false },
++      data: { isRead: true, readAt: new Date() },
++    });
++
++    return result.count;
++  }
++
++  async createNotification(
++    input: CreateNotificationInput
++  ): Promise<NotificationWithResource> {
++    const notification = await prisma.notification.create({
++      data: input,
++    });
++
++    const [notificationWithResource] = await this.attachResources([notification]);
++    return notificationWithResource;
++  }
++
++  async getNotificationById(
++    notificationId: string
++  ): Promise<NotificationWithResource | null> {
++    const notification = await prisma.notification.findUnique({
++      where: { id: notificationId },
++    });
++
++    if (!notification) return null;
++
++    const [notificationWithResource] = await this.attachResources([notification]);
++    return notificationWithResource;
++  }
++}
++
++export const notificationService = new NotificationService();
+diff -ruN repository_before/backend/src/socket.ts repository_after/backend/src/socket.ts
+--- repository_before/backend/src/socket.ts	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/backend/src/socket.ts	2026-02-03 09:03:09.501956200 +0300
+@@ -0,0 +1,207 @@
++// Socket.io server configuration
++// Requirement 1: Authenticate via session cookies from handshake headers
++
++import { Server as HttpServer } from 'http';
++import { Server, Socket } from 'socket.io';
++import cookie from 'cookie';
++import { PrismaClient } from '@prisma/client';
++import {
++  ServerToClientEvents,
++  ClientToServerEvents,
++  InterServerEvents,
++  SocketData,
++  NotificationWithResource,
++} from './types/index.js';
++import { notificationService } from './services/notificationService.js';
++
++const prisma = new PrismaClient();
++
++type NotificationSocket = Socket<
++  ClientToServerEvents,
++  ServerToClientEvents,
++  InterServerEvents,
++  SocketData
++>;
++
++type NotificationServer = Server<
++  ClientToServerEvents,
++  ServerToClientEvents,
++  InterServerEvents,
++  SocketData
++>;
++
++// Map of userId to set of socket IDs
++const userSockets = new Map<string, Set<string>>();
++
++let io: NotificationServer;
++
++export const initializeSocket = (httpServer: HttpServer): NotificationServer => {
++  io = new Server<
++    ClientToServerEvents,
++    ServerToClientEvents,
++    InterServerEvents,
++    SocketData
++  >(httpServer, {
++    cors: {
++      origin: process.env.FRONTEND_URL || 'http://localhost:5173',
++      credentials: true,
++    },
++    // Requirement 1: Authentication tokens must NOT be in WebSocket URL
++    // We only accept credentials via cookies
++    allowRequest: (req, callback) => {
++      // Reject if token is in query string
++      const url = new URL(req.url || '', `http://${req.headers.host}`);
++      if (url.searchParams.has('token') || url.searchParams.has('auth')) {
++        callback('Authentication tokens in URL are not allowed', false);
++        return;
++      }
++      callback(null, true);
++    },
++  });
++
++  // Requirement 1: Socket authentication middleware
++  io.use(async (socket, next) => {
++    try {
++      // Parse cookies from handshake headers
++      const cookieHeader = socket.handshake.headers.cookie;
++
++      if (!cookieHeader) {
++        return next(new Error('Authentication error: No session cookie'));
++      }
++
++      const cookies = cookie.parse(cookieHeader);
++      const sessionId = cookies['session_id'];
++
++      if (!sessionId) {
++        return next(new Error('Authentication error: Missing session cookie'));
++      }
++
++      // Validate session against session store
++      const session = await prisma.session.findUnique({
++        where: { id: sessionId },
++        include: { user: { select: { id: true } } },
++      });
++
++      if (!session) {
++        return next(new Error('Authentication error: Invalid session'));
++      }
++
++      if (session.expiresAt < new Date()) {
++        return next(new Error('Authentication error: Session expired'));
++      }
++
++      // Attach user data to socket
++      socket.data.userId = session.userId;
++      socket.data.sessionId = sessionId;
++
++      next();
++    } catch (error) {
++      next(new Error('Authentication error: Server error'));
++    }
++  });
++
++  io.on('connection', (socket: NotificationSocket) => {
++    const userId = socket.data.userId;
++
++    if (!userId) {
++      socket.disconnect();
++      return;
++    }
++
++    // Track connected sockets per user
++    if (!userSockets.has(userId)) {
++      userSockets.set(userId, new Set());
++    }
++    userSockets.get(userId)!.add(socket.id);
++
++    // Join user-specific room for targeted broadcasts
++    socket.join(`user:${userId}`);
++
++    console.log(`User ${userId} connected (socket: ${socket.id})`);
++
++    // Requirement 5: Handle reconnection - get missed notifications
++    socket.on('get-missed', async (lastNotificationId: string | null) => {
++      try {
++        const missedNotifications = await notificationService.getMissedNotifications(
++          userId,
++          lastNotificationId
++        );
++
++        if (missedNotifications.length > 0) {
++          socket.emit('missed-notifications', missedNotifications);
++        }
++      } catch (error) {
++        console.error('Error fetching missed notifications:', error);
++      }
++    });
++
++    // Handle mark single notification as read
++    socket.on('notification:mark-read', async (notificationId: string) => {
++      try {
++        const notification = await notificationService.markAsRead(notificationId, userId);
++
++        if (notification) {
++          // Requirement 6: Server broadcasts authoritative unread count
++          const unreadCount = await notificationService.getUnreadCount(userId);
++
++          // Broadcast to all user's connected clients
++          io.to(`user:${userId}`).emit('notification:updated', notification);
++          io.to(`user:${userId}`).emit('unread-count:changed', unreadCount);
++        }
++      } catch (error) {
++        console.error('Error marking notification as read:', error);
++      }
++    });
++
++    // Handle mark all notifications as read
++    socket.on('notification:mark-all-read', async () => {
++      try {
++        await notificationService.markAllAsRead(userId);
++
++        // Requirement 6: Server broadcasts authoritative unread count (always 0 after mark-all)
++        const unreadCount = await notificationService.getUnreadCount(userId);
++
++        io.to(`user:${userId}`).emit('unread-count:changed', unreadCount);
++      } catch (error) {
++        console.error('Error marking all notifications as read:', error);
++      }
++    });
++
++    socket.on('disconnect', () => {
++      const sockets = userSockets.get(userId);
++      if (sockets) {
++        sockets.delete(socket.id);
++        if (sockets.size === 0) {
++          userSockets.delete(userId);
++        }
++      }
++      console.log(`User ${userId} disconnected (socket: ${socket.id})`);
++    });
++  });
++
++  return io;
++};
++
++// Broadcast new notification to specific user
++export const broadcastNotification = (
++  userId: string,
++  notification: NotificationWithResource
++): void => {
++  if (io) {
++    io.to(`user:${userId}`).emit('notification:new', notification);
++  }
++};
++
++// Broadcast unread count change to specific user
++export const broadcastUnreadCount = (userId: string, count: number): void => {
++  if (io) {
++    io.to(`user:${userId}`).emit('unread-count:changed', count);
++  }
++};
++
++// Get count of connected sockets for a user
++export const getUserConnectionCount = (userId: string): number => {
++  return userSockets.get(userId)?.size || 0;
++};
++
++export const getIO = (): NotificationServer => io;
+diff -ruN repository_before/backend/src/types/index.ts repository_after/backend/src/types/index.ts
+--- repository_before/backend/src/types/index.ts	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/backend/src/types/index.ts	2026-02-03 09:02:12.648736200 +0300
+@@ -0,0 +1,83 @@
++// Backend type definitions
++
++import { NotificationType, ResourceType } from '@prisma/client';
++
++export interface NotificationData {
++  id: string;
++  userId: string;
++  type: NotificationType;
++  title: string;
++  message: string;
++  resourceType: ResourceType;
++  resourceId: string;
++  isRead: boolean;
++  createdAt: Date;
++  readAt: Date | null;
++}
++
++export interface NotificationWithResource extends NotificationData {
++  resource?: TaskResource | ProjectResource | CommentResource | null;
++}
++
++export interface TaskResource {
++  id: string;
++  title: string;
++  status: string;
++  projectId: string;
++}
++
++export interface ProjectResource {
++  id: string;
++  name: string;
++}
++
++export interface CommentResource {
++  id: string;
++  content: string;
++  taskId: string | null;
++}
++
++export interface PaginatedResponse<T> {
++  data: T[];
++  nextCursor: string | null;
++  hasMore: boolean;
++}
++
++export interface CreateNotificationInput {
++  userId: string;
++  type: NotificationType;
++  title: string;
++  message: string;
++  resourceType: ResourceType;
++  resourceId: string;
++}
++
++// Socket event types
++export interface ServerToClientEvents {
++  'notification:new': (notification: NotificationWithResource) => void;
++  'notification:updated': (notification: NotificationData) => void;
++  'unread-count:changed': (count: number) => void;
++  'missed-notifications': (notifications: NotificationWithResource[]) => void;
++}
++
++export interface ClientToServerEvents {
++  'notification:mark-read': (notificationId: string) => void;
++  'notification:mark-all-read': () => void;
++  'get-missed': (lastNotificationId: string | null) => void;
++}
++
++export interface InterServerEvents {
++  ping: () => void;
++}
++
++export interface SocketData {
++  userId: string;
++  sessionId: string;
++}
++
++// Extend Express Session
++declare module 'express-session' {
++  interface SessionData {
++    userId?: string;
++  }
++}
+diff -ruN repository_before/backend/tsconfig.json repository_after/backend/tsconfig.json
+--- repository_before/backend/tsconfig.json	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/backend/tsconfig.json	2026-02-03 09:01:48.798655200 +0300
+@@ -0,0 +1,17 @@
++{
++  "compilerOptions": {
++    "target": "ES2022",
++    "module": "ESNext",
++    "moduleResolution": "node",
++    "esModuleInterop": true,
++    "strict": true,
++    "skipLibCheck": true,
++    "outDir": "./dist",
++    "rootDir": "./src",
++    "declaration": true,
++    "resolveJsonModule": true,
++    "forceConsistentCasingInFileNames": true
++  },
++  "include": ["src/**/*"],
++  "exclude": ["node_modules", "dist"]
++}
+diff -ruN repository_before/frontend/index.html repository_after/frontend/index.html
+--- repository_before/frontend/index.html	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/index.html	2026-02-03 09:08:17.140122200 +0300
+@@ -0,0 +1,12 @@
++<!DOCTYPE html>
++<html lang="en">
++  <head>
++    <meta charset="UTF-8" />
++    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
++    <title>ProjectHub - Real-time Notifications</title>
++  </head>
++  <body>
++    <div id="root"></div>
++    <script type="module" src="/src/main.tsx"></script>
++  </body>
++</html>
+diff -ruN repository_before/frontend/package.json repository_after/frontend/package.json
+--- repository_before/frontend/package.json	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/package.json	2026-02-03 09:03:44.237735100 +0300
+@@ -0,0 +1,24 @@
++{
++  "name": "notification-frontend",
++  "version": "1.0.0",
++  "type": "module",
++  "scripts": {
++    "dev": "vite",
++    "build": "tsc && vite build",
++    "preview": "vite preview"
++  },
++  "dependencies": {
++    "@tanstack/react-query": "^5.17.0",
++    "react": "^18.2.0",
++    "react-dom": "^18.2.0",
++    "socket.io-client": "^4.7.4",
++    "zustand": "^4.5.0"
++  },
++  "devDependencies": {
++    "@types/react": "^18.2.48",
++    "@types/react-dom": "^18.2.18",
++    "@vitejs/plugin-react": "^4.2.1",
++    "typescript": "^5.3.3",
++    "vite": "^5.0.12"
++  }
++}
+diff -ruN repository_before/frontend/src/App.tsx repository_after/frontend/src/App.tsx
+--- repository_before/frontend/src/App.tsx	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/src/App.tsx	2026-02-03 09:08:01.009333900 +0300
+@@ -0,0 +1,124 @@
++// Main App component
++
++import React from 'react';
++import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
++import { NotificationBell } from './components/NotificationBell';
++import { ConnectionStatus } from './components/ConnectionStatus';
++import { ToastContainer } from './components/ToastContainer';
++import { useSocket } from './hooks/useSocket';
++
++const queryClient = new QueryClient({
++  defaultOptions: {
++    queries: {
++      retry: 3,
++      staleTime: 30000,
++    },
++  },
++});
++
++// Socket provider component to initialize connection
++const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
++  useSocket();
++  return <>{children}</>;
++};
++
++const AppContent: React.FC = () => {
++  return (
++    <SocketProvider>
++      <div className="app">
++        <style>
++          {`
++            * {
++              box-sizing: border-box;
++              margin: 0;
++              padding: 0;
++            }
++            body {
++              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
++              line-height: 1.5;
++              color: #1f2937;
++              background-color: #f9fafb;
++            }
++            .app {
++              min-height: 100vh;
++            }
++            .header {
++              display: flex;
++              justify-content: space-between;
++              align-items: center;
++              padding: 12px 24px;
++              background: white;
++              border-bottom: 1px solid #e5e7eb;
++              box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
++            }
++            .header-left {
++              display: flex;
++              align-items: center;
++              gap: 16px;
++            }
++            .logo {
++              font-size: 20px;
++              font-weight: 700;
++              color: #3b82f6;
++            }
++            .header-right {
++              display: flex;
++              align-items: center;
++              gap: 16px;
++            }
++            .main {
++              padding: 24px;
++              max-width: 1200px;
++              margin: 0 auto;
++            }
++            .card {
++              background: white;
++              border-radius: 8px;
++              padding: 24px;
++              box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
++            }
++            .card h1 {
++              font-size: 24px;
++              margin-bottom: 16px;
++            }
++            .card p {
++              color: #6b7280;
++            }
++          `}
++        </style>
++
++        <header className="header">
++          <div className="header-left">
++            <span className="logo">ProjectHub</span>
++          </div>
++          <div className="header-right">
++            <ConnectionStatus />
++            <NotificationBell />
++          </div>
++        </header>
++
++        <main className="main">
++          <div className="card">
++            <h1>Welcome to ProjectHub</h1>
++            <p>
++              This is a demo of the real-time notification system.
++              Notifications will appear in the bell icon and as toasts when new events occur.
++            </p>
++          </div>
++        </main>
++
++        <ToastContainer />
++      </div>
++    </SocketProvider>
++  );
++};
++
++const App: React.FC = () => {
++  return (
++    <QueryClientProvider client={queryClient}>
++      <AppContent />
++    </QueryClientProvider>
++  );
++};
++
++export default App;
+diff -ruN repository_before/frontend/src/components/ConnectionStatus.tsx repository_after/frontend/src/components/ConnectionStatus.tsx
+--- repository_before/frontend/src/components/ConnectionStatus.tsx	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/src/components/ConnectionStatus.tsx	2026-02-03 09:06:01.665599200 +0300
+@@ -0,0 +1,91 @@
++// Connection status indicator component
++// Requirement 7: Visual indicator with three states and ARIA live region
++
++import React from 'react';
++import { useNotificationStore } from '../stores/notificationStore';
++import type { ConnectionStatus as ConnectionStatusType } from '../types';
++
++const statusConfig: Record<
++  ConnectionStatusType,
++  { color: string; label: string; pulseClass: string }
++> = {
++  connected: {
++    color: '#22c55e', // Green
++    label: 'Connected',
++    pulseClass: '',
++  },
++  reconnecting: {
++    color: '#eab308', // Yellow
++    label: 'Reconnecting',
++    pulseClass: 'connection-status-pulse',
++  },
++  disconnected: {
++    color: '#ef4444', // Red
++    label: 'Disconnected',
++    pulseClass: '',
++  },
++};
++
++export const ConnectionStatus: React.FC = () => {
++  const connectionStatus = useNotificationStore((state) => state.connectionStatus);
++  const config = statusConfig[connectionStatus];
++
++  return (
++    <>
++      <style>
++        {`
++          @keyframes pulse {
++            0%, 100% { opacity: 1; }
++            50% { opacity: 0.5; }
++          }
++          .connection-status-pulse {
++            animation: pulse 1.5s ease-in-out infinite;
++          }
++          .connection-status-dot {
++            width: 10px;
++            height: 10px;
++            border-radius: 50%;
++            display: inline-block;
++          }
++          .connection-status-container {
++            display: flex;
++            align-items: center;
++            gap: 6px;
++            font-size: 12px;
++            color: #6b7280;
++          }
++        `}
++      </style>
++      <div className="connection-status-container">
++        {/* Requirement 7: ARIA live region for screen reader announcements */}
++        <span
++          role="status"
++          aria-live="polite"
++          aria-atomic="true"
++          className="sr-only"
++          style={{
++            position: 'absolute',
++            width: '1px',
++            height: '1px',
++            padding: 0,
++            margin: '-1px',
++            overflow: 'hidden',
++            clip: 'rect(0, 0, 0, 0)',
++            whiteSpace: 'nowrap',
++            border: 0,
++          }}
++        >
++          Connection status: {config.label}
++        </span>
++
++        {/* Visual indicator */}
++        <span
++          className={`connection-status-dot ${config.pulseClass}`}
++          style={{ backgroundColor: config.color }}
++          aria-hidden="true"
++        />
++        <span aria-hidden="true">{config.label}</span>
++      </div>
++    </>
++  );
++};
+diff -ruN repository_before/frontend/src/components/NotificationBell.tsx repository_after/frontend/src/components/NotificationBell.tsx
+--- repository_before/frontend/src/components/NotificationBell.tsx	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/src/components/NotificationBell.tsx	2026-02-03 09:07:43.963704100 +0300
+@@ -0,0 +1,149 @@
++// Notification bell component with badge
++// Requirement 11: Badge display rules and accessibility
++
++import React, { useState, useRef, useEffect } from 'react';
++import { NotificationList } from './NotificationList';
++import { useNotificationStore } from '../stores/notificationStore';
++
++export const NotificationBell: React.FC = () => {
++  const [isOpen, setIsOpen] = useState(false);
++  const unreadCount = useNotificationStore((state) => state.unreadCount);
++  const containerRef = useRef<HTMLDivElement>(null);
++  const buttonRef = useRef<HTMLButtonElement>(null);
++
++  // Requirement 11: Format badge text
++  const getBadgeText = (): string => {
++    if (unreadCount <= 0) return '';
++    if (unreadCount > 99) return '99+';
++    return unreadCount.toString();
++  };
++
++  // Close on outside click
++  useEffect(() => {
++    const handleClickOutside = (event: MouseEvent) => {
++      if (
++        containerRef.current &&
++        !containerRef.current.contains(event.target as Node)
++      ) {
++        setIsOpen(false);
++      }
++    };
++
++    if (isOpen) {
++      document.addEventListener('mousedown', handleClickOutside);
++    }
++
++    return () => {
++      document.removeEventListener('mousedown', handleClickOutside);
++    };
++  }, [isOpen]);
++
++  // Keyboard navigation
++  const handleKeyDown = (e: React.KeyboardEvent) => {
++    if (e.key === 'Escape' && isOpen) {
++      setIsOpen(false);
++      buttonRef.current?.focus();
++    }
++  };
++
++  const toggleOpen = () => {
++    setIsOpen((prev) => !prev);
++  };
++
++  return (
++    <>
++      <style>
++        {`
++          .notification-bell-container {
++            position: relative;
++            display: inline-block;
++          }
++          .notification-bell-button {
++            background: none;
++            border: none;
++            padding: 8px;
++            cursor: pointer;
++            border-radius: 50%;
++            position: relative;
++            display: flex;
++            align-items: center;
++            justify-content: center;
++          }
++          .notification-bell-button:hover {
++            background-color: #f3f4f6;
++          }
++          .notification-bell-button:focus {
++            outline: 2px solid #3b82f6;
++            outline-offset: 2px;
++          }
++          .notification-bell-icon {
++            width: 24px;
++            height: 24px;
++            color: #4b5563;
++          }
++          /* Requirement 11: Badge styling */
++          .notification-badge {
++            position: absolute;
++            top: 2px;
++            right: 2px;
++            min-width: 18px;
++            height: 18px;
++            padding: 0 5px;
++            font-size: 11px;
++            font-weight: 600;
++            line-height: 18px;
++            text-align: center;
++            border-radius: 9px;
++            /* Requirement 11: 4.5:1 color contrast ratio */
++            /* White text (#ffffff) on red background (#dc2626) = 4.6:1 contrast */
++            background-color: #dc2626;
++            color: #ffffff;
++          }
++          /* Requirement 11: Badge hidden when count is zero */
++          .notification-badge.hidden {
++            display: none;
++          }
++        `}
++      </style>
++      <div
++        ref={containerRef}
++        className="notification-bell-container"
++        onKeyDown={handleKeyDown}
++      >
++        <button
++          ref={buttonRef}
++          className="notification-bell-button"
++          onClick={toggleOpen}
++          aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
++          aria-expanded={isOpen}
++          aria-haspopup="dialog"
++          type="button"
++        >
++          <svg
++            className="notification-bell-icon"
++            viewBox="0 0 24 24"
++            fill="none"
++            stroke="currentColor"
++            strokeWidth="2"
++            strokeLinecap="round"
++            strokeLinejoin="round"
++            aria-hidden="true"
++          >
++            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
++            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
++          </svg>
++
++          {/* Requirement 11: Badge with proper display rules */}
++          <span
++            className={`notification-badge ${unreadCount <= 0 ? 'hidden' : ''}`}
++            aria-hidden="true"
++          >
++            {getBadgeText()}
++          </span>
++        </button>
++
++        {isOpen && <NotificationList onClose={() => setIsOpen(false)} />}
++      </div>
++    </>
++  );
++};
+diff -ruN repository_before/frontend/src/components/NotificationItem.tsx repository_after/frontend/src/components/NotificationItem.tsx
+--- repository_before/frontend/src/components/NotificationItem.tsx	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/src/components/NotificationItem.tsx	2026-02-03 09:07:00.006209400 +0300
+@@ -0,0 +1,150 @@
++// Individual notification item component
++
++import React from 'react';
++import type { Notification } from '../types';
++
++interface NotificationItemProps {
++  notification: Notification;
++  onMarkAsRead: (id: string) => void;
++  onNavigate: (notification: Notification) => void;
++}
++
++const typeIcons: Record<string, string> = {
++  task_assigned: '📋',
++  task_updated: '✏️',
++  task_completed: '✅',
++  mention: '@',
++  comment: '💬',
++};
++
++const formatTime = (dateString: string): string => {
++  const date = new Date(dateString);
++  const now = new Date();
++  const diffMs = now.getTime() - date.getTime();
++  const diffMins = Math.floor(diffMs / 60000);
++  const diffHours = Math.floor(diffMs / 3600000);
++  const diffDays = Math.floor(diffMs / 86400000);
++
++  if (diffMins < 1) return 'Just now';
++  if (diffMins < 60) return `${diffMins}m ago`;
++  if (diffHours < 24) return `${diffHours}h ago`;
++  if (diffDays < 7) return `${diffDays}d ago`;
++  return date.toLocaleDateString();
++};
++
++export const NotificationItem: React.FC<NotificationItemProps> = ({
++  notification,
++  onMarkAsRead,
++  onNavigate,
++}) => {
++  const handleClick = () => {
++    if (!notification.isRead) {
++      onMarkAsRead(notification.id);
++    }
++    onNavigate(notification);
++  };
++
++  const handleKeyDown = (e: React.KeyboardEvent) => {
++    if (e.key === 'Enter' || e.key === ' ') {
++      e.preventDefault();
++      handleClick();
++    }
++  };
++
++  return (
++    <>
++      <style>
++        {`
++          .notification-item {
++            display: flex;
++            align-items: flex-start;
++            padding: 12px 16px;
++            border-bottom: 1px solid #e5e7eb;
++            cursor: pointer;
++            transition: background-color 0.15s;
++          }
++          .notification-item:hover {
++            background-color: #f9fafb;
++          }
++          .notification-item:focus {
++            outline: 2px solid #3b82f6;
++            outline-offset: -2px;
++            background-color: #f9fafb;
++          }
++          .notification-item.unread {
++            background-color: #eff6ff;
++          }
++          .notification-item.unread:hover {
++            background-color: #dbeafe;
++          }
++          .notification-icon {
++            width: 32px;
++            height: 32px;
++            border-radius: 50%;
++            background-color: #e5e7eb;
++            display: flex;
++            align-items: center;
++            justify-content: center;
++            margin-right: 12px;
++            flex-shrink: 0;
++            font-size: 14px;
++          }
++          .notification-content {
++            flex: 1;
++            min-width: 0;
++          }
++          .notification-title {
++            font-size: 14px;
++            font-weight: 500;
++            color: #1f2937;
++            margin-bottom: 2px;
++          }
++          .notification-message {
++            font-size: 13px;
++            color: #6b7280;
++            margin-bottom: 4px;
++            overflow: hidden;
++            text-overflow: ellipsis;
++            white-space: nowrap;
++          }
++          .notification-time {
++            font-size: 12px;
++            color: #9ca3af;
++          }
++          .notification-unread-dot {
++            width: 8px;
++            height: 8px;
++            border-radius: 50%;
++            background-color: #3b82f6;
++            margin-left: 8px;
++            flex-shrink: 0;
++          }
++        `}
++      </style>
++      <div
++        className={`notification-item ${notification.isRead ? '' : 'unread'}`}
++        role="listitem"
++        tabIndex={0}
++        onClick={handleClick}
++        onKeyDown={handleKeyDown}
++        aria-label={`${notification.isRead ? '' : 'Unread: '}${notification.title}. ${notification.message}. ${formatTime(notification.createdAt)}`}
++      >
++        <div className="notification-icon" aria-hidden="true">
++          {typeIcons[notification.type] || '📌'}
++        </div>
++        <div className="notification-content">
++          <div className="notification-title">{notification.title}</div>
++          <div className="notification-message">{notification.message}</div>
++          <div className="notification-time">{formatTime(notification.createdAt)}</div>
++        </div>
++        {!notification.isRead && (
++          <div
++            className="notification-unread-dot"
++            aria-hidden="true"
++            title="Unread"
++          />
++        )}
++      </div>
++    </>
++  );
++};
+diff -ruN repository_before/frontend/src/components/NotificationList.tsx repository_after/frontend/src/components/NotificationList.tsx
+--- repository_before/frontend/src/components/NotificationList.tsx	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/src/components/NotificationList.tsx	2026-02-03 09:07:24.102891400 +0300
+@@ -0,0 +1,207 @@
++// Notification list component with infinite scroll
++// Requirement 12: Intersection Observer for infinite scroll
++// Requirement 10: Cleanup on unmount
++
++import React, { useRef, useEffect, useCallback } from 'react';
++import { NotificationItem } from './NotificationItem';
++import { useNotifications } from '../hooks/useNotifications';
++import { useBroadcastChannel } from '../hooks/useBroadcastChannel';
++import { useNotificationStore } from '../stores/notificationStore';
++import type { Notification } from '../types';
++
++interface NotificationListProps {
++  onClose: () => void;
++}
++
++export const NotificationList: React.FC<NotificationListProps> = ({ onClose }) => {
++  const { notifications, isLoading, isFetchingNextPage, hasMore, loadMore, markAllAsRead } =
++    useNotifications();
++  const { broadcastRead, broadcastAllRead } = useBroadcastChannel();
++  const storeMarkAsRead = useNotificationStore((state) => state.markAsRead);
++  const storeMarkAllAsRead = useNotificationStore((state) => state.markAllAsRead);
++
++  // Requirement 12: Sentinel element ref for Intersection Observer
++  const sentinelRef = useRef<HTMLDivElement>(null);
++  const observerRef = useRef<IntersectionObserver | null>(null);
++  const isFetchingRef = useRef(false);
++
++  // Track fetching state to prevent duplicate fetches
++  useEffect(() => {
++    isFetchingRef.current = isFetchingNextPage;
++  }, [isFetchingNextPage]);
++
++  // Requirement 12: Intersection Observer setup
++  useEffect(() => {
++    const sentinel = sentinelRef.current;
++    if (!sentinel) return;
++
++    // Requirement 12: Observer watches sentinel element
++    observerRef.current = new IntersectionObserver(
++      (entries) => {
++        const [entry] = entries;
++        // Requirement 12: Load more when sentinel is visible
++        // Don't fetch if hasMore is false or if a fetch is already in progress
++        if (entry.isIntersecting && hasMore && !isFetchingRef.current) {
++          loadMore();
++        }
++      },
++      {
++        root: null,
++        rootMargin: '100px', // Start loading before reaching the bottom
++        threshold: 0,
++      }
++    );
++
++    observerRef.current.observe(sentinel);
++
++    // Requirement 10: Cleanup observer on unmount
++    return () => {
++      if (observerRef.current) {
++        observerRef.current.disconnect();
++        observerRef.current = null;
++      }
++    };
++  }, [hasMore, loadMore]);
++
++  const handleMarkAsRead = useCallback(
++    (notificationId: string) => {
++      // Requirement 4: Optimistic update
++      storeMarkAsRead(notificationId);
++      // Requirement 4: Broadcast to other tabs
++      broadcastRead(notificationId);
++    },
++    [storeMarkAsRead, broadcastRead]
++  );
++
++  const handleMarkAllAsRead = useCallback(() => {
++    storeMarkAllAsRead();
++    markAllAsRead();
++    broadcastAllRead();
++  }, [storeMarkAllAsRead, markAllAsRead, broadcastAllRead]);
++
++  const handleNavigate = useCallback(
++    (notification: Notification) => {
++      const path = `/${notification.resourceType}s/${notification.resourceId}`;
++      window.history.pushState({}, '', path);
++      onClose();
++    },
++    [onClose]
++  );
++
++  // Keyboard navigation
++  const handleKeyDown = (e: React.KeyboardEvent) => {
++    if (e.key === 'Escape') {
++      onClose();
++    }
++  };
++
++  return (
++    <>
++      <style>
++        {`
++          .notification-list {
++            position: absolute;
++            top: 100%;
++            right: 0;
++            width: 380px;
++            max-height: 480px;
++            background: white;
++            border-radius: 8px;
++            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
++            overflow: hidden;
++            z-index: 1000;
++          }
++          .notification-list-header {
++            display: flex;
++            justify-content: space-between;
++            align-items: center;
++            padding: 12px 16px;
++            border-bottom: 1px solid #e5e7eb;
++          }
++          .notification-list-title {
++            font-size: 16px;
++            font-weight: 600;
++            color: #1f2937;
++          }
++          .notification-list-action {
++            background: none;
++            border: none;
++            color: #3b82f6;
++            font-size: 13px;
++            cursor: pointer;
++            padding: 4px 8px;
++            border-radius: 4px;
++          }
++          .notification-list-action:hover {
++            background-color: #eff6ff;
++          }
++          .notification-list-action:focus {
++            outline: 2px solid #3b82f6;
++            outline-offset: 1px;
++          }
++          .notification-list-content {
++            overflow-y: auto;
++            max-height: 400px;
++          }
++          .notification-list-empty {
++            padding: 40px 20px;
++            text-align: center;
++            color: #9ca3af;
++          }
++          .notification-list-loading {
++            padding: 16px;
++            text-align: center;
++            color: #6b7280;
++          }
++          .notification-list-sentinel {
++            height: 1px;
++          }
++        `}
++      </style>
++      <div
++        className="notification-list"
++        role="dialog"
++        aria-label="Notifications"
++        onKeyDown={handleKeyDown}
++      >
++        <div className="notification-list-header">
++          <span className="notification-list-title">Notifications</span>
++          <button
++            className="notification-list-action"
++            onClick={handleMarkAllAsRead}
++            type="button"
++          >
++            Mark all as read
++          </button>
++        </div>
++
++        <div className="notification-list-content" role="list">
++          {isLoading && notifications.length === 0 ? (
++            <div className="notification-list-loading">Loading notifications...</div>
++          ) : notifications.length === 0 ? (
++            <div className="notification-list-empty">No notifications yet</div>
++          ) : (
++            <>
++              {notifications.map((notification) => (
++                <NotificationItem
++                  key={notification.id}
++                  notification={notification}
++                  onMarkAsRead={handleMarkAsRead}
++                  onNavigate={handleNavigate}
++                />
++              ))}
++
++              {/* Requirement 12: Loading state while fetching next page */}
++              {isFetchingNextPage && (
++                <div className="notification-list-loading">Loading more...</div>
++              )}
++
++              {/* Requirement 12: Sentinel element at the end of the list */}
++              <div ref={sentinelRef} className="notification-list-sentinel" />
++            </>
++          )}
++        </div>
++      </div>
++    </>
++  );
++};
+diff -ruN repository_before/frontend/src/components/Toast.tsx repository_after/frontend/src/components/Toast.tsx
+--- repository_before/frontend/src/components/Toast.tsx	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/src/components/Toast.tsx	2026-02-03 09:06:24.944252900 +0300
+@@ -0,0 +1,217 @@
++// Toast notification component
++// Requirement 9: Respect prefers-reduced-motion
++// Requirement 15: Auto-dismiss, pause on hover, keyboard accessible
++
++import React, { useEffect, useRef, useState, useCallback } from 'react';
++import { useReducedMotion } from '../hooks/useReducedMotion';
++import type { Notification } from '../types';
++
++interface ToastProps {
++  notification: Notification;
++  onDismiss: () => void;
++  onNavigate: () => void;
++  onMarkAsRead: () => void;
++}
++
++// Requirement 15: 5 second auto-dismiss
++const AUTO_DISMISS_DELAY = 5000;
++
++export const Toast: React.FC<ToastProps> = ({
++  notification,
++  onDismiss,
++  onNavigate,
++  onMarkAsRead,
++}) => {
++  const prefersReducedMotion = useReducedMotion();
++  const [isHovered, setIsHovered] = useState(false);
++  const timerRef = useRef<number | null>(null);
++  const remainingTimeRef = useRef(AUTO_DISMISS_DELAY);
++  const startTimeRef = useRef(Date.now());
++
++  // Requirement 15: Auto-dismiss timer management
++  const startTimer = useCallback(() => {
++    startTimeRef.current = Date.now();
++    timerRef.current = window.setTimeout(() => {
++      onDismiss();
++    }, remainingTimeRef.current);
++  }, [onDismiss]);
++
++  const pauseTimer = useCallback(() => {
++    if (timerRef.current) {
++      clearTimeout(timerRef.current);
++      // Calculate remaining time
++      const elapsed = Date.now() - startTimeRef.current;
++      remainingTimeRef.current = Math.max(0, remainingTimeRef.current - elapsed);
++    }
++  }, []);
++
++  // Requirement 15: Start auto-dismiss timer
++  useEffect(() => {
++    startTimer();
++
++    return () => {
++      if (timerRef.current) {
++        clearTimeout(timerRef.current);
++      }
++    };
++  }, [startTimer]);
++
++  // Requirement 15: Pause on hover
++  const handleMouseEnter = () => {
++    setIsHovered(true);
++    pauseTimer();
++  };
++
++  const handleMouseLeave = () => {
++    setIsHovered(false);
++    startTimer();
++  };
++
++  // Requirement 15: Click navigates and marks as read
++  const handleClick = () => {
++    onMarkAsRead();
++    onNavigate();
++    onDismiss();
++  };
++
++  // Requirement 15: Keyboard accessible close button
++  const handleCloseClick = (e: React.MouseEvent | React.KeyboardEvent) => {
++    e.stopPropagation();
++    onDismiss();
++  };
++
++  const handleKeyDown = (e: React.KeyboardEvent) => {
++    if (e.key === 'Enter' || e.key === ' ') {
++      handleClick();
++    }
++  };
++
++  const handleCloseKeyDown = (e: React.KeyboardEvent) => {
++    if (e.key === 'Enter' || e.key === ' ') {
++      e.stopPropagation();
++      onDismiss();
++    }
++  };
++
++  return (
++    <>
++      <style>
++        {`
++          @keyframes slideIn {
++            from {
++              transform: translateX(100%);
++              opacity: 0;
++            }
++            to {
++              transform: translateX(0);
++              opacity: 1;
++            }
++          }
++          @keyframes slideOut {
++            from {
++              transform: translateX(0);
++              opacity: 1;
++            }
++            to {
++              transform: translateX(100%);
++              opacity: 0;
++            }
++          }
++          .toast {
++            background: white;
++            border-radius: 8px;
++            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
++            padding: 12px 16px;
++            margin-bottom: 8px;
++            cursor: pointer;
++            position: relative;
++            min-width: 300px;
++            max-width: 400px;
++            border-left: 4px solid #3b82f6;
++          }
++          .toast:not(.reduced-motion) {
++            animation: slideIn 0.3s ease-out;
++          }
++          /* Requirement 9: No animation when prefers-reduced-motion is enabled */
++          .toast.reduced-motion {
++            animation: none;
++            animation-duration: 0ms;
++          }
++          .toast:focus {
++            outline: 2px solid #3b82f6;
++            outline-offset: 2px;
++          }
++          .toast-title {
++            font-weight: 600;
++            font-size: 14px;
++            color: #1f2937;
++            margin-bottom: 4px;
++            padding-right: 24px;
++          }
++          .toast-message {
++            font-size: 13px;
++            color: #6b7280;
++            line-height: 1.4;
++          }
++          .toast-close {
++            position: absolute;
++            top: 8px;
++            right: 8px;
++            background: none;
++            border: none;
++            padding: 4px;
++            cursor: pointer;
++            color: #9ca3af;
++            border-radius: 4px;
++            display: flex;
++            align-items: center;
++            justify-content: center;
++          }
++          /* Requirement 15: Visible focus indicator */
++          .toast-close:focus {
++            outline: 2px solid #3b82f6;
++            outline-offset: 1px;
++          }
++          .toast-close:hover {
++            color: #6b7280;
++            background: #f3f4f6;
++          }
++        `}
++      </style>
++      <div
++        className={`toast ${prefersReducedMotion ? 'reduced-motion' : ''}`}
++        role="alert"
++        aria-live="polite"
++        tabIndex={0}
++        onClick={handleClick}
++        onKeyDown={handleKeyDown}
++        onMouseEnter={handleMouseEnter}
++        onMouseLeave={handleMouseLeave}
++      >
++        <div className="toast-title">{notification.title}</div>
++        <div className="toast-message">{notification.message}</div>
++
++        {/* Requirement 15: Keyboard accessible close button */}
++        <button
++          className="toast-close"
++          onClick={handleCloseClick}
++          onKeyDown={handleCloseKeyDown}
++          aria-label="Dismiss notification"
++          type="button"
++        >
++          <svg
++            width="16"
++            height="16"
++            viewBox="0 0 16 16"
++            fill="none"
++            stroke="currentColor"
++            strokeWidth="2"
++            strokeLinecap="round"
++          >
++            <path d="M4 4L12 12M12 4L4 12" />
++          </svg>
++        </button>
++      </div>
++    </>
++  );
++};
+diff -ruN repository_before/frontend/src/components/ToastContainer.tsx repository_after/frontend/src/components/ToastContainer.tsx
+--- repository_before/frontend/src/components/ToastContainer.tsx	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/src/components/ToastContainer.tsx	2026-02-03 09:06:41.778406100 +0300
+@@ -0,0 +1,96 @@
++// Toast container component
++// Requirement 3: Single tab toast display using BroadcastChannel
++
++import React, { useState, useEffect, useCallback } from 'react';
++import { Toast } from './Toast';
++import { useBroadcastChannel } from '../hooks/useBroadcastChannel';
++import { useNotificationStore } from '../stores/notificationStore';
++import type { Notification } from '../types';
++
++interface ToastItem {
++  notification: Notification;
++  id: string;
++}
++
++export const ToastContainer: React.FC = () => {
++  const [toasts, setToasts] = useState<ToastItem[]>([]);
++  const { shouldShowToast, broadcastRead } = useBroadcastChannel();
++  const notifications = useNotificationStore((state) => state.notifications);
++  const markAsRead = useNotificationStore((state) => state.markAsRead);
++  const prevNotificationsRef = React.useRef<Notification[]>([]);
++
++  // Detect new notifications and show toast
++  useEffect(() => {
++    const prevIds = new Set(prevNotificationsRef.current.map((n) => n.id));
++
++    // Find truly new notifications (not just from initial load)
++    const newNotifications = notifications.filter(
++      (n) => !prevIds.has(n.id) && !n.isRead
++    );
++
++    // Only show toasts if we had previous notifications (not initial load)
++    if (prevNotificationsRef.current.length > 0) {
++      newNotifications.forEach((notification) => {
++        // Requirement 3: Only show toast if this is the first tab to receive it
++        if (shouldShowToast(notification.id)) {
++          setToasts((prev) => [
++            ...prev,
++            { notification, id: `toast-${notification.id}-${Date.now()}` },
++          ]);
++        }
++      });
++    }
++
++    prevNotificationsRef.current = notifications;
++  }, [notifications, shouldShowToast]);
++
++  const handleDismiss = useCallback((toastId: string) => {
++    setToasts((prev) => prev.filter((t) => t.id !== toastId));
++  }, []);
++
++  const handleNavigate = useCallback((notification: Notification) => {
++    // Navigate to the resource
++    const path = `/${notification.resourceType}s/${notification.resourceId}`;
++    // In a real app, use react-router: navigate(path)
++    console.log('Navigate to:', path);
++    window.history.pushState({}, '', path);
++  }, []);
++
++  const handleMarkAsRead = useCallback(
++    (notification: Notification) => {
++      markAsRead(notification.id);
++      // Requirement 4: Broadcast to other tabs
++      broadcastRead(notification.id);
++    },
++    [markAsRead, broadcastRead]
++  );
++
++  return (
++    <>
++      <style>
++        {`
++          .toast-container {
++            position: fixed;
++            top: 16px;
++            right: 16px;
++            z-index: 9999;
++            display: flex;
++            flex-direction: column;
++            align-items: flex-end;
++          }
++        `}
++      </style>
++      <div className="toast-container" aria-label="Notifications">
++        {toasts.map((toast) => (
++          <Toast
++            key={toast.id}
++            notification={toast.notification}
++            onDismiss={() => handleDismiss(toast.id)}
++            onNavigate={() => handleNavigate(toast.notification)}
++            onMarkAsRead={() => handleMarkAsRead(toast.notification)}
++          />
++        ))}
++      </div>
++    </>
++  );
++};
+diff -ruN repository_before/frontend/src/hooks/useBroadcastChannel.ts repository_after/frontend/src/hooks/useBroadcastChannel.ts
+--- repository_before/frontend/src/hooks/useBroadcastChannel.ts	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/src/hooks/useBroadcastChannel.ts	2026-02-03 09:05:23.609423500 +0300
+@@ -0,0 +1,117 @@
++// BroadcastChannel hook for multi-tab coordination
++// Requirement 3: Single tab toast display
++// Requirement 4: Multi-tab read state sync
++// Requirement 10: Proper cleanup on unmount
++
++import { useEffect, useRef, useCallback } from 'react';
++import type { BroadcastMessage } from '../types';
++import { useNotificationStore } from '../stores/notificationStore';
++
++// Generate unique tab ID
++const TAB_ID = `tab-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
++
++export const useBroadcastChannel = () => {
++  const channelRef = useRef<BroadcastChannel | null>(null);
++  const toastShownIdsRef = useRef<Set<string>>(new Set());
++
++  const { markAsRead, markAllAsRead, setUnreadCount } = useNotificationStore();
++
++  // Initialize BroadcastChannel
++  useEffect(() => {
++    // Requirement 3 & 4: Use BroadcastChannel API for tab coordination
++    const channel = new BroadcastChannel('notification-channel');
++    channelRef.current = channel;
++
++    // Handle messages from other tabs
++    const handleMessage = (event: MessageEvent<BroadcastMessage>) => {
++      const { type, payload } = event.data;
++
++      switch (type) {
++        case 'toast-shown':
++          // Requirement 3: Track which notifications have shown toasts
++          if (payload.notificationId) {
++            toastShownIdsRef.current.add(payload.notificationId);
++          }
++          break;
++
++        case 'notification-read':
++          // Requirement 4: Sync read state across tabs
++          if (payload.notificationId) {
++            markAsRead(payload.notificationId);
++          }
++          break;
++
++        case 'all-read':
++          // Sync mark-all-as-read across tabs
++          markAllAsRead();
++          break;
++
++        case 'unread-count-update':
++          // Requirement 6: Keep unread count in sync
++          if (typeof payload.unreadCount === 'number') {
++            setUnreadCount(payload.unreadCount);
++          }
++          break;
++      }
++    };
++
++    channel.addEventListener('message', handleMessage);
++
++    // Requirement 10: Cleanup on unmount
++    return () => {
++      channel.removeEventListener('message', handleMessage);
++      channel.close();
++      channelRef.current = null;
++    };
++  }, [markAsRead, markAllAsRead, setUnreadCount]);
++
++  // Requirement 3: Check if toast should be shown for this notification
++  const shouldShowToast = useCallback((notificationId: string): boolean => {
++    // If we've already seen a toast-shown message for this notification, don't show
++    if (toastShownIdsRef.current.has(notificationId)) {
++      return false;
++    }
++
++    // This tab will show the toast - broadcast to other tabs
++    toastShownIdsRef.current.add(notificationId);
++
++    channelRef.current?.postMessage({
++      type: 'toast-shown',
++      payload: { notificationId, tabId: TAB_ID },
++    } satisfies BroadcastMessage);
++
++    return true;
++  }, []);
++
++  // Requirement 4: Broadcast read state to other tabs
++  const broadcastRead = useCallback((notificationId: string) => {
++    channelRef.current?.postMessage({
++      type: 'notification-read',
++      payload: { notificationId, tabId: TAB_ID },
++    } satisfies BroadcastMessage);
++  }, []);
++
++  const broadcastAllRead = useCallback(() => {
++    channelRef.current?.postMessage({
++      type: 'all-read',
++      payload: { tabId: TAB_ID },
++    } satisfies BroadcastMessage);
++  }, []);
++
++  const broadcastUnreadCount = useCallback((unreadCount: number) => {
++    channelRef.current?.postMessage({
++      type: 'unread-count-update',
++      payload: { unreadCount, tabId: TAB_ID },
++    } satisfies BroadcastMessage);
++  }, []);
++
++  return {
++    tabId: TAB_ID,
++    shouldShowToast,
++    broadcastRead,
++    broadcastAllRead,
++    broadcastUnreadCount,
++  };
++};
++
++export { TAB_ID };
+diff -ruN repository_before/frontend/src/hooks/useNotifications.ts repository_after/frontend/src/hooks/useNotifications.ts
+--- repository_before/frontend/src/hooks/useNotifications.ts	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/src/hooks/useNotifications.ts	2026-02-03 09:05:48.215385200 +0300
+@@ -0,0 +1,108 @@
++// Notifications hook with React Query for data fetching
++// Requirement 12: Infinite scroll pagination
++
++import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
++import { notificationApi } from '../services/api';
++import { useNotificationStore } from '../stores/notificationStore';
++import { useEffect } from 'react';
++import type { Notification } from '../types';
++
++export const useNotifications = () => {
++  const queryClient = useQueryClient();
++  const {
++    setNotifications,
++    addNotifications,
++    setUnreadCount,
++    setPagination,
++    setIsLoading,
++  } = useNotificationStore();
++
++  // Requirement 12: Infinite query for pagination
++  const {
++    data,
++    fetchNextPage,
++    hasNextPage,
++    isFetchingNextPage,
++    isLoading,
++    isError,
++    error,
++  } = useInfiniteQuery({
++    queryKey: ['notifications'],
++    queryFn: async ({ pageParam }) => {
++      return notificationApi.getNotifications(pageParam, 20);
++    },
++    getNextPageParam: (lastPage) => {
++      // Requirement 8: Use nextCursor for pagination
++      return lastPage.hasMore ? lastPage.nextCursor : undefined;
++    },
++    initialPageParam: null as string | null,
++    staleTime: 30000, // 30 seconds
++  });
++
++  // Sync query data to store
++  useEffect(() => {
++    if (data) {
++      const allNotifications = data.pages.flatMap((page) => page.data);
++      setNotifications(allNotifications);
++
++      const lastPage = data.pages[data.pages.length - 1];
++      setPagination(lastPage.hasMore, lastPage.nextCursor);
++    }
++  }, [data, setNotifications, setPagination]);
++
++  useEffect(() => {
++    setIsLoading(isLoading || isFetchingNextPage);
++  }, [isLoading, isFetchingNextPage, setIsLoading]);
++
++  // Unread count query
++  const { data: unreadData } = useQuery({
++    queryKey: ['unreadCount'],
++    queryFn: () => notificationApi.getUnreadCount(),
++    staleTime: 10000, // 10 seconds
++  });
++
++  useEffect(() => {
++    if (unreadData) {
++      setUnreadCount(unreadData.count);
++    }
++  }, [unreadData, setUnreadCount]);
++
++  // Mark as read mutation
++  const markAsReadMutation = useMutation({
++    mutationFn: (notificationId: string) => notificationApi.markAsRead(notificationId),
++    onSuccess: (result) => {
++      // Update cache
++      queryClient.setQueryData(['unreadCount'], { count: result.unreadCount });
++      queryClient.invalidateQueries({ queryKey: ['notifications'] });
++    },
++  });
++
++  // Mark all as read mutation
++  const markAllAsReadMutation = useMutation({
++    mutationFn: () => notificationApi.markAllAsRead(),
++    onSuccess: (result) => {
++      queryClient.setQueryData(['unreadCount'], { count: result.unreadCount });
++      queryClient.invalidateQueries({ queryKey: ['notifications'] });
++    },
++  });
++
++  // Requirement 12: Load more function for infinite scroll
++  const loadMore = () => {
++    if (hasNextPage && !isFetchingNextPage) {
++      fetchNextPage();
++    }
++  };
++
++  return {
++    notifications: data?.pages.flatMap((page) => page.data) ?? [],
++    isLoading,
++    isFetchingNextPage,
++    isError,
++    error,
++    hasMore: hasNextPage ?? false,
++    loadMore,
++    markAsRead: markAsReadMutation.mutate,
++    markAllAsRead: markAllAsReadMutation.mutate,
++    refetch: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
++  };
++};
+diff -ruN repository_before/frontend/src/hooks/useReducedMotion.ts repository_after/frontend/src/hooks/useReducedMotion.ts
+--- repository_before/frontend/src/hooks/useReducedMotion.ts	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/src/hooks/useReducedMotion.ts	2026-02-03 09:05:31.999712900 +0300
+@@ -0,0 +1,30 @@
++// Hook to detect prefers-reduced-motion setting
++// Requirement 9: Respect user's prefers-reduced-motion setting
++
++import { useState, useEffect } from 'react';
++
++export const useReducedMotion = (): boolean => {
++  const [prefersReducedMotion, setPrefersReducedMotion] = useState(() => {
++    // Requirement 9: Check using window.matchMedia
++    if (typeof window === 'undefined') return false;
++    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
++  });
++
++  useEffect(() => {
++    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
++
++    const handleChange = (event: MediaQueryListEvent) => {
++      setPrefersReducedMotion(event.matches);
++    };
++
++    // Listen for changes in the preference
++    mediaQuery.addEventListener('change', handleChange);
++
++    // Cleanup listener on unmount
++    return () => {
++      mediaQuery.removeEventListener('change', handleChange);
++    };
++  }, []);
++
++  return prefersReducedMotion;
++};
+diff -ruN repository_before/frontend/src/hooks/useSocket.ts repository_after/frontend/src/hooks/useSocket.ts
+--- repository_before/frontend/src/hooks/useSocket.ts	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/src/hooks/useSocket.ts	2026-02-03 09:05:05.044231400 +0300
+@@ -0,0 +1,153 @@
++// Socket.io client hook with reconnection logic
++// Requirement 2: Exponential backoff with jitter (1s to 30s max)
++// Requirement 10: Proper cleanup on unmount
++
++import { useEffect, useRef, useCallback } from 'react';
++import { io, Socket } from 'socket.io-client';
++import type { ServerToClientEvents, ClientToServerEvents } from '../types';
++import { useNotificationStore } from '../stores/notificationStore';
++
++type NotificationSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
++
++// Requirement 2: Calculate reconnection delay with exponential backoff and jitter
++const calculateReconnectDelay = (attempt: number): number => {
++  // Base delay starts at 1000ms (1 second)
++  const baseDelay = 1000;
++  // Max delay is 30000ms (30 seconds)
++  const maxDelay = 30000;
++
++  // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 30s (capped)
++  const exponentialDelay = Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
++
++  // Add random jitter (±25%) to prevent thundering herd
++  const jitter = exponentialDelay * 0.25 * (Math.random() * 2 - 1);
++
++  return Math.floor(exponentialDelay + jitter);
++};
++
++export const useSocket = () => {
++  const socketRef = useRef<NotificationSocket | null>(null);
++  const reconnectAttemptRef = useRef(0);
++
++  const {
++    setConnectionStatus,
++    addNotification,
++    addNotifications,
++    updateNotification,
++    setUnreadCount,
++    lastNotificationId,
++  } = useNotificationStore();
++
++  const connect = useCallback(() => {
++    if (socketRef.current?.connected) return;
++
++    // Requirement 2: Configure reconnection with exponential backoff
++    const socket: NotificationSocket = io({
++      withCredentials: true,
++      // Requirement 1: No auth tokens in URL - only use cookies
++      auth: {}, // Empty - auth is via cookies only
++      reconnection: true,
++      reconnectionAttempts: Infinity,
++      reconnectionDelay: 1000,
++      reconnectionDelayMax: 30000,
++      randomizationFactor: 0.25, // Jitter factor
++    });
++
++    socketRef.current = socket;
++
++    socket.on('connect', () => {
++      setConnectionStatus('connected');
++      reconnectAttemptRef.current = 0;
++
++      // Requirement 5: Request missed notifications on reconnect
++      socket.emit('get-missed', lastNotificationId);
++    });
++
++    socket.on('disconnect', () => {
++      setConnectionStatus('disconnected');
++    });
++
++    socket.io.on('reconnect_attempt', (attempt) => {
++      setConnectionStatus('reconnecting');
++      reconnectAttemptRef.current = attempt;
++    });
++
++    socket.io.on('reconnect_failed', () => {
++      setConnectionStatus('disconnected');
++    });
++
++    // Handle new notifications
++    socket.on('notification:new', (notification) => {
++      addNotification(notification);
++    });
++
++    // Handle notification updates
++    socket.on('notification:updated', (notification) => {
++      updateNotification(notification);
++    });
++
++    // Requirement 6: Server is authoritative for unread count
++    socket.on('unread-count:changed', (count) => {
++      setUnreadCount(count);
++    });
++
++    // Requirement 5: Handle missed notifications on reconnect
++    socket.on('missed-notifications', (notifications) => {
++      addNotifications(notifications);
++    });
++
++    return socket;
++  }, [
++    setConnectionStatus,
++    addNotification,
++    addNotifications,
++    updateNotification,
++    setUnreadCount,
++    lastNotificationId,
++  ]);
++
++  const disconnect = useCallback(() => {
++    if (socketRef.current) {
++      socketRef.current.disconnect();
++      socketRef.current = null;
++    }
++  }, []);
++
++  const markAsRead = useCallback((notificationId: string) => {
++    socketRef.current?.emit('notification:mark-read', notificationId);
++  }, []);
++
++  const markAllAsRead = useCallback(() => {
++    socketRef.current?.emit('notification:mark-all-read');
++  }, []);
++
++  // Requirement 10: Cleanup on unmount
++  useEffect(() => {
++    const socket = connect();
++
++    return () => {
++      if (socket) {
++        // Remove all listeners before disconnecting
++        socket.off('connect');
++        socket.off('disconnect');
++        socket.off('notification:new');
++        socket.off('notification:updated');
++        socket.off('unread-count:changed');
++        socket.off('missed-notifications');
++        socket.io.off('reconnect_attempt');
++        socket.io.off('reconnect_failed');
++        socket.disconnect();
++      }
++    };
++  }, [connect]);
++
++  return {
++    socket: socketRef.current,
++    connect,
++    disconnect,
++    markAsRead,
++    markAllAsRead,
++  };
++};
++
++export { calculateReconnectDelay };
+diff -ruN repository_before/frontend/src/main.tsx repository_after/frontend/src/main.tsx
+--- repository_before/frontend/src/main.tsx	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/src/main.tsx	2026-02-03 09:08:08.921290900 +0300
+@@ -0,0 +1,9 @@
++import React from 'react';
++import ReactDOM from 'react-dom/client';
++import App from './App';
++
++ReactDOM.createRoot(document.getElementById('root')!).render(
++  <React.StrictMode>
++    <App />
++  </React.StrictMode>
++);
+diff -ruN repository_before/frontend/src/services/api.ts repository_after/frontend/src/services/api.ts
+--- repository_before/frontend/src/services/api.ts	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/src/services/api.ts	2026-02-03 09:04:44.929743100 +0300
+@@ -0,0 +1,72 @@
++// API service for notification endpoints
++// Requirement 8: Cursor-based pagination
++
++import type { Notification, PaginatedResponse } from '../types';
++
++const API_BASE = '/api';
++
++export const notificationApi = {
++  // Requirement 8: Cursor-based pagination with cursor and limit params
++  async getNotifications(
++    cursor?: string | null,
++    limit: number = 20
++  ): Promise<PaginatedResponse<Notification>> {
++    const params = new URLSearchParams();
++    if (cursor) params.set('cursor', cursor);
++    params.set('limit', limit.toString());
++
++    const response = await fetch(
++      `${API_BASE}/notifications?${params.toString()}`,
++      { credentials: 'include' }
++    );
++
++    if (!response.ok) {
++      throw new Error('Failed to fetch notifications');
++    }
++
++    return response.json();
++  },
++
++  async getUnreadCount(): Promise<{ count: number }> {
++    const response = await fetch(`${API_BASE}/notifications/unread-count`, {
++      credentials: 'include',
++    });
++
++    if (!response.ok) {
++      throw new Error('Failed to fetch unread count');
++    }
++
++    return response.json();
++  },
++
++  async markAsRead(
++    notificationId: string
++  ): Promise<{ notification: Notification; unreadCount: number }> {
++    const response = await fetch(
++      `${API_BASE}/notifications/${notificationId}/read`,
++      {
++        method: 'PATCH',
++        credentials: 'include',
++      }
++    );
++
++    if (!response.ok) {
++      throw new Error('Failed to mark notification as read');
++    }
++
++    return response.json();
++  },
++
++  async markAllAsRead(): Promise<{ updatedCount: number; unreadCount: number }> {
++    const response = await fetch(`${API_BASE}/notifications/read-all`, {
++      method: 'PATCH',
++      credentials: 'include',
++    });
++
++    if (!response.ok) {
++      throw new Error('Failed to mark all notifications as read');
++    }
++
++    return response.json();
++  },
++};
+diff -ruN repository_before/frontend/src/stores/notificationStore.ts repository_after/frontend/src/stores/notificationStore.ts
+--- repository_before/frontend/src/stores/notificationStore.ts	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/src/stores/notificationStore.ts	2026-02-03 09:04:34.671054300 +0300
+@@ -0,0 +1,143 @@
++// Zustand notification store with persistence
++// Requirement 5: Persist last notification ID for reconnection
++
++import { create } from 'zustand';
++import { persist, createJSONStorage } from 'zustand/middleware';
++import type { Notification, ConnectionStatus } from '../types';
++
++interface NotificationState {
++  notifications: Notification[];
++  unreadCount: number;
++  connectionStatus: ConnectionStatus;
++  lastNotificationId: string | null;
++  isLoading: boolean;
++  hasMore: boolean;
++  nextCursor: string | null;
++
++  // Actions
++  setNotifications: (notifications: Notification[]) => void;
++  addNotification: (notification: Notification) => void;
++  addNotifications: (notifications: Notification[]) => void;
++  updateNotification: (notification: Notification) => void;
++  markAsRead: (notificationId: string) => void;
++  markAllAsRead: () => void;
++  setUnreadCount: (count: number) => void;
++  setConnectionStatus: (status: ConnectionStatus) => void;
++  setLastNotificationId: (id: string | null) => void;
++  setIsLoading: (loading: boolean) => void;
++  setPagination: (hasMore: boolean, nextCursor: string | null) => void;
++  reset: () => void;
++}
++
++const initialState = {
++  notifications: [],
++  unreadCount: 0,
++  connectionStatus: 'disconnected' as ConnectionStatus,
++  lastNotificationId: null,
++  isLoading: false,
++  hasMore: true,
++  nextCursor: null,
++};
++
++export const useNotificationStore = create<NotificationState>()(
++  persist(
++    (set, get) => ({
++      ...initialState,
++
++      setNotifications: (notifications) => {
++        set({ notifications });
++        // Update last notification ID
++        if (notifications.length > 0) {
++          set({ lastNotificationId: notifications[0].id });
++        }
++      },
++
++      addNotification: (notification) => {
++        set((state) => ({
++          notifications: [notification, ...state.notifications],
++          lastNotificationId: notification.id,
++        }));
++      },
++
++      addNotifications: (newNotifications) => {
++        set((state) => {
++          // Merge without duplicates
++          const existingIds = new Set(state.notifications.map((n) => n.id));
++          const uniqueNew = newNotifications.filter((n) => !existingIds.has(n.id));
++          const merged = [...state.notifications, ...uniqueNew].sort(
++            (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
++          );
++          return {
++            notifications: merged,
++            lastNotificationId: merged.length > 0 ? merged[0].id : state.lastNotificationId,
++          };
++        });
++      },
++
++      updateNotification: (notification) => {
++        set((state) => ({
++          notifications: state.notifications.map((n) =>
++            n.id === notification.id ? notification : n
++          ),
++        }));
++      },
++
++      // Requirement 4: Optimistic update
++      markAsRead: (notificationId) => {
++        set((state) => ({
++          notifications: state.notifications.map((n) =>
++            n.id === notificationId
++              ? { ...n, isRead: true, readAt: new Date().toISOString() }
++              : n
++          ),
++          // Optimistic decrement (server will send authoritative count)
++          unreadCount: Math.max(0, state.unreadCount - 1),
++        }));
++      },
++
++      markAllAsRead: () => {
++        set((state) => ({
++          notifications: state.notifications.map((n) => ({
++            ...n,
++            isRead: true,
++            readAt: n.readAt || new Date().toISOString(),
++          })),
++          unreadCount: 0,
++        }));
++      },
++
++      // Requirement 6: Server is authoritative for unread count
++      setUnreadCount: (count) => {
++        set({ unreadCount: Math.max(0, count) });
++      },
++
++      setConnectionStatus: (status) => {
++        set({ connectionStatus: status });
++      },
++
++      setLastNotificationId: (id) => {
++        set({ lastNotificationId: id });
++      },
++
++      setIsLoading: (loading) => {
++        set({ isLoading: loading });
++      },
++
++      setPagination: (hasMore, nextCursor) => {
++        set({ hasMore, nextCursor });
++      },
++
++      reset: () => {
++        set(initialState);
++      },
++    }),
++    {
++      name: 'notification-storage',
++      storage: createJSONStorage(() => localStorage),
++      // Only persist these fields
++      partialize: (state) => ({
++        lastNotificationId: state.lastNotificationId,
++      }),
++    }
++  )
++);
+diff -ruN repository_before/frontend/src/types/index.ts repository_after/frontend/src/types/index.ts
+--- repository_before/frontend/src/types/index.ts	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/src/types/index.ts	2026-02-03 09:04:17.849158300 +0300
+@@ -0,0 +1,75 @@
++// Frontend type definitions
++
++export type NotificationType =
++  | 'task_assigned'
++  | 'task_updated'
++  | 'task_completed'
++  | 'mention'
++  | 'comment';
++
++export type ResourceType = 'task' | 'project' | 'comment';
++
++export interface Notification {
++  id: string;
++  userId: string;
++  type: NotificationType;
++  title: string;
++  message: string;
++  resourceType: ResourceType;
++  resourceId: string;
++  isRead: boolean;
++  createdAt: string;
++  readAt: string | null;
++  resource?: TaskResource | ProjectResource | CommentResource | null;
++}
++
++export interface TaskResource {
++  id: string;
++  title: string;
++  status: string;
++  projectId: string;
++}
++
++export interface ProjectResource {
++  id: string;
++  name: string;
++}
++
++export interface CommentResource {
++  id: string;
++  content: string;
++  taskId: string | null;
++}
++
++export interface PaginatedResponse<T> {
++  data: T[];
++  nextCursor: string | null;
++  hasMore: boolean;
++}
++
++// Connection states for Requirement 7
++export type ConnectionStatus = 'connected' | 'reconnecting' | 'disconnected';
++
++// BroadcastChannel message types for Requirement 3 & 4
++export interface BroadcastMessage {
++  type: 'toast-shown' | 'notification-read' | 'all-read' | 'unread-count-update';
++  payload: {
++    notificationId?: string;
++    unreadCount?: number;
++    tabId?: string;
++  };
++}
++
++// Socket event types
++export interface ServerToClientEvents {
++  'notification:new': (notification: Notification) => void;
++  'notification:updated': (notification: Notification) => void;
++  'unread-count:changed': (count: number) => void;
++  'missed-notifications': (notifications: Notification[]) => void;
++}
++
++export interface ClientToServerEvents {
++  'notification:mark-read': (notificationId: string) => void;
++  'notification:mark-all-read': () => void;
++  'get-missed': (lastNotificationId: string | null) => void;
++}
+diff -ruN repository_before/frontend/tsconfig.json repository_after/frontend/tsconfig.json
+--- repository_before/frontend/tsconfig.json	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/tsconfig.json	2026-02-03 09:03:51.956176900 +0300
+@@ -0,0 +1,22 @@
++{
++  "compilerOptions": {
++    "target": "ES2020",
++    "useDefineForClassFields": true,
++    "lib": ["ES2020", "DOM", "DOM.Iterable"],
++    "module": "ESNext",
++    "skipLibCheck": true,
++    "moduleResolution": "bundler",
++    "allowImportingTsExtensions": true,
++    "resolveJsonModule": true,
++    "isolatedModules": true,
++    "noEmit": true,
++    "jsx": "react-jsx",
++    "strict": true,
++    "noUnusedLocals": true,
++    "noUnusedParameters": true,
++    "noFallthroughCasesInSwitch": true,
++    "forceConsistentCasingInFileNames": true
++  },
++  "include": ["src"],
++  "references": [{ "path": "./tsconfig.node.json" }]
++}
+diff -ruN repository_before/frontend/tsconfig.node.json repository_after/frontend/tsconfig.node.json
+--- repository_before/frontend/tsconfig.node.json	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/tsconfig.node.json	2026-02-03 09:03:58.433480400 +0300
+@@ -0,0 +1,11 @@
++{
++  "compilerOptions": {
++    "composite": true,
++    "skipLibCheck": true,
++    "module": "ESNext",
++    "moduleResolution": "bundler",
++    "allowSyntheticDefaultImports": true,
++    "strict": true
++  },
++  "include": ["vite.config.ts"]
++}
+diff -ruN repository_before/frontend/vite.config.ts repository_after/frontend/vite.config.ts
+--- repository_before/frontend/vite.config.ts	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/vite.config.ts	2026-02-03 09:04:04.636677600 +0300
+@@ -0,0 +1,19 @@
++import { defineConfig } from 'vite';
++import react from '@vitejs/plugin-react';
++
++export default defineConfig({
++  plugins: [react()],
++  server: {
++    port: 5173,
++    proxy: {
++      '/api': {
++        target: 'http://localhost:3001',
++        changeOrigin: true,
++      },
++      '/socket.io': {
++        target: 'http://localhost:3001',
++        ws: true,
++      },
++    },
++  },
++});
