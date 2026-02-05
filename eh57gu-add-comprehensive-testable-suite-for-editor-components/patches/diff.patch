@@ -1,0 +1,1309 @@
+diff --git a/repository_before/editpage-standalone/README.md b/repository_after/README.md
+similarity index 100%
+rename from repository_before/editpage-standalone/README.md
+rename to repository_after/README.md
+diff --git a/repository_before/editpage-standalone/index.html b/repository_after/index.html
+similarity index 100%
+rename from repository_before/editpage-standalone/index.html
+rename to repository_after/index.html
+diff --git a/repository_before/editpage-standalone/package-lock.json b/repository_after/package-lock.json
+similarity index 100%
+rename from repository_before/editpage-standalone/package-lock.json
+rename to repository_after/package-lock.json
+diff --git a/repository_before/editpage-standalone/package.json b/repository_after/package.json
+similarity index 55%
+rename from repository_before/editpage-standalone/package.json
+rename to repository_after/package.json
+index 517c960..822ceee 100644
+--- a/repository_before/editpage-standalone/package.json
++++ b/repository_after/package.json
+@@ -5,7 +5,11 @@
+   "scripts": {
+     "dev": "vite",
+     "build": "vite build",
+-    "preview": "vite preview"
++    "preview": "vite preview",
++    "test": "vitest run",
++    "test:watch": "vitest",
++    "test:ui": "vitest --ui",
++    "test:coverage": "vitest run --coverage"
+   },
+   "dependencies": {
+     "react": "^18.2.0",
+@@ -23,6 +27,14 @@
+     "vite": "^5.0.0",
+     "tailwindcss": "^3.4.1",
+     "postcss": "^8.4.0",
+-    "autoprefixer": "^10.4.14"
++    "autoprefixer": "^10.4.14",
++    "vitest": "^1.2.0",
++    "@testing-library/react": "^14.1.2",
++    "@testing-library/jest-dom": "^6.1.5",
++    "@testing-library/user-event": "^14.5.1",
++    "@vitest/ui": "^1.2.0",
++    "@vitest/coverage-v8": "^1.2.0",
++    "jsdom": "^23.0.1",
++    "happy-dom": "^12.10.3"
+   }
+ }
+diff --git a/repository_before/editpage-standalone/postcss.config.cjs b/repository_after/postcss.config.cjs
+similarity index 100%
+rename from repository_before/editpage-standalone/postcss.config.cjs
+rename to repository_after/postcss.config.cjs
+diff --git a/repository_before/editpage-standalone/src/App.tsx b/repository_after/src/App.tsx
+similarity index 100%
+rename from repository_before/editpage-standalone/src/App.tsx
+rename to repository_after/src/App.tsx
+diff --git a/repository_after/src/__tests__/App.test.tsx b/repository_after/src/__tests__/App.test.tsx
+new file mode 100644
+index 0000000..c260cc2
+--- /dev/null
++++ b/repository_after/src/__tests__/App.test.tsx
+@@ -0,0 +1,89 @@
++import { describe, it, expect } from 'vitest'
++import { render, screen } from '@testing-library/react'
++import App from '../App'
++
++describe('App', () => {
++  describe('Initial render', () => {
++    it('should render App component', () => {
++      const { container } = render(<App />)
++      expect(container).toBeInTheDocument()
++    })
++
++    it('should render EditPage component', () => {
++      render(<App />)
++      expect(screen.getByText('Edit Your Video')).toBeInTheDocument()
++    })
++
++    it('should render Header through EditPage', () => {
++      render(<App />)
++      expect(screen.getByText('EditPage Standalone')).toBeInTheDocument()
++    })
++
++    it('should initialize EditPage with null videoUrl', () => {
++      render(<App />)
++      // Check for upload prompt which appears when videoUrl is null
++      expect(screen.getByText(/Click or drag a video file here to upload/i)).toBeInTheDocument()
++    })
++  })
++
++  describe('Component structure', () => {
++    it('should have a root div wrapper', () => {
++      const { container } = render(<App />)
++      expect(container.firstChild).toBeInTheDocument()
++    })
++
++    it('should render main content area', () => {
++      render(<App />)
++      const main = screen.getByRole('main')
++      expect(main).toBeInTheDocument()
++    })
++
++    it('should render header', () => {
++      render(<App />)
++      const header = screen.getByRole('banner')
++      expect(header).toBeInTheDocument()
++    })
++
++    it('should render footer', () => {
++      render(<App />)
++      expect(screen.getByText(/© 2025 VideoPro. All rights reserved./)).toBeInTheDocument()
++    })
++  })
++
++  describe('EditPage integration', () => {
++    it('should pass videoUrl prop to EditPage', () => {
++      render(<App />)
++      // Verify EditPage renders correctly
++      expect(screen.getByText('Edit Your Video')).toBeInTheDocument()
++    })
++
++    it('should render all EditPage UI elements', () => {
++      render(<App />)
++      const buttons = screen.getAllByRole('button')
++      expect(buttons.length).toBeGreaterThan(0)
++    })
++  })
++
++  describe('Accessibility', () => {
++    it('should have proper document structure', () => {
++      render(<App />)
++      expect(screen.getByRole('banner')).toBeInTheDocument() // header
++      expect(screen.getByRole('main')).toBeInTheDocument() // main content
++    })
++
++    it('should have accessible navigation', () => {
++      render(<App />)
++      const buttons = screen.getAllByRole('button')
++      buttons.forEach(button => {
++        expect(button).toBeInTheDocument()
++      })
++    })
++  })
++
++  describe('Snapshot test', () => {
++    it('should match snapshot', () => {
++      const { container } = render(<App />)
++      expect(container.firstChild).toMatchSnapshot()
++    })
++  })
++})
+diff --git a/repository_after/src/__tests__/EditPage.test.tsx b/repository_after/src/__tests__/EditPage.test.tsx
+new file mode 100644
+index 0000000..a94403f
+--- /dev/null
++++ b/repository_after/src/__tests__/EditPage.test.tsx
+@@ -0,0 +1,288 @@
++import { describe, it, expect, vi, beforeEach } from 'vitest'
++import { render, screen, fireEvent, waitFor } from '@testing-library/react'
++import userEvent from '@testing-library/user-event'
++import EditPage from '../components/EditPage'
++import { createMockVideoFile } from './utils/testHelpers'
++
++describe('EditPage', () => {
++  beforeEach(() => {
++    vi.clearAllMocks()
++  })
++
++  describe('Initial render', () => {
++    it('should render EditPage component', () => {
++      render(<EditPage videoUrl={null} />)
++      expect(screen.getByText('Edit Your Video')).toBeInTheDocument()
++    })
++
++    it('should render Header component', () => {
++      render(<EditPage videoUrl={null} />)
++      expect(screen.getByText('EditPage Standalone')).toBeInTheDocument()
++    })
++
++    it('should render without video initially', () => {
++      render(<EditPage videoUrl={null} />)
++      expect(screen.getByText(/Click or drag a video file here to upload/i)).toBeInTheDocument()
++    })
++
++    it('should render with provided videoUrl prop', () => {
++      const videoUrl = 'data:video/mp4;base64,test'
++      render(<EditPage videoUrl={videoUrl} />)
++      const video = screen.getByRole('application').querySelector('video')
++      expect(video).toBeInTheDocument()
++    })
++  })
++
++  describe('UI Controls', () => {
++    it('should render Add Text button', () => {
++      render(<EditPage videoUrl={null} />)
++      const buttons = screen.getAllByRole('button')
++      const textButton = buttons.find(btn =>
++        btn.querySelector('svg')?.classList.contains('w-5')
++      )
++      expect(textButton).toBeInTheDocument()
++    })
++
++    it('should render Zoom Tool button', () => {
++      render(<EditPage videoUrl={null} />)
++      const buttons = screen.getAllByRole('button')
++      expect(buttons.length).toBeGreaterThan(0)
++    })
++
++    it('should show Done button when video is loaded', () => {
++      render(<EditPage videoUrl="data:video/mp4;base64,test" />)
++      expect(screen.getByText('Done')).toBeInTheDocument()
++    })
++
++    it('should show Download button when video is loaded', () => {
++      render(<EditPage videoUrl="data:video/mp4;base64,test" />)
++      expect(screen.getByText('Download Edited Video')).toBeInTheDocument()
++    })
++
++    it('should show Apply Text To Video button when video is loaded', () => {
++      render(<EditPage videoUrl="data:video/mp4;base64,test" />)
++      expect(screen.getByText('Apply Text To Video')).toBeInTheDocument()
++    })
++  })
++
++  describe('TextEditorModal interactions', () => {
++    it('should not show modal initially', () => {
++      render(<EditPage videoUrl={null} />)
++      expect(screen.queryByText('Text Editor (stub)')).not.toBeInTheDocument()
++    })
++
++    it('should open TextEditorModal when Add Text button is clicked', async () => {
++      render(<EditPage videoUrl={null} />)
++
++      // Find and click the text button (first button with DocumentTextIcon)
++      const buttons = screen.getAllByRole('button')
++      const textButton = buttons[0] // First button is Add Text based on component structure
++
++      fireEvent.click(textButton)
++
++      await waitFor(() => {
++        expect(screen.getByText('Text Editor (stub)')).toBeInTheDocument()
++      })
++    })
++
++    it('should close modal when Cancel is clicked', async () => {
++      render(<EditPage videoUrl={null} />)
++
++      // Open modal
++      const buttons = screen.getAllByRole('button')
++      const textButton = buttons[0]
++      fireEvent.click(textButton)
++
++      await waitFor(() => {
++        expect(screen.getByText('Text Editor (stub)')).toBeInTheDocument()
++      })
++
++      // Close modal
++      const cancelButton = screen.getByText('Cancel')
++      fireEvent.click(cancelButton)
++
++      await waitFor(() => {
++        expect(screen.queryByText('Text Editor (stub)')).not.toBeInTheDocument()
++      })
++    })
++
++    it('should add text overlay when Save is clicked in modal', async () => {
++      render(<EditPage videoUrl="data:video/mp4;base64,test" />)
++
++      // Open modal
++      const buttons = screen.getAllByRole('button')
++      const textButton = buttons[0]
++      fireEvent.click(textButton)
++
++      await waitFor(() => {
++        expect(screen.getByText('Text Editor (stub)')).toBeInTheDocument()
++      })
++
++      // Click Save
++      const saveButton = screen.getByText('Save')
++      fireEvent.click(saveButton)
++
++      // Modal should close
++      await waitFor(() => {
++        expect(screen.queryByText('Text Editor (stub)')).not.toBeInTheDocument()
++      })
++    })
++  })
++
++  describe('Zoom Tool functionality', () => {
++    it('should not show zoom controls initially', () => {
++      render(<EditPage videoUrl={null} />)
++      expect(screen.queryByText('Zoom Timing')).not.toBeInTheDocument()
++    })
++
++    it('should show zoom controls when zoom button is clicked', async () => {
++      render(<EditPage videoUrl={null} />)
++
++      // Click zoom button (second button)
++      const buttons = screen.getAllByRole('button')
++      const zoomButton = buttons[1]
++      fireEvent.click(zoomButton)
++
++      await waitFor(() => {
++        expect(screen.getByText('Zoom Timing')).toBeInTheDocument()
++      })
++    })
++
++    it('should display zoom start time input', async () => {
++      render(<EditPage videoUrl={null} />)
++
++      const buttons = screen.getAllByRole('button')
++      const zoomButton = buttons[1]
++      fireEvent.click(zoomButton)
++
++      await waitFor(() => {
++        const startTimeInput = screen.getByPlaceholderText('Enter start time')
++        expect(startTimeInput).toBeInTheDocument()
++      })
++    })
++
++    it('should display zoom end time input', async () => {
++      render(<EditPage videoUrl={null} />)
++
++      const buttons = screen.getAllByRole('button')
++      const zoomButton = buttons[1]
++      fireEvent.click(zoomButton)
++
++      await waitFor(() => {
++        const endTimeInput = screen.getByPlaceholderText('Enter end time')
++        expect(endTimeInput).toBeInTheDocument()
++      })
++    })
++
++    it('should allow updating zoom start time', async () => {
++      const user = userEvent.setup()
++      render(<EditPage videoUrl={null} />)
++
++      const buttons = screen.getAllByRole('button')
++      const zoomButton = buttons[1]
++      fireEvent.click(zoomButton)
++
++      await waitFor(() => {
++        const startTimeInput = screen.getByPlaceholderText('Enter start time') as HTMLInputElement
++        expect(startTimeInput).toBeInTheDocument()
++      })
++
++      const startTimeInput = screen.getByPlaceholderText('Enter start time') as HTMLInputElement
++      await user.clear(startTimeInput)
++      await user.type(startTimeInput, '5')
++
++      expect(startTimeInput.value).toBe('5')
++    })
++  })
++
++  describe('Video upload', () => {
++    it('should show upload prompt when no video', () => {
++      render(<EditPage videoUrl={null} />)
++      expect(screen.getByText(/Click or drag a video file here to upload/i)).toBeInTheDocument()
++    })
++
++    it('should have hidden file input for video upload', () => {
++      const { container } = render(<EditPage videoUrl={null} />)
++      const fileInputs = container.querySelectorAll('input[type="file"]')
++      const videoInput = Array.from(fileInputs).find(input =>
++        input.getAttribute('accept') === 'video/*'
++      )
++      expect(videoInput).toBeInTheDocument()
++      expect(videoInput).toHaveClass('hidden')
++    })
++
++    it('should have hidden file input for audio upload', () => {
++      const { container } = render(<EditPage videoUrl={null} />)
++      const fileInputs = container.querySelectorAll('input[type="file"]')
++      const audioInput = Array.from(fileInputs).find(input =>
++        input.getAttribute('accept') === 'audio/*'
++      )
++      expect(audioInput).toBeInTheDocument()
++      expect(audioInput).toHaveClass('hidden')
++    })
++  })
++
++  describe('Footer', () => {
++    it('should render footer with copyright', () => {
++      render(<EditPage videoUrl={null} />)
++      expect(screen.getByText(/© 2025 VideoPro. All rights reserved./)).toBeInTheDocument()
++    })
++  })
++
++  describe('State management', () => {
++    it('should initialize with no video', () => {
++      const { container } = render(<EditPage videoUrl={null} />)
++      const videos = container.querySelectorAll('video')
++      expect(videos.length).toBe(0)
++    })
++
++    it('should render video element when videoUrl is provided', () => {
++      const { container } = render(<EditPage videoUrl="data:video/mp4;base64,test" />)
++      const videos = container.querySelectorAll('video')
++      expect(videos.length).toBeGreaterThan(0)
++    })
++  })
++
++  describe('TrimTools integration', () => {
++    it('should not show TrimTools initially without video', () => {
++      render(<EditPage videoUrl={null} />)
++      expect(screen.queryByText('Trim Tools (simple stub)')).not.toBeInTheDocument()
++    })
++  })
++
++  describe('Button states', () => {
++    it('should enable Download button when not loading', () => {
++      render(<EditPage videoUrl="data:video/mp4;base64,test" />)
++      const downloadButton = screen.getByText('Download Edited Video')
++      expect(downloadButton).not.toBeDisabled()
++    })
++  })
++
++  describe('Accessibility', () => {
++    it('should have proper ARIA roles for main content', () => {
++      render(<EditPage videoUrl={null} />)
++      const main = screen.getByRole('main')
++      expect(main).toBeInTheDocument()
++    })
++
++    it('should have accessible buttons', () => {
++      render(<EditPage videoUrl={null} />)
++      const buttons = screen.getAllByRole('button')
++      expect(buttons.length).toBeGreaterThan(0)
++    })
++  })
++
++  describe('Snapshot tests', () => {
++    it('should match snapshot without video', () => {
++      const { container } = render(<EditPage videoUrl={null} />)
++      const mainContent = container.querySelector('main')
++      expect(mainContent).toMatchSnapshot()
++    })
++
++    it('should match snapshot with video URL', () => {
++      const { container } = render(<EditPage videoUrl="data:video/mp4;base64,test" />)
++      const mainContent = container.querySelector('main')
++      expect(mainContent).toMatchSnapshot()
++    })
++  })
++})
+diff --git a/repository_after/src/__tests__/Header.test.tsx b/repository_after/src/__tests__/Header.test.tsx
+new file mode 100644
+index 0000000..fa01b54
+--- /dev/null
++++ b/repository_after/src/__tests__/Header.test.tsx
+@@ -0,0 +1,62 @@
++import { describe, it, expect } from 'vitest'
++import { render, screen } from '@testing-library/react'
++import Header from '../components/Header'
++
++describe('Header', () => {
++  describe('Initial render', () => {
++    it('should render the header element', () => {
++      render(<Header />)
++      const header = screen.getByRole('banner')
++      expect(header).toBeInTheDocument()
++    })
++
++    it('should display the application title', () => {
++      render(<Header />)
++      const title = screen.getByText('EditPage Standalone')
++      expect(title).toBeInTheDocument()
++    })
++
++    it('should have correct heading level', () => {
++      render(<Header />)
++      const heading = screen.getByRole('heading', { level: 1 })
++      expect(heading).toBeInTheDocument()
++      expect(heading).toHaveTextContent('EditPage Standalone')
++    })
++  })
++
++  describe('Styling and layout', () => {
++    it('should have proper semantic structure', () => {
++      render(<Header />)
++      const header = screen.getByRole('banner')
++      expect(header.tagName).toBe('HEADER')
++    })
++
++    it('should contain a container div', () => {
++      const { container } = render(<Header />)
++      const headerElement = container.querySelector('header')
++      const containerDiv = headerElement?.querySelector('.max-w-7xl')
++      expect(containerDiv).toBeInTheDocument()
++    })
++  })
++
++  describe('Accessibility', () => {
++    it('should be accessible by role', () => {
++      render(<Header />)
++      const banner = screen.getByRole('banner')
++      expect(banner).toBeInTheDocument()
++    })
++
++    it('should have proper heading hierarchy', () => {
++      render(<Header />)
++      const h1 = screen.getByRole('heading', { level: 1 })
++      expect(h1).toBeInTheDocument()
++    })
++  })
++
++  describe('Snapshot test', () => {
++    it('should match snapshot', () => {
++      const { container } = render(<Header />)
++      expect(container.firstChild).toMatchSnapshot()
++    })
++  })
++})
+diff --git a/repository_after/src/__tests__/TextEditorModal.test.tsx b/repository_after/src/__tests__/TextEditorModal.test.tsx
+new file mode 100644
+index 0000000..9e8620f
+--- /dev/null
++++ b/repository_after/src/__tests__/TextEditorModal.test.tsx
+@@ -0,0 +1,232 @@
++import { describe, it, expect, vi, beforeEach } from 'vitest'
++import { render, screen, fireEvent, waitFor } from '@testing-library/react'
++import userEvent from '@testing-library/user-event'
++import TextEditorModal from '../components/TextEditorModal'
++
++describe('TextEditorModal', () => {
++  const mockOnClose = vi.fn()
++  const mockOnSave = vi.fn()
++
++  beforeEach(() => {
++    mockOnClose.mockClear()
++    mockOnSave.mockClear()
++  })
++
++  describe('Initial render and visibility', () => {
++    it('should not render when isOpen is false', () => {
++      const { container } = render(
++        <TextEditorModal isOpen={false} onClose={mockOnClose} onSave={mockOnSave} />
++      )
++      expect(container.firstChild).toBeNull()
++    })
++
++    it('should render when isOpen is true', () => {
++      render(<TextEditorModal isOpen={true} onClose={mockOnClose} onSave={mockOnSave} />)
++      expect(screen.getByText('Text Editor (stub)')).toBeInTheDocument()
++    })
++
++    it('should display default text value "Sample"', () => {
++      render(<TextEditorModal isOpen={true} onClose={mockOnClose} onSave={mockOnSave} />)
++      const textInput = screen.getByDisplayValue('Sample')
++      expect(textInput).toBeInTheDocument()
++    })
++
++    it('should display default color picker with white color', () => {
++      render(<TextEditorModal isOpen={true} onClose={mockOnClose} onSave={mockOnSave} />)
++      const colorInput = screen.getByDisplayValue('#ffffff') as HTMLInputElement
++      expect(colorInput).toBeInTheDocument()
++      expect(colorInput.type).toBe('color')
++    })
++
++    it('should display default font size of 24', () => {
++      render(<TextEditorModal isOpen={true} onClose={mockOnClose} onSave={mockOnSave} />)
++      const fontSizeInput = screen.getByDisplayValue('24') as HTMLInputElement
++      expect(fontSizeInput).toBeInTheDocument()
++      expect(fontSizeInput.type).toBe('number')
++    })
++  })
++
++  describe('Button interactions', () => {
++    it('should have Cancel and Save buttons', () => {
++      render(<TextEditorModal isOpen={true} onClose={mockOnClose} onSave={mockOnSave} />)
++      expect(screen.getByText('Cancel')).toBeInTheDocument()
++      expect(screen.getByText('Save')).toBeInTheDocument()
++    })
++
++    it('should call onClose when Cancel button is clicked', () => {
++      render(<TextEditorModal isOpen={true} onClose={mockOnClose} onSave={mockOnSave} />)
++      const cancelButton = screen.getByText('Cancel')
++      fireEvent.click(cancelButton)
++      expect(mockOnClose).toHaveBeenCalledTimes(1)
++    })
++
++    it('should call onSave with correct parameters when Save is clicked', () => {
++      render(<TextEditorModal isOpen={true} onClose={mockOnClose} onSave={mockOnSave} />)
++      const saveButton = screen.getByText('Save')
++      fireEvent.click(saveButton)
++
++      expect(mockOnSave).toHaveBeenCalledTimes(1)
++      expect(mockOnSave).toHaveBeenCalledWith(
++        'Sample',
++        { color: '#ffffff', fontSize: 24 },
++        50,
++        50
++      )
++    })
++  })
++
++  describe('Text input interactions', () => {
++    it('should update text when user types', async () => {
++      const user = userEvent.setup()
++      render(<TextEditorModal isOpen={true} onClose={mockOnClose} onSave={mockOnSave} />)
++
++      const textInput = screen.getByDisplayValue('Sample')
++      await user.clear(textInput)
++      await user.type(textInput, 'New text content')
++
++      expect(textInput).toHaveValue('New text content')
++    })
++
++    it('should save updated text when Save is clicked after editing', async () => {
++      const user = userEvent.setup()
++      render(<TextEditorModal isOpen={true} onClose={mockOnClose} onSave={mockOnSave} />)
++
++      const textInput = screen.getByDisplayValue('Sample')
++      await user.clear(textInput)
++      await user.type(textInput, 'Updated')
++
++      const saveButton = screen.getByText('Save')
++      fireEvent.click(saveButton)
++
++      expect(mockOnSave).toHaveBeenCalledWith(
++        'Updated',
++        expect.any(Object),
++        50,
++        50
++      )
++    })
++  })
++
++  describe('Color picker interactions', () => {
++    it('should update color when changed', async () => {
++      render(<TextEditorModal isOpen={true} onClose={mockOnClose} onSave={mockOnSave} />)
++
++      const colorInput = screen.getByDisplayValue('#ffffff')
++      fireEvent.change(colorInput, { target: { value: '#ff0000' } })
++
++      expect(colorInput).toHaveValue('#ff0000')
++    })
++
++    it('should save with updated color', async () => {
++      render(<TextEditorModal isOpen={true} onClose={mockOnClose} onSave={mockOnSave} />)
++
++      const colorInput = screen.getByDisplayValue('#ffffff')
++      fireEvent.change(colorInput, { target: { value: '#00ff00' } })
++
++      const saveButton = screen.getByText('Save')
++      fireEvent.click(saveButton)
++
++      expect(mockOnSave).toHaveBeenCalledWith(
++        'Sample',
++        { color: '#00ff00', fontSize: 24 },
++        50,
++        50
++      )
++    })
++  })
++
++  describe('Font size interactions', () => {
++    it('should update font size when changed', async () => {
++      render(<TextEditorModal isOpen={true} onClose={mockOnClose} onSave={mockOnSave} />)
++
++      const fontSizeInput = screen.getByDisplayValue('24')
++      fireEvent.change(fontSizeInput, { target: { value: '36' } })
++
++      expect(fontSizeInput).toHaveValue(36)
++    })
++
++    it('should save with updated font size', async () => {
++      render(<TextEditorModal isOpen={true} onClose={mockOnClose} onSave={mockOnSave} />)
++
++      const fontSizeInput = screen.getByDisplayValue('24')
++      fireEvent.change(fontSizeInput, { target: { value: '48' } })
++
++      const saveButton = screen.getByText('Save')
++      fireEvent.click(saveButton)
++
++      expect(mockOnSave).toHaveBeenCalledWith(
++        'Sample',
++        { color: '#ffffff', fontSize: 48 },
++        50,
++        50
++      )
++    })
++
++    it('should handle empty font size input', async () => {
++      render(<TextEditorModal isOpen={true} onClose={mockOnClose} onSave={mockOnSave} />)
++
++      const fontSizeInput = screen.getByDisplayValue('24')
++      fireEvent.change(fontSizeInput, { target: { value: '' } })
++
++      const saveButton = screen.getByText('Save')
++      fireEvent.click(saveButton)
++
++      // Should default to 24 when empty
++      expect(mockOnSave).toHaveBeenCalledWith(
++        'Sample',
++        { color: '#ffffff', fontSize: 24 },
++        50,
++        50
++      )
++    })
++  })
++
++  describe('Combined interactions', () => {
++    it('should save all updated values together', async () => {
++      const user = userEvent.setup()
++      render(<TextEditorModal isOpen={true} onClose={mockOnClose} onSave={mockOnSave} />)
++
++      // Update text
++      const textInput = screen.getByDisplayValue('Sample')
++      await user.clear(textInput)
++      await user.type(textInput, 'Complete Test')
++
++      // Update color
++      const colorInput = screen.getByDisplayValue('#ffffff')
++      fireEvent.change(colorInput, { target: { value: '#123456' } })
++
++      // Update font size
++      const fontSizeInput = screen.getByDisplayValue('24')
++      fireEvent.change(fontSizeInput, { target: { value: '32' } })
++
++      // Save
++      const saveButton = screen.getByText('Save')
++      fireEvent.click(saveButton)
++
++      expect(mockOnSave).toHaveBeenCalledWith(
++        'Complete Test',
++        { color: '#123456', fontSize: 32 },
++        50,
++        50
++      )
++    })
++  })
++
++  describe('Focus management', () => {
++    it('should have focusable text input', () => {
++      render(<TextEditorModal isOpen={true} onClose={mockOnClose} onSave={mockOnSave} />)
++      const textInput = screen.getByDisplayValue('Sample')
++      textInput.focus()
++      expect(document.activeElement).toBe(textInput)
++    })
++  })
++
++  describe('Snapshot test', () => {
++    it('should match snapshot when open', () => {
++      const { container } = render(
++        <TextEditorModal isOpen={true} onClose={mockOnClose} onSave={mockOnSave} />
++      )
++      expect(container.firstChild).toMatchSnapshot()
++    })
++  })
++})
+diff --git a/repository_after/src/__tests__/TrimTools.test.tsx b/repository_after/src/__tests__/TrimTools.test.tsx
+new file mode 100644
+index 0000000..89427d0
+--- /dev/null
++++ b/repository_after/src/__tests__/TrimTools.test.tsx
+@@ -0,0 +1,139 @@
++import { describe, it, expect, vi } from 'vitest'
++import { render, screen } from '@testing-library/react'
++import TrimTools from '../components/TrimTools'
++import { createRef } from 'react'
++
++describe('TrimTools', () => {
++  const mockVideoRef = createRef<HTMLVideoElement>()
++  const mockAudioRef = createRef<HTMLAudioElement>()
++  const mockSetStartTrim = vi.fn()
++  const mockSetEndTrim = vi.fn()
++  const mockSetIsDragging = vi.fn()
++  const mockSetTooltipPosition = vi.fn()
++  const mockSetTooltipTime = vi.fn()
++  const mockSetTrimMode = vi.fn()
++
++  const defaultProps = {
++    videoRef: mockVideoRef,
++    audioRef: mockAudioRef,
++    startTrim: 0,
++    endTrim: 100,
++    setStartTrim: mockSetStartTrim,
++    setEndTrim: mockSetEndTrim,
++    videoDuration: 60.5,
++    audioDuration: 45.3,
++    isDragging: null,
++    setIsDragging: mockSetIsDragging,
++    tooltipPosition: null,
++    setTooltipPosition: mockSetTooltipPosition,
++    tooltipTime: '0:00',
++    setTooltipTime: mockSetTooltipTime,
++    trimMode: 'video' as const,
++    setTrimMode: mockSetTrimMode,
++  }
++
++  describe('Initial render', () => {
++    it('should render TrimTools component', () => {
++      render(<TrimTools {...defaultProps} />)
++      expect(screen.getByText('Trim Tools (simple stub)')).toBeInTheDocument()
++    })
++
++    it('should display video duration with 2 decimal places', () => {
++      render(<TrimTools {...defaultProps} />)
++      expect(screen.getByText(/Video duration: 60\.50/)).toBeInTheDocument()
++    })
++
++    it('should display start and end trim percentages', () => {
++      render(<TrimTools {...defaultProps} />)
++      expect(screen.getByText(/Start: 0%, End: 100%/)).toBeInTheDocument()
++    })
++  })
++
++  describe('Props variations', () => {
++    it('should display updated startTrim value', () => {
++      render(<TrimTools {...defaultProps} startTrim={25} />)
++      expect(screen.getByText(/Start: 25%/)).toBeInTheDocument()
++    })
++
++    it('should display updated endTrim value', () => {
++      render(<TrimTools {...defaultProps} endTrim={75} />)
++      expect(screen.getByText(/End: 75%/)).toBeInTheDocument()
++    })
++
++    it('should display both updated trim values', () => {
++      render(<TrimTools {...defaultProps} startTrim={10} endTrim={90} />)
++      expect(screen.getByText(/Start: 10%, End: 90%/)).toBeInTheDocument()
++    })
++
++    it('should format video duration correctly for whole numbers', () => {
++      render(<TrimTools {...defaultProps} videoDuration={120} />)
++      expect(screen.getByText(/Video duration: 120\.00/)).toBeInTheDocument()
++    })
++
++    it('should format video duration correctly for decimals', () => {
++      render(<TrimTools {...defaultProps} videoDuration={45.678} />)
++      expect(screen.getByText(/Video duration: 45\.68/)).toBeInTheDocument()
++    })
++
++    it('should handle zero duration', () => {
++      render(<TrimTools {...defaultProps} videoDuration={0} />)
++      expect(screen.getByText(/Video duration: 0\.00/)).toBeInTheDocument()
++    })
++
++    it('should handle very small duration', () => {
++      render(<TrimTools {...defaultProps} videoDuration={0.01} />)
++      expect(screen.getByText(/Video duration: 0\.01/)).toBeInTheDocument()
++    })
++
++    it('should handle large duration', () => {
++      render(<TrimTools {...defaultProps} videoDuration={3600.99} />)
++      expect(screen.getByText(/Video duration: 3600\.99/)).toBeInTheDocument()
++    })
++  })
++
++  describe('Edge cases', () => {
++    it('should handle startTrim at 0%', () => {
++      render(<TrimTools {...defaultProps} startTrim={0} endTrim={100} />)
++      expect(screen.getByText(/Start: 0%, End: 100%/)).toBeInTheDocument()
++    })
++
++    it('should handle both trims at same position', () => {
++      render(<TrimTools {...defaultProps} startTrim={50} endTrim={50} />)
++      expect(screen.getByText(/Start: 50%, End: 50%/)).toBeInTheDocument()
++    })
++
++    it('should handle decimal trim values', () => {
++      render(<TrimTools {...defaultProps} startTrim={12.5} endTrim={87.5} />)
++      expect(screen.getByText(/Start: 12\.5%, End: 87\.5%/)).toBeInTheDocument()
++    })
++  })
++
++  describe('Component structure', () => {
++    it('should render with correct container structure', () => {
++      const { container } = render(<TrimTools {...defaultProps} />)
++      const mainDiv = container.querySelector('div[style*="marginTop"]')
++      expect(mainDiv).toBeInTheDocument()
++    })
++
++    it('should render all text elements', () => {
++      render(<TrimTools {...defaultProps} />)
++      expect(screen.getByText('Trim Tools (simple stub)')).toBeInTheDocument()
++      expect(screen.getByText(/Video duration:/)).toBeInTheDocument()
++      expect(screen.getByText(/Start:/)).toBeInTheDocument()
++    })
++  })
++
++  describe('Snapshot test', () => {
++    it('should match snapshot with default props', () => {
++      const { container } = render(<TrimTools {...defaultProps} />)
++      expect(container.firstChild).toMatchSnapshot()
++    })
++
++    it('should match snapshot with custom trim values', () => {
++      const { container } = render(
++        <TrimTools {...defaultProps} startTrim={20} endTrim={80} videoDuration={90.25} />
++      )
++      expect(container.firstChild).toMatchSnapshot()
++    })
++  })
++})
+diff --git a/repository_after/src/__tests__/fixtures/textFixtures.ts b/repository_after/src/__tests__/fixtures/textFixtures.ts
+new file mode 100644
+index 0000000..849ba03
+--- /dev/null
++++ b/repository_after/src/__tests__/fixtures/textFixtures.ts
+@@ -0,0 +1,60 @@
++/**
++ * Test fixtures for text manipulation tests
++ */
++
++export const textFixtures = {
++  // Fixtures for trim tests
++  withLeadingSpaces: '   Hello World',
++  withTrailingSpaces: 'Hello World   ',
++  withBothSpaces: '   Hello World   ',
++  withMultipleInternalSpaces: 'Hello    World    Test',
++  withNewlines: 'Hello\nWorld\nTest',
++  withTabs: 'Hello\tWorld\tTest',
++  withMixedWhitespace: '  Hello   \t  World  \n  Test  ',
++  emptyString: '',
++  onlySpaces: '     ',
++
++  // Expected results after trimming
++  trimmed: {
++    withLeadingSpaces: 'Hello World',
++    withTrailingSpaces: 'Hello World',
++    withBothSpaces: 'Hello World',
++    withMultipleInternalSpaces: 'Hello World Test', // collapsed
++    withNewlines: 'Hello World Test', // normalized
++    withTabs: 'Hello World Test', // normalized
++    withMixedWhitespace: 'Hello World Test', // fully normalized
++    emptyString: '',
++    onlySpaces: '',
++  },
++
++  // Fixtures for editor content
++  editorContent: {
++    simple: 'Hello, this is a test',
++    withPunctuation: 'Hello! This is a test, right?',
++    multiline: 'Line 1\nLine 2\nLine 3',
++    withNumbers: 'Test 123 with numbers 456',
++    withSpecialChars: 'Test@#$%^&*()_+',
++    longText: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. '.repeat(10),
++  },
++}
++
++export const videoUrlFixtures = {
++  validVideoUrl: 'data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAACKBtZGF0AAAC',
++  invalidVideoUrl: 'invalid-url',
++  blobUrl: 'blob:http://localhost:3000/12345-67890',
++}
++
++export const styleFixtures = {
++  default: {
++    color: '#000000',
++    fontSize: 16,
++  },
++  large: {
++    color: '#ff0000',
++    fontSize: 32,
++  },
++  small: {
++    color: '#0000ff',
++    fontSize: 12,
++  },
++}
+diff --git a/repository_after/src/__tests__/formatTime.test.ts b/repository_after/src/__tests__/formatTime.test.ts
+new file mode 100644
+index 0000000..f17fce3
+--- /dev/null
++++ b/repository_after/src/__tests__/formatTime.test.ts
+@@ -0,0 +1,75 @@
++import { describe, it, expect } from 'vitest'
++import { formatTime } from '../utils/formatTime'
++
++describe('formatTime', () => {
++  describe('Edge cases', () => {
++    it('should return "0:00" for zero seconds', () => {
++      expect(formatTime(0)).toBe('0:00')
++    })
++
++    it('should return "0:00" for negative values', () => {
++      expect(formatTime(-1)).toBe('0:00')
++      expect(formatTime(-10)).toBe('0:00')
++      expect(formatTime(-100)).toBe('0:00')
++    })
++
++    it('should return "0:00" for non-finite values', () => {
++      expect(formatTime(NaN)).toBe('0:00')
++      expect(formatTime(Infinity)).toBe('0:00')
++      expect(formatTime(-Infinity)).toBe('0:00')
++    })
++  })
++
++  describe('Standard time formatting', () => {
++    it('should format 59 seconds correctly', () => {
++      expect(formatTime(59)).toBe('0:59')
++    })
++
++    it('should format 60 seconds (1 minute) correctly', () => {
++      expect(formatTime(60)).toBe('1:00')
++    })
++
++    it('should format seconds with zero-padded seconds', () => {
++      expect(formatTime(1)).toBe('0:01')
++      expect(formatTime(5)).toBe('0:05')
++      expect(formatTime(9)).toBe('0:09')
++    })
++
++    it('should format minutes with two-digit seconds', () => {
++      expect(formatTime(65)).toBe('1:05')
++      expect(formatTime(125)).toBe('2:05')
++      expect(formatTime(185)).toBe('3:05')
++    })
++
++    it('should format large values correctly', () => {
++      expect(formatTime(3600)).toBe('60:00') // 1 hour
++      expect(formatTime(3661)).toBe('61:01') // 1 hour 1 minute 1 second
++      expect(formatTime(7200)).toBe('120:00') // 2 hours
++      expect(formatTime(86400)).toBe('1440:00') // 24 hours
++    })
++
++    it('should format very large numbers correctly', () => {
++      expect(formatTime(100000)).toBe('1666:40')
++      expect(formatTime(999999)).toBe('16666:39')
++    })
++  })
++
++  describe('Decimal inputs', () => {
++    it('should floor decimal seconds correctly', () => {
++      expect(formatTime(59.1)).toBe('0:59')
++      expect(formatTime(59.5)).toBe('0:59')
++      expect(formatTime(59.9)).toBe('0:59')
++      expect(formatTime(60.5)).toBe('1:00')
++      expect(formatTime(65.7)).toBe('1:05')
++    })
++  })
++
++  describe('Zero-padding', () => {
++    it('should always pad seconds to two digits', () => {
++      expect(formatTime(600)).toBe('10:00')
++      expect(formatTime(601)).toBe('10:01')
++      expect(formatTime(609)).toBe('10:09')
++      expect(formatTime(610)).toBe('10:10')
++    })
++  })
++})
+diff --git a/repository_after/src/__tests__/utils/testHelpers.tsx b/repository_after/src/__tests__/utils/testHelpers.tsx
+new file mode 100644
+index 0000000..8f3a98b
+--- /dev/null
++++ b/repository_after/src/__tests__/utils/testHelpers.tsx
+@@ -0,0 +1,63 @@
++import { render, RenderOptions } from '@testing-library/react'
++import { ReactElement } from 'react'
++
++/**
++ * Custom render function that wraps components with providers if needed
++ */
++export function renderWithProviders(
++  ui: ReactElement,
++  options?: Omit<RenderOptions, 'wrapper'>
++) {
++  return render(ui, { ...options })
++}
++
++/**
++ * Create a mock file for file upload testing
++ */
++export function createMockFile(
++  name: string,
++  size: number,
++  type: string,
++  content: string = 'mock content'
++): File {
++  const blob = new Blob([content], { type })
++  return new File([blob], name, { type })
++}
++
++/**
++ * Create a mock video file
++ */
++export function createMockVideoFile(name: string = 'test-video.mp4'): File {
++  return createMockFile(name, 1024 * 1024, 'video/mp4')
++}
++
++/**
++ * Create a mock audio file
++ */
++export function createMockAudioFile(name: string = 'test-audio.mp3'): File {
++  return createMockFile(name, 512 * 1024, 'audio/mp3')
++}
++
++/**
++ * Wait for a specific amount of time
++ */
++export const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
++
++/**
++ * Simulate file input change event
++ */
++export function simulateFileUpload(input: HTMLInputElement, file: File) {
++  const fileList = {
++    0: file,
++    length: 1,
++    item: (index: number) => (index === 0 ? file : null),
++  }
++
++  Object.defineProperty(input, 'files', {
++    value: fileList,
++    writable: false,
++  })
++
++  const event = new Event('change', { bubbles: true })
++  input.dispatchEvent(event)
++}
+diff --git a/repository_before/editpage-standalone/src/components/EditPage.tsx b/repository_after/src/components/EditPage.tsx
+similarity index 100%
+rename from repository_before/editpage-standalone/src/components/EditPage.tsx
+rename to repository_after/src/components/EditPage.tsx
+diff --git a/repository_before/editpage-standalone/src/components/Header.tsx b/repository_after/src/components/Header.tsx
+similarity index 100%
+rename from repository_before/editpage-standalone/src/components/Header.tsx
+rename to repository_after/src/components/Header.tsx
+diff --git a/repository_before/editpage-standalone/src/components/TextEditorModal.tsx b/repository_after/src/components/TextEditorModal.tsx
+similarity index 100%
+rename from repository_before/editpage-standalone/src/components/TextEditorModal.tsx
+rename to repository_after/src/components/TextEditorModal.tsx
+diff --git a/repository_before/editpage-standalone/src/components/TrimTools.tsx b/repository_after/src/components/TrimTools.tsx
+similarity index 100%
+rename from repository_before/editpage-standalone/src/components/TrimTools.tsx
+rename to repository_after/src/components/TrimTools.tsx
+diff --git a/repository_before/editpage-standalone/src/index.css b/repository_after/src/index.css
+similarity index 100%
+rename from repository_before/editpage-standalone/src/index.css
+rename to repository_after/src/index.css
+diff --git a/repository_before/editpage-standalone/src/main.tsx b/repository_after/src/main.tsx
+similarity index 100%
+rename from repository_before/editpage-standalone/src/main.tsx
+rename to repository_after/src/main.tsx
+diff --git a/repository_before/editpage-standalone/src/utils/formatTime.ts b/repository_after/src/utils/formatTime.ts
+similarity index 100%
+rename from repository_before/editpage-standalone/src/utils/formatTime.ts
+rename to repository_after/src/utils/formatTime.ts
+diff --git a/repository_before/editpage-standalone/tailwind.config.cjs b/repository_after/tailwind.config.cjs
+similarity index 100%
+rename from repository_before/editpage-standalone/tailwind.config.cjs
+rename to repository_after/tailwind.config.cjs
+diff --git a/repository_before/editpage-standalone/tsconfig.json b/repository_after/tsconfig.json
+similarity index 100%
+rename from repository_before/editpage-standalone/tsconfig.json
+rename to repository_after/tsconfig.json
+diff --git a/repository_before/editpage-standalone/vite.config.ts b/repository_after/vite.config.ts
+similarity index 100%
+rename from repository_before/editpage-standalone/vite.config.ts
+rename to repository_after/vite.config.ts
+diff --git a/repository_after/vitest.config.ts b/repository_after/vitest.config.ts
+new file mode 100644
+index 0000000..6e825af
+--- /dev/null
++++ b/repository_after/vitest.config.ts
+@@ -0,0 +1,35 @@
++import { defineConfig } from 'vitest/config'
++import react from '@vitejs/plugin-react'
++import path from 'path'
++
++export default defineConfig({
++  plugins: [react()],
++  test: {
++    globals: true,
++    environment: 'jsdom',
++    setupFiles: './vitest.setup.ts',
++    css: true,
++    coverage: {
++      provider: 'v8',
++      reporter: ['text', 'json', 'html'],
++      exclude: [
++        'node_modules/',
++        'vitest.setup.ts',
++        '**/*.config.*',
++        '**/dist/**',
++        '**/__tests__/**',
++      ],
++      thresholds: {
++        lines: 90,
++        functions: 90,
++        branches: 85,
++        statements: 90,
++      },
++    },
++  },
++  resolve: {
++    alias: {
++      '@': path.resolve(__dirname, './src'),
++    },
++  },
++})
+diff --git a/repository_after/vitest.setup.ts b/repository_after/vitest.setup.ts
+new file mode 100644
+index 0000000..9d6653f
+--- /dev/null
++++ b/repository_after/vitest.setup.ts
+@@ -0,0 +1,110 @@
++import { expect, afterEach, vi } from 'vitest'
++import { cleanup } from '@testing-library/react'
++import '@testing-library/jest-dom/vitest'
++
++// Cleanup after each test case
++afterEach(() => {
++  cleanup()
++})
++
++// Mock localStorage
++const localStorageMock = (() => {
++  let store: Record<string, string> = {}
++
++  return {
++    getItem: (key: string) => store[key] || null,
++    setItem: (key: string, value: string) => {
++      store[key] = value.toString()
++    },
++    removeItem: (key: string) => {
++      delete store[key]
++    },
++    clear: () => {
++      store = {}
++    },
++  }
++})()
++
++Object.defineProperty(window, 'localStorage', {
++  value: localStorageMock,
++})
++
++// Mock window.matchMedia
++Object.defineProperty(window, 'matchMedia', {
++  writable: true,
++  value: vi.fn().mockImplementation((query) => ({
++    matches: false,
++    media: query,
++    onchange: null,
++    addListener: vi.fn(),
++    removeListener: vi.fn(),
++    addEventListener: vi.fn(),
++    removeEventListener: vi.fn(),
++    dispatchEvent: vi.fn(),
++  })),
++})
++
++// Mock URL.createObjectURL and revokeObjectURL
++global.URL.createObjectURL = vi.fn(() => 'mock-object-url')
++global.URL.revokeObjectURL = vi.fn()
++
++// Mock MediaRecorder
++global.MediaRecorder = vi.fn().mockImplementation(() => ({
++  start: vi.fn(),
++  stop: vi.fn(),
++  ondataavailable: null,
++  onerror: null,
++  onstop: null,
++  state: 'inactive',
++})) as any
++
++// Mock FileReader
++global.FileReader = vi.fn().mockImplementation(() => ({
++  readAsDataURL: vi.fn(),
++  onloadend: null,
++  result: null,
++})) as any
++
++// Mock HTMLCanvasElement methods
++HTMLCanvasElement.prototype.getContext = vi.fn().mockImplementation(() => ({
++  clearRect: vi.fn(),
++  fillRect: vi.fn(),
++  fillText: vi.fn(),
++  drawImage: vi.fn(),
++  getImageData: vi.fn(() => ({
++    data: new Uint8ClampedArray(100),
++    width: 10,
++    height: 10,
++  })),
++  putImageData: vi.fn(),
++  save: vi.fn(),
++  restore: vi.fn(),
++  scale: vi.fn(),
++  translate: vi.fn(),
++})) as any
++
++HTMLCanvasElement.prototype.captureStream = vi.fn(() => ({
++  getTracks: vi.fn(() => []),
++})) as any
++
++// Mock HTMLVideoElement
++Object.defineProperty(HTMLVideoElement.prototype, 'videoWidth', {
++  get: () => 1920,
++})
++
++Object.defineProperty(HTMLVideoElement.prototype, 'videoHeight', {
++  get: () => 1080,
++})
++
++Object.defineProperty(HTMLVideoElement.prototype, 'duration', {
++  get: () => 60,
++})
++
++Object.defineProperty(HTMLVideoElement.prototype, 'currentTime', {
++  get: () => 0,
++  set: vi.fn(),
++})
++
++HTMLVideoElement.prototype.play = vi.fn().mockResolvedValue(undefined)
++HTMLVideoElement.prototype.pause = vi.fn()
++HTMLVideoElement.prototype.load = vi.fn()

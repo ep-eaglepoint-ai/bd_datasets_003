@@ -6,7 +6,20 @@ __pycache__/
 
 # Node
 node_modules/
+dist/
+build/
+coverage/
+.vite/
+.vitest/
 
 # OS
 .DS_Store
-evaluation/*.json
+*.log
+
+# Evaluation
+evaluation/*/
+!evaluation/*.js
+
+# Patches
+patches/*.patch
+!patches/.gitkeep

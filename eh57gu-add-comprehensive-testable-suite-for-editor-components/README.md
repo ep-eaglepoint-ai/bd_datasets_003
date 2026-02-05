@@ -1,11 +1,18 @@
 # EH57GU - Add comprehensive, testable suite for editor components
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Quick Start
 
-    ## After Test Docker Command
-    <docker after command here>
+### Run Tests (repository_after)
+```bash
+docker compose run --rm repo-before
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+### Run Meta Tests (validate test quality)
+```bash
+docker compose run --rm repo-after
+```
+
+### Run Evaluation
+```bash
+docker compose run --rm evaluation
+```

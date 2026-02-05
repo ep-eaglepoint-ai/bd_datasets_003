@@ -1,8 +1,15 @@
+FROM node:18-slim
 
-        # Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
-
-        FROM python:3.11-slim
 WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+# Copy project files
+COPY . .
+
+# Install dependencies in repository_after
+WORKDIR /app/repository_after
+RUN npm install --legacy-peer-deps 2>/dev/null || npm install
+
+# Back to root
+WORKDIR /app
+
+CMD ["npm", "test"]

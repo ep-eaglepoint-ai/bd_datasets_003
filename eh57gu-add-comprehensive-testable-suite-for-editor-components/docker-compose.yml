@@ -1,9 +1,30 @@
+services:
+  repo-before:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /app/repository_after
+    environment:
+      - CI=true
+      - FORCE_COLOR=0
+    command: npm test
 
-        # Docker Compose file for running tests. You should customize this as needed.
+  repo-after:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /app/tests
+    environment:
+      - CI=true
+      - FORCE_COLOR=0
+    command: sh -c "npm install && npm test"
 
-        services:
-  app:
-    build: .
-    command: pytest -q tests
-    volumes:
-      - .:/app
+  evaluation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /app
+    environment:
+      - CI=true
+      - FORCE_COLOR=0
+    command: node evaluation/evaluation.js
