@@ -1,0 +1,12 @@
+{
+            "instance_id": "IR0XMJ",
+            "problem_statement": "The engineering challenge lies in the implementation of a rigid Asynchronous Finite State Machine where transition logic is governed by a complex hierarchy of constraints rather than simple sequence. Unlike standard web logic, traffic systems function as "Safety-Critical" software; the model must prioritize the "All-Red" clearance interval (where all lights are red for 2 seconds to clear the intersection) above all else during a handover. Mid-tier models typically fail in two specific areas: "State Teleportation," where they switch immediately from Green to Red upon receiving an emergency signal (causing a virtual crash), and "Starvation/Deadlock," where the logic fails to revert to the normal cycle after the emergency signal is lifted, leaving the intersection frozen in the preemption state.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ir0xmj-event-driven-traffic-fsm-with-preemption-safety-interlocks",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
