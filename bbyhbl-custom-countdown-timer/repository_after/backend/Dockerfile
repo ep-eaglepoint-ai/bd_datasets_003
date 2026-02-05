@@ -1,6 +1,10 @@
-FROM node:18-alpine
+FROM node:20-slim
 
 WORKDIR /app
+
+RUN apt-get update \
+	&& apt-get install -y --no-install-recommends openssl ca-certificates \
+	&& rm -rf /var/lib/apt/lists/*
 
 # Copy package files
 COPY package*.json ./
@@ -24,4 +28,4 @@ RUN npm run build
 EXPOSE 3001
 
 # Start application
-CMD ["sh", "-c", "npx prisma db push && node dist/index.js"]
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss --skip-generate && node dist/index.js"]
