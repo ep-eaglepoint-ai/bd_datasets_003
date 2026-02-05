@@ -1,0 +1,11 @@
+{
+            "instance_id": "FS5MHA",
+            "problem_statement": "A production Go WebSocket chat system crashes every  hours due to memory leaks. Users report messages being lost and connections dropping randomly. Monitoring shows memory usage growing from 200MB to 8GB and goroutine count increasing from 50 to 50,000+ before OOM kill. The system uses Redis pub/sub for horizontal scaling across multiple instances. Core logic is in hub.go, client.go, redis.go, and room.go",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/fs5mha-websocket-chat-system-memory-leak-bug-fix",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
