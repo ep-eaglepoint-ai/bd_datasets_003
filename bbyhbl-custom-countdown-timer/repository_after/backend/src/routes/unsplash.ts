@@ -12,6 +12,10 @@ type UnsplashSearchResult = {
   user?: { name?: string; username?: string };
 };
 
+type UnsplashSearchResponse = {
+  results?: UnsplashSearchResult[];
+};
+
 app.get('/search', async (c) => {
   const query = (c.req.query('query') || '').trim();
   const perPage = Math.min(parseInt(c.req.query('perPage') || '12', 10) || 12, 30);
@@ -48,8 +52,8 @@ app.get('/search', async (c) => {
     return c.json({ success: false, error: 'Unsplash request failed', details: text }, 502);
   }
 
-  const json = await resp.json();
-  const results: UnsplashSearchResult[] = json.results || [];
+  const json = (await resp.json()) as UnsplashSearchResponse;
+  const results: UnsplashSearchResult[] = Array.isArray(json.results) ? json.results : [];
 
   const data = results.map((r) => ({
     id: r.id,
