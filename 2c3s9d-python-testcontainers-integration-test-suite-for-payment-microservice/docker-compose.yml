@@ -1,8 +1,18 @@
-# Docker Compose file for running tests. You should customize this as needed.
+# Docker Compose for running integration tests with Testcontainers
+# Tests use Testcontainers to spawn real PostgreSQL, Redis, and RabbitMQ
 
 services:
   app:
     build: .
-    command: pytest -q tests
+    command: >
+      pytest -q --tb=short
+      -v
+      --timeout=60
+      tests/
+    environment:
+      - PYTHONPATH=${PYTHONPATH:-/app/repository_after}
     volumes:
       - .:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    # Testcontainers requires Docker socket access
+    # Mounting the Docker socket allows containers to be spawned

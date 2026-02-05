@@ -1,11 +1,29 @@
-# 2C3S9D - Python Testcontainers Integration Test Suite for Payment Microservice
+# Python Testcontainers Integration Test Suite for Payment Microservice
 
-    ## Before Test Docker Command
-    <docker before command here>
+A comprehensive integration test suite for a payment processing microservice using Testcontainers.
 
-    ## After Test Docker Command
-    <docker after command here>
+## Docker Commands
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+### 1. Run Tests on repository_before
+
+```bash
+docker compose run --rm -e PYTHONPATH=/app/repository_before app pytest -q
+```
+
+Commands to spin up the app and run tests on repository_before
+
+### 2. Run Tests on repository_after
+
+```bash
+docker compose run --rm -e PYTHONPATH=/app/repository_after app pytest -q
+```
+
+Commands to run tests on repository_after
+
+### 3. Run Evaluation
+
+```bash
+docker compose run --rm app python evaluation/evaluation.py
+```
+
+Commands to run evaluation/evaluation.py and generate reports

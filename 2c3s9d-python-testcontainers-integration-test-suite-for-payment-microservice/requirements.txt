@@ -1,1 +1,21 @@
-# Add your Python dependencies here if the project is Python-based. If it is not Python-based, you can remove this file and configure the requirements accordingly.
+# Application dependencies (from repository_after)
+fastapi>=0.104.0
+uvicorn>=0.24.0
+pydantic>=2.5.0
+asyncpg>=0.29.0
+aioredis>=2.0.1
+aio-pika>=9.3.0
+httpx>=0.25.0
+python-multipart>=0.0.6
+redis>=4.5.0
+pika>=1.3.0
+
+# Test dependencies
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-timeout>=2.2.0
+pytest-xdist>=3.5.0
+pytest-json-report>=1.5.0
+testcontainers
+respx>=0.20.0
+httpx>=0.25.0

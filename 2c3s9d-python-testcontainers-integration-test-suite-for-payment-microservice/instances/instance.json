@@ -1,13 +1,34 @@
 {
-            "instance_id": "2C3S9D",
-            "problem_statement": "A payment processing microservice handles charges, refunds, and notifications but has no integration tests. Unit tests pass, yet production incidents keep occurring due to issues with PostgreSQL transactions, Redis caching, and RabbitMQ message handling. The service depends on external APIs (Stripe, email) that behave differently in production than mocked in unit tests. 
-
- Developers need a comprehensive integration test suite using Testcontainers to verify real database transactions, cache behavior, and message queue interactions before deployment. Core files include app/main.py, app/services/payment.py, app/repositories/payment_repo.py, and app/queue/publisher.py.",
-            "base_commit": "repository_before/",
-            "test_patch": "tests/",
-            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/2c3s9d-python-testcontainers-integration-test-suite-for-payment-microservice",
-            "environment_setup": "Dockerfile",
-            "FAIL_TO_PASS": [],
-            "PASS_TO_PASS": []
-        }
-        
+    "instance_id": "2C3S9D",
+    "problem_statement": "A payment processing microservice handles charges, refunds, and notifications but has no integration tests. Unit tests pass, yet production incidents keep occurring due to issues with PostgreSQL transactions, Redis caching, and RabbitMQ message handling. The service depends on external APIs (Stripe, email) that behave differently in production than mocked in unit tests. Developers need a comprehensive integration test suite using Testcontainers to verify real database transactions, cache behavior, and message queue interactions before deployment. Core files include app/main.py, app/services/payment.py, app/repositories/payment_repo.py, and app/queue/publisher.py.",
+    "base_commit": "repository_before/",
+    "repo": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/2c3s9d-python-testcontainers-integration-test-suite-for-payment-microservice",
+    "environment_setup": "Dockerfile",
+    "FAIL_TO_PASS": [
+        "tests/test_payment_flow.py::test_payment_creation_persists_to_database",
+        "tests/test_payment_flow.py::test_payment_creation_publishes_event_to_queue",
+        "tests/test_payment_flow.py::test_payment_verifies_db_write_and_queue_publish",
+        "tests/test_refund_flow.py::test_refund_updates_payment_status",
+        "tests/test_refund_flow.py::test_refund_triggers_notification",
+        "tests/test_refund_flow.py::test_refund_creates_refund_record",
+        "tests/test_retry_logic.py::test_retry_on_api_failure",
+        "tests/test_retry_logic.py::test_retry_fails_after_max_attempts",
+        "tests/test_concurrency_idempotency.py::test_concurrent_payments_with_same_idempotency_key",
+        "tests/test_concurrency_idempotency.py::test_no_duplicate_db_records_with_parallel_requests",
+        "tests/test_cache_invalidation.py::test_cache_invalidation_on_refund",
+        "tests/test_cache_invalidation.py::test_cache_populated_on_read_after_invalidation"
+    ],
+    "PASS_TO_PASS": [
+        "tests/test_refund_flow.py::test_refund_fails_for_nonexistent_payment",
+        "tests/test_refund_flow.py::test_refund_fails_for_already_refunded_payment",
+        "tests/test_retry_logic.py::test_no_retry_on_immediate_success",
+        "tests/test_retry_logic.py::test_retry_with_varying_delay",
+        "tests/test_concurrency_idempotency.py::test_idempotency_key_returns_same_payment",
+        "tests/test_concurrency_idempotency.py::test_message_idempotency_prevents_double_processing",
+        "tests/test_concurrency_idempotency.py::test_parallel_execution_isolation",
+        "tests/test_cache_invalidation.py::test_cache_is_populated_after_payment_save",
+        "tests/test_cache_invalidation.py::test_cache_hit_before_database_read",
+        "tests/test_cache_invalidation.py::test_cache_expiration"
+    ],
+    "test_patch": "tests/"
+}
