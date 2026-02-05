@@ -1,0 +1,11 @@
+{
+            "instance_id": "VKS119",
+            "problem_statement": "Implement a memory alignment engine that rebalances N segments across M pages. The solution must use a closed-form or iterative BigInt recurrence to determine target addresses on-the-fly, ensuring high-frequency data converges to the address space midpoint without auxiliary buffers or heap materialization.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/vks119-discrete-bigint-cycle-decomposition-engine-for-deterministic-in-place-rebalancing",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
