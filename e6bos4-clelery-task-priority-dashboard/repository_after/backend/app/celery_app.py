@@ -1,6 +1,6 @@
 """Celery application configuration with priority-based queuing."""
 from celery import Celery
-from kombu import Queue
+from kombu import Queue, Exchange
 import os
 
 # Redis broker URL
@@ -41,11 +41,11 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,  # Important for priority ordering
     worker_concurrency=4,
     
-    # Priority queue configuration
+    # Priority queue configuration with explicit exchanges
     task_queues=(
-        Queue("high", routing_key="high"),
-        Queue("medium", routing_key="medium"),
-        Queue("low", routing_key="low"),
+        Queue("high", Exchange("high", type="direct"), routing_key="high"),
+        Queue("medium", Exchange("medium", type="direct"), routing_key="medium"),
+        Queue("low", Exchange("low", type="direct"), routing_key="low"),
     ),
     
     # Default queue
@@ -63,11 +63,6 @@ celery_app.conf.update(
     # Retry settings
     task_acks_late=True,
     task_reject_on_worker_lost=True,
-    
-    # Transport options
-    broker_transport_options={
-        "queue_order_strategy": "priority"
-    },
 )
 
 

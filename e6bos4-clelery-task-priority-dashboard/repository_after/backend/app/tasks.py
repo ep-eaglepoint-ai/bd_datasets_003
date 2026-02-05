@@ -242,3 +242,16 @@ def _simulate_generic_task(task_self: ProgressTask, task_db_id: int, total_steps
         "steps_completed": total_steps,
         "completed": True
     }
+
+
+@celery_app.task(name="app.tasks.priority_test_task")
+def priority_test_task(priority: str):
+    """
+    Simple task for verifying priority queue ordering.
+    Pushes the priority string to a Redis list.
+    """
+    import redis
+    # Connect to Redis directly to log execution order
+    r = redis.from_url(os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0"))
+    r.rpush("execution_log", priority)
+    return priority
