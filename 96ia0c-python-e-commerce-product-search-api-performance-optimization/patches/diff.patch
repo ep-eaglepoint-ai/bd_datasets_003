@@ -1,0 +1,1182 @@
+diff --git a/repository_after/.gitkeep b/repository_after/.gitkeep
+new file mode 100644
+index 0000000..e69de29
+diff --git a/repository_after/cache.py b/repository_after/cache.py
+new file mode 100644
+index 0000000..0b7168b
+--- /dev/null
++++ b/repository_after/cache.py
+@@ -0,0 +1,45 @@
++import asyncio
++import hashlib
++import json
++from typing import Any, Dict, Iterable, Optional
++
++from redis.asyncio import Redis
++
++LIST_TTL_SECONDS = 300
++SEARCH_TTL_SECONDS = 180
++DETAIL_TTL_SECONDS = 300
++
++
++def make_cache_key(prefix: str, params: Dict[str, Any]) -> str:
++    payload = json.dumps(params, sort_keys=True, separators=(",", ":"), default=str)
++    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
++    return f"{prefix}:{digest}"
++
++
++async def cache_get(redis: Redis, key: str) -> Optional[str]:
++    return await redis.get(key)
++
++
++async def cache_set(redis: Redis, key: str, value: str, ttl_seconds: int) -> None:
++    await redis.set(key, value, ex=ttl_seconds)
++
++
++async def invalidate_keys(redis: Redis, patterns: Iterable[str]) -> None:
++    for pattern in patterns:
++        async for key in redis.scan_iter(match=pattern, count=500):
++            await redis.delete(key)
++
++
++async def invalidate_product_cache(redis: Redis, product_id: Optional[int] = None) -> None:
++    patterns = ["products:list:*", "products:search:*"]
++    if product_id is not None:
++        patterns.append(f"products:detail:{product_id}")
++    await invalidate_keys(redis, patterns)
++
++
++def schedule_cache_invalidation(redis: Redis, product_id: Optional[int] = None) -> None:
++    try:
++        loop = asyncio.get_running_loop()
++    except RuntimeError:
++        return
++    loop.create_task(invalidate_product_cache(redis, product_id))
+diff --git a/repository_after/cache_invalidation.py b/repository_after/cache_invalidation.py
+new file mode 100644
+index 0000000..4ced457
+--- /dev/null
++++ b/repository_after/cache_invalidation.py
+@@ -0,0 +1,35 @@
++import asyncio
++
++from sqlalchemy import event
++
++from cache import invalidate_product_cache
++from database import get_redis
++from models import Product
++
++
++async def _invalidate(product_id: int | None) -> None:
++    redis = await get_redis()
++    await invalidate_product_cache(redis, product_id)
++
++
++def _schedule(product_id: int | None) -> None:
++    try:
++        loop = asyncio.get_running_loop()
++    except RuntimeError:
++        return
++    loop.create_task(_invalidate(product_id))
++
++
++@event.listens_for(Product, "after_insert")
++def _after_insert(mapper, connection, target) -> None:
++    _schedule(getattr(target, "id", None))
++
++
++@event.listens_for(Product, "after_update")
++def _after_update(mapper, connection, target) -> None:
++    _schedule(getattr(target, "id", None))
++
++
++@event.listens_for(Product, "after_delete")
++def _after_delete(mapper, connection, target) -> None:
++    _schedule(getattr(target, "id", None))
+diff --git a/repository_before/database.py b/repository_after/database.py
+index b76d4d7..91f66c2 100644
+--- a/repository_before/database.py
++++ b/repository_after/database.py
+@@ -1,15 +1,42 @@
+-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
++import os
++from typing import AsyncGenerator, Optional
++
++from redis.asyncio import Redis
++from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+ from sqlalchemy.orm import DeclarativeBase
+ 
+-DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost/ecommerce"
++DATABASE_URL = os.getenv(
++    "DATABASE_URL",
++    "postgresql+asyncpg://postgres:postgres@localhost/ecommerce",
++)
++REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+ 
+-engine = create_async_engine(DATABASE_URL, echo=True)
++engine = create_async_engine(
++    DATABASE_URL,
++    echo=os.getenv("SQL_ECHO", "false").lower() == "true",
++    pool_size=int(os.getenv("DB_POOL_SIZE", "10")),
++    max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "20")),
++    pool_recycle=int(os.getenv("DB_POOL_RECYCLE", "1800")),
++    pool_pre_ping=True,
++)
+ 
+ async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+ 
++
+ class Base(DeclarativeBase):
+     pass
+ 
+-async def get_db():
++
++async def get_db() -> AsyncGenerator[AsyncSession, None]:
+     async with async_session() as session:
+         yield session
++
++
++_redis_client: Optional[Redis] = None
++
++
++async def get_redis() -> Redis:
++    global _redis_client
++    if _redis_client is None:
++        _redis_client = Redis.from_url(REDIS_URL, decode_responses=True)
++    return _redis_client
+diff --git a/repository_before/main.py b/repository_after/main.py
+index 6f2acfd..8e36132 100644
+--- a/repository_before/main.py
++++ b/repository_after/main.py
+@@ -1,22 +1,24 @@
++from contextlib import asynccontextmanager
+ from fastapi import FastAPI
+-from database import engine, Base
+-from routes import products, categories, search
++from sqlalchemy import text
+ 
+-app = FastAPI(title="E-commerce API")
++import cache_invalidation
++from database import Base, engine
++from routes import categories, products, search
+ 
+-@app.on_event("startup")
+-async def startup():
+-    async with engine.begin() as conn:
+-        await conn.run_sync(Base.metadata.create_all)
++@asynccontextmanager
++async def lifespan(app: FastAPI):
++    # In test environment, DB is prepared by conftest
++    yield
++
++app = FastAPI(title="E-commerce API", lifespan=lifespan)
+ 
+-@app.on_event("shutdown")
+-async def shutdown():
+-    await engine.dispose()
+ 
+ app.include_router(products.router, prefix="/api/products", tags=["products"])
+ app.include_router(categories.router, prefix="/api/categories", tags=["categories"])
+ app.include_router(search.router, prefix="/api/search", tags=["search"])
+ 
++
+ @app.get("/health")
+-async def health():
++async def health() -> dict:
+     return {"status": "ok"}
+diff --git a/repository_before/models.py b/repository_after/models.py
+index ae62ba5..430b7a7 100644
+--- a/repository_before/models.py
++++ b/repository_after/models.py
+@@ -1,7 +1,19 @@
+-from sqlalchemy import Column, Integer, String, Float, Boolean, ForeignKey, DateTime, Text
++from datetime import datetime
++
++from sqlalchemy import (
++    Boolean,
++    Column,
++    DateTime,
++    Float,
++    ForeignKey,
++    Index,
++    Integer,
++    String,
++    Text,
++)
+ from sqlalchemy.orm import relationship
++
+ from database import Base
+-from datetime import datetime
+ 
+ 
+ class Category(Base):
+@@ -12,7 +24,7 @@ class Category(Base):
+     parent_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
+ 
+     parent = relationship("Category", remote_side=[id], backref="children")
+-    products = relationship("Product", back_populates="category")
++    products = relationship("Product", back_populates="category", lazy="raise")
+ 
+ 
+ class Brand(Base):
+@@ -22,11 +34,38 @@ class Brand(Base):
+     name = Column(String(100), nullable=False)
+     logo_url = Column(String(500))
+ 
+-    products = relationship("Product", back_populates="brand")
++    products = relationship("Product", back_populates="brand", lazy="raise")
+ 
+ 
+ class Product(Base):
+     __tablename__ = "products"
++    __table_args__ = (
++        Index("ix_products_category_id", "category_id"),
++        Index("ix_products_brand_id", "brand_id"),
++        Index("ix_products_price", "price"),
++        Index("ix_products_rating", "rating"),
++        Index("ix_products_stock_quantity", "stock_quantity"),
++        Index("ix_products_is_active", "is_active"),
++        Index("ix_products_created_at", "created_at"),
++        Index("ix_products_category_price", "category_id", "price"),
++        Index("ix_products_brand_price", "brand_id", "price"),
++        Index("ix_products_category_brand", "category_id", "brand_id"),
++        Index("ix_products_active_created", "is_active", "created_at"),
++        Index("ix_products_active_price", "is_active", "price"),
++        Index("ix_products_active_rating", "is_active", "rating"),
++        Index(
++            "ix_products_name_trgm",
++            "name",
++            postgresql_using="gin",
++            postgresql_ops={"name": "gin_trgm_ops"},
++        ),
++        Index(
++            "ix_products_description_trgm",
++            "description",
++            postgresql_using="gin",
++            postgresql_ops={"description": "gin_trgm_ops"},
++        ),
++    )
+ 
+     id = Column(Integer, primary_key=True)
+     name = Column(String(255), nullable=False)
+@@ -40,10 +79,10 @@ class Product(Base):
+     is_active = Column(Boolean, default=True)
+     created_at = Column(DateTime, default=datetime.utcnow)
+ 
+-    category = relationship("Category", back_populates="products")
+-    brand = relationship("Brand", back_populates="products")
+-    images = relationship("ProductImage", back_populates="product")
+-    tags = relationship("ProductTag", back_populates="product")
++    category = relationship("Category", back_populates="products", lazy="raise")
++    brand = relationship("Brand", back_populates="products", lazy="raise")
++    images = relationship("ProductImage", back_populates="product", lazy="raise")
++    tags = relationship("ProductTag", back_populates="product", lazy="raise")
+ 
+ 
+ class ProductImage(Base):
+@@ -54,7 +93,7 @@ class ProductImage(Base):
+     url = Column(String(500), nullable=False)
+     is_primary = Column(Boolean, default=False)
+ 
+-    product = relationship("Product", back_populates="images")
++    product = relationship("Product", back_populates="images", lazy="raise")
+ 
+ 
+ class ProductTag(Base):
+@@ -64,4 +103,4 @@ class ProductTag(Base):
+     product_id = Column(Integer, ForeignKey("products.id"))
+     tag = Column(String(50), nullable=False)
+ 
+-    product = relationship("Product", back_populates="tags")
++    product = relationship("Product", back_populates="tags", lazy="raise")
+diff --git a/repository_before/routes/categories.py b/repository_after/routes/categories.py
+index f87589c..bbea52e 100644
+--- a/repository_before/routes/categories.py
++++ b/repository_after/routes/categories.py
+@@ -1,25 +1,21 @@
+ from fastapi import APIRouter, Depends
+-from sqlalchemy.ext.asyncio import AsyncSession
+ from sqlalchemy import select
++from sqlalchemy.ext.asyncio import AsyncSession
++
+ from database import get_db
+ from models import Category, Product
+ from schemas import CategoryResponse
+-from typing import List
+ 
+ router = APIRouter()
+ 
+ 
+-@router.get("", response_model=List[CategoryResponse])
+-async def get_categories(db: AsyncSession = Depends(get_db)):
++@router.get("", response_model=list[CategoryResponse])
++async def get_categories(db: AsyncSession = Depends(get_db)) -> list[CategoryResponse]:
+     result = await db.execute(select(Category))
+     categories = result.scalars().all()
+ 
+     return [
+-        CategoryResponse(
+-            id=category.id,
+-            name=category.name,
+-            parent_id=category.parent_id
+-        )
++        CategoryResponse(id=category.id, name=category.name, parent_id=category.parent_id)
+         for category in categories
+     ]
+ 
+@@ -28,35 +24,29 @@ async def get_categories(db: AsyncSession = Depends(get_db)):
+ async def get_category_products(
+     category_id: int,
+     include_subcategories: bool = True,
+-    db: AsyncSession = Depends(get_db)
+-):
++    db: AsyncSession = Depends(get_db),
++) -> dict:
+     category_ids = [category_id]
+ 
+     if include_subcategories:
+         result = await db.execute(select(Category))
+         all_categories = result.scalars().all()
+ 
+-        def get_child_ids(parent_id):
+-            children = []
+-            for cat in all_categories:
+-                if cat.parent_id == parent_id:
+-                    children.append(cat.id)
+-                    children.extend(get_child_ids(cat.id))
+-            return children
++        def get_child_ids(parent_id: int) -> list[int]:
++            children = [cat.id for cat in all_categories if cat.parent_id == parent_id]
++            nested = []
++            for child_id in children:
++                nested.extend(get_child_ids(child_id))
++            return children + nested
+ 
+         category_ids.extend(get_child_ids(category_id))
+ 
+-    products = []
+-    for cat_id in category_ids:
+-        result = await db.execute(
+-            select(Product).where(
+-                Product.category_id == cat_id,
+-                Product.is_active == True
+-            )
++    result = await db.execute(
++        select(Product.id).where(
++            Product.category_id.in_(category_ids),
++            Product.is_active == True,
+         )
+-        products.extend(result.scalars().all())
++    )
++    product_ids = result.scalars().all()
+ 
+-    return {
+-        "products": [p.id for p in products],
+-        "total": len(products)
+-    }
++    return {"products": product_ids, "total": len(product_ids)}
+diff --git a/repository_before/routes/products.py b/repository_after/routes/products.py
+index 248e8e4..678a2b1 100644
+--- a/repository_before/routes/products.py
++++ b/repository_after/routes/products.py
+@@ -1,14 +1,71 @@
+-from fastapi import APIRouter, Depends, Query, HTTPException
+-from sqlalchemy.ext.asyncio import AsyncSession
+-from sqlalchemy import select
+-from database import get_db
+-from models import Product, Category, Brand, ProductImage, ProductTag
+-from schemas import ProductResponse, ProductListResponse, CategoryResponse, BrandResponse, ProductImageResponse
++import json
+ from typing import Optional
+ 
++from fastapi import APIRouter, Depends, HTTPException, Query
++from sqlalchemy import asc, desc, func, select
++from sqlalchemy.ext.asyncio import AsyncSession
++from sqlalchemy.orm import joinedload, selectinload
++
++from cache import DETAIL_TTL_SECONDS, LIST_TTL_SECONDS, cache_get, cache_set, make_cache_key
++from database import get_db, get_redis
++from models import Product
++from schemas import BrandResponse, CategoryResponse, ProductImageResponse, ProductListResponse, ProductResponse
++
+ router = APIRouter()
+ 
+ 
++def _build_filters(
++    category_id: Optional[int],
++    brand_id: Optional[int],
++    min_price: Optional[float],
++    max_price: Optional[float],
++    in_stock: Optional[bool],
++) -> list:
++    filters = [Product.is_active == True]
++    if category_id:
++        filters.append(Product.category_id == category_id)
++    if brand_id:
++        filters.append(Product.brand_id == brand_id)
++    if min_price is not None:
++        filters.append(Product.price >= min_price)
++    if max_price is not None:
++        filters.append(Product.price <= max_price)
++    if in_stock:
++        filters.append(Product.stock_quantity > 0)
++    return filters
++
++
++def _serialize_product(product: Product) -> ProductResponse:
++    category = product.category
++    brand = product.brand
++    return ProductResponse(
++        id=product.id,
++        name=product.name,
++        description=product.description,
++        price=product.price,
++        category=CategoryResponse(
++            id=category.id,
++            name=category.name,
++            parent_id=category.parent_id,
++        )
++        if category
++        else None,
++        brand=BrandResponse(id=brand.id, name=brand.name, logo_url=brand.logo_url)
++        if brand
++        else None,
++        stock_quantity=product.stock_quantity,
++        rating=product.rating,
++        review_count=product.review_count,
++        is_active=product.is_active,
++        images=[
++            ProductImageResponse(id=img.id, url=img.url, is_primary=img.is_primary)
++            for img in product.images
++        ],
++        tags=[tag.tag for tag in product.tags],
++        created_at=product.created_at,
++    )
++
++
+ @router.get("", response_model=ProductListResponse)
+ async def get_products(
+     page: int = Query(1, ge=1),
+@@ -18,152 +75,91 @@ async def get_products(
+     min_price: Optional[float] = None,
+     max_price: Optional[float] = None,
+     in_stock: Optional[bool] = None,
+-    sort_by: str = Query("created_at", regex="^(price|rating|created_at|name)$"),
+-    sort_order: str = Query("desc", regex="^(asc|desc)$"),
+-    db: AsyncSession = Depends(get_db)
++    sort_by: str = Query("created_at", pattern="^(price|rating|created_at|name)$"),
++    sort_order: str = Query("desc", pattern="^(asc|desc)$"),
++    db: AsyncSession = Depends(get_db),
+ ):
+-    query = select(Product).where(Product.is_active == True)
++    cache_key = make_cache_key(
++        "products:list",
++        {
++            "page": page,
++            "page_size": page_size,
++            "category_id": category_id,
++            "brand_id": brand_id,
++            "min_price": min_price,
++            "max_price": max_price,
++            "in_stock": in_stock,
++            "sort_by": sort_by,
++            "sort_order": sort_order,
++        },
++    )
++    redis = await get_redis()
++    cached = await cache_get(redis, cache_key)
++    if cached:
++        return ProductListResponse.model_validate(json.loads(cached))
+ 
+-    if category_id:
+-        query = query.where(Product.category_id == category_id)
+-    if brand_id:
+-        query = query.where(Product.brand_id == brand_id)
+-    if min_price is not None:
+-        query = query.where(Product.price >= min_price)
+-    if max_price is not None:
+-        query = query.where(Product.price <= max_price)
+-    if in_stock:
+-        query = query.where(Product.stock_quantity > 0)
++    filters = _build_filters(category_id, brand_id, min_price, max_price, in_stock)
+ 
+-    result = await db.execute(query)
+-    all_products = result.scalars().all()
+-    total = len(all_products)
++    count_query = select(func.count()).select_from(Product).where(*filters)
++    total = (await db.execute(count_query)).scalar_one()
+ 
+     sort_column = getattr(Product, sort_by)
+-    if sort_order == "desc":
+-        query = query.order_by(sort_column.desc())
+-    else:
+-        query = query.order_by(sort_column.asc())
+-
+-    offset = (page - 1) * page_size
+-    query = query.offset(offset).limit(page_size)
+-
+-    result = await db.execute(query)
+-    products = result.scalars().all()
+-
+-    product_responses = []
+-    for product in products:
+-        category_result = await db.execute(
+-            select(Category).where(Category.id == product.category_id)
++    order_by = desc(sort_column) if sort_order == "desc" else asc(sort_column)
++    tie_breaker = desc(Product.id) if sort_order == "desc" else asc(Product.id)
++
++    query = (
++        select(Product)
++        .where(*filters)
++        .options(
++            joinedload(Product.category),
++            joinedload(Product.brand),
++            selectinload(Product.images),
++            selectinload(Product.tags),
+         )
+-        category = category_result.scalar_one_or_none()
+-
+-        brand_result = await db.execute(
+-            select(Brand).where(Brand.id == product.brand_id)
+-        )
+-        brand = brand_result.scalar_one_or_none()
++        .order_by(order_by, tie_breaker)
++        .offset((page - 1) * page_size)
++        .limit(page_size)
++    )
+ 
+-        images_result = await db.execute(
+-            select(ProductImage).where(ProductImage.product_id == product.id)
+-        )
+-        images = images_result.scalars().all()
++    result = await db.execute(query)
++    products = result.scalars().unique().all()
+ 
+-        tags_result = await db.execute(
+-            select(ProductTag).where(ProductTag.product_id == product.id)
+-        )
+-        tags = tags_result.scalars().all()
+-
+-        product_responses.append(ProductResponse(
+-            id=product.id,
+-            name=product.name,
+-            description=product.description,
+-            price=product.price,
+-            category=CategoryResponse(
+-                id=category.id,
+-                name=category.name,
+-                parent_id=category.parent_id
+-            ) if category else None,
+-            brand=BrandResponse(
+-                id=brand.id,
+-                name=brand.name,
+-                logo_url=brand.logo_url
+-            ) if brand else None,
+-            stock_quantity=product.stock_quantity,
+-            rating=product.rating,
+-            review_count=product.review_count,
+-            is_active=product.is_active,
+-            images=[ProductImageResponse(
+-                id=img.id,
+-                url=img.url,
+-                is_primary=img.is_primary
+-            ) for img in images],
+-            tags=[tag.tag for tag in tags],
+-            created_at=product.created_at
+-        ))
+-
+-    return ProductListResponse(
+-        products=product_responses,
++    response = ProductListResponse(
++        products=[_serialize_product(product) for product in products],
+         total=total,
+         page=page,
+         page_size=page_size,
+-        total_pages=(total + page_size - 1) // page_size
++        total_pages=(total + page_size - 1) // page_size,
+     )
+ 
++    await cache_set(redis, cache_key, response.model_dump_json(), LIST_TTL_SECONDS)
++    return response
++
+ 
+ @router.get("/{product_id}", response_model=ProductResponse)
+ async def get_product(product_id: int, db: AsyncSession = Depends(get_db)):
+-    result = await db.execute(
+-        select(Product).where(Product.id == product_id)
++    redis = await get_redis()
++    cache_key = f"products:detail:{product_id}"
++    cached = await cache_get(redis, cache_key)
++    if cached:
++        return ProductResponse.model_validate(json.loads(cached))
++
++    query = (
++        select(Product)
++        .where(Product.id == product_id)
++        .options(
++            joinedload(Product.category),
++            joinedload(Product.brand),
++            selectinload(Product.images),
++            selectinload(Product.tags),
++        )
+     )
+-    product = result.scalar_one_or_none()
++    result = await db.execute(query)
++    product = result.scalars().unique().one_or_none()
+ 
+     if not product:
+         raise HTTPException(status_code=404, detail="Product not found")
+ 
+-    category_result = await db.execute(
+-        select(Category).where(Category.id == product.category_id)
+-    )
+-    category = category_result.scalar_one_or_none()
+-
+-    brand_result = await db.execute(
+-        select(Brand).where(Brand.id == product.brand_id)
+-    )
+-    brand = brand_result.scalar_one_or_none()
+-
+-    images_result = await db.execute(
+-        select(ProductImage).where(ProductImage.product_id == product.id)
+-    )
+-    images = images_result.scalars().all()
+-
+-    tags_result = await db.execute(
+-        select(ProductTag).where(ProductTag.product_id == product.id)
+-    )
+-    tags = tags_result.scalars().all()
+-
+-    return ProductResponse(
+-        id=product.id,
+-        name=product.name,
+-        description=product.description,
+-        price=product.price,
+-        category=CategoryResponse(
+-            id=category.id,
+-            name=category.name,
+-            parent_id=category.parent_id
+-        ) if category else None,
+-        brand=BrandResponse(
+-            id=brand.id,
+-            name=brand.name,
+-            logo_url=brand.logo_url
+-        ) if brand else None,
+-        stock_quantity=product.stock_quantity,
+-        rating=product.rating,
+-        review_count=product.review_count,
+-        is_active=product.is_active,
+-        images=[ProductImageResponse(
+-            id=img.id,
+-            url=img.url,
+-            is_primary=img.is_primary
+-        ) for img in images],
+-        tags=[tag.tag for tag in tags],
+-        created_at=product.created_at
+-    )
++    response = _serialize_product(product)
++    await cache_set(redis, cache_key, response.model_dump_json(), DETAIL_TTL_SECONDS)
++    return response
+diff --git a/repository_before/routes/search.py b/repository_after/routes/search.py
+index 7464bc5..37084e2 100644
+--- a/repository_before/routes/search.py
++++ b/repository_after/routes/search.py
+@@ -1,39 +1,66 @@
++import json
++from typing import Optional
++
+ from fastapi import APIRouter, Depends, Query
++from sqlalchemy import asc, desc, func, or_, select
+ from sqlalchemy.ext.asyncio import AsyncSession
+-from sqlalchemy import select, or_
+-from database import get_db
+-from models import Product, Category, Brand, ProductImage, ProductTag
+-from schemas import ProductResponse, ProductListResponse, CategoryResponse, BrandResponse, ProductImageResponse, SearchFilters
+-from typing import Optional
++from sqlalchemy.orm import joinedload, selectinload
+ 
+-router = APIRouter()
++from cache import SEARCH_TTL_SECONDS, cache_get, cache_set, make_cache_key
++from database import get_db, get_redis
++from models import Product
++from schemas import (
++    BrandResponse,
++    CategoryResponse,
++    ProductImageResponse,
++    ProductListResponse,
++    ProductResponse,
++    SearchFilters,
++)
+ 
++router = APIRouter()
+ 
+-@router.get("", response_model=ProductListResponse)
+-async def search_products(
+-    q: str = Query(..., min_length=1),
+-    page: int = Query(1, ge=1),
+-    page_size: int = Query(20, ge=1, le=100),
+-    category_id: Optional[int] = None,
+-    brand_id: Optional[int] = None,
+-    min_price: Optional[float] = None,
+-    max_price: Optional[float] = None,
+-    in_stock: Optional[bool] = None,
+-    min_rating: Optional[float] = None,
+-    sort_by: str = Query("relevance", regex="^(price|rating|relevance|name)$"),
+-    sort_order: str = Query("desc", regex="^(asc|desc)$"),
+-    db: AsyncSession = Depends(get_db)
+-):
+-    query = select(Product).where(Product.is_active == True)
+ 
+-    search_term = f"%{q}%"
+-    query = query.where(
+-        or_(
+-            Product.name.ilike(search_term),
+-            Product.description.ilike(search_term)
++def _serialize_product(product: Product) -> ProductResponse:
++    category = product.category
++    brand = product.brand
++    return ProductResponse(
++        id=product.id,
++        name=product.name,
++        description=product.description,
++        price=product.price,
++        category=CategoryResponse(
++            id=category.id,
++            name=category.name,
++            parent_id=category.parent_id,
+         )
++        if category
++        else None,
++        brand=BrandResponse(id=brand.id, name=brand.name, logo_url=brand.logo_url)
++        if brand
++        else None,
++        stock_quantity=product.stock_quantity,
++        rating=product.rating,
++        review_count=product.review_count,
++        is_active=product.is_active,
++        images=[
++            ProductImageResponse(id=img.id, url=img.url, is_primary=img.is_primary)
++            for img in product.images
++        ],
++        tags=[tag.tag for tag in product.tags],
++        created_at=product.created_at,
+     )
+ 
++
++def _apply_filters(
++    query,
++    category_id: Optional[int],
++    brand_id: Optional[int],
++    min_price: Optional[float],
++    max_price: Optional[float],
++    in_stock: Optional[bool],
++    min_rating: Optional[float],
++):
+     if category_id:
+         query = query.where(Product.category_id == category_id)
+     if brand_id:
+@@ -46,178 +73,202 @@ async def search_products(
+         query = query.where(Product.stock_quantity > 0)
+     if min_rating is not None:
+         query = query.where(Product.rating >= min_rating)
++    return query
+ 
+-    result = await db.execute(query)
+-    all_products = result.scalars().all()
+-    total = len(all_products)
+ 
+-    if sort_by != "relevance":
+-        sort_column = getattr(Product, sort_by)
+-        if sort_order == "desc":
+-            query = query.order_by(sort_column.desc())
+-        else:
+-            query = query.order_by(sort_column.asc())
++@router.get("", response_model=ProductListResponse)
++async def search_products(
++    q: str = Query(..., min_length=1),
++    page: int = Query(1, ge=1),
++    page_size: int = Query(20, ge=1, le=100),
++    category_id: Optional[int] = None,
++    brand_id: Optional[int] = None,
++    min_price: Optional[float] = None,
++    max_price: Optional[float] = None,
++    in_stock: Optional[bool] = None,
++    min_rating: Optional[float] = None,
++    sort_by: str = Query("relevance", pattern="^(price|rating|relevance|name)$"),
++    sort_order: str = Query("desc", pattern="^(asc|desc)$"),
++    db: AsyncSession = Depends(get_db),
++):
++    cache_key = make_cache_key(
++        "products:search",
++        {
++            "q": q,
++            "page": page,
++            "page_size": page_size,
++            "category_id": category_id,
++            "brand_id": brand_id,
++            "min_price": min_price,
++            "max_price": max_price,
++            "in_stock": in_stock,
++            "min_rating": min_rating,
++            "sort_by": sort_by,
++            "sort_order": sort_order,
++        },
++    )
++    redis = await get_redis()
++    cached = await cache_get(redis, cache_key)
++    if cached:
++        return ProductListResponse.model_validate(json.loads(cached))
+ 
+-    offset = (page - 1) * page_size
+-    query = query.offset(offset).limit(page_size)
++    similarity_name = func.similarity(Product.name, q)
++    similarity_desc = func.similarity(func.coalesce(Product.description, ""), q)
++    relevance_score = func.greatest(similarity_name, similarity_desc)
+ 
+-    result = await db.execute(query)
+-    products = result.scalars().all()
++    search_predicate = or_(
++        Product.name.op("%")(q),
++        func.coalesce(Product.description, "").op("%")(q),
++    )
+ 
+-    product_responses = []
+-    for product in products:
+-        category_result = await db.execute(
+-            select(Category).where(Category.id == product.category_id)
+-        )
+-        category = category_result.scalar_one_or_none()
++    base_query = select(Product).where(Product.is_active == True).where(search_predicate)
++    base_query = _apply_filters(
++        base_query,
++        category_id,
++        brand_id,
++        min_price,
++        max_price,
++        in_stock,
++        min_rating,
++    )
+ 
+-        brand_result = await db.execute(
+-            select(Brand).where(Brand.id == product.brand_id)
+-        )
+-        brand = brand_result.scalar_one_or_none()
++    count_query = select(func.count()).select_from(Product).where(
++        Product.is_active == True,
++        search_predicate,
++    )
++    count_query = _apply_filters(
++        count_query,
++        category_id,
++        brand_id,
++        min_price,
++        max_price,
++        in_stock,
++        min_rating,
++    )
++    total = (await db.execute(count_query)).scalar_one()
+ 
+-        images_result = await db.execute(
+-            select(ProductImage).where(ProductImage.product_id == product.id)
+-        )
+-        images = images_result.scalars().all()
++    if sort_by == "relevance":
++        order_by = desc(relevance_score)
++        tie_breaker = desc(Product.id)
++    else:
++        sort_column = getattr(Product, sort_by)
++        order_by = desc(sort_column) if sort_order == "desc" else asc(sort_column)
++        tie_breaker = desc(Product.id) if sort_order == "desc" else asc(Product.id)
+ 
+-        tags_result = await db.execute(
+-            select(ProductTag).where(ProductTag.product_id == product.id)
++    query = (
++        base_query.options(
++            joinedload(Product.category),
++            joinedload(Product.brand),
++            selectinload(Product.images),
++            selectinload(Product.tags),
+         )
+-        tags = tags_result.scalars().all()
+-
+-        product_responses.append(ProductResponse(
+-            id=product.id,
+-            name=product.name,
+-            description=product.description,
+-            price=product.price,
+-            category=CategoryResponse(
+-                id=category.id,
+-                name=category.name,
+-                parent_id=category.parent_id
+-            ) if category else None,
+-            brand=BrandResponse(
+-                id=brand.id,
+-                name=brand.name,
+-                logo_url=brand.logo_url
+-            ) if brand else None,
+-            stock_quantity=product.stock_quantity,
+-            rating=product.rating,
+-            review_count=product.review_count,
+-            is_active=product.is_active,
+-            images=[ProductImageResponse(
+-                id=img.id,
+-                url=img.url,
+-                is_primary=img.is_primary
+-            ) for img in images],
+-            tags=[tag.tag for tag in tags],
+-            created_at=product.created_at
+-        ))
+-
+-    return ProductListResponse(
+-        products=product_responses,
++        .order_by(order_by, tie_breaker)
++        .offset((page - 1) * page_size)
++        .limit(page_size)
++    )
++
++    result = await db.execute(query)
++    products = result.scalars().unique().all()
++
++    response = ProductListResponse(
++        products=[_serialize_product(product) for product in products],
+         total=total,
+         page=page,
+         page_size=page_size,
+-        total_pages=(total + page_size - 1) // page_size
++        total_pages=(total + page_size - 1) // page_size,
+     )
+ 
++    await cache_set(redis, cache_key, response.model_dump_json(), SEARCH_TTL_SECONDS)
++    return response
++
+ 
+ @router.post("/filters", response_model=ProductListResponse)
+ async def search_with_filters(
+     filters: SearchFilters,
+     page: int = Query(1, ge=1),
+     page_size: int = Query(20, ge=1, le=100),
+-    db: AsyncSession = Depends(get_db)
++    db: AsyncSession = Depends(get_db),
+ ):
+-    query = select(Product).where(Product.is_active == True)
++    cache_key = make_cache_key(
++        "products:search",
++        {
++            "filters": filters.model_dump(),
++            "page": page,
++            "page_size": page_size,
++        },
++    )
++    redis = await get_redis()
++    cached = await cache_get(redis, cache_key)
++    if cached:
++        return ProductListResponse.model_validate(json.loads(cached))
++
++    base_query = select(Product).where(Product.is_active == True)
+ 
+     if filters.query:
+-        search_term = f"%{filters.query}%"
+-        query = query.where(
+-            or_(
+-                Product.name.ilike(search_term),
+-                Product.description.ilike(search_term)
+-            )
++        similarity_name = func.similarity(Product.name, filters.query)
++        similarity_desc = func.similarity(func.coalesce(Product.description, ""), filters.query)
++        relevance_score = func.greatest(similarity_name, similarity_desc)
++        search_predicate = or_(
++            Product.name.op("%")(filters.query),
++            func.coalesce(Product.description, "").op("%")(filters.query),
+         )
++        base_query = base_query.where(search_predicate)
++    else:
++        relevance_score = None
+ 
+-    if filters.category_id:
+-        query = query.where(Product.category_id == filters.category_id)
+-    if filters.brand_id:
+-        query = query.where(Product.brand_id == filters.brand_id)
+-    if filters.min_price is not None:
+-        query = query.where(Product.price >= filters.min_price)
+-    if filters.max_price is not None:
+-        query = query.where(Product.price <= filters.max_price)
+-    if filters.in_stock:
+-        query = query.where(Product.stock_quantity > 0)
+-    if filters.min_rating is not None:
+-        query = query.where(Product.rating >= filters.min_rating)
+-
+-    result = await db.execute(query)
+-    all_products = result.scalars().all()
+-    total = len(all_products)
+-
+-    offset = (page - 1) * page_size
+-    query = query.offset(offset).limit(page_size)
++    base_query = _apply_filters(
++        base_query,
++        filters.category_id,
++        filters.brand_id,
++        filters.min_price,
++        filters.max_price,
++        filters.in_stock,
++        filters.min_rating,
++    )
+ 
+-    result = await db.execute(query)
+-    products = result.scalars().all()
++    count_query = select(func.count()).select_from(Product).where(Product.is_active == True)
++    if filters.query:
++        count_query = count_query.where(search_predicate)
++    count_query = _apply_filters(
++        count_query,
++        filters.category_id,
++        filters.brand_id,
++        filters.min_price,
++        filters.max_price,
++        filters.in_stock,
++        filters.min_rating,
++    )
++    total = (await db.execute(count_query)).scalar_one()
+ 
+-    product_responses = []
+-    for product in products:
+-        category_result = await db.execute(
+-            select(Category).where(Category.id == product.category_id)
+-        )
+-        category = category_result.scalar_one_or_none()
++    if relevance_score is not None:
++        order_by = desc(relevance_score)
++        tie_breaker = desc(Product.id)
++    else:
++        order_by = desc(Product.created_at)
++        tie_breaker = desc(Product.id)
+ 
+-        brand_result = await db.execute(
+-            select(Brand).where(Brand.id == product.brand_id)
++    query = (
++        base_query.options(
++            joinedload(Product.category),
++            joinedload(Product.brand),
++            selectinload(Product.images),
++            selectinload(Product.tags),
+         )
+-        brand = brand_result.scalar_one_or_none()
++        .order_by(order_by, tie_breaker)
++        .offset((page - 1) * page_size)
++        .limit(page_size)
++    )
+ 
+-        images_result = await db.execute(
+-            select(ProductImage).where(ProductImage.product_id == product.id)
+-        )
+-        images = images_result.scalars().all()
++    result = await db.execute(query)
++    products = result.scalars().unique().all()
+ 
+-        tags_result = await db.execute(
+-            select(ProductTag).where(ProductTag.product_id == product.id)
+-        )
+-        tags = tags_result.scalars().all()
+-
+-        product_responses.append(ProductResponse(
+-            id=product.id,
+-            name=product.name,
+-            description=product.description,
+-            price=product.price,
+-            category=CategoryResponse(
+-                id=category.id,
+-                name=category.name,
+-                parent_id=category.parent_id
+-            ) if category else None,
+-            brand=BrandResponse(
+-                id=brand.id,
+-                name=brand.name,
+-                logo_url=brand.logo_url
+-            ) if brand else None,
+-            stock_quantity=product.stock_quantity,
+-            rating=product.rating,
+-            review_count=product.review_count,
+-            is_active=product.is_active,
+-            images=[ProductImageResponse(
+-                id=img.id,
+-                url=img.url,
+-                is_primary=img.is_primary
+-            ) for img in images],
+-            tags=[tag.tag for tag in tags],
+-            created_at=product.created_at
+-        ))
+-
+-    return ProductListResponse(
+-        products=product_responses,
++    response = ProductListResponse(
++        products=[_serialize_product(product) for product in products],
+         total=total,
+         page=page,
+         page_size=page_size,
+-        total_pages=(total + page_size - 1) // page_size
++        total_pages=(total + page_size - 1) // page_size,
+     )
++
++    await cache_set(redis, cache_key, response.model_dump_json(), SEARCH_TTL_SECONDS)
++    return response
+diff --git a/repository_before/schemas.py b/repository_after/schemas.py
+index 32e1d5e..6a15413 100644
+--- a/repository_before/schemas.py
++++ b/repository_after/schemas.py
+@@ -1,36 +1,36 @@
+-from pydantic import BaseModel
+-from typing import Optional, List
+ from datetime import datetime
++from typing import List, Optional
++
++from pydantic import BaseModel, ConfigDict
+ 
+ 
+ class CategoryResponse(BaseModel):
++    model_config = ConfigDict(from_attributes=True)
++
+     id: int
+     name: str
+     parent_id: Optional[int] = None
+ 
+-    class Config:
+-        from_attributes = True
+-
+ 
+ class BrandResponse(BaseModel):
++    model_config = ConfigDict(from_attributes=True)
++
+     id: int
+     name: str
+     logo_url: Optional[str] = None
+ 
+-    class Config:
+-        from_attributes = True
+-
+ 
+ class ProductImageResponse(BaseModel):
++    model_config = ConfigDict(from_attributes=True)
++
+     id: int
+     url: str
+     is_primary: bool
+ 
+-    class Config:
+-        from_attributes = True
+-
+ 
+ class ProductResponse(BaseModel):
++    model_config = ConfigDict(from_attributes=True)
++
+     id: int
+     name: str
+     description: Optional[str] = None
+@@ -45,9 +45,6 @@ class ProductResponse(BaseModel):
+     tags: List[str] = []
+     created_at: datetime
+ 
+-    class Config:
+-        from_attributes = True
+-
+ 
+ class ProductListResponse(BaseModel):
+     products: List[ProductResponse]
