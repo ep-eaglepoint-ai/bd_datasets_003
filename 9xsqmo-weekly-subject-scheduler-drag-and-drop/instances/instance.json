@@ -1,0 +1,11 @@
+{
+            "instance_id": "9XSQMO",
+            "problem_statement": "Creating weekly schedules using static forms or manual inputs can be tedious and unintuitive, especially when users need to rearrange subjects frequently. The objective of this project is to build a React-based Weekly Subject Scheduler that allows users to visually construct a weekly program using drag-and-drop interactions. By representing subjects and time slots graphically, the application enables users to easily assign, move, and organize subjects within a structured timetable while enforcing scheduling constraints such as fixed lunch breaks.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/9xsqmo-weekly-subject-scheduler-drag-and-drop",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
