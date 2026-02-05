@@ -1,5 +1,4 @@
-// semver.go
-package semver
+package main
 
 import "strings"
 

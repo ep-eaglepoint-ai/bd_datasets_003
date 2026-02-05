@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"repository_before/semver"
 )
 
 func main() {
@@ -25,7 +24,7 @@ func main() {
 	}
 
 	for _, tc := range testCases {
-		result := semver.Compare(tc.a, tc.b)
+		result := Compare(tc.a, tc.b)  // Changed from semver.Compare to Compare
 		status := "✅"
 		if result != tc.expected {
 			status = "❌"
@@ -51,7 +50,7 @@ func main() {
 	}
 
 	for _, tc := range bugCases {
-		result := semver.Compare(tc.a, tc.b)
+		result := Compare(tc.a, tc.b)  // Changed from semver.Compare to Compare
 		status := "✅"
 		if result != tc.expected {
 			status = "❌ BUG"
