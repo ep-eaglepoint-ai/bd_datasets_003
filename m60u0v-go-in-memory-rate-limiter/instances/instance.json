@@ -1,0 +1,11 @@
+{
+            "instance_id": "M60U0V",
+            "problem_statement": "Our gateway is vulnerable to application-layer DoS attacks where bad actors send bursts of traffic just under the static minute boundary. We need a high-precision, in-memory rate limiter that enforces a 'Rolling Window' policy to reject traffic that exceeds the defined threshold in any continuous time interval, not just fixed wall-clock minutes.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/m60u0v-go-in-memory-rate-limiter",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
