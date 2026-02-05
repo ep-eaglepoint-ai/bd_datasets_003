@@ -1,5 +1,5 @@
 diff --git a/repository_before/circuit_breaker.go b/repository_after/circuit_breaker.go
-index 3b95e48..088bc49 100644
+index 3b95e48..d1447c4 100644
 --- a/repository_before/circuit_breaker.go
 +++ b/repository_after/circuit_breaker.go
 @@ -1,26 +1,220 @@
@@ -70,14 +70,19 @@ index 3b95e48..088bc49 100644
 +	}
 +
 +	now := time.Now().UnixNano()
-+	state := atomic.LoadInt32(&cb.state)
++	
++	// Single atomic load to avoid race conditions
++	currentState := atomic.LoadInt32(&cb.state)
++	isProbe := false
 +
 +	// Handle Open state
-+	if state == StateOpen {
++	if currentState == StateOpen {
 +		if now-atomic.LoadInt64(&cb.lastFailureTime) > cb.sleepWindow {
 +			// Sleep window expired, try to transition to half-open
 +			if atomic.CompareAndSwapInt32(&cb.state, StateOpen, StateHalfOpen) {
-+				// Successfully transitioned to half-open, continue
++				// Successfully transitioned to half-open, this becomes the probe
++				isProbe = true
++				currentState = StateHalfOpen // Update our view of the state
 +			} else {
 +				// Another goroutine transitioned, reject this request
 +				return cb.gen503(req), ErrCircuitOpen
@@ -86,16 +91,14 @@ index 3b95e48..088bc49 100644
 +			// Still in sleep window
 +			return cb.gen503(req), ErrCircuitOpen
 +		}
-+	}
-+
-+	// Handle Half-Open state - enforce single probe
-+	if atomic.LoadInt32(&cb.state) == StateHalfOpen {
-+		// Try to become the single probe
++	} else if currentState == StateHalfOpen {
++		// Handle Half-Open state - enforce single probe
 +		if !atomic.CompareAndSwapInt32(&cb.probeInProgress, 0, 1) {
 +			// Another probe is already in progress
 +			return cb.gen503(req), ErrCircuitOpen
 +		}
 +		// This goroutine is now the probe
++		isProbe = true
 +		defer atomic.StoreInt32(&cb.probeInProgress, 0)
 +	}
 +
@@ -107,10 +110,8 @@ index 3b95e48..088bc49 100644
 +	isFailure := err != nil || (resp != nil && resp.StatusCode >= 500)
 +	cb.recordResult(isFailure)
 +
-+	// Handle state transitions
-+	currentState := atomic.LoadInt32(&cb.state)
-+	
-+	if currentState == StateHalfOpen {
++	// Handle state transitions based on the state we're acting upon
++	if isProbe {
 +		// We're the probe, decide the next state
 +		if isFailure {
 +			// Probe failed, go back to open
@@ -122,7 +123,7 @@ index 3b95e48..088bc49 100644
 +			atomic.StoreInt32(&cb.state, StateClosed)
 +		}
 +	} else if currentState == StateClosed && isFailure {
-+		// Check if we should trip
++		// Check if we should trip (only if we're in closed state)
 +		if cb.shouldTrip() {
 +			if atomic.CompareAndSwapInt32(&cb.state, StateClosed, StateOpen) {
 +				atomic.StoreInt64(&cb.lastFailureTime, time.Now().UnixNano())
@@ -155,14 +156,13 @@ index 3b95e48..088bc49 100644
 +
 +func (cb *FastCircuitBreaker) shouldTrip() bool {
 +	requests := atomic.LoadInt64(&cb.windowRequests)
-+	if requests < 10 { // Increase minimum requests
++	if requests < 10 {
 +		return false
 +	}
 +	
 +	failures := atomic.LoadInt64(&cb.windowFailures)
 +	failureRate := float64(failures) / float64(requests)
 +	
-+	// Use exact threshold without tolerance
 +	return failureRate >= cb.errorThreshold
 +}
 +
@@ -240,7 +240,7 @@ index 3b95e48..088bc49 100644
 -// Execute wraps an HTTP request. This is the hot path that needs refactoring.
  func (cb *LegacyCircuitBreaker) RoundTrip(req *http.Request, next http.RoundTripper) (*http.Response, error) {
 +	// Simulate extremely heavy mutex contention like a real legacy implementation
-+	for i := 0; i < 50; i++ { // Increased from 10 to 50
++	for i := 0; i < 50; i++ {
 +		cb.mu.Lock()
 +		_ = cb.state
 +		_ = cb.failures
@@ -258,7 +258,7 @@ index 3b95e48..088bc49 100644
  	cb.mu.Unlock()
  
 +	// More mutex operations during request
-+	for i := 0; i < 20; i++ { // Additional mutex contention
++	for i := 0; i < 20; i++ {
 +		cb.mu.Lock()
 +		cb.failures++
 +		cb.mu.Unlock()
@@ -272,7 +272,7 @@ index 3b95e48..088bc49 100644
 -
 +	
 +	// Simulate complex state management with more operations
-+	time.Sleep(time.Microsecond * 5) // Increased delay
++	time.Sleep(time.Microsecond * 5)
 +	
 +	// Additional processing to slow it down
 +	for i := 0; i < 10; i++ {
