@@ -3,10 +3,10 @@
 import { useState, useRef } from 'react';
 import { useInventoryStore } from '@/lib/store';
 import { ExportDataSchema } from '@/lib/schemas';
-import { Download, Upload, FileJson, FileText, AlertCircle } from 'lucide-react';
+import { Download, Upload, FileJson, FileText, AlertCircle, BarChart3, TrendingUp } from 'lucide-react';
 
 export function ExportImport() {
-  const { exportData, exportCSV, bulkImport } = useInventoryStore();
+  const { exportData, exportCSV, exportValuationSummary, exportAnalyticsSnapshot, bulkImport } = useInventoryStore();
   const [importError, setImportError] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -29,6 +29,28 @@ export function ExportImport() {
     const a = document.createElement('a');
     a.href = url;
     a.download = `inventory-export-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  
+  const handleExportValuation = () => {
+    const data = exportValuationSummary();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `valuation-summary-${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  
+  const handleExportAnalytics = () => {
+    const data = exportAnalyticsSnapshot();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `analytics-snapshot-${new Date().toISOString().split('T')[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -92,6 +114,22 @@ export function ExportImport() {
           >
             <FileText size={20} />
             Export as CSV
+          </button>
+          
+          <button
+            onClick={handleExportValuation}
+            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+          >
+            <BarChart3 size={20} />
+            Valuation Summary
+          </button>
+          
+          <button
+            onClick={handleExportAnalytics}
+            className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700"
+          >
+            <TrendingUp size={20} />
+            Analytics Snapshot
           </button>
         </div>
       </div>

@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useInventoryStore, selectEnrichedItems, selectTotalValue, selectInventoryHealth, selectLowStockItems, selectValueByCategory } from '@/lib/store';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
 import { generateValuationHistoryData, identifySlowMovingItems, identifyOverstockItems } from '@/lib/calculations';
@@ -8,8 +9,21 @@ import { ReorderRiskChart } from './ReorderRiskChart';
 import { StockHistoryChart } from './StockHistoryChart';
 import { WarehouseUtilizationChart } from './WarehouseUtilizationChart';
 import { ExpirationRiskView } from './ExpirationRiskView';
+import { useCalculationsWorker } from '@/lib/useWorker';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
+
+// Debounce helper for search/filter
+function debounce<T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void {
+  let timeout: NodeJS.Timeout | null = null;
+  return (...args: Parameters<T>) => {
+    if (timeout) clearTimeout(timeout);
+    timeout = setTimeout(() => func(...args), wait);
+  };
+}
 
 export function Dashboard() {
   const { items, movements, categories } = useInventoryStore();
@@ -18,10 +32,27 @@ export function Dashboard() {
   const health = useInventoryStore(selectInventoryHealth);
   const lowStockItems = useInventoryStore(selectLowStockItems);
   const valueByCategory = useInventoryStore(selectValueByCategory);
+  const worker = useCalculationsWorker();
   
-  const valuationHistory = generateValuationHistoryData(items, movements, 30);
-  const slowMovingItems = identifySlowMovingItems(items, movements);
-  const overstockItems = identifyOverstockItems(items, movements);
+  // Use web worker for expensive calculations when items > 1000
+  const [workerValuationHistory, setWorkerValuationHistory] = useState<any[]>([]);
+  const shouldUseWorker = items.length > 1000;
+  
+  // Memoize expensive calculations
+  const valuationHistory = useMemo(() => {
+    if (shouldUseWorker && workerValuationHistory.length > 0) {
+      return workerValuationHistory;
+    }
+    return generateValuationHistoryData(items, movements, 30);
+  }, [items, movements, shouldUseWorker, workerValuationHistory]);
+  
+  const slowMovingItems = useMemo(() => {
+    return identifySlowMovingItems(items, movements);
+  }, [items, movements]);
+  
+  const overstockItems = useMemo(() => {
+    return identifyOverstockItems(items, movements);
+  }, [items, movements]);
   
   // Prepare category data for pie chart
   const categoryData = Object.entries(valueByCategory).map(([categoryId, value]) => {
@@ -30,20 +61,22 @@ export function Dashboard() {
       name: category?.name || 'Uncategorized',
       value: value,
     };
-  }).filter(d => d.value > 0);
+  }, [valueByCategory, categories]);
   
-  // Stock status distribution
-  const activeItems = enrichedItems.filter(i => i.lifecycleStatus === 'active').length;
-  const reservedItems = enrichedItems.filter(i => i.lifecycleStatus === 'reserved').length;
-  const damagedItems = enrichedItems.filter(i => i.lifecycleStatus === 'damaged').length;
-  const expiredItems = enrichedItems.filter(i => i.lifecycleStatus === 'expired').length;
-  
-  const statusData = [
-    { name: 'Active', value: activeItems },
-    { name: 'Reserved', value: reservedItems },
-    { name: 'Damaged', value: damagedItems },
-    { name: 'Expired', value: expiredItems },
-  ].filter(d => d.value > 0);
+  // Stock status distribution - memoized
+  const statusData = useMemo(() => {
+    const activeItems = enrichedItems.filter(i => i.lifecycleStatus === 'active').length;
+    const reservedItems = enrichedItems.filter(i => i.lifecycleStatus === 'reserved').length;
+    const damagedItems = enrichedItems.filter(i => i.lifecycleStatus === 'damaged').length;
+    const expiredItems = enrichedItems.filter(i => i.lifecycleStatus === 'expired').length;
+    
+    return [
+      { name: 'Active', value: activeItems },
+      { name: 'Reserved', value: reservedItems },
+      { name: 'Damaged', value: damagedItems },
+      { name: 'Expired', value: expiredItems },
+    ].filter(d => d.value > 0);
+  }, [enrichedItems]);
   
   return (
     <div className="space-y-6">

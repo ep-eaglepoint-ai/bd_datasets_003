@@ -6,6 +6,7 @@ import {
   Location, 
   StockMovement, 
   AuditLog,
+  ValuationSnapshot,
   InventoryItemWithQuantity,
   Filter,
   MovementType,
@@ -41,6 +42,7 @@ interface InventoryState {
   locations: Location[];
   movements: StockMovement[];
   auditLogs: AuditLog[];
+  valuationSnapshots: ValuationSnapshot[];
   
   // UI State
   isLoading: boolean;
@@ -90,6 +92,14 @@ interface InventoryState {
   exportCSV: () => string;
   exportValuationSummary: () => any;
   exportAnalyticsSnapshot: () => any;
+  
+  // Valuation snapshots
+  addValuationSnapshot: () => Promise<ValuationSnapshot>;
+  
+  // Recovery
+  saveRecoveryState: () => Promise<void>;
+  loadRecoveryState: () => Promise<void>;
+  needsRecovery: () => Promise<boolean>;
 }
 
 // Helper to create audit log
@@ -136,6 +146,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
   locations: [],
   movements: [],
   auditLogs: [],
+  valuationSnapshots: [],
   isLoading: false,
   error: null,
   filter: {},
@@ -144,14 +155,18 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
   initialize: async () => {
     set({ isLoading: true, error: null });
     try {
-      const [items, categories, locations, movements, auditLogs] = await Promise.all([
+      const [items, categories, locations, movements, auditLogs, valuationSnapshots] = await Promise.all([
         db.getAllItems(),
         db.getAllCategories(),
         db.getAllLocations(),
         db.getAllMovements(),
         db.getAllAuditLogs(),
+        db.getAllValuationSnapshots(),
       ]);
-      set({ items, categories, locations, movements, auditLogs, isLoading: false });
+      set({ items, categories, locations, movements, auditLogs, valuationSnapshots, isLoading: false });
+      
+      // Save recovery state after successful load
+      await get().saveRecoveryState();
     } catch (error) {
       set({ error: (error as Error).message, isLoading: false });
     }
@@ -159,6 +174,12 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
   
   // Item actions
   addItem: async (itemData) => {
+    // Check for duplicate SKU
+    const existingItem = await db.getItemBySku(itemData.sku);
+    if (existingItem) {
+      throw new Error(`An item with SKU "${itemData.sku}" already exists: ${existingItem.name}`);
+    }
+    
     // Check location capacity if location is specified
     if (itemData.locationId) {
       const state = get();
@@ -191,6 +212,9 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       items: [...state.items, item],
       auditLogs: [...state.auditLogs, auditLog],
     }));
+    
+    // Save recovery state
+    await get().saveRecoveryState();
     
     return item;
   },
@@ -518,7 +542,13 @@ recordMovement: async (
   // Bulk operations with transaction support
   bulkUpdateItems: async (edit) => {
     const { items } = get();
+    
+    // Validate all items exist before starting
     const itemsToUpdate = items.filter(i => edit.itemIds.includes(i.id));
+    if (itemsToUpdate.length !== edit.itemIds.length) {
+      const missingIds = edit.itemIds.filter(id => !items.find(i => i.id === id));
+      throw new Error(`Some items not found: ${missingIds.join(', ')}`);
+    }
     
     // Store original state for rollback
     const originalItems = itemsToUpdate.map(item => ({ ...item }));
@@ -741,6 +771,58 @@ recordMovement: async (
         lowStockItems: lowStockItems.map(i => ({ id: i.id, name: i.name, sku: i.sku, quantity: i.quantity, threshold: i.reorderThreshold })),
       },
     };
+  },
+  
+  // Valuation snapshots
+  addValuationSnapshot: async () => {
+    const state = get();
+    const { items, movements, categories, locations } = state;
+    const valueByCategory = calculateValueByCategory(items, movements);
+    const valueByLocation = calculateValueByLocation(items, movements);
+    const totalValue = calculateTotalInventoryValue(items, movements);
+    
+    const snapshot: ValuationSnapshot = {
+      id: uuidv4(),
+      timestamp: new Date().toISOString(),
+      totalValue: Math.round(totalValue * 100) / 100,
+      itemCount: items.length,
+      categoryBreakdown: valueByCategory,
+      locationBreakdown: valueByLocation,
+    };
+    
+    await db.addValuationSnapshot(snapshot);
+    
+    set(state => ({
+      valuationSnapshots: [...state.valuationSnapshots, snapshot],
+    }));
+    
+    return snapshot;
+  },
+  
+  // Recovery methods
+  saveRecoveryState: async () => {
+    const state = get();
+    await db.saveRecoveryState({
+      items: state.items,
+      categories: state.categories,
+      locations: state.locations,
+    });
+  },
+  
+  loadRecoveryState: async () => {
+    const recoveryData = await db.loadRecoveryState();
+    if (recoveryData) {
+      set({
+        items: recoveryData.state.items,
+        categories: recoveryData.state.categories,
+        locations: recoveryData.state.locations,
+      });
+      await db.clearRecoveryState();
+    }
+  },
+  
+  needsRecovery: async () => {
+    return await db.needsRecovery();
   },
 }));
 

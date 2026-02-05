@@ -243,10 +243,29 @@ describe('Calculation Tests', () => {
 
   describe('calculateReplenishmentEfficiency', () => {
     test('should calculate efficiency', () => {
-      const enrichedItems = enrichItemsWithQuantities([mockItem], mockMovements);
-      const efficiency = calculateReplenishmentEfficiency(enrichedItems, mockMovements);
+      // Signature: calculateReplenishmentEfficiency(itemId, movements, reorderThreshold)
+      const efficiency = calculateReplenishmentEfficiency(mockItem.id, mockMovements, mockItem.reorderThreshold);
       expect(efficiency).toBeGreaterThanOrEqual(0);
       expect(efficiency).toBeLessThanOrEqual(1);
+    });
+    
+    test('should return 1 for no low-stock occurrences', () => {
+      // Item never went below reorder threshold
+      const highStockMovements: StockMovement[] = [
+        {
+          id: '550e8400-e29b-41d4-a716-446655440105',
+          itemId: mockItem.id,
+          type: 'inbound',
+          quantity: 100,
+          previousQuantity: 0,
+          newQuantity: 100,
+          fromLocationId: null,
+          toLocationId: null,
+          timestamp: '2024-01-01T10:00:00Z',
+        },
+      ];
+      const efficiency = calculateReplenishmentEfficiency(mockItem.id, highStockMovements, mockItem.reorderThreshold);
+      expect(efficiency).toBe(1);
     });
   });
 

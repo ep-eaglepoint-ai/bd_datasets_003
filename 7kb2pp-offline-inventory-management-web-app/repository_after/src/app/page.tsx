@@ -11,21 +11,44 @@ import { MovementHistory } from '@/components/MovementHistory';
 import { AuditLogs } from '@/components/AuditLogs';
 import { ExportImport } from '@/components/ExportImport';
 import AdvancedAnalytics from '@/components/AdvancedAnalytics';
-import { Package, BarChart3, FolderTree, MapPin, History, FileText, Download, Menu, X, TrendingUp } from 'lucide-react';
+import { RecoveryDialog } from '@/components/RecoveryDialog';
+import { BulkOperations } from '@/components/BulkOperations';
+import { MetricsExplainer } from '@/components/MetricsExplainer';
+import { Package, BarChart3, FolderTree, MapPin, History, FileText, Download, Menu, X, TrendingUp, Edit3, HelpCircle } from 'lucide-react';
 
-type TabType = 'dashboard' | 'analytics' | 'inventory' | 'categories' | 'locations' | 'movements' | 'audit' | 'export';
+type TabType = 'dashboard' | 'analytics' | 'inventory' | 'bulk' | 'categories' | 'locations' | 'movements' | 'audit' | 'export' | 'explainer';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [showItemForm, setShowItemForm] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [showRecovery, setShowRecovery] = useState(false);
   
-  const { initialize, isLoading, error } = useInventoryStore();
+  const { initialize, isLoading, error, loadRecoveryState, needsRecovery, addValuationSnapshot } = useInventoryStore();
   
   useEffect(() => {
-    initialize();
-  }, [initialize]);
+    const checkRecovery = async () => {
+      const needs = await needsRecovery();
+      if (needs) {
+        setShowRecovery(true);
+      } else {
+        initialize();
+      }
+    };
+    checkRecovery();
+  }, [initialize, needsRecovery]);
+  
+  const handleRecover = async () => {
+    await loadRecoveryState();
+    await initialize();
+    setShowRecovery(false);
+  };
+  
+  const handleDismissRecovery = async () => {
+    await initialize();
+    setShowRecovery(false);
+  };
   
   const handleEditItem = (itemId: string) => {
     setEditingItemId(itemId);
@@ -63,15 +86,25 @@ export default function Home() {
     { id: 'dashboard', label: 'Dashboard', icon: <BarChart3 size={20} /> },
     { id: 'analytics', label: 'Analytics', icon: <TrendingUp size={20} /> },
     { id: 'inventory', label: 'Inventory', icon: <Package size={20} /> },
+    { id: 'bulk', label: 'Bulk Operations', icon: <Edit3 size={20} /> },
     { id: 'categories', label: 'Categories', icon: <FolderTree size={20} /> },
     { id: 'locations', label: 'Locations', icon: <MapPin size={20} /> },
     { id: 'movements', label: 'Movements', icon: <History size={20} /> },
     { id: 'audit', label: 'Audit Logs', icon: <FileText size={20} /> },
     { id: 'export', label: 'Export/Import', icon: <Download size={20} /> },
+    { id: 'explainer', label: 'How Metrics Work', icon: <HelpCircle size={20} /> },
   ];
   
   return (
     <div className="min-h-screen bg-gray-50 flex">
+      {/* Recovery Dialog */}
+      {showRecovery && (
+        <RecoveryDialog
+          onRecover={handleRecover}
+          onDismiss={handleDismissRecovery}
+        />
+      )}
+      
       {/* Sidebar */}
       <aside className={`${sidebarOpen ? 'w-64' : 'w-16'} bg-white shadow-lg transition-all duration-300 flex flex-col`}>
         <div className="p-4 border-b flex items-center justify-between">
@@ -126,11 +159,13 @@ export default function Home() {
               <button
                 onClick={() => setShowItemForm(true)}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                Add Item
-              </button>
-            </div>
-            <InventoryList onEditItem={handleEditItem} />
+              >bulk' && <BulkOperations />}
+        {activeTab === 'categories' && <CategoryManager />}
+        {activeTab === 'locations' && <LocationManager />}
+        {activeTab === 'movements' && <MovementHistory />}
+        {activeTab === 'audit' && <AuditLogs />}
+        {activeTab === 'export' && <ExportImport />}
+        {activeTab === 'explainer' && <MetricsExplainertItem} />
           </div>
         )}
         
