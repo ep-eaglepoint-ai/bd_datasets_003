@@ -43,18 +43,32 @@ class TestRealPriorityIntegration:
         for i in range(10):
             test_logger_task.apply_async(
                 args=[f"low_{i}", "low"],
-                queue="low",
-                routing_key="low"
+                queue="low"
             )
 
         # 2. Submit 1 High Task
         test_logger_task.apply_async(
             args=["high_1", "high"],
-            queue="high",
-            routing_key="high"
+            queue="high"
         )
 
-        time.sleep(20.0) # Wait for persistence (Safe margin for slow CI)
+        # Wait/Poll for queues to be populated (Robust check)
+        print("DEBUG: Waiting for tasks to persist in Redis...")
+        for _ in range(100): # Wait up to 10s
+            if r.llen("high") == 1 and r.llen("low") == 10:
+                break
+            time.sleep(0.1)
+        
+        # Verify Queue State (Diagnose Routing vs Consumption)
+        high_len = r.llen("high")
+        low_len = r.llen("low")
+        medium_len = r.llen("medium")
+        print(f"DEBUG: Queue State -> High: {high_len}, Low: {low_len}, Medium: {medium_len}")
+        print(f"DEBUG: Config -> {celery_app.conf.broker_transport_options}")
+
+        # Fail FAST if routing is broken
+        assert high_len == 1, f"Routing Failure: High queue has {high_len} tasks (Expected 1). Check task_routes."
+        assert low_len == 10, f"Routing Failure: Low queue has {low_len} tasks (Expected 10). Check task_routes."
 
         # 3. Start Worker
         worker_thread = threading.Thread(target=start_worker, daemon=True)

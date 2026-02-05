@@ -42,11 +42,11 @@ celery_app.conf.update(
     worker_concurrency=4,
     
     # Priority queue configuration
-    task_queues=(
-        Queue("high", routing_key="high"),
-        Queue("medium", routing_key="medium"),
-        Queue("low", routing_key="low"),
-    ),
+    # task_queues=(
+    #     Queue("high", routing_key="high"),
+    #     Queue("medium", routing_key="medium"),
+    #     Queue("low", routing_key="low"),
+    # ),
     
     # Default queue
     task_default_queue="medium",
