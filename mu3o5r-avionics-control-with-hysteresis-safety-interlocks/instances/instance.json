@@ -1,0 +1,11 @@
+{
+            "instance_id": "MU3O5R",
+            "problem_statement": "Sensor noise from environment often causes naive control logic to fluctuate rapidly around thresholds, leading to "relay chattering" and hardware damage. The solution requires Hysteresis implementing distinct activation and deactivation thresholds (e.g., On at 85%, Off at 75%) to stabilize the output. Additionally, the system must enforce Safety Interlocks (Altitude overrides) and strict Rate Limits to prevent unsafe or wasteful rapid-firing sequences.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/mu3o5r-avionics-control-with-hysteresis-safety-interlocks",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        

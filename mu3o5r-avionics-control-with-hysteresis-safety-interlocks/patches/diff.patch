@@ -1,0 +1,84 @@
+diff --git a/repository_before/.gitkeep b/repository_before/.gitkeep
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/repository_after/go.mod b/repository_after/go.mod
+new file mode 100644
+index 0000000..71a04c2
+--- /dev/null
++++ b/repository_after/go.mod
+@@ -0,0 +1,3 @@
++module firecontrol
++
++go 1.21
+diff --git a/repository_after/main.go b/repository_after/main.go
+new file mode 100644
+index 0000000..bf8741e
+--- /dev/null
++++ b/repository_after/main.go
+@@ -0,0 +1,66 @@
++package firecontrol
++
++import (
++	"sync"
++	"time"
++)
++
++// Telemetry represents the real-time sensor data from the aircraft
++type Telemetry struct {
++	Altitude         float64
++	RelativeHumidity float64
++	Temperature      float64
++}
++
++// FireControlSystem manages the cloud seeding flare deployment logic
++type FireControlSystem struct {
++	mu                sync.Mutex
++	active            bool
++	lastFireTime      time.Time
++	cooldownPeriod    time.Duration
++	humidityEngage    float64
++	humidityDisengage float64
++	minAltitude       float64
++}
++
++// NewFireControlSystem creates a new initialized fire control system
++func NewFireControlSystem() *FireControlSystem {
++	return &FireControlSystem{
++		cooldownPeriod:    10 * time.Second,
++		humidityEngage:    85.0,
++		humidityDisengage: 75.0,
++		minAltitude:       4000.0,
++	}
++}
++
++// Update processes new telemetry data and determines if a flare should be fired.
++// Returns true only when a flare is actually ignited.
++func (f *FireControlSystem) Update(t Telemetry) bool {
++	f.mu.Lock()
++	defer f.mu.Unlock()
++
++	now := time.Now()
++
++	// Safety Interlock: strictly inhibit firing below 4000 feet AGL
++	if t.Altitude < f.minAltitude {
++		f.active = false
++		return false
++	}
++
++	// Hysteresis Loop (Schmitt Trigger)
++	// Engage ONLY when humidity > 85%
++	// Disengage ONLY when humidity < 75%
++	if t.RelativeHumidity > f.humidityEngage {
++		f.active = true
++	} else if t.RelativeHumidity < f.humidityDisengage {
++		f.active = false
++	}
++
++	// Enforce hard 10-second cooldown between successful firings
++	if f.active && now.Sub(f.lastFireTime) >= f.cooldownPeriod {
++		f.lastFireTime = now
++		return true
++	}
++
++	return false
++}
