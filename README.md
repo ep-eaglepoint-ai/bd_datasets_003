@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # MQ6758 - Adversarial-Testing-of-Fiscal-Precision-Engine
 
 ## Before Test Docker Command
@@ -14,3 +15,6 @@ docker compose run --rm -w /app/repository_after app pytest -v
 ```bash
 docker compose run --rm app python evaluation/evaluate.py
 ```
+=======
+# bd_datasets_003
+>>>>>>> 4bc5eb3c605b107b75c57589640a15d45f4bed3f
