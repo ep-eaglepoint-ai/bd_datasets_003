@@ -1,5 +1,3 @@
-# Docker Compose file for running tests. You should customize this as needed.
-
 services:
   app:
     build: .
