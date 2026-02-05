@@ -1,0 +1,11 @@
+{
+            "instance_id": "M9J0CR",
+            "problem_statement": "Improve performance, memory usage, numerical stability, and parallelism of the given PyTorch model while preserving its outputs.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/m9j0cr-optimize-and-refactor-inefficient-pytorch-model",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
