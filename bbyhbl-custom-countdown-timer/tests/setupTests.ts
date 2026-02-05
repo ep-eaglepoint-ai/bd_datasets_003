@@ -1,7 +1,5 @@
-// tests/setupTests.ts
 import '@testing-library/jest-dom';
 
-// TypeScript-friendly mock setup
 const createLocalStorageMock = () => ({
   getItem: jest.fn(),
   setItem: jest.fn(),
@@ -9,7 +7,6 @@ const createLocalStorageMock = () => ({
   clear: jest.fn(),
 });
 
-// Only run in jsdom environment
 if (typeof window !== 'undefined') {
   const localStorageMock = createLocalStorageMock();
   
@@ -32,7 +29,6 @@ if (typeof window !== 'undefined') {
   });
 }
 
-// Mock fetch (works in both environments)
 global.fetch = jest.fn();
 
 // Add Node.js polyfills
@@ -42,8 +38,7 @@ global.TextDecoder = TextDecoder;
 
 beforeEach(() => {
   jest.clearAllMocks();
-  
-  // Clear localStorage if it exists
+
   if (typeof window !== 'undefined' && window.localStorage) {
     window.localStorage.clear();
   }
