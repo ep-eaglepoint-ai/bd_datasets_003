@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 import sys
 import json
-import time
 import uuid
 import platform
 import subprocess
 import os
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 ROOT = Path(__file__).resolve().parent.parent
 REPORTS = ROOT / "evaluation" / "reports"
@@ -21,7 +20,7 @@ def environment_info():
 def run_tests(target_dir_name):
     target_path = ROOT / target_dir_name
     if not target_path.exists():
-         return {
+        return {
             "passed": False,
             "return_code": -1,
             "output": f"Directory {target_dir_name} does not exist"
@@ -67,7 +66,7 @@ def evaluate(repo_name: str):
 
 def run_evaluation():
     run_id = str(uuid.uuid4())
-    start = datetime.utcnow()
+    start = datetime.now(timezone.utc)
     
     # We expect 'before' to fail since it's empty/broken
     before = evaluate("repository_before")
@@ -80,7 +79,7 @@ def run_evaluation():
         "improvement_summary": "Implemented full stack solution passing all tests."
     }
     
-    end = datetime.utcnow()
+    end = datetime.now(timezone.utc)
     return {
         "run_id": run_id,
         "started_at": start.isoformat() + "Z",

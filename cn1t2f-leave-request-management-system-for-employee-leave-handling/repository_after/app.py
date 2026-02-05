@@ -37,6 +37,8 @@ def create_app():
 
     @app.route('/api/requests', methods=['POST'])
     def create_request():
+        if not request.json:
+             return jsonify({"error": "Missing JSON body"}), 400
         data = request.json
         try:
             req = LeaveService.create_request(
@@ -80,6 +82,8 @@ def create_app():
 
     @app.route('/api/requests/<int:req_id>/approve', methods=['POST'])
     def approve_request(req_id):
+        if not request.json:
+            return jsonify({"error": "Missing JSON body"}), 400
         data = request.json
         manager_id = data.get('manager_id')
         try:
@@ -93,6 +97,8 @@ def create_app():
 
     @app.route('/api/requests/<int:req_id>/reject', methods=['POST'])
     def reject_request(req_id):
+        if not request.json:
+            return jsonify({"error": "Missing JSON body"}), 400
         data = request.json
         manager_id = data.get('manager_id')
         try:

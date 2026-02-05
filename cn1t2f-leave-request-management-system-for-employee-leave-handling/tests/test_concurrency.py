@@ -1,6 +1,5 @@
 import pytest
 import threading
-import threading
 
 
 from app import create_app, db

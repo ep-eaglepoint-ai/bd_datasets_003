@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from sqlalchemy import Integer, String, Date, ForeignKey, Enum as SQLEnum, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -47,4 +47,4 @@ class AuditLog(db.Model):
     previous_status: Mapped[LeaveStatus] = mapped_column(SQLEnum(LeaveStatus), nullable=True)
     new_status: Mapped[LeaveStatus] = mapped_column(SQLEnum(LeaveStatus), nullable=False)
     acting_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)

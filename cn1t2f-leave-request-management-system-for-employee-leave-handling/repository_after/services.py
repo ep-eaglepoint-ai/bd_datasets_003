@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from database import db
-from models import LeaveRequest, User, AuditLog, LeaveStatus, UserRole
+from models import LeaveRequest, User, AuditLog, LeaveStatus, UserRole, LeaveType
 
 class ServiceError(Exception):
     pass
@@ -25,27 +25,35 @@ class LeaveService:
         if employee.role not in [UserRole.EMPLOYEE, UserRole.MANAGER]:
              raise ServiceError("Invalid user role for leave request.")
 
-        req = LeaveRequest(
-            employee_id=employee_id,
-            start_date=s_date,
-            end_date=e_date,
-            leave_type=leave_type,
-            reason=reason,
-            status=LeaveStatus.PENDING
-        )
-        db.session.add(req)
-        db.session.commit()
-        
-        # Initial Audit Log
-        audit = AuditLog(
-            leave_request_id=req.id,
-            previous_status=None,
-            new_status=LeaveStatus.PENDING,
-            acting_user_id=employee_id
-        )
-        db.session.add(audit)
-        db.session.commit()
-        return req
+        # Validate leave_type
+        if leave_type not in [lt.value for lt in LeaveType]:
+            raise ServiceError("Invalid leave type.")
+
+        try:
+            req = LeaveRequest(
+                employee_id=employee_id,
+                start_date=s_date,
+                end_date=e_date,
+                leave_type=leave_type,
+                reason=reason,
+                status=LeaveStatus.PENDING
+            )
+            db.session.add(req)
+            db.session.flush() # Generate ID
+            
+            # Initial Audit Log
+            audit = AuditLog(
+                leave_request_id=req.id,
+                previous_status=None,
+                new_status=LeaveStatus.PENDING,
+                acting_user_id=employee_id
+            )
+            db.session.add(audit)
+            db.session.commit()
+            return req
+        except Exception as e:
+            db.session.rollback()
+            raise e
 
     @staticmethod
     def _calculate_days(start, end):
