@@ -1,0 +1,11 @@
+{
+            "instance_id": "T1HCRC",
+            "problem_statement": "The existing flat comment system prevents nuanced conversations and direct replies. The goal is to build a recursive CommentThread React component in TypeScript that renders hierarchical comments with voting and replying features. It must efficiently handle deeply nested threads (capped at 6 levels), prevent unnecessary re-renders, maintain immutability, and provide full accessibility support including ARIA roles and keyboard navigation. The component should also support collapse/expand toggles, format timestamps in “time ago” style, and gracefully handle empty states.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/t1hcrc-react-recursive-commentthread-component-with-voting-replying-and-accessibility",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
