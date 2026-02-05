@@ -1,0 +1,11 @@
+{
+            "instance_id": "UNWLT1",
+            "problem_statement": "Create a PyTorch implementation of a fully equivariant neural network framework handling discrete and continuous symmetries, graphs, manifolds, irreps, gauge fields, attention, SE(3), and spectral convolutions, robust to all numerical and geometric edge cases.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/unwlt1-unified-symmetry-aware-geometric-deep-learning-framework",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
