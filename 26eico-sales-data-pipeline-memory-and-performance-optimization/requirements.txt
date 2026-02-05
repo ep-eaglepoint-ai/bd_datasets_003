@@ -1,1 +1,8 @@
 # Add your Python dependencies here if the project is Python-based. If it is not Python-based, you can remove this file and configure the requirements accordingly.
+pandas>=2.0.0
+numpy>=1.24.0
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
+tqdm>=4.65.0
+pytest>=7.0.0
+

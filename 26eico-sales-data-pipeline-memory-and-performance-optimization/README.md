@@ -1,11 +1,18 @@
 # 26EICO - Sales Data Pipeline Memory and Performance Optimization
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Commands
 
-    ## After Test Docker Command
-    <docker after command here>
+### Run tests on repository_before
+```bash
+docker compose run --rm test-before
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+### Run tests on repository_after
+```bash
+docker compose run --rm test-after
+```
+
+### Run evaluation
+```bash
+docker compose run --rm evaluation
+```
