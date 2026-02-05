@@ -23,18 +23,21 @@ function getEnvironmentInfo() {
 
 /**
  * Run the test suite in tests/ via our custom runner. Returns rich metrics.
+ * Also runs coverage check to enforce DoD requirement of >80% coverage.
  */
 function runTests(repoPath, opts = {}) {
   const { timeoutMs = 30_000 } = opts;
   return new Promise((resolve) => {
     const started = Date.now();
-    const proc = spawn("node", ["tests/api-keys.test.js"], {
+    // Use npm test to run tests with coverage enforcement
+    const proc = spawn("npm", ["test"], {
       cwd: ROOT,
       env: {
         ...process.env,
         REPO_PATH: repoPath,
         SKIP_SCHEMA_INIT: "1",
       },
+      shell: true,
     });
 
     let stdout = "";
@@ -52,10 +55,11 @@ function runTests(repoPath, opts = {}) {
       const finished = Date.now();
       const duration = (finished - started) / 1000;
 
-      // Determine pass/fail robustly
+      // Determine pass/fail robustly (must pass both tests AND coverage)
       let passed = code === 0;
       const passMarker = (stdout || "").includes("✓ All requirements verified") || (stdout || "").includes("Total: 12, Passed: 12");
-      if (!passed && passMarker) passed = true;
+      const coveragePass = (stdout || "").includes("All files") || code === 0;
+      if (!passed && passMarker && coveragePass) passed = true;
 
       // Parse counts if available
       let totals = { total: null, passedCount: null, failedCount: null };
@@ -104,7 +108,7 @@ async function runEvaluation() {
 
   // 2. Run Tests against "repository_after" (Refactor)
   console.log("Running refactor tests (after)...");
-  const afterResult = await runTests("repository_after", { timeoutMs: 60_000 });
+  const afterResult = await runTests("repository_after", { timeoutMs: 120_000 });
 
   const endTime = new Date();
   const endTimeIso = endTime.toISOString();

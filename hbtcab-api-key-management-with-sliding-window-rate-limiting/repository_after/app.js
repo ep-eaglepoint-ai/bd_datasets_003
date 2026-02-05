@@ -379,10 +379,17 @@ const hashSecret = (secret) => {
 const constantTimeEqual = (a, b) => {
   const bufA = Buffer.from(a, 'hex');
   const bufB = Buffer.from(b, 'hex');
-  if (bufA.length !== bufB.length) {
-    return false;
-  }
-  return crypto.timingSafeEqual(bufA, bufB);
+  // Pad buffers to same length to maintain constant-time behavior
+  const maxLen = Math.max(bufA.length, bufB.length);
+  const paddedA = Buffer.alloc(maxLen);
+  const paddedB = Buffer.alloc(maxLen);
+  bufA.copy(paddedA);
+  bufB.copy(paddedB);
+  
+  // Always perform comparison even if lengths differ
+  const result = crypto.timingSafeEqual(paddedA, paddedB);
+  // Return false if original lengths differed
+  return bufA.length === bufB.length && result;
 };
 
 const generateApiKey = (environment) => {
