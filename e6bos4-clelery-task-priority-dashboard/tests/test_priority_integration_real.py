@@ -13,13 +13,18 @@ r = redis.from_url("redis://redis:6379/0")
 
 def start_worker():
     """Start a temporary Celery worker in a separate thread with strict priority ordering."""
+    # EXPLICITLY set the strategy immediately before starting
+    celery_app.conf.broker_transport_options = {"queue_order_strategy": "priority"}
+    
     argv = [
         'worker',
-        '--loglevel=warning',
-        '-Q', 'high,medium,low',
-        '--concurrency=1',
+        '--loglevel=info', 
+        '--pool=prefork',
+        '--concurrency=1', 
+        '-Q', 'high,medium,low', 
         '--prefetch-multiplier=1'
     ]
+    print(f"DEBUG: Starting worker with args: {argv}")
     celery_app.worker_main(argv)
 
 class TestRealPriorityIntegration:
@@ -71,7 +76,11 @@ class TestRealPriorityIntegration:
         assert low_len == 10, f"Routing Failure: Low queue has {low_len} tasks (Expected 10). Check task_routes."
 
         # 3. Start Worker
-        worker_thread = threading.Thread(target=start_worker, daemon=True)
+        # FORCE strict ordering by specifying queues in order
+        worker_thread = threading.Thread(
+            target=start_worker, 
+            daemon=True
+        )
         worker_thread.start()
 
         # 4. Wait for processing (Expect 11 tasks)
