@@ -1,0 +1,12 @@
+{
+            "instance_id": "JU2IRN",
+            "problem_statement": "A retail company has developed an Express backend API for managing their warehouse inventory. The API handles product tracking, stock level management, and inventory transactions such as restocking and fulfilling orders. The development team rushed to meet a deadline and the API is now in production, but they never wrote proper tests. Recent bugs in production have caused inventory discrepancies that cost the company significant money, and management has mandated comprehensive test coverage before any new features can be added.
+The QA team needs a complete test suite that validates all API endpoints, business logic, edge cases, and error handling. The tests must be thorough enough to catch regressions and serve as documentation for expected API behavior. Additionally, the team wants meta-tests that validate the test suite itself is properly structured and achieves adequate coverage.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ju2irn-inventory-management-api",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
