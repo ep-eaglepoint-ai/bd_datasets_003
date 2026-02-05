@@ -17,7 +17,7 @@ class TestBaselineFailures:
     """
     Symmetric baseline tests for legacy code.
     All tests that check for required modern features are marked with xfail.
-    Total count matches the refactored suite (39 tests).
+    Total count matches the refactored suite (42 tests).
     """
 
     @pytest.fixture(autouse=True)
