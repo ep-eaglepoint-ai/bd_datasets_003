@@ -1,0 +1,12 @@
+{
+            "instance_id": "0T29D9",
+            "problem_statement": "The learning and development team requested an interactive quiz module to supplement their internal training program. Currently, training assessments are conducted via paper forms that require manual grading, which creates a 3-day delay between quiz completion and feedback. The team needs a self-service web application that provides immediate scoring and helps employees identify knowledge gaps in real-time.
+The system needs to present questions one at a time to prevent answer copying during group sessions, provide instant visual feedback on correctness to reinforce learning, and calculate final scores automatically. Pilot feedback from 25 employees indicated that 92 percent preferred immediate feedback over waiting for graded results, trainees reported higher engagement when they could see progress through the quiz, and the ability to restart and retake quizzes was essential for self-paced learning.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/0t29d9-interactive-quiz",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
