@@ -11,6 +11,8 @@
     position: absolute;
     top: 55px;
     right: 60px;
+    z-index: 100; 
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   }
   
   .color-customizer-color {
@@ -26,4 +28,9 @@
     justify-content: center;
     align-items: center;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s ease;
+
+    &:hover {
+        transform: scale(1.2);
+    }
   }

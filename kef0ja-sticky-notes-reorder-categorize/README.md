@@ -1,11 +1,8 @@
-# KEF0JA - Sticky Notes: Reorder & Categorize
+# Run tests (defaults to repository_after)
+docker compose run --rm app
 
-    ## Before Test Docker Command
-    <docker before command here>
+# Run tests against repository_before (expected to fail for baseline)
+docker compose run --rm app npm run test:before
 
-    ## After Test Docker Command
-    <docker after command here>
-
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+# Run tests against repository_after explicitly
+docker compose run --rm app npm run test:after

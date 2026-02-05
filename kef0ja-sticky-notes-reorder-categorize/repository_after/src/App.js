@@ -3,6 +3,7 @@ import Header from "./components/Header";
 import StickyNotesGrid from "./components/StickyNotesGrid";
 import StickyNotesProvider from "./context/StickyNotesContext";
 import "./index.css";
+
 function App() {
   return (
     <StickyNotesProvider>

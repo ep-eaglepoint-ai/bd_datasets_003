@@ -1,12 +1,12 @@
-# Python
-__pycache__/
-*.pyc
-.venv/
-.env
-
-# Node
+# .gitignore
 node_modules/
-
-# OS
+*.log
 .DS_Store
-evaluation/*.json
+report.json
+evaluation/reports/
+build/
+coverage/
+.env*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
