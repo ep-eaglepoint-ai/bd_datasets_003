@@ -1,0 +1,12 @@
+{
+            "instance_id": "U6NVMX",
+            "problem_statement": "We need a test suite for an existing C# type that contains business logic and possibly dependencies. The code has not been covered by automated tests, so behavior is only verified manually and regressions are easy to introduce. The goal is to add a focused, deterministic test suite that exercises all public behavior, documents scenarios through test names, uses mocks for dependencies where appropriate, and does not change the production code. Success means full test run passing, clear coverage of happy path and edge cases, and no reliance on implementation details or flaky setup.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/u6nvmx-adding-automated-tests-for-an-existing-codebase",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
