@@ -1,0 +1,11 @@
+{
+            "instance_id": "8F8YCX",
+            "problem_statement": "The current AccessGuard implementation relies on ad-hoc conditional checks that fail to consistently enforce feature access rules across role, region, subscription plan, beta participation, and account age. This has resulted in access leaks, inconsistent regional enforcement, fragile account-age calculations, and frequent regressions as new features are introduced. The task is to design and implement a robust, policy-driven AccessGuard engine with a single canAccess entry point, clear rule precedence (DENY-first), fail-safe defaults, and a comprehensive automated test suite validating all rule intersections and edge cases.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/8f8ycx-policy-driven-accessguard-feature-engine-with-comprehensive-rule-enforcement",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
