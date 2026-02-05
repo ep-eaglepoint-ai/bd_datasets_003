@@ -1,0 +1,342 @@
+diff -ruN repository_before/pom.xml repository_after/pom.xml
+--- repository_before/pom.xml	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/pom.xml	2026-02-05 17:43:25.350059302 +0300
+@@ -0,0 +1,36 @@
++<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
++  <modelVersion>4.0.0</modelVersion>
++
++  <groupId>com.kuszxo</groupId>
++  <artifactId>json-path-evaluator</artifactId>
++  <version>1.0-SNAPSHOT</version>
++
++  <properties>
++    <maven.compiler.source>17</maven.compiler.source>
++    <maven.compiler.target>17</maven.compiler.target>
++    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
++  </properties>
++
++
++
++
++  <build>
++    <testSourceDirectory>${project.basedir}/../tests</testSourceDirectory>
++  </build>
++
++  <dependencies>
++    <dependency>
++      <groupId>org.junit.jupiter</groupId>
++      <artifactId>junit-jupiter-api</artifactId>
++      <version>5.9.2</version>
++      <scope>test</scope>
++    </dependency>
++    <dependency>
++      <groupId>org.junit.jupiter</groupId>
++      <artifactId>junit-jupiter-engine</artifactId>
++      <version>5.9.2</version>
++      <scope>test</scope>
++    </dependency>
++  </dependencies>
++</project>
+diff -ruN repository_before/src/main/java/JsonPathEvaluator.java repository_after/src/main/java/JsonPathEvaluator.java
+--- repository_before/src/main/java/JsonPathEvaluator.java	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/src/main/java/JsonPathEvaluator.java	2026-02-05 17:29:26.573530756 +0300
+@@ -0,0 +1,183 @@
++import java.util.ArrayList;
++import java.util.Collections;
++import java.util.List;
++import java.util.Map;
++
++public class JsonPathEvaluator {
++
++    public static Object evaluate(Object root, String path) {
++        if (path == null) {
++             throw new IllegalArgumentException("Path cannot be null");
++        }
++        List<Token> tokens = tokenize(path);
++        return evaluateTokens(root, tokens, 0);
++    }
++
++    public static EvaluatorBuilder at(String path) {
++        return new EvaluatorBuilder(path);
++    }
++
++    public static class EvaluatorBuilder {
++        private final String path;
++        
++        public EvaluatorBuilder(String path) {
++            this.path = path;
++        }
++        
++        public Object on(Object root) {
++            return JsonPathEvaluator.evaluate(root, path);
++        }
++    }
++
++    private static class Token {
++        enum Type { PROPERTY, INDEX, WILDCARD }
++        final Type type;
++        final Object value;
++
++        Token(Type type, Object value) {
++            this.type = type;
++            this.value = value;
++        }
++    }
++
++    private static List<Token> tokenize(String path) {
++        if (path.isEmpty()) return Collections.emptyList();
++
++        List<Token> tokens = new ArrayList<>();
++        int len = path.length();
++        int i = 0;
++
++        while (i < len) {
++            char c = path.charAt(i);
++
++            if (c == '.') {
++                if (i == 0) throw new JsonPathException("Path cannot start with dot");
++                if (i == len - 1) throw new JsonPathException("Path cannot end with dot");
++                if (path.charAt(i + 1) == '.') throw new JsonPathException("Empty path segment detected");
++                // Allow .[ notation by just skipping dot
++                i++;
++                continue;
++            }
++
++            if (c == '[') {
++                i++;
++                if (i >= len) throw new JsonPathException("Unclosed bracket");
++                char first = path.charAt(i);
++
++                if (first == '*') {
++                    tokens.add(new Token(Token.Type.WILDCARD, null));
++                    i++;
++                } else if (Character.isDigit(first) || first == '-') {
++                    int start = i;
++                    if (path.charAt(i) == '-') {
++                        i++;
++                        if (i >= len || !Character.isDigit(path.charAt(i))) {
++                             throw new JsonPathException("Invalid integer format");
++                        }
++                    }
++                    while (i < len && Character.isDigit(path.charAt(i))) {
++                        i++;
++                    }
++                    try {
++                        tokens.add(new Token(Token.Type.INDEX, Integer.parseInt(path.substring(start, i))));
++                    } catch (NumberFormatException e) {
++                        throw new JsonPathException("Invalid integer index");
++                    }
++                } else if (first == '\'' || first == '"') {
++                    char quote = first;
++                    i++;
++                    StringBuilder sb = new StringBuilder();
++                    boolean escaped = false;
++                    boolean closed = false;
++                    
++                    while (i < len) {
++                        char curr = path.charAt(i);
++                        if (escaped) {
++                            sb.append(curr);
++                            escaped = false;
++                        } else {
++                            if (curr == '\\') {
++                                escaped = true;
++                            } else if (curr == quote) {
++                                closed = true;
++                                i++; // Consuming closing quote
++                                break;
++                            } else {
++                                sb.append(curr);
++                            }
++                        }
++                        i++;
++                    }
++                    if (!closed) throw new JsonPathException("Unclosed quote");
++                    tokens.add(new Token(Token.Type.PROPERTY, sb.toString()));
++                } else {
++                    throw new JsonPathException("Invalid character in bracket: " + first);
++                }
++
++                if (i >= len || path.charAt(i) != ']') {
++                    throw new JsonPathException("Expected closing bracket");
++                }
++                i++; // Consuming ]
++            } else {
++                // Property name
++                int start = i;
++                // Read until dot, open bracket, or end of string
++                while (i < len && path.charAt(i) != '.' && path.charAt(i) != '[') {
++                    i++;
++                }
++                String prop = path.substring(start, i);
++                if (prop.isEmpty()) throw new JsonPathException("Empty property name");
++                tokens.add(new Token(Token.Type.PROPERTY, prop));
++            }
++        }
++        return tokens;
++    }
++
++    private static Object evaluateTokens(Object current, List<Token> tokens, int index) {
++        if (current == null) {
++            return null;
++        }
++        if (index >= tokens.size()) {
++            return current;
++        }
++
++        Token token = tokens.get(index);
++
++        if (token.type == Token.Type.PROPERTY) {
++            if (!(current instanceof Map)) {
++                throw new JsonPathException("Expected Map for property access but got " + current.getClass().getSimpleName());
++            }
++            Map<?, ?> map = (Map<?, ?>) current;
++            String key = (String) token.value;
++            // Return null if missing, do not throw
++            if (!map.containsKey(key)) {
++                return null;
++            }
++            return evaluateTokens(map.get(key), tokens, index + 1);
++
++        } else if (token.type == Token.Type.INDEX) {
++            if (!(current instanceof List)) {
++                throw new JsonPathException("Expected List for array index but got " + current.getClass().getSimpleName());
++            }
++            List<?> list = (List<?>) current;
++            int idx = (Integer) token.value;
++            if (idx < 0 || idx >= list.size()) {
++                return null;
++            }
++            return evaluateTokens(list.get(idx), tokens, index + 1);
++
++        } else if (token.type == Token.Type.WILDCARD) {
++            if (!(current instanceof List)) {
++                throw new JsonPathException("Expected List for wildcard access but got " + current.getClass().getSimpleName());
++            }
++            List<?> list = (List<?>) current;
++            List<Object> results = new ArrayList<>();
++            for (Object element : list) {
++                results.add(evaluateTokens(element, tokens, index + 1));
++            }
++            return results;
++        }
++
++        throw new JsonPathException("Unknown token type");
++    }
++}
+diff -ruN repository_before/src/main/java/JsonPathException.java repository_after/src/main/java/JsonPathException.java
+--- repository_before/src/main/java/JsonPathException.java	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/src/main/java/JsonPathException.java	2026-02-05 17:21:05.123689251 +0300
+@@ -0,0 +1,5 @@
++public class JsonPathException extends RuntimeException {
++    public JsonPathException(String message) {
++        super(message);
++    }
++}
+Binary files repository_before/target/classes/JsonPathEvaluator$EvaluatorBuilder.class and repository_after/target/classes/JsonPathEvaluator$EvaluatorBuilder.class differ
+Binary files repository_before/target/classes/JsonPathEvaluator$Token$Type.class and repository_after/target/classes/JsonPathEvaluator$Token$Type.class differ
+Binary files repository_before/target/classes/JsonPathEvaluator$Token.class and repository_after/target/classes/JsonPathEvaluator$Token.class differ
+Binary files repository_before/target/classes/JsonPathEvaluator.class and repository_after/target/classes/JsonPathEvaluator.class differ
+Binary files repository_before/target/classes/JsonPathException.class and repository_after/target/classes/JsonPathException.class differ
+diff -ruN repository_before/target/maven-status/maven-compiler-plugin/compile/default-compile/createdFiles.lst repository_after/target/maven-status/maven-compiler-plugin/compile/default-compile/createdFiles.lst
+--- repository_before/target/maven-status/maven-compiler-plugin/compile/default-compile/createdFiles.lst	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/target/maven-status/maven-compiler-plugin/compile/default-compile/createdFiles.lst	2026-02-05 17:58:53.835092809 +0300
+@@ -0,0 +1,5 @@
++JsonPathEvaluator.class
++JsonPathEvaluator$Token.class
++JsonPathException.class
++JsonPathEvaluator$Token$Type.class
++JsonPathEvaluator$EvaluatorBuilder.class
+diff -ruN repository_before/target/maven-status/maven-compiler-plugin/compile/default-compile/inputFiles.lst repository_after/target/maven-status/maven-compiler-plugin/compile/default-compile/inputFiles.lst
+--- repository_before/target/maven-status/maven-compiler-plugin/compile/default-compile/inputFiles.lst	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/target/maven-status/maven-compiler-plugin/compile/default-compile/inputFiles.lst	2026-02-05 18:03:39.410846135 +0300
+@@ -0,0 +1,2 @@
++/app/repository_after/src/main/java/JsonPathEvaluator.java
++/app/repository_after/src/main/java/JsonPathException.java
+diff -ruN repository_before/target/maven-status/maven-compiler-plugin/testCompile/default-testCompile/createdFiles.lst repository_after/target/maven-status/maven-compiler-plugin/testCompile/default-testCompile/createdFiles.lst
+--- repository_before/target/maven-status/maven-compiler-plugin/testCompile/default-testCompile/createdFiles.lst	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/target/maven-status/maven-compiler-plugin/testCompile/default-testCompile/createdFiles.lst	2026-02-05 17:58:54.107090267 +0300
+@@ -0,0 +1 @@
++JsonPathEvaluatorTest.class
+diff -ruN repository_before/target/maven-status/maven-compiler-plugin/testCompile/default-testCompile/inputFiles.lst repository_after/target/maven-status/maven-compiler-plugin/testCompile/default-testCompile/inputFiles.lst
+--- repository_before/target/maven-status/maven-compiler-plugin/testCompile/default-testCompile/inputFiles.lst	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/target/maven-status/maven-compiler-plugin/testCompile/default-testCompile/inputFiles.lst	2026-02-05 18:03:39.428846131 +0300
+@@ -0,0 +1 @@
++/app/repository_after/../tests/JsonPathEvaluatorTest.java
+diff -ruN repository_before/target/surefire-reports/JsonPathEvaluatorTest.txt repository_after/target/surefire-reports/JsonPathEvaluatorTest.txt
+--- repository_before/target/surefire-reports/JsonPathEvaluatorTest.txt	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/target/surefire-reports/JsonPathEvaluatorTest.txt	2026-02-05 18:03:49.719845053 +0300
+@@ -0,0 +1,4 @@
++-------------------------------------------------------------------------------
++Test set: JsonPathEvaluatorTest
++-------------------------------------------------------------------------------
++Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.061 s -- in JsonPathEvaluatorTest
+diff -ruN repository_before/target/surefire-reports/TEST-JsonPathEvaluatorTest.xml repository_after/target/surefire-reports/TEST-JsonPathEvaluatorTest.xml
+--- repository_before/target/surefire-reports/TEST-JsonPathEvaluatorTest.xml	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/target/surefire-reports/TEST-JsonPathEvaluatorTest.xml	2026-02-05 18:03:49.731845053 +0300
+@@ -0,0 +1,62 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report-3.0.xsd" version="3.0" name="JsonPathEvaluatorTest" time="0.061" tests="6" errors="0" skipped="0" failures="0">
++  <properties>
++    <property name="java.specification.version" value="17"/>
++    <property name="sun.jnu.encoding" value="UTF-8"/>
++    <property name="java.class.path" value="/app/repository_after/target/test-classes:/app/repository_after/target/classes:/root/.m2/repository/org/junit/jupiter/junit-jupiter-api/5.9.2/junit-jupiter-api-5.9.2.jar:/root/.m2/repository/org/opentest4j/opentest4j/1.2.0/opentest4j-1.2.0.jar:/root/.m2/repository/org/junit/platform/junit-platform-commons/1.9.2/junit-platform-commons-1.9.2.jar:/root/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar:/root/.m2/repository/org/junit/jupiter/junit-jupiter-engine/5.9.2/junit-jupiter-engine-5.9.2.jar:/root/.m2/repository/org/junit/platform/junit-platform-engine/1.9.2/junit-platform-engine-1.9.2.jar:"/>
++    <property name="java.vm.vendor" value="Eclipse Adoptium"/>
++    <property name="sun.arch.data.model" value="64"/>
++    <property name="java.vendor.url" value="https://adoptium.net/"/>
++    <property name="os.name" value="Linux"/>
++    <property name="java.vm.specification.version" value="17"/>
++    <property name="sun.java.launcher" value="SUN_STANDARD"/>
++    <property name="user.country" value="US"/>
++    <property name="sun.boot.library.path" value="/opt/java/openjdk/lib"/>
++    <property name="sun.java.command" value="/app/repository_after/target/surefire/surefirebooter-20260205150348816_3.jar /app/repository_after/target/surefire 2026-02-05T15-03-47_655-jvmRun1 surefire-20260205150348816_1tmp surefire_0-20260205150348816_2tmp"/>
++    <property name="jdk.debug" value="release"/>
++    <property name="surefire.test.class.path" value="/app/repository_after/target/test-classes:/app/repository_after/target/classes:/root/.m2/repository/org/junit/jupiter/junit-jupiter-api/5.9.2/junit-jupiter-api-5.9.2.jar:/root/.m2/repository/org/opentest4j/opentest4j/1.2.0/opentest4j-1.2.0.jar:/root/.m2/repository/org/junit/platform/junit-platform-commons/1.9.2/junit-platform-commons-1.9.2.jar:/root/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar:/root/.m2/repository/org/junit/jupiter/junit-jupiter-engine/5.9.2/junit-jupiter-engine-5.9.2.jar:/root/.m2/repository/org/junit/platform/junit-platform-engine/1.9.2/junit-platform-engine-1.9.2.jar:"/>
++    <property name="sun.cpu.endian" value="little"/>
++    <property name="user.home" value="/root"/>
++    <property name="user.language" value="en"/>
++    <property name="java.specification.vendor" value="Oracle Corporation"/>
++    <property name="java.version.date" value="2025-10-21"/>
++    <property name="java.home" value="/opt/java/openjdk"/>
++    <property name="file.separator" value="/"/>
++    <property name="basedir" value="/app/repository_after"/>
++    <property name="java.vm.compressedOopsMode" value="Zero based"/>
++    <property name="line.separator" value="&#10;"/>
++    <property name="java.specification.name" value="Java Platform API Specification"/>
++    <property name="java.vm.specification.vendor" value="Oracle Corporation"/>
++    <property name="surefire.real.class.path" value="/app/repository_after/target/surefire/surefirebooter-20260205150348816_3.jar"/>
++    <property name="sun.management.compiler" value="HotSpot 64-Bit Tiered Compilers"/>
++    <property name="java.runtime.version" value="17.0.17+10"/>
++    <property name="user.name" value="root"/>
++    <property name="path.separator" value=":"/>
++    <property name="os.version" value="6.8.0-90-generic"/>
++    <property name="java.runtime.name" value="OpenJDK Runtime Environment"/>
++    <property name="file.encoding" value="UTF-8"/>
++    <property name="java.vm.name" value="OpenJDK 64-Bit Server VM"/>
++    <property name="java.vendor.version" value="Temurin-17.0.17+10"/>
++    <property name="localRepository" value="/root/.m2/repository"/>
++    <property name="java.vendor.url.bug" value="https://github.com/adoptium/adoptium-support/issues"/>
++    <property name="java.io.tmpdir" value="/tmp"/>
++    <property name="java.version" value="17.0.17"/>
++    <property name="user.dir" value="/app/repository_after"/>
++    <property name="os.arch" value="amd64"/>
++    <property name="java.vm.specification.name" value="Java Virtual Machine Specification"/>
++    <property name="native.encoding" value="UTF-8"/>
++    <property name="java.library.path" value="/opt/java/openjdk/lib/server:/opt/java/openjdk/lib:/opt/java/openjdk/../lib:/usr/java/packages/lib:/usr/lib64:/lib64:/lib:/usr/lib"/>
++    <property name="java.vm.info" value="mixed mode, sharing"/>
++    <property name="java.vendor" value="Eclipse Adoptium"/>
++    <property name="java.vm.version" value="17.0.17+10"/>
++    <property name="java.specification.maintenance.version" value="1"/>
++    <property name="sun.io.unicode.encoding" value="UnicodeLittle"/>
++    <property name="java.class.version" value="61.0"/>
++  </properties>
++  <testcase name="testExceptions" classname="JsonPathEvaluatorTest" time="0.025"/>
++  <testcase name="testBracketPropertyAccess" classname="JsonPathEvaluatorTest" time="0.001"/>
++  <testcase name="testArrayAccess" classname="JsonPathEvaluatorTest" time="0.002"/>
++  <testcase name="testWildcard" classname="JsonPathEvaluatorTest" time="0.001"/>
++  <testcase name="testFluentApi" classname="JsonPathEvaluatorTest" time="0.001"/>
++  <testcase name="testDotNotation" classname="JsonPathEvaluatorTest" time="0.001"/>
++</testsuite>
+\ No newline at end of file
+Binary files repository_before/target/test-classes/JsonPathEvaluatorTest.class and repository_after/target/test-classes/JsonPathEvaluatorTest.class differ

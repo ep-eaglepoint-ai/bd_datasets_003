@@ -1,12 +1,21 @@
-# Python
-__pycache__/
-*.pyc
-.venv/
-.env
+# Compiled class files
+*.class
 
-# Node
-node_modules/
+# Maven build directory
+repository_after/target/
+repository_before/target/
 
-# OS
+# IDE files
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+
+# OS files
 .DS_Store
-evaluation/*.json
+Thumbs.db
+
+# Evaluation reports (optional - uncomment if you don't want to track them)
+evaluation/reports/
