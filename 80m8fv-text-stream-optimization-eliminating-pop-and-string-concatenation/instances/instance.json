@@ -6,11 +6,12 @@
             "test_patch": "tests/",
             "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/80m8fv-text-stream-optimization-eliminating-pop-and-string-concatenation",
             "environment_setup": "Dockerfile",
-            "FAIL_TO_PASS": [],
-            "PASS_TO_PASS": [
+            "FAIL_TO_PASS": [
                 "tests/test_sanitizer.py::test_requirement_1_no_pop_zero",
+                "tests/test_sanitizer.py::test_requirement_3_hash_set_for_banned_words"
+            ],
+            "PASS_TO_PASS": [
                 "tests/test_sanitizer.py::test_requirement_2_string_builder_pattern",
-                "tests/test_sanitizer.py::test_requirement_3_hash_set_for_banned_words",
                 "tests/test_sanitizer.py::test_requirement_4_case_insensitive_lookup",
                 "tests/test_sanitizer.py::test_requirement_5_consecutive_duplicate_filter",
                 "tests/test_sanitizer.py::test_requirement_6_no_regex_splitting_only",
