@@ -2,7 +2,9 @@
 
 services:
   app:
-    build: .
+    build:
+      context: .
+      network: host
     command: pytest -q tests
     volumes:
       - .:/app

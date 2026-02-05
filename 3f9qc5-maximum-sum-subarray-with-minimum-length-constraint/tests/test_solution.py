@@ -1,7 +1,9 @@
+import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "repository_after"))
+repo = os.environ.get("REPO_PATH", "repository_after")
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / repo))
 from solution import max_sum_subarray
 
 
