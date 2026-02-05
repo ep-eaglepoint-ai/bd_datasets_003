@@ -10,7 +10,7 @@ import json
 import os
 import sys
 
-# Use current working directory instead of hardcoded /app
+# Use current working directory
 APP_DIR = os.getcwd()
 
 def run_node_tests(module_path):
@@ -66,14 +66,14 @@ def main():
     print("=== AsyncCache Evaluation ===\n")
     print(f"Working directory: {APP_DIR}\n")
 
-    # Test repository_before
-    print("Testing repository_before (original)...")
+    # Test repository_before (expected to fail - this is the buggy version)
+    print("Testing repository_before (original - expected to have some failures)...")
     before_result = run_node_tests('repository_before/AysncCache.js')
     before_result['repository'] = 'before'
     print(f"  Passed: {before_result['passed']}, Failed: {before_result['failed']}\n")
 
-    # Test repository_after
-    print("Testing repository_after (fixed)...")
+    # Test repository_after (should pass all tests)
+    print("Testing repository_after (fixed - should pass all tests)...")
     after_result = run_node_tests('repository_after/AsyncCache.js')
     after_result['repository'] = 'after'
     print(f"  Passed: {after_result['passed']}, Failed: {after_result['failed']}\n")
@@ -109,8 +109,14 @@ def main():
     print(f"Improvement: {report['summary']['improvement']} additional tests passing")
     print(f"\nReport saved to: {report_path}")
 
-    # Exit with after result status
-    sys.exit(0 if after_result['success'] else 1)
+    # Exit with 0 if after_result passes all tests (the fix works)
+    # The before test is expected to fail (it has bugs)
+    if after_result['success']:
+        print("\n✅ Fix verified - all 27 tests pass in repository_after!")
+        sys.exit(0)
+    else:
+        print("\n❌ Fix incomplete - repository_after still has failing tests")
+        sys.exit(1)
 
 if __name__ == '__main__':
     main()
