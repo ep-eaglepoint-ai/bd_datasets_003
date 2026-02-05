@@ -1,11 +1,9 @@
 # 13939J - news-reader
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Run Tests
 
-    ## After Test Docker Command
-    <docker after command here>
+docker compose run app npm test
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## Run Evaluation
+
+docker compose run app npm run evaluate
