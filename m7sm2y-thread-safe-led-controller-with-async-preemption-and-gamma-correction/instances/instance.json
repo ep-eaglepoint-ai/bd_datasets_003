@@ -1,0 +1,11 @@
+{
+            "instance_id": "M7SM2Y",
+            "problem_statement": "The core engineering failure in asynchronous firmware control is "State Contention" between long-running effects (animations) and immediate overrides. A common mid-tier mistake is implementing "Fire-and-Forget" goroutines; if a user triggers a 5-second fade and then immediately sets a static color, the old fade goroutine continues running in the background, overwriting the new state and causing the lights to flicker or revert (Ghosting). The solution requires a robust synchronization primitive such as a revocable Context, a Generation Count (Epoch), or a Command Channel to ensuring that only the authoritative (latest) command has write access to the shared hardware buffer while simultaneously applying non-linear Gamma logic.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/m7sm2y-thread-safe-led-controller-with-async-preemption-and-gamma-correction",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
