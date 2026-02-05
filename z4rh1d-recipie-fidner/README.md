@@ -1,11 +1,11 @@
-# Z4RH1D - recipie fidner
+# Recipe Finder Application
 
-    ## Before Test Docker Command
-    <docker before command here>
+## After Test Docker Command
+```bash
+docker compose run --rm app npx jest --testPathPattern=tests/
+```
 
-    ## After Test Docker Command
-    <docker after command here>
-
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## Evaluation Docker Command
+```bash
+docker compose run --rm app node evaluation/evaluation.js
+```
