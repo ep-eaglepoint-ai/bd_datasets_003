@@ -39,7 +39,7 @@ Key constraints:
 - **Step 6**: Wrote verification tests.
 - **Verification**: Verified tests run successfully in Docker environment including concurrency checks.
 
-## Lessons Logic
+## Lessons Learned
 - Using `sqlite` for local dev is fine, but for concurrency verification, `postgres` is superior.
 - Separating `app` logic from `services` logic makes testing easier.
 

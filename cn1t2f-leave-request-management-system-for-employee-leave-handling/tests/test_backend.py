@@ -1,9 +1,8 @@
 import pytest
-import pytest
 
 # Try to import from the path set by evaluation.py or default to repository_after for local dev
 from app import create_app, db
-from models import User, LeaveRequest, AuditLog, UserRole, LeaveStatus, LeaveType
+from models import User, AuditLog, UserRole, LeaveStatus, LeaveType
 from services import LeaveService, ServiceError
 
 @pytest.fixture

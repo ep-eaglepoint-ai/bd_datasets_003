@@ -19,6 +19,12 @@ class LeaveService:
         if e_date < s_date:
             raise ServiceError("End date cannot be before start date.")
 
+        employee = db.session.query(User).filter_by(id=employee_id).first()
+        if not employee:
+            raise ServiceError("Employee not found.")
+        if employee.role not in [UserRole.EMPLOYEE, UserRole.MANAGER]:
+             raise ServiceError("Invalid user role for leave request.")
+
         req = LeaveRequest(
             employee_id=employee_id,
             start_date=s_date,
