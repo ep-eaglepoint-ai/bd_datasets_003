@@ -3,6 +3,7 @@ package adain
 import (
 	"errors"
 	"math"
+	"strconv"
 )
 
 // Tensor represents a 4D tensor: [N, C, H, W]
@@ -35,13 +36,14 @@ func Validate(name string, t *Tensor) error {
 	}
 	for i, v := range t.Data {
 		if math.IsNaN(v) || math.IsInf(v, 0) {
-			return errors.New(name + " contains invalid value at index " + string(i))
+			return errors.New(name + " contains invalid value at index " + strconv.Itoa(i))
 		}
 	}
 	return nil
 }
 
 // ComputeMeanStd computes per-sample, per-channel mean and std over spatial dims with optional mask
+// x must be a validated 4D tensor.
 func ComputeMeanStd(x *Tensor, mask *Tensor, epsilon float64) (*Tensor, *Tensor) {
 	N, C, H, W := x.Shape[0], x.Shape[1], x.Shape[2], x.Shape[3]
 	mean := NewTensor([]int{N, C, 1, 1})
@@ -52,17 +54,18 @@ func ComputeMeanStd(x *Tensor, mask *Tensor, epsilon float64) (*Tensor, *Tensor)
 		for c := 0; c < C; c++ {
 			sum, weight := 0.0, 0.0
 			offset := x.Index(n, c, 0, 0)
+			// Spatial flattening: flat index i maps to (h=i/W, w=i%W) in row-major order.
 			for i := 0; i < spatialSize; i++ {
 				val := x.Data[offset+i]
 				w := 1.0
 				if mask != nil {
-					w = mask.Data[mask.Index(n, 0, i/H, i%W)]
+					w = mask.Data[mask.Index(n, 0, i/W, i%W)]
 				}
 				sum += val * w
 				weight += w
 			}
-			if weight < 1 {
-				weight = 1
+			if weight == 0 {
+				weight = float64(spatialSize)
 			}
 			m := sum / weight
 			mean.Data[mean.Index(n, c, 0, 0)] = m
@@ -73,7 +76,7 @@ func ComputeMeanStd(x *Tensor, mask *Tensor, epsilon float64) (*Tensor, *Tensor)
 				diff := val - m
 				w := 1.0
 				if mask != nil {
-					w = mask.Data[mask.Index(n, 0, i/H, i%W)]
+					w = mask.Data[mask.Index(n, 0, i/W, i%W)]
 				}
 				varSum += diff * diff * w
 			}
@@ -93,6 +96,18 @@ func ApplyAdaIN(content, style *Tensor, alpha, epsilon float64, contentMask, sty
 	}
 	if content.Shape[1] != style.Shape[1] {
 		return nil, errors.New("channel mismatch")
+	}
+	if contentMask != nil {
+		if len(contentMask.Shape) != 4 || contentMask.Shape[0] != content.Shape[0] || contentMask.Shape[1] != 1 ||
+			contentMask.Shape[2] != content.Shape[2] || contentMask.Shape[3] != content.Shape[3] {
+			return nil, errors.New("content mask shape mismatch")
+		}
+	}
+	if styleMask != nil {
+		if len(styleMask.Shape) != 4 || styleMask.Shape[0] != style.Shape[0] || styleMask.Shape[1] != 1 ||
+			styleMask.Shape[2] != style.Shape[2] || styleMask.Shape[3] != style.Shape[3] {
+			return nil, errors.New("style mask shape mismatch")
+		}
 	}
 
 	meanC, stdC := ComputeMeanStd(content, contentMask, epsilon)
@@ -124,7 +139,7 @@ func ApplyAdaIN(content, style *Tensor, alpha, epsilon float64, contentMask, sty
 	// Final NaN/Inf check
 	for i, v := range out.Data {
 		if math.IsNaN(v) || math.IsInf(v, 0) {
-			return nil, errors.New("output contains invalid value at index " + string(i))
+			return nil, errors.New("output contains invalid value at index " + strconv.Itoa(i))
 		}
 	}
 	return out, nil
