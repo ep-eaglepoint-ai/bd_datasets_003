@@ -9,15 +9,15 @@ import sys
 import pandas as pd
 from tqdm import tqdm
 
-from ingest import load_sales_data, CHUNK_SIZE
+from ingest import load_sales_data, CHUNK_SIZE, get_csv_info
 from transform import transform_data
 from aggregate import AggregationState, update_aggregates, finalize_aggregates
 from export import export_to_database
 from logger import log_malformed_row
 
-# Estimate total rows for progress bar (from filesize or explicit knowledge)
-# 50M rows mentioned in prompt.
-ESTIMATED_ROWS = 50_000_000
+from checksum import compute_aggregate_checksums, verify_checksums
+
+DEFAULT_FILEPATH = os.environ.get("SALES_DATA_CSV", "sales_data.csv")
 
 def main():
     print("Starting optimized sales data pipeline...")
@@ -25,8 +25,7 @@ def main():
     # Initialize Aggregation State
     agg_state = AggregationState()
     
-    # Data Source (Hardcoded as per prompt or arg)
-    FILEPATH = 'sales_data.csv'
+    FILEPATH = DEFAULT_FILEPATH
     
     if not os.path.exists(FILEPATH):
         print(f"File {FILEPATH} not found. Ensure it exists or mount it.")
@@ -35,11 +34,18 @@ def main():
         # For now, let it fail naturally if missing in read_csv context, or printing here.
         
     print(f"Processing {FILEPATH} in chunks...")
+
+    csv_info = None
+    if os.path.exists(FILEPATH):
+        csv_info = get_csv_info(FILEPATH)
+        total_rows = csv_info.total_rows
+    else:
+        # In tests we often patch load_sales_data anyway.
+        total_rows = 0
     
     try:
-        # Tqdm for progress bar (Req 7)
-        # We process in chunks, so bar updates by chunk size
-        with tqdm(total=ESTIMATED_ROWS, unit='rows', desc='Processing') as pbar:
+        # Req 7: progress bar must have a real total so % + ETA are meaningful.
+        with tqdm(total=total_rows, unit='rows', desc='Processing') as pbar:
             chunk_iter = load_sales_data(FILEPATH)
             
             for i, chunk in enumerate(chunk_iter):
@@ -63,17 +69,18 @@ def main():
                 try:
                     chunk = transform_data(chunk)
                 except Exception as e:
-                    # Fallback for unexpected errors in a chunk
-                    # Log broad error?
-                    log_malformed_row(i * CHUNK_SIZE, f"Transform error: {e}")
+                    # Transform errors shouldn't crash the pipeline; log and skip chunk.
+                    # Line numbers within chunk are handled in ingest for row-level issues.
+                    log_malformed_row(i * CHUNK_SIZE + 2, f"Transform error: {e}")
                     continue
                 
                 # 2. Accumulate Aggregates
                 update_aggregates(agg_state, chunk)
                 
-                # Update progress
-                rows_in_chunk = len(chunk)
-                pbar.update(rows_in_chunk)
+                # Req 7: update progress based on *lines consumed* so the bar reaches 100%
+                # even when malformed/invalid rows are skipped.
+                lines_consumed = int(chunk.attrs.get("lines_consumed", len(chunk)))
+                pbar.update(lines_consumed)
                 
                 # 3. Explicit GC (Req 12)
                 del chunk
@@ -87,6 +94,18 @@ def main():
 
     print("\nFinalizing aggregates...")
     aggregates = finalize_aggregates(agg_state)
+
+    # Req 9: deterministic checksums for each output table.
+    # If reference checksums exist (env var path), verify; otherwise write new.
+    checksum_path = os.environ.get("REFERENCE_CHECKSUMS")
+    computed = compute_aggregate_checksums(aggregates)
+    if checksum_path and os.path.exists(checksum_path):
+        verify_checksums(computed, checksum_path)
+    elif checksum_path:
+        # Allow generating a reference in controlled runs.
+        from checksum import write_checksums
+
+        write_checksums(computed, checksum_path)
     
     print("Exporting to database...")
     export_to_database(aggregates)

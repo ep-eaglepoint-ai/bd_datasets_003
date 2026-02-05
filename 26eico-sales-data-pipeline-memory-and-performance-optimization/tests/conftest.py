@@ -20,6 +20,16 @@ def malformed_csv_data():
 3,2023-01-01 12:45:00,101,501,Product A,Electronics,-5,100.0,5.0,1003,Debit Card,North
 """
 
+
+@pytest.fixture
+def structurally_malformed_csv_data():
+    # Row 3 has too few columns (structural CSV issue)
+    return """transaction_id,timestamp,store_id,product_id,product_name,category,quantity,unit_price,discount_percent,customer_id,payment_method,region
+1,2023-01-01 10:00:00,101,501,Product A,Electronics,2,100.0,10.0,1001,Credit Card,North
+BROKEN,ROW,WITH,TOO,FEW,COLS
+2,2023-01-01 11:30:00,102,502,Product B,Clothing,1,50.0,0.0,1002,Cash,South
+"""
+
 # Add the target repository to sys.path
 target_repo = os.environ.get('TARGET_REPO', 'repository_before')
 proj_root = Path(__file__).parents[1]

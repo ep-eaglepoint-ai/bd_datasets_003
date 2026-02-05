@@ -23,21 +23,19 @@ def export_to_database(aggregates):
     # usually 1000-5000 is good for reasonable row widths.
     EXPORT_CHUNK_SIZE = 5000 
     
-    with engine.connect() as conn:
+    with engine.begin() as conn:
         for table_name, df in aggregates.items():
             print(f"Exporting {table_name} ({len(df)} rows)...")
-            
-            # Using to_sql with the engine directly or connection
-            # If using connection, transaction is managed
+
             df.to_sql(
                 table_name,
-                con=engine, # Using engine allows internal transaction management per call or wrapping explicitly
+                con=conn,
                 if_exists='replace',
                 index=False,
                 method='multi',
-                chunksize=EXPORT_CHUNK_SIZE
+                chunksize=EXPORT_CHUNK_SIZE,
             )
-            
+
             print(f"  Exported {table_name}")
     
     print("All exports complete")

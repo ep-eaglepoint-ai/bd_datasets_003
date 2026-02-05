@@ -22,13 +22,9 @@ def transform_data(df: pd.DataFrame) -> pd.DataFrame:
     # Store directly in new column
     df['revenue'] = df['quantity'] * df['unit_price'] * discount_factor
     
-    # Store Category: str(store_id) + '_' + str(category)
-    # Vectorized string concatenation
-    # Converting to string if they are not already
-    # store_id is int32, category is category (or object)
-    # We can use series.astype(str) + ...
-    
-    df['store_category'] = df['store_id'].astype(str) + '_' + df['category'].astype(str)
+    # Note: we intentionally do NOT compute a combined store_category string.
+    # Aggregations group by store_id and category directly; computing a joined
+    # string is wasted work and increases memory.
     
     # Date Extract
     # df['timestamp'] is datetime64
