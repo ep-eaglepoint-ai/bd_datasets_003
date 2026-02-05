@@ -44,7 +44,10 @@
       "<rootDir>/tests/setupTests.ts"
     ],
     "moduleNameMapper": {
-      "^@repo/(.*)$": "<rootDir>/repository_after/src/$1"
+      "^@repo/(.*)$": "<rootDir>/repository_after/src/$1",
+      "^react$": "<rootDir>/node_modules/react",
+      "^react-dom$": "<rootDir>/node_modules/react-dom",
+      "^react-dom/client$": "<rootDir>/node_modules/react-dom/client"
     },
     "transform": {
       "^.+\\.tsx?$": [
