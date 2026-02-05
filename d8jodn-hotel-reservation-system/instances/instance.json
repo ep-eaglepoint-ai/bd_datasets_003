@@ -1,0 +1,11 @@
+{
+            "instance_id": "D8JODN",
+            "problem_statement": "Manual hotel reservation processes often lead to double bookings, inaccurate availability tracking, and fragmented guest information, resulting in poor guest experiences and operational inefficiencies. The objective of this project is to build a Python-based Hotel Reservation System that manages hotels, rooms, guests, and reservations through a backend API. The system must enforce booking rules, prevent reservation conflicts, calculate pricing accurately, and track room availability in real time to ensure reliable and consistent reservation handling.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/d8jodn-hotel-reservation-system",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
