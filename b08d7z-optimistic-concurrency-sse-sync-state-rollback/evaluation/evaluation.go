@@ -513,7 +513,7 @@ func main() {
 	startTime := time.Now()
 	runID := generateRunID()
 	rootDir := getRootDir()
-	afterPath := filepath.Join(rootDir, "repository_after")
+	afterPath := "repository_after"
 
 	fmt.Printf("Starting Evaluation Run: %s\n", runID)
 
