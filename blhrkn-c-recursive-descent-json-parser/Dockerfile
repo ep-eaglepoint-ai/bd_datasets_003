@@ -11,17 +11,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 COPY . /app
 
-# Install python dependencies (pytest)
-RUN pip install --no-cache-dir pytest
+# No pytest needed anymore.
+# We will compile the evaluation tool on run.
 
-# Create build directories
-RUN mkdir -p repository_before/build && \
-    mkdir -p repository_after/build
-
-# We will build in the command script or entrypoint, 
-# but for now let's make the CMD generic or specific to what docker-compose expects.
-# The user wants "docker compose run --rm test-after".
-# So the command should probably default to running tests with a target repo.
-
-# Default command (can be overridden)
-CMD ["pytest", "-q", "tests"]
+CMD ["g++", "-std=c++17", "evaluation/evaluation.cpp", "-o", "evaluation_runner", "&&", "./evaluation_runner"]

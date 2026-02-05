@@ -3,6 +3,9 @@ services:
     build: .
     volumes:
       - .:/app
+    environment:
+      - TARGET_REPO=repository_before
+    # Compile parser (if possible), then test runner, then run
     command: >
       bash -c "
       if [ ! -f repository_before/CMakeLists.txt ]; then
@@ -10,21 +13,24 @@ services:
       else
         cd repository_before && mkdir -p build && cd build && cmake .. && make;
       fi &&
-      cd /app && TARGET_REPO=repository_before pytest -q tests || true
-      " 
+      cd /app && g++ -std=c++17 tests/test_parser.cpp -o test_runner && ./test_runner
+      "
 
   test-after:
     build: .
     volumes:
       - .:/app
+    environment:
+      - TARGET_REPO=repository_after
     command: >
       bash -c "
       cd repository_after && mkdir -p build && cd build && cmake .. && make &&
-      cd /app && TARGET_REPO=repository_after pytest -q tests
+      cd /app && g++ -std=c++17 tests/test_parser.cpp -o test_runner && ./test_runner
       "
 
   evaluation:
     build: .
     volumes:
       - .:/app
-    command: python3 evaluation/evaluation.py
+    command: >
+      bash -c "g++ -std=c++17 evaluation/evaluation.cpp -o evaluation_runner && ./evaluation_runner"
