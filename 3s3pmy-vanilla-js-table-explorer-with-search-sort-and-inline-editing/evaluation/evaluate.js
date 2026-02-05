@@ -179,20 +179,11 @@ function runEvaluation() {
 
   const end = new Date();
 
-  // Determine FAIL_TO_PASS and PASS_TO_PASS
-  const beforePassed = new Set(before.test_list.passed);
-  const afterPassed = new Set(after.test_list.passed);
-
-  const failToPass = after.test_list.passed.filter((t) => !beforePassed.has(t));
-  const passToPass = after.test_list.passed.filter((t) => beforePassed.has(t));
-
   const comparison = {
     passed_gate: after.tests.passed,
     improvement_summary: after.tests.passed
       ? "Repository after passes all correctness tests while repository before fails as expected."
       : "Repository after has failing tests.",
-    FAIL_TO_PASS: failToPass,
-    PASS_TO_PASS: passToPass,
   };
 
   return {
