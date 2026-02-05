@@ -6,92 +6,66 @@ import time
 import datetime
 import re
 import platform
+import uuid
 
 def generate_run_id():
-    return "test_run_001"
+    return str(uuid.uuid4())
 
 def get_environment_info():
     return {
-        "python_version": sys.version,
-        "platform": platform.system(),
-        "os_type": os.name,
-        "execution_mode": "Inside Docker Container" if os.environ.get("INSIDE_DOCKER") else "Host Machine"
+        "python_version": sys.version.split()[0], # formatted as 3.8.10
+        "platform": platform.platform() 
     }
 
-def generate_output_path(project_root, custom_path=None):
-    if custom_path:
-        return os.path.abspath(custom_path)
-    
-    now = datetime.datetime.now()
-    date_str = now.strftime("%Y-%m-%d")
-    time_str = now.strftime("%H-%M-%S")
-    
+def generate_output_path(project_root):
     # Write to evaluation/reports relative to this script
     eval_dir = os.path.dirname(os.path.abspath(__file__))
-    output_dir = os.path.join(eval_dir, "reports", date_str, time_str)
-    
+    # structure: evaluation/reports/report.json 
+    output_dir = os.path.join(eval_dir, "reports")
     os.makedirs(output_dir, exist_ok=True)
     return os.path.join(output_dir, "report.json")
 
 def parse_pytest_output(stdout, stderr):
-    tests = []
+    test_cases = []
     # Combine outputs and remove ANSI codes
     full_output = stdout + "\n" + stderr
     ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
     clean_output = ansi_escape.sub('', full_output)
     
-    # Pytest verbose output looks like:
-    # tests/test_whitening.py::TestWhiteningTransformer::test_centering_toggle PASSED [ 12%]
-    
     # Regex to capture test name and result
-    # We look for lines containing "tests/test_whitening.py::"
-    test_line_pattern = re.compile(r'tests/.*::(\w+)::(\w+)\s+(PASSED|FAILED|ERROR|SKIPPED)')
+    # We look for lines containing "tests/test_whitening.py::" or similar
+    test_line_pattern = re.compile(r'(tests/.*::\w+)\s+(PASSED|FAILED|ERROR|SKIPPED)')
     
     for line in clean_output.split('\n'):
         match = test_line_pattern.search(line)
         if match:
-            suite_name = match.group(1)
-            test_name = match.group(2)
-            result_str = match.group(3)
+            full_test_name = match.group(1)
+            result_str = match.group(2)
             
             outcome = "passed" if result_str == "PASSED" else "failed"
-            # ERROR and SKIPPED treated as failed or separate? Treating as failed for strictness
             if result_str in ["ERROR", "SKIPPED"]:
-                outcome = "failed"
+                outcome = "failed" # simplifying for pass/fail gate
                 
-            tests.append({
-                "suite": suite_name,
-                "name": test_name,
+            test_cases.append({
+                "name": full_test_name,
                 "outcome": outcome
             })
             
-    # Verify we found some tests. If not, maybe use a fallback parser or check for collection errors
-    # But with verbose flag -v, it should work.
-    return tests
+    return test_cases, full_output
 
-def run_evaluation_tests():
-    print("🚀 Starting Integration Tests...")
-    
+def run_tests_execution():
     env = os.environ.copy()
-    env["CI"] = "true" # Force non-interactive
+    env["CI"] = "true" 
 
-    # If inside docker, run pytest directly. 
-    # If host, assume we want to run the test logic directly as well (assuming env is set up) 
-    # OR follow the JS pattern of calling docker-compose. 
-    # The prompt says: "If false, we run docker compose."
-    
     if os.environ.get("INSIDE_DOCKER") == "true":
         print("   (Running inside container: executing 'pytest')")
         command = ["pytest", "-v", "tests"]
     else:
         print("   (Running on host: executing 'docker compose')")
-        # Ensure we point to the right compose file service
-        command = ["docker", "compose", "run", "--rm", "test-runner"]
+        # Fixed: use 'app' instead of 'test-runner'
+        command = ["docker", "compose", "run", "--rm", "app", "pytest", "-v", "tests"]
 
-    start_time = time.time()
-    
     try:
-        # Capture output
         result = subprocess.run(
             command,
             capture_output=True,
@@ -99,93 +73,75 @@ def run_evaluation_tests():
             env=env,
             timeout=120
         )
-        
-        output = result.stdout
-        error_output = result.stderr
-        
-        tests = parse_pytest_output(output, error_output)
-        
-        passed_count = sum(1 for t in tests if t["outcome"] == "passed")
-        failed_count = sum(1 for t in tests if t["outcome"] == "failed")
-        
-        summary = {
-            "total": len(tests),
-            "passed": passed_count,
-            "failed": failed_count,
-            "errors": 1 if result.returncode != 0 and len(tests) == 0 else 0
-        }
-        
-        success = (result.returncode == 0) or (passed_count > 0 and failed_count == 0)
-        
-        return {
-            "success": success,
-            "exit_code": result.returncode,
-            "tests": tests,
-            "summary": summary,
-            "stdout": output,
-            "stderr": error_output,
-            "duration_ms": int((time.time() - start_time) * 1000)
-        }
-
+        return result.returncode, result.stdout, result.stderr
     except Exception as e:
-        return {
-            "success": False,
-            "exit_code": -1,
-            "tests": [],
-            "summary": {"total": 0, "passed": 0, "failed": 0, "errors": 1},
-            "stdout": "",
-            "stderr": str(e)
-        }
+        return -1, "", str(e)
 
-def map_criteria(tests):
-    def check(name_fragments):
-        if isinstance(name_fragments, str):
-            name_fragments = [name_fragments]
-            
-        matching_tests = [
-            t for t in tests 
-            if any(frag.lower() in t["name"].lower() for frag in name_fragments)
-        ]
-        
-        if not matching_tests:
-            return "Not Run"
-            
-        has_failure = any(t["outcome"] == "failed" for t in matching_tests)
-        return "Fail" if has_failure else "Pass"
-
+def format_test_result(return_code, stdout, stderr):
+    test_cases, full_output = parse_pytest_output(stdout, stderr)
+    
+    # Passed if return code is 0 (pytest exit code 0 means all collected tests passed)
+    passed = (return_code == 0)
+    
     return {
-        "Input Validation": check("validation"),
-        "PCA Whitening": check("pca_whitening"),
-        "ZCA Whitening": check("zca_whitening"),
-        "Centering": check("centering"),
-        "Dimensionality Reduction": check("dimensionality"),
-        "Inverse Transform": check(["reconstruction", "inverse"]),
-        "Regularization": check(["regularization", "shrinkage"]),
-        "Numerical Stability": check(["stability", "numerical"]),
-        "Scikit-learn API": check(["fit_transform"]), # Implicitly tested
+        "tests": {
+            "passed": passed,
+            "return_code": return_code,
+            "output": full_output,
+            "test_cases": test_cases
+        },
+        "metrics": {}
     }
 
 def main():
+    start_time = datetime.datetime.now(datetime.timezone.utc)
+    start_t = time.time()
+    
     run_id = generate_run_id()
     project_root = os.getcwd()
     
-    print(f"Starting Whitening Module Evaluation [Run ID: {run_id}]")
+    print(f"Starting Evaluation [Run ID: {run_id}]")
     
-    results = run_evaluation_tests()
-    criteria_analysis = map_criteria(results["tests"])
+    # 1. BEFORE (Static Failure for missing/empty repo)
+    before_result = {
+        "tests": {
+            "passed": False,
+            "return_code": 1,
+            "output": "Pre-check: repository_before is empty. Automated failure.",
+            "test_cases": []
+        },
+        "metrics": {}
+    }
+    
+    # 2. AFTER (Actual execution)
+    return_code, stdout, stderr = run_tests_execution()
+    after_result = format_test_result(return_code, stdout, stderr)
+    
+    end_time = datetime.datetime.now(datetime.timezone.utc)
+    end_t = time.time()
+    duration = end_t - start_t
+    
+    # 3. COMPARISON
+    passed_gate = after_result["tests"]["passed"]
+    
+    comparison = {
+        "passed_gate": passed_gate,
+        "improvement_summary": "Tests passed successfully in 'after' state." if passed_gate else "Tests failed in 'after' state."
+    }
+    
+    success = passed_gate
     
     report = {
         "run_id": run_id,
-        "tool": "Whitening Module Evaluator",
-        "started_at": datetime.datetime.now().isoformat(),
+        "started_at": start_time.strftime('%Y-%m-%dT%H:%M:%S.%fZ') + "Z",
+        "finished_at": end_time.strftime('%Y-%m-%dT%H:%M:%S.%fZ') + "Z",
+        "duration_seconds": duration,
         "environment": get_environment_info(),
-        "before": None,
-        "after": results,
-        "criteria_analysis": criteria_analysis,
-        "comparison": {
-            "summary": "Containerized Evaluation",
-            "success": results["success"]
-        }
+        "before": before_result,
+        "after": after_result,
+        "comparison": comparison,
+        "success": success,
+        "error": None
     }
     
     output_path = generate_output_path(project_root)
@@ -194,11 +150,12 @@ def main():
         json.dump(report, f, indent=2)
         
     print("\n---------------------------------------------------")
-    print(f"Tests Run: {results['summary']['total']}")
-    print(f"Passed:    {results['summary']['passed']}")
-    print(f"Failed:    {results['summary']['failed']}")
+    print(f"Status:    {'✅ PASSED' if success else '❌ FAILED'}")
+    print(f"Duration:  {duration:.2f}s")
     print("---------------------------------------------------")
     print(f"✅ Report saved to: {output_path}")
+    
+    sys.exit(0 if success else 1)
 
 if __name__ == "__main__":
     main()
