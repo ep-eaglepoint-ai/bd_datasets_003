@@ -1,0 +1,11 @@
+{
+            "instance_id": "UYV1GY",
+            "problem_statement": "The current Node.js API gateway processes all inbound traffic uniformly, without rate limiting, traffic policing, or abuse detection. This exposes the system to denial-of-service attacks, credential-stuffing attempts, and resource exhaustion under high or hostile traffic. Anonymous requests can overwhelm authenticated users, and repeated failed login attempts go undetected. The task is to refactor the API by introducing a production-ready, multi-tier rate-limiting and abuse-prevention middleware that differentiates limits for anonymous IP-based traffic and authenticated user-based traffic. The solution must be concurrency-safe, persist counters and bans across restarts, add minimal latency overhead, and provide observability, logging, and clear documentation explaining the design and trade-offs.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/uyv1gy-multi-tier-rate-limiting-and-abuse-prevention-middleware-for-node-js-api-gateway",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
