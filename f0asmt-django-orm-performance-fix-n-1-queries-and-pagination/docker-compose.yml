@@ -54,6 +54,9 @@ services:
     working_dir: /app
     environment:
       - PYTHONPATH=/app
+      - DB_HOST=db
+      - DB_PASSWORD=password
     depends_on:
       - test
       - test-before
+      - db
