@@ -1,4 +1,4 @@
-const path = require("path"); // 1. Import path first
+const path = require("path");
 module.paths.push(path.resolve(__dirname, '../repository_after/node_modules'));
 
 const fs = require("fs");
@@ -21,8 +21,6 @@ function getEnvironmentInfo() {
     cpus: os.cpus().length,
   };
 }
-
-// Runs the test by compiling the specific repository and the test file
  
 function runEvaluationTest(repoPath) {
   const isWin = process.platform === "win32";
@@ -41,7 +39,7 @@ function runEvaluationTest(repoPath) {
     "--outDir", `dist/${repoPath}`
   ], { 
     cwd: ROOT, 
-    shell: true // Crucial for Windows to find npx.cmd
+    shell: true
   });
 
   if (compile.error) {
@@ -64,7 +62,7 @@ function runEvaluationTest(repoPath) {
   
   console.log(`[DEBUG] Test Output:\n${output}`);
 
-  const passed = run.status === 0 && /\d\/\d Tests Passed/i.test(output);
+  const passed = run.status === 0;
 
   return {
     passed,

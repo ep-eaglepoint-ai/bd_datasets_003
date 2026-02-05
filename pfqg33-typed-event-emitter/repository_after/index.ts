@@ -15,7 +15,6 @@ export class TypedEventEmitter<T extends EventMap> {
       this.off(event, wrapper);
       handler(payload);
     };
-
     this.on(event, wrapper);
   }
 
@@ -25,6 +24,7 @@ export class TypedEventEmitter<T extends EventMap> {
 
     const index = handlers.indexOf(handler);
     if (index !== -1) {
+      // splice maintains registration order for the remaining elements
       handlers.splice(index, 1);
     }
 
@@ -33,17 +33,21 @@ export class TypedEventEmitter<T extends EventMap> {
     }
   }
 
-  emit<K extends keyof T>(event: K, payload: T[K]): void {
+  // Overload for events with VOID payload
+  emit<K extends keyof T>(event: K extends any ? (T[K] extends void ? K : never) : never): void;
+  emit<K extends keyof T>(event: K, payload: T[K]): void;
+  emit<K extends keyof T>(event: K, payload?: T[K]): void {
     const handlers = this.listeners.get(event);
     if (!handlers || handlers.length === 0) return;
 
-    // Reentrancy protection
+    // Reentrancy protection via shallow copy
     const handlersToInvoke = [...handlers];
 
     for (const handler of handlersToInvoke) {
       try {
         handler(payload);
       } catch (error) {
+        // error isolation
         console.error(
           `[TypedEventEmitter] Error in listener for "${String(event)}":`,
           error
