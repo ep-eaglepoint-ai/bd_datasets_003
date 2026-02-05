@@ -1,8 +1,23 @@
-# Docker Compose file for running tests. You should customize this as needed.
+version: "3.8"
 
 services:
-  app:
-    build: .
-    command: pytest -q tests
+  # Service to run tests
+  tests:
+    build:
+      context: .
+      dockerfile: Dockerfile
     volumes:
-      - .:/app
+      - ./:/app
+    command: python -m pytest ./repository_after/test/ -v --tb=short
+    environment:
+      - PYTHONPATH=/app
+  # Service to run evaluation
+  evaluation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./:/app
+    command: python evaluation/evaluation.py
+    environment:
+      - PYTHONPATH=/app
