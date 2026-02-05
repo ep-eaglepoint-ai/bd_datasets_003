@@ -18,6 +18,8 @@
         "com.example.cache.LRUCacheTest::testRemove",
         "com.example.cache.LRUCacheTest::testRemoveNonExistent",
         "com.example.cache.LRUCacheTest::testClear",
-        "com.example.cache.LRUCacheTest::testSizeLimit"
+        "com.example.cache.LRUCacheTest::testSizeLimit",
+        "com.example.cache.LRUCacheTest::testPointersClearedAfterRemoval",
+        "com.example.cache.LRUCacheTest::testConcurrentClear"
     ]
 }
