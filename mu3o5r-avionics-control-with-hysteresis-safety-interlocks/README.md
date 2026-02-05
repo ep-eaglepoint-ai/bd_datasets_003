@@ -1,11 +1,13 @@
-# MU3O5R - Avionics Control with Hysteresis & Safety Interlocks
+# MU3O5R - Avionics Control With Hysteresis Safety Interlocks
 
-    ## Before Test Docker Command
-    <docker before command here>
+### Run tests
 
-    ## After Test Docker Command
-    <docker after command here>
+```bash
+docker compose run --rm app go run tests/runner.go
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+### Run evaluation
+
+```bash
+docker compose run --rm app go run ./evaluation/evaluation.go
+```
