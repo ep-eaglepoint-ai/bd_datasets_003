@@ -1,0 +1,11 @@
+{
+            "instance_id": "PC8PAR",
+            "problem_statement": "Given a highly unoptimized Go implementation of a weight-standardized convolution layer with group normalization, refactor it to a high-performance, memory-efficient, and concurrency-safe version while preserving identical outputs for all valid inputs.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/pc8par-optimize-go-implementation-of-weight-standardized-convolution-with-group-normalization",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
