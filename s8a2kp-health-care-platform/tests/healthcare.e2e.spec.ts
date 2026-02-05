@@ -288,7 +288,7 @@ describe('Healthcare Platform (e2e)', () => {
       .send({ query })
       .expect(200)
       .expect(res => {
-          expect(res.body.data.createPrescription.status).toBe("PENDING");
+          expect(res.body.data.createPrescription.status).toBe("SENT_TO_PHARMACY");
       });
   });
 

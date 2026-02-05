@@ -1,6 +1,16 @@
 
-import { ObjectType, Field, ID } from '@nestjs/graphql';
-import { Entity, Column, PrimaryGeneratedColumn } from 'typeorm';
+import { ObjectType, Field, ID, registerEnumType, Int } from '@nestjs/graphql';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn } from 'typeorm';
+
+export enum PrescriptionStatus {
+  PENDING = 'PENDING',
+  SENT_TO_PHARMACY = 'SENT_TO_PHARMACY',
+  FILLED = 'FILLED',
+  REFILL_REQUESTED = 'REFILL_REQUESTED',
+  CANCELLED = 'CANCELLED',
+}
+
+registerEnumType(PrescriptionStatus, { name: 'PrescriptionStatus' });
 
 @ObjectType()
 @Entity()
@@ -25,7 +35,27 @@ export class Prescription {
   @Column()
   dosage: string;
 
+  @Field(() => PrescriptionStatus)
+  @Column({ type: 'varchar', default: PrescriptionStatus.PENDING })
+  status: PrescriptionStatus;
+
   @Field()
-  @Column({ default: 'PENDING' })
-  status: string;
+  @Column({ default: false })
+  isControlledSubstance: boolean;
+
+  @Field(() => Int)
+  @Column({ default: 3 })
+  refillsRemaining: number;
+
+  @Field({ nullable: true })
+  @Column({ nullable: true })
+  pharmacyId: string;
+
+  @Field({ nullable: true })
+  @CreateDateColumn()
+  prescribedAt: Date;
+
+  @Field({ nullable: true })
+  @Column({ nullable: true })
+  lastRefillAt: Date;
 }

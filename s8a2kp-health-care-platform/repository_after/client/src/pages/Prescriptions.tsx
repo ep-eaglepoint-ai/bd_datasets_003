@@ -12,9 +12,9 @@ const Prescriptions = () => {
                     query {
                         prescriptions {
                             id
-                            medication
+                            medicationName
+                            dosage
                             status
-                            refills
                         }
                     }
                 `;
@@ -39,8 +39,8 @@ const Prescriptions = () => {
             prescriptions.map(rx => (
                 <div key={rx.id} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #eee', padding: '1rem 0' }}>
                     <div>
-                        <strong>{rx.medication}</strong>
-                        <div style={{ fontSize: '0.9rem', color: '#666' }}>{rx.status} • Refills: {rx.refills}</div>
+                        <strong>{rx.medicationName}</strong>
+                        <div style={{ fontSize: '0.9rem', color: '#666' }}>{rx.dosage} • {rx.status}</div>
                     </div>
                     <button className="btn btn-primary" onClick={() => handleRefill(rx.id)}>Request Refill</button>
                 </div>

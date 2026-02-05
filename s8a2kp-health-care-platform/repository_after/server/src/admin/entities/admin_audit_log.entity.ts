@@ -20,4 +20,8 @@ export class AdminAuditLog {
   @Field()
   @CreateDateColumn()
   timestamp: Date;
+
+  @Field({ nullable: true })
+  @Column({ nullable: true })
+  details: string;
 }

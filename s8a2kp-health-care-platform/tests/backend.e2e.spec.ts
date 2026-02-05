@@ -67,13 +67,13 @@ describe('Backend Unit Tests', () => {
       // Mock console.log to avoid clutter
       jest.spyOn(console, 'log').mockImplementation(() => {});
       
-      const result = await prescriptionService.createPrescription('Oxycodin', '10mg', true);
-      expect(result.status).toBe('PENDING');
+      const result = await prescriptionService.createPrescription('patient-123', 'provider-123', 'Oxycodin', '10mg', true);
+      expect(result.status).toBe('SENT_TO_PHARMACY');
       expect(mockPrescriptionRepo.save).toHaveBeenCalled();
     });
 
     it('should create normal prescription', async () => {
-      const result = await prescriptionService.createPrescription('Ibuprofen', '200mg', false);
+      const result = await prescriptionService.createPrescription('patient-123', 'provider-123', 'Ibuprofen', '200mg', false);
       expect(result.medicationName).toBe('Ibuprofen');
     });
   });

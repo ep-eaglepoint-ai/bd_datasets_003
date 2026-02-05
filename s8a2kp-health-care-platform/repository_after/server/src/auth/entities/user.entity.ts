@@ -1,6 +1,6 @@
 
 import { ObjectType, Field, ID } from '@nestjs/graphql';
-import { Entity, Column, PrimaryGeneratedColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn } from 'typeorm';
 
 @ObjectType()
 @Entity()
@@ -20,6 +20,17 @@ export class User {
   @Column()
   role: string; // PATIENT, PROVIDER, ADMIN
 
+  @Field()
+  @Column({ default: false })
+  mfaEnabled: boolean;
+
   @Column({ nullable: true })
-  mfaSecret: string;
+  mfaSecret?: string;
+
+  @Field({ nullable: true })
+  @Column({ nullable: true })
+  lastLoginAt?: Date;
+
+  @CreateDateColumn()
+  createdAt: Date;
 }

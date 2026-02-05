@@ -1,17 +1,21 @@
 
-import { ObjectType, Field, ID, registerEnumType } from '@nestjs/graphql';
-import { Entity, Column, PrimaryGeneratedColumn, ManyToOne } from 'typeorm';
+import { ObjectType, Field, ID, registerEnumType, Float } from '@nestjs/graphql';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn } from 'typeorm';
 
 export enum AppointmentStatus {
   BOOKED = 'BOOKED',
   CANCELLED = 'CANCELLED',
   COMPLETED = 'COMPLETED',
   WAITLIST = 'WAITLIST',
+  NO_SHOW = 'NO_SHOW',
 }
 
 export enum AppointmentType {
   IN_PERSON = 'IN_PERSON',
   TELEHEALTH = 'TELEHEALTH',
+  FOLLOW_UP = 'FOLLOW_UP',
+  URGENT = 'URGENT',
+  ANNUAL_CHECKUP = 'ANNUAL_CHECKUP',
 }
 
 registerEnumType(AppointmentStatus, { name: 'AppointmentStatus' });
@@ -50,5 +54,35 @@ export class Appointment {
 
   @Field({ nullable: true })
   @Column({ nullable: true })
-  videoRoomSid: string;
+  videoRoomSid?: string;
+
+  // ========== NEW: Co-pay at Booking ==========
+  @Field(() => Float, { nullable: true })
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  copayAmount?: number;
+
+  @Field()
+  @Column({ default: false })
+  copayCollected: boolean;
+
+  @Field({ nullable: true })
+  @Column({ nullable: true })
+  copayTransactionId?: string;
+
+  // ========== NEW: Appointment Duration ==========
+  @Field({ nullable: true })
+  @Column({ nullable: true })
+  durationMinutes?: number;
+
+  // ========== NEW: Notes ==========
+  @Field({ nullable: true })
+  @Column({ nullable: true })
+  reasonForVisit?: string;
+
+  @Field({ nullable: true })
+  @Column({ nullable: true })
+  notes?: string;
+
+  @CreateDateColumn()
+  createdAt: Date;
 }

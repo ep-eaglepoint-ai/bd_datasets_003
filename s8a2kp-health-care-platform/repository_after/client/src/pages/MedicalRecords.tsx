@@ -13,7 +13,7 @@ const MedicalRecords = () => {
                     medicalRecords {
                         id
                         date
-                        type
+                        recordType
                         # summary - Field might not exist in backend entity yet, checking schema
                         # Using available fields or updating backend entity later
                         # For now, let's assume specific fields
@@ -52,7 +52,7 @@ const MedicalRecords = () => {
                     {records.map(rec => (
                         <tr key={rec.id}>
                             <td>{rec.date}</td>
-                            <td>{rec.type}</td>
+                            <td>{rec.recordType}</td>
                             <td>{rec.summary}</td>
                             <td><button className="btn">View</button></td>
                         </tr>

@@ -27,13 +27,11 @@ export class Schedule {
 
   @Field()
   @Column()
-  @Field()
-  @Column()
   endTime: string; // HH:mm
 
   @Field({ nullable: true })
   @Column({ nullable: true })
-  recurrenceRule: string; // RRULE string e.g., "FREQ=WEEKLY;BYDAY=MO,WE"
+  recurrenceRule?: string; // RRULE string e.g., "FREQ=WEEKLY;BYDAY=MO,WE"
 
   @Field({ nullable: true })
   @Column({ default: false })
@@ -42,4 +40,27 @@ export class Schedule {
   @Field(() => Int, { defaultValue: 0 })
   @Column({ default: 0 })
   maxOverBooking: number;
+
+  // ========== NEW: Buffer Times ==========
+  @Field(() => Int, { defaultValue: 0 })
+  @Column({ default: 0 })
+  bufferMinutesBefore: number; // Buffer before each appointment
+
+  @Field(() => Int, { defaultValue: 0 })
+  @Column({ default: 0 })
+  bufferMinutesAfter: number; // Buffer after each appointment
+
+  // ========== NEW: Lunch Break ==========
+  @Field({ nullable: true })
+  @Column({ nullable: true })
+  lunchStart?: string; // HH:mm - lunch break start
+
+  @Field({ nullable: true })
+  @Column({ nullable: true })
+  lunchEnd?: string; // HH:mm - lunch break end
+
+  // ========== NEW: Default Slot Duration ==========
+  @Field(() => Int, { defaultValue: 30 })
+  @Column({ default: 30 })
+  defaultSlotDurationMinutes: number;
 }
