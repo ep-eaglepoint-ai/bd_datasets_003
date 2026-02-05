@@ -1,0 +1,18 @@
+{
+  "instance_id": "7U3YQH",
+  "problem_statement": "Develop a Java service for a digital asset custody platform that manages time-locked cryptocurrency withdrawals. The system must enforce a mandatory 48-hour 'cool-down' period and a final 1-hour confirmation window to prevent unauthorized or coerced transactions.",
+  "base_commit": "repository_before/",
+  "test_patch": "tests/",
+  "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_002/tree/main/7u3yqh-java-crypto-time-lock-vault",
+  "environment_setup": "Dockerfile",
+  "FAIL_TO_PASS": [
+    "testHappyPath",
+    "testExpiration",
+    "testCancellation",
+    "testThreadSafety",
+    "testIdempotencyAndStateRules",
+    "testReinitiation",
+    "testDefaultConstructor"
+  ],
+  "PASS_TO_PASS": []
+}

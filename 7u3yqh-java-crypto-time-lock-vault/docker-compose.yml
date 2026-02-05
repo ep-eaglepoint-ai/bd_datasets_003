@@ -1,0 +1,13 @@
+services:
+  test:
+    build: .
+    image: fortress-vault
+    volumes:
+      - .:/app
+    command: /bin/sh -c "mkdir -p out && javac -d out repository_after/src/com/fortress/vault/*.java tests/*.java && java -cp out TestRunner"
+
+  evaluation:
+    image: fortress-vault
+    volumes:
+      - .:/app
+    command: python3 evaluation/evaluation.py
