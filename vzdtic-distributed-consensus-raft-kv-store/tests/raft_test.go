@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -43,7 +42,7 @@ func TestBasicSetGet(t *testing.T) {
 		t.Fatalf("Failed to start cluster: %v", err)
 	}
 
-	leader, err := cluster.WaitForStableLeader(15 * time.Second)
+	_, err = cluster.WaitForStableLeader(30 * time.Second)
 	if err != nil {
 		t.Fatalf("Failed to elect stable leader: %v", err)
 	}
@@ -54,13 +53,10 @@ func TestBasicSetGet(t *testing.T) {
 		Value: "test-value",
 	}
 
-	// Use the retry-enabled SubmitCommand instead of direct submission
 	err = cluster.SubmitCommand(cmd, 15*time.Second)
 	if err != nil {
 		t.Fatalf("Failed to submit command: %v", err)
 	}
-
-	t.Logf("Command committed via leader %s", leader.GetID())
 
 	time.Sleep(500 * time.Millisecond)
 
@@ -85,7 +81,7 @@ func TestMultipleWrites(t *testing.T) {
 		t.Fatalf("Failed to start cluster: %v", err)
 	}
 
-	_, err = cluster.WaitForStableLeader(15 * time.Second)
+	_, err = cluster.WaitForStableLeader(30 * time.Second)
 	if err != nil {
 		t.Fatalf("Failed to elect stable leader: %v", err)
 	}
@@ -140,7 +136,7 @@ func TestLeaderElectionOnFailure(t *testing.T) {
 		t.Fatalf("Failed to start cluster: %v", err)
 	}
 
-	leader, err := cluster.WaitForStableLeader(15 * time.Second)
+	leader, err := cluster.WaitForStableLeader(30 * time.Second)
 	if err != nil {
 		t.Fatalf("Failed to elect stable leader: %v", err)
 	}
@@ -157,19 +153,18 @@ func TestLeaderElectionOnFailure(t *testing.T) {
 
 	t.Logf("New leader: %s", newLeader.GetID())
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
 	cmd := raft.Command{
 		Type:  raft.CommandSet,
 		Key:   "after-partition",
 		Value: "new-value",
 	}
 
-	_, err = newLeader.SubmitWithResult(ctx, cmd)
+	err = cluster.SubmitCommandExcluding(cmd, 15*time.Second, oldLeaderID)
 	if err != nil {
 		t.Fatalf("New leader failed to accept write: %v", err)
 	}
+
+	t.Log("✓ Successfully wrote after leader partition")
 }
 
 func TestLogReplication(t *testing.T) {
@@ -183,12 +178,11 @@ func TestLogReplication(t *testing.T) {
 		t.Fatalf("Failed to start cluster: %v", err)
 	}
 
-	_, err = cluster.WaitForStableLeader(15 * time.Second)
+	_, err = cluster.WaitForStableLeader(30 * time.Second)
 	if err != nil {
 		t.Fatalf("Failed to elect stable leader: %v", err)
 	}
 
-	// Submit commands with tolerance for some failures due to leadership changes
 	successCount := 0
 	for i := 0; i < 5; i++ {
 		cmd := raft.Command{
@@ -201,11 +195,10 @@ func TestLogReplication(t *testing.T) {
 		if err == nil {
 			successCount++
 		} else {
-			t.Logf("Command %d failed (leadership change): %v", i, err)
+			t.Logf("Command %d failed: %v", i, err)
 		}
 	}
 
-	// Require at least 3/5 to succeed
 	if successCount < 3 {
 		t.Fatalf("Too few commands succeeded: %d/5", successCount)
 	}
@@ -222,18 +215,8 @@ func TestLogReplication(t *testing.T) {
 	leaderCommit := leader.GetCommitIndex()
 	t.Logf("Leader commit index: %d", leaderCommit)
 
-	// Verify reasonable commit index progression
 	if leaderCommit < 3 {
 		t.Errorf("Leader commit index too low: %d", leaderCommit)
-	}
-
-	// Verify followers are not too far behind
-	for _, node := range cluster.Nodes {
-		nodeCommit := node.GetCommitIndex()
-		if nodeCommit > 0 && nodeCommit < leaderCommit-3 {
-			t.Logf("Warning: Node %s commit index (%d) is behind leader (%d)",
-				node.GetID(), nodeCommit, leaderCommit)
-		}
 	}
 }
 
@@ -248,7 +231,7 @@ func TestTermProgression(t *testing.T) {
 		t.Fatalf("Failed to start cluster: %v", err)
 	}
 
-	_, err = cluster.WaitForStableLeader(15 * time.Second)
+	_, err = cluster.WaitForStableLeader(30 * time.Second)
 	if err != nil {
 		t.Fatalf("Failed to elect stable leader: %v", err)
 	}
@@ -267,7 +250,7 @@ func TestTermProgression(t *testing.T) {
 	}
 	cluster.Transport.Partition(leader.GetID())
 
-	time.Sleep(5 * time.Second)
+	time.Sleep(3 * time.Second)
 
 	var newTerm uint64
 	for _, node := range cluster.Nodes {

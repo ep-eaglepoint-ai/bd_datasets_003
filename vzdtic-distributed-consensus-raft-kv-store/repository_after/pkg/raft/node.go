@@ -332,6 +332,7 @@ func (n *Node) sendHeartbeats() {
 }
 
 // sendAppendEntries sends AppendEntries RPC to a peer
+// sendAppendEntries sends AppendEntries RPC to a peer
 func (n *Node) sendAppendEntries(peer string, term uint64, leaderCommit uint64) {
 	n.mu.RLock()
 	if n.state != Leader || n.currentTerm != term {
@@ -392,10 +393,12 @@ func (n *Node) sendAppendEntries(peer string, term uint64, leaderCommit uint64) 
 		if newMatchIndex > n.matchIndex[peer] {
 			n.matchIndex[peer] = newMatchIndex
 		}
+
+		// Try to advance commit index immediately after successful replication
+		n.tryAdvanceCommitIndex()
 	} else {
 		// Decrement nextIndex and retry
 		if reply.ConflictTerm > 0 {
-			// Find the last entry with ConflictTerm
 			lastIndex := uint64(0)
 			for i := len(n.log) - 1; i >= 0; i-- {
 				if n.log[i].Term == reply.ConflictTerm {
@@ -415,6 +418,56 @@ func (n *Node) sendAppendEntries(peer string, term uint64, leaderCommit uint64) 
 		}
 	}
 }
+
+// tryAdvanceCommitIndex tries to advance the commit index (must be called with lock held)
+func (n *Node) tryAdvanceCommitIndex() {
+	if n.state != Leader {
+		return
+	}
+
+	// Find the highest index replicated on a majority
+	for idx := n.commitIndex + 1; idx <= n.getLastLogIndex(); idx++ {
+		if idx == 0 || int(idx) >= len(n.log) {
+			continue
+		}
+
+		// Only commit entries from current term
+		if n.log[idx].Term != n.currentTerm {
+			continue
+		}
+
+		count := 1 // Count self
+		for _, peer := range n.cluster.GetNodes() {
+			if peer == n.id {
+				continue
+			}
+			if n.matchIndex[peer] >= idx {
+				count++
+			}
+		}
+
+		majority := n.cluster.Size()/2 + 1
+		if count >= majority {
+			n.commitIndex = idx
+			log.Printf("Node %s: Committed index %d", n.id, idx)
+
+			// Notify pending commands
+			if pending, ok := n.pendingCommands[idx]; ok {
+				result := CommitResult{
+					Index: idx,
+					Term:  n.log[idx].Term,
+				}
+				select {
+				case pending.ResultCh <- result:
+				default:
+				}
+				delete(n.pendingCommands, idx)
+			}
+		}
+	}
+}
+
+
 
 // advanceCommitIndex advances the commit index if possible
 func (n *Node) advanceCommitIndex() {

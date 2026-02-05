@@ -1,11 +1,27 @@
 {
-            "instance_id": "VZDTIC",
-            "problem_statement": "Design and implement a distributed, fault-tolerant key-value store based on the Raft consensus algorithm to ensure linearizable reads and writes across a dynamic cluster of nodes.",
-            "base_commit": "repository_before/",
-            "test_patch": "tests/",
-            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/vzdtic-distributed-consensus-raft-kv-store",
-            "environment_setup": "Dockerfile",
-            "FAIL_TO_PASS": [],
-            "PASS_TO_PASS": []
-        }
-        
+    "instance_id": "VZDTIC",
+    "problem_statement": "Design and implement a distributed, fault-tolerant key-value store based on the Raft consensus algorithm to ensure linearizable reads and writes across a dynamic cluster of nodes.",
+    "base_commit": "repository_before/",
+    "test_patch": "tests/",
+    "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/vzdtic-distributed-consensus-raft-kv-store",
+    "environment_setup": "Dockerfile",
+    "FAIL_TO_PASS": [
+        "TestLinearizableWrites",
+        "TestNoTwoLeaders",
+        "TestCommitIndexSafety",
+        "TestSameIndexSameCommand",
+        "TestConcurrentWrites",
+        "TestNetworkPartitionRecovery",
+        "TestMinorityPartitionCannotProgress",
+        "TestZombieLeaderPrevention",
+        "TestClusterFormation",
+        "TestBasicSetGet",
+        "TestMultipleWrites",
+        "TestLeaderElectionOnFailure",
+        "TestLogReplication",
+        "TestTermProgression",
+        "TestSnapshotCreation",
+        "TestSnapshotRecovery"
+    ],
+    "PASS_TO_PASS": []
+}

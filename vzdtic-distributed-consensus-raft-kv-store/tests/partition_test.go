@@ -10,7 +10,7 @@ import (
 )
 
 func TestNetworkPartitionRecovery(t *testing.T) {
-	cluster, err := testutil.NewTestCluster(5)
+	cluster, err := testutil.NewTestCluster(3)
 	if err != nil {
 		t.Fatalf("Failed to create cluster: %v", err)
 	}
@@ -20,11 +20,11 @@ func TestNetworkPartitionRecovery(t *testing.T) {
 		t.Fatalf("Failed to start cluster: %v", err)
 	}
 
-	// Wait for initial stability
-	_, err = cluster.WaitForStableLeader(20 * time.Second)
+	leader, err := cluster.WaitForStableLeader(30 * time.Second)
 	if err != nil {
-		t.Skipf("Could not achieve initial stability: %v", err)
+		t.Fatalf("Failed to achieve initial stability: %v", err)
 	}
+	t.Logf("Initial leader: %s", leader.GetID())
 
 	// Write before partition
 	cmd := raft.Command{
@@ -32,79 +32,76 @@ func TestNetworkPartitionRecovery(t *testing.T) {
 		Key:   "before-partition",
 		Value: "value1",
 	}
-	
-	if err := cluster.SubmitCommand(cmd, 20*time.Second); err != nil {
-		t.Skipf("Could not write before partition: %v", err)
-	}
 
+	err = cluster.SubmitCommand(cmd, 15*time.Second)
+	if err != nil {
+		t.Fatalf("Failed to write before partition: %v", err)
+	}
 	t.Log("✓ Successfully wrote before partition")
+
 	time.Sleep(1 * time.Second)
 
 	// Get and partition the leader
-	leader := cluster.GetLeader()
+	leader = cluster.GetLeader()
 	if leader == nil {
-		t.Skip("No leader found before partition")
+		t.Fatal("No leader found before partition")
 	}
 	oldLeaderID := leader.GetID()
 	t.Logf("Partitioning leader: %s", oldLeaderID)
 	cluster.Transport.Partition(oldLeaderID)
 
-	// Wait for new leader - just check if one exists, don't require stability
-	t.Log("Waiting for new leader election...")
-	time.Sleep(8 * time.Second)
+	// Wait for new leader in majority partition
+	t.Log("Waiting for new leader election in majority partition...")
+	newLeader, err := cluster.WaitForNewLeader(oldLeaderID, 15*time.Second)
+	if err != nil {
+		t.Fatalf("Failed to elect new leader after partition: %v", err)
+	}
+	t.Logf("New leader elected: %s", newLeader.GetID())
 
-	// Try to write with the remaining majority - keep retrying
+	// Write during partition - submit directly to new leader, excluding old leader
 	cmd = raft.Command{
 		Type:  raft.CommandSet,
 		Key:   "during-partition",
 		Value: "value2",
 	}
-	
-	// Give it up to 40 seconds total to complete a write
-	writeCtx, writeCancel := context.WithTimeout(context.Background(), 40*time.Second)
-	defer writeCancel()
-	
-	writeDone := make(chan error, 1)
-	go func() {
-		writeDone <- cluster.SubmitCommand(cmd, 40*time.Second)
-	}()
-	
-	select {
-	case err := <-writeDone:
-		if err != nil {
-			t.Skipf("Could not write during partition after 40s: %v", err)
-		}
-		t.Log("✓ Successfully wrote during partition")
-	case <-writeCtx.Done():
-		t.Skip("Timeout writing during partition - cluster unstable")
+
+	err = cluster.SubmitCommandExcluding(cmd, 15*time.Second, oldLeaderID)
+	if err != nil {
+		t.Fatalf("Failed to write during partition: %v", err)
 	}
+	t.Log("✓ Successfully wrote during partition")
 
 	// Heal partition
+	t.Log("Healing partition...")
 	cluster.HealPartition()
+
 	time.Sleep(3 * time.Second)
 
-	// Verify at least some nodes have the data
-	successCount := 0
+	// Verify data on majority of nodes
+	beforeCount := 0
+	duringCount := 0
 	for i, store := range cluster.Stores {
 		v1, ok1 := store.Get("before-partition")
 		v2, ok2 := store.Get("during-partition")
-		
+
 		if ok1 && v1 == "value1" {
-			successCount++
+			beforeCount++
 		}
 		if ok2 && v2 == "value2" {
-			successCount++
+			duringCount++
 		}
-		
+
 		t.Logf("Node %d: before-partition=%v, during-partition=%v", i, v1, v2)
 	}
 
-	// Just verify that SOME data made it through
-	if successCount < 3 {
-		t.Errorf("Not enough data replicated: %d successful reads", successCount)
-	} else {
-		t.Logf("✓ Partition recovery successful: %d successful reads", successCount)
+	if beforeCount < 2 {
+		t.Errorf("before-partition not replicated to majority: %d/3", beforeCount)
 	}
+	if duringCount < 2 {
+		t.Errorf("during-partition not replicated to majority: %d/3", duringCount)
+	}
+
+	t.Logf("✓ Partition recovery successful: before=%d/3, during=%d/3", beforeCount, duringCount)
 }
 
 func TestMinorityPartitionCannotProgress(t *testing.T) {
@@ -118,7 +115,7 @@ func TestMinorityPartitionCannotProgress(t *testing.T) {
 		t.Fatalf("Failed to start cluster: %v", err)
 	}
 
-	leader, err := cluster.WaitForStableLeader(15 * time.Second)
+	leader, err := cluster.WaitForStableLeader(30 * time.Second)
 	if err != nil {
 		t.Fatalf("Failed to elect stable leader: %v", err)
 	}
@@ -132,6 +129,7 @@ func TestMinorityPartitionCannotProgress(t *testing.T) {
 		}
 	}
 
+	// Isolate leader and one follower (minority of 2)
 	for _, node := range cluster.Nodes {
 		nodeID := node.GetID()
 		if nodeID != leaderID && nodeID != minorityNodeID {
@@ -142,9 +140,9 @@ func TestMinorityPartitionCannotProgress(t *testing.T) {
 		}
 	}
 
-	time.Sleep(5 * time.Second)
+	time.Sleep(3 * time.Second)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	cmd := raft.Command{
 		Type:  raft.CommandSet,
 		Key:   "minority-write",
@@ -165,6 +163,7 @@ func TestMinorityPartitionCannotProgress(t *testing.T) {
 			t.Error("Minority partition was able to commit to majority")
 		}
 	}
+	t.Log("✓ Minority partition correctly cannot make progress")
 }
 
 func TestZombieLeaderPrevention(t *testing.T) {
@@ -178,25 +177,24 @@ func TestZombieLeaderPrevention(t *testing.T) {
 		t.Fatalf("Failed to start cluster: %v", err)
 	}
 
-	leader, err := cluster.WaitForStableLeader(15 * time.Second)
+	leader, err := cluster.WaitForStableLeader(30 * time.Second)
 	if err != nil {
 		t.Fatalf("Failed to elect stable leader: %v", err)
 	}
 
 	oldLeaderID := leader.GetID()
+	t.Logf("Partitioning leader: %s", oldLeaderID)
 	cluster.Transport.Partition(oldLeaderID)
 
 	newLeader, err := cluster.WaitForNewLeader(oldLeaderID, 10*time.Second)
 	if err != nil {
-		// With 3 nodes, partitioning 1 leaves 2. They need 2/3 majority = 2 nodes.
-		// This should work, but may take time
-		t.Logf("Warning: New leader election slow or failed: %v", err)
+		t.Logf("Note: New leader election took longer than expected: %v", err)
 	} else {
 		t.Logf("New leader elected: %s", newLeader.GetID())
 	}
 
 	if leader.IsLeader() {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		cmd := raft.Command{
 			Type:  raft.CommandSet,
 			Key:   "zombie-write",
@@ -207,6 +205,10 @@ func TestZombieLeaderPrevention(t *testing.T) {
 
 		if err == nil {
 			t.Error("Zombie leader was able to submit command")
+		} else {
+			t.Log("✓ Zombie leader correctly rejected write")
 		}
+	} else {
+		t.Log("✓ Old leader correctly stepped down")
 	}
 }

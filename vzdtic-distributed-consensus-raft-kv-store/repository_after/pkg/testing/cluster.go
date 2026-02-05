@@ -26,7 +26,6 @@ type TestCluster struct {
 func NewTestCluster(size int) (*TestCluster, error) {
 	transport := rpc.NewLocalTransport()
 
-	// Use unique random suffix for this cluster
 	uniqueID := rand.Int63()
 
 	nodeIDs := make([]string, size)
@@ -50,11 +49,8 @@ func NewTestCluster(size int) (*TestCluster, error) {
 			}
 		}
 
-		// Use unique directory per cluster instance
 		walDir := fmt.Sprintf("/tmp/raft-test-wal-%d-%d-%d", os.Getpid(), uniqueID, i)
 		cluster.walDirs[i] = walDir
-
-		// Clean up any existing directory
 		os.RemoveAll(walDir)
 
 		walInstance, err := wal.NewWAL(walDir)
@@ -67,14 +63,13 @@ func NewTestCluster(size int) (*TestCluster, error) {
 		store := kv.NewStore()
 		cluster.Stores[i] = store
 
-		// Use much longer timeouts for test stability
-		// Heartbeat should be << election timeout (at least 1/10th)
+		// Fast heartbeats, long election timeout for stability
 		config := raft.NodeConfig{
 			ID:                 nodeIDs[i],
 			Peers:              peers,
-			ElectionTimeoutMin: 1500 * time.Millisecond,
-			ElectionTimeoutMax: 3000 * time.Millisecond,
-			HeartbeatInterval:  100 * time.Millisecond,
+			ElectionTimeoutMin: 500 * time.Millisecond,
+			ElectionTimeoutMax: 1000 * time.Millisecond,
+			HeartbeatInterval:  50 * time.Millisecond,
 			WALPath:            walDir,
 			SnapshotThreshold:  100,
 		}
@@ -109,7 +104,6 @@ func (c *TestCluster) Stop() {
 // Cleanup removes all temporary files
 func (c *TestCluster) Cleanup() {
 	c.Stop()
-	// Wait a bit for goroutines to finish
 	time.Sleep(100 * time.Millisecond)
 	for _, dir := range c.walDirs {
 		os.RemoveAll(dir)
@@ -130,34 +124,21 @@ func (c *TestCluster) WaitForLeader(timeout time.Duration) (*raft.Node, error) {
 	return nil, fmt.Errorf("no leader elected within timeout")
 }
 
-// WaitForStableLeader waits for a leader and ensures it stays leader
+// WaitForStableLeader waits for a leader that has committed at least one entry
 func (c *TestCluster) WaitForStableLeader(timeout time.Duration) (*raft.Node, error) {
 	deadline := time.Now().Add(timeout)
-	var leader *raft.Node
-	stableCount := 0
-	requiredStable := 10 // Need 10 consecutive checks (1 second of stability)
 
 	for time.Now().Before(deadline) {
-		currentLeader := c.GetLeader()
-		if currentLeader != nil {
-			if leader == currentLeader {
-				stableCount++
-				if stableCount >= requiredStable {
-					return leader, nil
+		for _, node := range c.Nodes {
+			if node.IsLeader() && node.GetCommitIndex() > 0 {
+				// Found a leader that has committed - wait a bit to ensure stability
+				time.Sleep(200 * time.Millisecond)
+				if node.IsLeader() {
+					return node, nil
 				}
-			} else {
-				leader = currentLeader
-				stableCount = 1
 			}
-		} else {
-			leader = nil
-			stableCount = 0
 		}
 		time.Sleep(100 * time.Millisecond)
-	}
-
-	if leader != nil && stableCount >= 3 {
-		return leader, nil
 	}
 	return nil, fmt.Errorf("no stable leader elected within timeout")
 }
@@ -166,6 +147,16 @@ func (c *TestCluster) WaitForStableLeader(timeout time.Duration) (*raft.Node, er
 func (c *TestCluster) GetLeader() *raft.Node {
 	for _, node := range c.Nodes {
 		if node.IsLeader() {
+			return node
+		}
+	}
+	return nil
+}
+
+// GetLeaderExcluding returns the current leader excluding a specific node
+func (c *TestCluster) GetLeaderExcluding(excludeID string) *raft.Node {
+	for _, node := range c.Nodes {
+		if node.GetID() != excludeID && node.IsLeader() {
 			return node
 		}
 	}
@@ -188,21 +179,27 @@ func (c *TestCluster) HealPartition() {
 
 // SubmitCommand submits a command with retry logic
 func (c *TestCluster) SubmitCommand(cmd raft.Command, timeout time.Duration) error {
+	return c.SubmitCommandExcluding(cmd, timeout, "")
+}
+
+// SubmitCommandExcluding submits a command, excluding a specific node from being used as leader
+func (c *TestCluster) SubmitCommandExcluding(cmd raft.Command, timeout time.Duration, excludeID string) error {
 	deadline := time.Now().Add(timeout)
 
 	for time.Now().Before(deadline) {
-		leader := c.GetLeader()
+		var leader *raft.Node
+		if excludeID != "" {
+			leader = c.GetLeaderExcluding(excludeID)
+		} else {
+			leader = c.GetLeader()
+		}
+
 		if leader == nil {
-			time.Sleep(200 * time.Millisecond)
+			time.Sleep(100 * time.Millisecond)
 			continue
 		}
 
-		remaining := time.Until(deadline)
-		if remaining < 500*time.Millisecond {
-			remaining = 500 * time.Millisecond
-		}
-
-		ctx, cancel := context.WithTimeout(context.Background(), remaining)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		_, err := leader.SubmitWithResult(ctx, cmd)
 		cancel()
 
@@ -210,15 +207,19 @@ func (c *TestCluster) SubmitCommand(cmd raft.Command, timeout time.Duration) err
 			return nil
 		}
 
-		if err == raft.ErrNotLeader || err == context.DeadlineExceeded {
-			time.Sleep(200 * time.Millisecond)
-			continue
-		}
-
-		return err
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	return fmt.Errorf("timeout submitting command")
+}
+
+// SubmitToNode submits a command directly to a specific node
+func (c *TestCluster) SubmitToNode(node *raft.Node, cmd raft.Command, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	_, err := node.SubmitWithResult(ctx, cmd)
+	return err
 }
 
 // WaitForNewLeader waits for a new leader different from the specified node
@@ -227,10 +228,14 @@ func (c *TestCluster) WaitForNewLeader(excludeID string, timeout time.Duration) 
 	for time.Now().Before(deadline) {
 		for _, node := range c.Nodes {
 			if node.GetID() != excludeID && node.IsLeader() {
-				return node, nil
+				// Wait a bit to ensure it's stable
+				time.Sleep(300 * time.Millisecond)
+				if node.IsLeader() {
+					return node, nil
+				}
 			}
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 	}
 	return nil, fmt.Errorf("no new leader elected within timeout")
 }

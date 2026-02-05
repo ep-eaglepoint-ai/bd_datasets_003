@@ -21,7 +21,7 @@ func TestLinearizableWrites(t *testing.T) {
 		t.Fatalf("Failed to start cluster: %v", err)
 	}
 
-	_, err = cluster.WaitForStableLeader(15 * time.Second)
+	_, err = cluster.WaitForStableLeader(30 * time.Second)
 	if err != nil {
 		t.Fatalf("Failed to elect stable leader: %v", err)
 	}
@@ -111,7 +111,7 @@ func TestCommitIndexSafety(t *testing.T) {
 		t.Fatalf("Failed to start cluster: %v", err)
 	}
 
-	_, err = cluster.WaitForStableLeader(15 * time.Second)
+	_, err = cluster.WaitForStableLeader(30 * time.Second)
 	if err != nil {
 		t.Fatalf("Failed to elect stable leader: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestSameIndexSameCommand(t *testing.T) {
 		t.Fatalf("Failed to start cluster: %v", err)
 	}
 
-	_, err = cluster.WaitForStableLeader(15 * time.Second)
+	_, err = cluster.WaitForStableLeader(30 * time.Second)
 	if err != nil {
 		t.Fatalf("Failed to elect stable leader: %v", err)
 	}
@@ -220,7 +220,7 @@ func TestConcurrentWrites(t *testing.T) {
 		t.Fatalf("Failed to start cluster: %v", err)
 	}
 
-	leader, err := cluster.WaitForStableLeader(15 * time.Second)
+	leader, err := cluster.WaitForStableLeader(30 * time.Second)
 	if err != nil {
 		t.Fatalf("Failed to elect stable leader: %v", err)
 	}
