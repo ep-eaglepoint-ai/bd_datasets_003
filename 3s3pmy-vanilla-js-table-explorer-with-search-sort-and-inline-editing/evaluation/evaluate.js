@@ -223,8 +223,6 @@ function main() {
   console.log(
     `Total tests (after): ${report.after.tests.passed ? "PASSED" : "FAILED"}`,
   );
-  console.log(`FAIL_TO_PASS: ${report.comparison.FAIL_TO_PASS.length} tests`);
-  console.log(`PASS_TO_PASS: ${report.comparison.PASS_TO_PASS.length} tests`);
   console.log(`\nReport written to ${reportPath}`);
 
   return report.success ? 0 : 1;
