@@ -1,0 +1,12 @@
+{
+            "instance_id": "RH7P7Z",
+            "problem_statement": "Our internal API Gateway currently forwards responses from multiple legacy microservices that expose inconsistent data contracts. Naming conventions vary between snake_case, camelCase, and PascalCase, date formats are inconsistent, and sensitive PII fields may leak beyond internal boundaries. This forces frontend and mobile clients to implement repetitive, error-prone transformation logic.
+The goal is to build a Contract Normalizer middleware that recursively transforms all outgoing responses into a consistent corporate API format: camelCase keys, ISO-8601 timestamps, and strict removal of sensitive fields. The solution must be immutable, handle deeply nested structures and arrays, and safely manage circular references without crashing or mutating input data.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/rh7p7z-recursive-contract-normalizer-middleware-for-unified-api-responses",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
