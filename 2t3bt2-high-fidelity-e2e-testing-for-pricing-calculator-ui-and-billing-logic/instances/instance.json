@@ -1,0 +1,11 @@
+{
+            "instance_id": "2T3BT2",
+            "problem_statement": "The SaaS-Growth marketing site includes an interactive Pricing Calculator component that dynamically computes pricing based on seat count and billing period. The component currently lacks automated end-to-end coverage, resulting in regressions such as incorrect totals, NaN values when toggling annual billing on certain browsers, and missed tier transitions when crossing the Pro → Enterprise threshold. The task is to design and implement a comprehensive E2E test suite to validate pricing logic, accessibility compliance, visual correctness, and responsive behavior across multiple viewports, ensuring long-term stability and regression prevention.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/2t3bt2-high-fidelity-e2e-testing-for-pricing-calculator-ui-and-billing-logic",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
