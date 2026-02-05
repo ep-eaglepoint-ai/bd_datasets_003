@@ -23,6 +23,9 @@ COPY repository_after/ ./repository_after/
 # Copy test code
 COPY tests/ ./tests/
 
+# Copy evaluation code
+COPY evaluation/ ./evaluation/
+
 # Set Python path
 ENV PYTHONPATH=/app/repository_after
 
