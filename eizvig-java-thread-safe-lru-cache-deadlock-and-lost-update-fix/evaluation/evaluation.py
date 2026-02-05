@@ -105,12 +105,13 @@ def parse_mvn_output(output):
     total = 0
     
     # Look for "Tests run: 7, Failures: 0, Errors: 0, Skipped: 0"
-    match = re.search(r'Tests run: (\d+), Failures: (\d+), Errors: (\d+), Skipped: (\d+)', output)
-    if match:
-        total = int(match.group(1))
-        failed = int(match.group(2))
-        errors = int(match.group(3))
-        skipped = int(match.group(4))
+    matches = re.findall(r'Tests run: (\d+), Failures: (\d+), Errors: (\d+), Skipped: (\d+)', output)
+    if matches:
+        last_match = matches[-1]
+        total = int(last_match[0])
+        failed = int(last_match[1])
+        errors = int(last_match[2])
+        skipped = int(last_match[3])
         passed = total - failed - errors - skipped
         
     return passed, failed + errors, passed, total
