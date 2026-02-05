@@ -1,0 +1,11 @@
+{
+            "instance_id": "44MUH8",
+            "problem_statement": "You need to build a small full-stack web application that allows users to view a list of items and add new items one at a time. The backend must provide a read endpoint and an add endpoint using only in-memory or single-file storage (no database server). The frontend must be a single HTML page with plain CSS and JavaScript, updating the list dynamically without full page reloads. Input validation must enforce item names between 1 and 200 characters, returning HTTP 400 for invalid data. No editing, deleting, or authentication features are required.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/44muh8-minimal-full-stack-item-list-application",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
