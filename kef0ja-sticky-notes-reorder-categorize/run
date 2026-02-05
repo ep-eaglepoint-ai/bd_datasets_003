@@ -1,0 +1,31 @@
+const { spawnSync } = require('child_process');
+
+function exec(cmd, args) {
+  const res = spawnSync(cmd, args, { stdio: 'inherit', env: process.env });
+  // Normalize undefined/null into 1 to indicate failure.
+  return typeof res.status === 'number' ? res.status : 1;
+}
+
+function main() {
+  const args = process.argv.slice(2);
+
+  // Supported invocation patterns:
+  // - `run` -> npm test
+  // - `run test:after` -> npm run test:after
+  // - `run test:before` -> npm run test:before
+  // - `run npm test` -> npm test
+  // - `run npm run test:after` -> npm run test:after
+
+  if (args.length === 0) {
+    process.exit(exec('npm', ['test']));
+  }
+
+  if (args[0] === 'npm') {
+    process.exit(exec('npm', args.slice(1)));
+  }
+
+  // Treat first arg as an npm script name.
+  process.exit(exec('npm', ['run', args[0], ...args.slice(1)]));
+}
+
+main();
