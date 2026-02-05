@@ -1,11 +1,12 @@
-# 5WWPLD - linear regression implementation
+# Linear Regression Implementation
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Running Tests
 
-    ## After Test Docker Command
-    <docker after command here>
+```bash
+docker compose run --rm app pytest tests/
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## Running Evaluation
+
+```bash
+docker compose run --rm app python evaluation/evaluation.py
