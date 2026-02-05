@@ -125,6 +125,121 @@ describe('Telemetry Integration Tests', () => {
     }, 10000);
   });
 
+  describe('Requirement 5: Non-blocking Sensor Loop', () => {
+    it('should continue generating events while sync loop encounters persistent network failures', async () => {
+      const testClient = createClient({
+        // Use an invalid port to force connection failures on every sync attempt.
+        serverUrl: 'http://127.0.0.1:99999/ingest',
+        sensorIntervalMs: 50,
+        syncBaseIntervalMs: 100
+      });
+
+      // Allow sensor loop to start and generate some initial events.
+      const initialVolume = await testClient.wal.getTotalGeneratedVolume();
+
+      // During this window, sync attempts will repeatedly fail, but sensor loop
+      // must remain non-blocking and continue appending events to the WAL.
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const volumeDuringFailures = await testClient.wal.getTotalGeneratedVolume();
+
+      // Volume should increase even while sync is experiencing network errors.
+      expect(volumeDuringFailures).toBeGreaterThan(initialVolume);
+
+      // Wait a bit longer to confirm events keep flowing over time, not just once.
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const volumeLater = await testClient.wal.getTotalGeneratedVolume();
+      expect(volumeLater).toBeGreaterThan(volumeDuringFailures);
+
+      await testClient.stop();
+    }, 10000);
+  });
+
+  describe('Requirement 6: Server/Client Volume Consistency After Failures', () => {
+    it('should eventually align server total volume with client total volume after transient failures', async () => {
+      const express = require('express');
+      const testApp = express();
+      testApp.use(express.json());
+
+      let requestCount = 0;
+      let serverErrorOccurred = false;
+      let serverTotalVolume = 0;
+
+      testApp.post('/ingest', (req, res) => {
+        requestCount++;
+        const events = req.body.events || [];
+        const batchVolume = events.reduce((sum, e) => sum + (e.volume || 0), 0);
+
+        if (requestCount <= 2) {
+          serverErrorOccurred = true;
+          return res.status(500).json({ error: 'Simulated server error' });
+        }
+
+        serverTotalVolume += batchVolume;
+        return res
+          .status(200)
+          .json({ insertedCount: events.length, addedVolume: batchVolume, totalVolume: serverTotalVolume });
+      });
+
+      const testServer = http.createServer(testApp);
+
+      await new Promise((resolve) => {
+        testServer.listen(0, () => resolve());
+      });
+
+      const testPort = testServer.address().port;
+      const testUrl = `http://127.0.0.1:${testPort}`;
+
+      // Start this scenario with a fresh client WAL so we only measure events
+      // generated (and synced) during this test, without contamination from
+      // previous tests sharing the same database file.
+      const config = require('../repository_after/src/config');
+      if (fs.existsSync(config.clientDbPath)) {
+        fs.unlinkSync(config.clientDbPath);
+      }
+
+      const testClient = createClient({
+        serverUrl: `${testUrl}/ingest`,
+        sensorIntervalMs: 80,
+        syncBaseIntervalMs: 150
+      });
+
+      // Allow some time for events to be generated and for a mix of failures/successes.
+      // Keep this window modest so there aren't too many events to drain later.
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+
+      // Stop the sensor loop so no new events are generated; from this point on,
+      // the sync loop should be able to drain all remaining unsent events.
+      testClient.sensor.stop();
+
+      // Wait until unsent events are drained or timeout.
+      // Give the sync loop plenty of time (up to 15s) to drain all remaining
+      // unsent events after the transient failures have stopped.
+      const maxWaitMs = 15000;
+      const start = Date.now();
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const unsent = await testClient.wal.getUnsentEventCount();
+        if (unsent === 0) break;
+        if (Date.now() - start > maxWaitMs) break;
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+
+      const clientTotalVolume = await testClient.wal.getTotalGeneratedVolume();
+
+      // We must have observed at least one simulated failure.
+      expect(serverErrorOccurred).toBe(true);
+
+      // After retries and recovery, there should be no unsent events left, so
+      // serverTotalVolume should match clientTotalVolume.
+      expect(serverTotalVolume).toBeGreaterThan(0);
+      expect(clientTotalVolume).toBeGreaterThan(0);
+      // Allow for minor floating point differences when summing volumes.
+      expect(serverTotalVolume).toBeCloseTo(clientTotalVolume, 3);
+
+      testServer.close();
+      await testClient.stop();
+    }, 20000);
+  });
 
   describe('Requirement 8: Graceful Error Handling', () => {
     it('should handle connection errors gracefully without crashing', async () => {
