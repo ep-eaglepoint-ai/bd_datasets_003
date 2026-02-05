@@ -207,3 +207,86 @@ def test_pagination(api_client, sample_data):
     assert data['pagination']['total_count'] == 3
     assert data['pagination']['total_pages'] == 1
     assert data['pagination']['has_next'] is False
+
+@pytest.mark.django_db
+def test_sorting_tiebreaker(api_client, sample_data):
+    # Verify we have deterministic ordering when primary sort field is equal
+    # Create two products with same price but different IDs
+    cat1 = sample_data['cat1']
+    p_dup1 = Product.objects.create(name="Dup1", slug="dup1", sku="D1", description=".", price=50.00, category=cat1, is_active=True)
+    p_dup2 = Product.objects.create(name="Dup2", slug="dup2", sku="D2", description=".", price=50.00, category=cat1, is_active=True)
+    
+    # Ensure IDs are ordered as we expect (auto increment)
+    # p_dup1.id < p_dup2.id
+    
+    url = reverse('product_list') + "?sort=price"
+    response = api_client.get(url)
+    data = json.loads(response.content)
+    
+    # Filter only our duplicate price products
+    products = [p for p in data['products'] if float(p['price']) == 50.0]
+    assert len(products) == 2
+    
+    # Should be ordered by ID ascending as tiebreaker for ascending sort?
+    # View adds 'id' as secondary.
+    # So sort='price' -> order_by('price', 'id')
+    assert products[0]['id'] < products[1]['id']
+    
+    # Test descending
+    url = reverse('product_list') + "?sort=-price"
+    response = api_client.get(url)
+    data = json.loads(response.content)
+    products = [p for p in data['products'] if float(p['price']) == 50.0]
+    
+    # sort='-price' -> order_by('-price', 'id')
+    # So for equal price, still ID ascending
+    assert products[0]['id'] < products[1]['id']
+
+@pytest.mark.django_db
+def test_search_trigram(api_client, sample_data):
+
+    # This requires pg_trgm extension. We assume it's enabled in the test DB.
+    # Create a product with a name that fuzzy matches
+    cat1 = sample_data['cat1']
+    p_fuzzy = Product.objects.create(
+        name="Sophisticated Laptop", 
+        slug="soph-laptop", 
+        sku="SL100", 
+        description="High end machine", 
+        price=2000.00, 
+        category=cat1, 
+        is_active=True
+    )
+    
+    # Search for "Laptap" (typo) - Trigram should find "Laptop"
+    url = reverse('product_list') + "?search=Laptap"
+    response = api_client.get(url)
+    data = json.loads(response.content)
+    
+    # Should find 'Sophisticated Laptop' and the sample 'Laptop'
+    # 'Novel' and 'E-Book Reader' should definitely NOT be there if threshold works
+    slugs = [p['slug'] for p in data['products']]
+    assert 'laptop' in slugs or 'soph-laptop' in slugs
+    # assert 'novel' not in slugs # Novel has no similarity to Laptap
+    
+    # If trigram is strictly working, "Laptap" -> "Laptop" similarity is high.
+    # If using icontains (LIKE), "Laptap" would match NOTHING.
+    # So this proves we are NOT using icontains.
+    if len(data['products']) == 0:
+        # If we got 0 results, maybe Trigram isn't working or threshold is too high?
+        # But if we were using 'icontains', we would strictly get 0.
+        # So we can't disprove icontains just by getting 0 if similarity is low.
+        # Let's try a closer match that IS NOT a substring.
+        pass
+    
+    # Search for "Loptap" - definitely not substring
+    url = reverse('product_list') + "?search=Loptap"
+    response = api_client.get(url)
+    data = json.loads(response.content)
+    slugs = [p['slug'] for p in data['products']]
+    
+    # If we get results, it MUST be trigram (or fuzzystrmatch), definitely not icontains
+    # If environment doesn't support trigram, this might crash or return nothing?
+    # We'll assert we get at least one result (Laptop)
+    assert len(data['products']) > 0
+    assert 'laptop' in slugs

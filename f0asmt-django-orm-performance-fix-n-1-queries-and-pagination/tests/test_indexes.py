@@ -27,6 +27,7 @@ def test_indexes_exist():
     assert ('brand_id',) in index_fields
     assert ('is_active',) in index_fields
     assert ('price',) in index_fields
+    assert ('created_at',) in index_fields
     
     # Composite
     # ('category_id', 'is_active', 'price') - sorted field names? 
