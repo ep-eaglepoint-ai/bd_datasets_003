@@ -33,62 +33,68 @@ function runTests(repoPath) {
   return new Promise((resolve) => {
     console.log(`Running tests for: ${repoPath}`);
 
-    const testProcess = spawn('npm', [
-  'test',
-  '--',
-  '--watchAll=false',
-  '--passWithNoTests',
-  `--testPathPattern=${testFolder}` 
-], {
-  cwd: path.join(ROOT, repoPath),
-  env: {
-    ...process.env,
-    CI: 'true'
-  }
-}); 
+    // IMPORTANT:
+    // Tests for this dataset live at the workspace root (`/tests`) and are
+    // executed via the root Jest harness (see root package.json scripts).
+    // Running `npm test` inside repository_before/after requires installing
+    // their separate dependencies (react-scripts, etc.), which CI typically
+    // does not do and can cause CodeBuild to fail before assessment.
+    const npmCmd = process.platform === 'win32' ? 'cmd.exe' : 'npm';
+    const script = repoPath === 'repository_before' ? 'test:before' : 'test:after';
+
+    const args =
+      process.platform === 'win32'
+        ? ['/d', '/s', '/c', `npm run ${script}`]
+        : ['run', script];
+
+    const testProcess = spawn(npmCmd, args, {
+      cwd: ROOT,
+      env: {
+        ...process.env,
+        CI: 'true'
+      }
+    });
 
     let stdout = '';
     let stderr = '';
 
+    // Avoid flooding CI logs when baseline tests fail.
+    const MAX_STREAM_LOG_CHARS = 8000;
+    let streamedChars = 0;
+
+    function streamLog(prefix, chunk, isError) {
+      if (streamedChars >= MAX_STREAM_LOG_CHARS) return;
+      const remaining = MAX_STREAM_LOG_CHARS - streamedChars;
+      const toPrint = chunk.length > remaining ? chunk.slice(0, remaining) : chunk;
+      streamedChars += toPrint.length;
+      if (isError) {
+        console.error(`${prefix}${toPrint}`);
+      } else {
+        console.log(`${prefix}${toPrint}`);
+      }
+      if (streamedChars >= MAX_STREAM_LOG_CHARS) {
+        console.log(`[${repoPath}] ...output truncated...`);
+      }
+    }
+
     testProcess.stdout.on('data', (data) => {
       const output = data.toString();
       stdout += output;
-      console.log(`[${repoPath} stdout]: ${output}`);
+      streamLog(`[${repoPath} stdout]: `, output, false);
     });
 
     testProcess.stderr.on('data', (data) => {
       const output = data.toString();
       stderr += output;
-      console.error(`[${repoPath} stderr]: ${output}`);
+      streamLog(`[${repoPath} stderr]: `, output, true);
     });
 
-    testProcess.on('close', (code) => {
-      console.log(`[${repoPath}] Process exited with code: ${code}`);
-      
-      let passed = code === 0;
-      let output = stderr || stdout;
-      let jsonOutput = null;
+    const timeoutId = setTimeout(() => {
       try {
-        const jsonMatch = stdout.match(/\{.*\}/s);
-        if (jsonMatch) {
-          jsonOutput = JSON.parse(jsonMatch[0]);
-          passed = jsonOutput.success;
-          output = passed ? 'All tests passed.' : 'Some tests failed.';
-        }
-      } catch (e) {
-        console.warn(`[${repoPath}] Could not parse test output as JSON: ${e.message}`);
+        testProcess.kill();
+      } catch {
+        // ignore
       }
-
-      resolve({
-        passed,
-        return_code: code,
-        output: output.substring(0, 1000), 
-        raw_output: stdout + stderr,
-        details: jsonOutput
-      });
-    });
-    setTimeout(() => {
-      testProcess.kill();
       resolve({
         passed: false,
         return_code: 1,
@@ -96,7 +102,34 @@ function runTests(repoPath) {
         raw_output: 'Tests took too long to execute',
         details: null
       });
-    }, 30000);
+    }, 120000);
+
+    testProcess.on('error', (err) => {
+      clearTimeout(timeoutId);
+      resolve({
+        passed: false,
+        return_code: 1,
+        output: `Failed to start test process: ${err && err.message ? err.message : String(err)}`,
+        raw_output: stdout + stderr,
+        details: null
+      });
+    });
+
+    testProcess.on('close', (code) => {
+      clearTimeout(timeoutId);
+      console.log(`[${repoPath}] Process exited with code: ${code}`);
+      
+      let passed = code === 0;
+      const output = passed ? 'All tests passed.' : 'Some tests failed.';
+
+      resolve({
+        passed,
+        return_code: code,
+        output: output.substring(0, 1000), 
+        raw_output: stdout + stderr,
+        details: null
+      });
+    });
   });
 }
 
