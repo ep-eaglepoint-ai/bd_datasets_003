@@ -1,0 +1,11 @@
+{
+            "instance_id": "SKQ1JE",
+            "problem_statement": "The backend service experiences severe latency and resource inefficiency under moderate production load, particularly on endpoints that aggregate relational data and compute summary statistics. The current implementation performs repeated database queries, exhibits N+1 query patterns, and recalculates invariant aggregates on every request, leading to p95 latencies in the seconds and poor scalability. The task is to optimize the existing codebase to significantly reduce latency and increase throughput while preserving identical API behavior, response semantics, error handling, and deterministic response serialization, without introducing new infrastructure or altering the connection lifecycle or concurrency model.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/skq1je-optimize-backend-api-performance-while-preserving-deterministic-behavior",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
