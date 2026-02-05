@@ -105,7 +105,12 @@ def run_evaluation():
     }
 
 def main():
-    REPORTS.mkdir(parents=True, exist_ok=True)
+    try:
+        REPORTS.mkdir(parents=True, exist_ok=True)
+    except PermissionError:
+        print(f"ERROR: Permission denied creating {REPORTS}. Try running with -u \"$(id -u):$(id -g)\"")
+        return 1
+    
     try:
         report = run_evaluation()
     except Exception as e:
@@ -123,8 +128,12 @@ def main():
         }
     
     path = REPORTS / "latest.json"
-    path.write_text(json.dumps(report, indent=2))
-    print(f"Report written to {path}")
+    try:
+        path.write_text(json.dumps(report, indent=2))
+        print(f"Report written to {path}")
+    except PermissionError:
+        print(f"ERROR: Permission denied writing report to {path}")
+        return 1
     
     return 0 if report["success"] else 1
 
