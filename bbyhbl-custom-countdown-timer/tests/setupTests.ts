@@ -1,6 +1,10 @@
 import '@testing-library/jest-dom';
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
+// CI/Docker can be slow to start the API + DB; Jest's default 5s hook timeout is too low.
+// Allow overriding via env var while keeping a sensible default.
+jest.setTimeout(Number(process.env.JEST_TIMEOUT_MS ?? 60_000));
+
 let consoleErrorSpy: jest.SpyInstance | undefined;
 const originalConsoleError = console.error;
 const createLocalStorageMock = () => ({
@@ -32,7 +36,11 @@ if (typeof window !== 'undefined') {
   });
 }
 
-global.fetch = jest.fn();
+// Only mock fetch for browser (jsdom) tests.
+// Node/integration tests need real network calls (e.g., API readiness checks).
+if (typeof window !== 'undefined') {
+  global.fetch = jest.fn();
+}
 
 const { TextEncoder, TextDecoder } = require('util');
 global.TextEncoder = TextEncoder;

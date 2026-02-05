@@ -6,18 +6,21 @@ const BASE_URL = API_URL ?? 'http://localhost:3001';
 const describeApi = API_URL ? describe : describe.skip;
 
 async function waitForApiReady() {
-  const deadline = Date.now() + 45_000;
+  const deadline = Date.now() + 60_000;
   let lastError: unknown = null;
 
   while (Date.now() < deadline) {
     try {
-      const resp = await fetch(`${BASE_URL}/`);
-      if (resp.ok) return;
+      const resp = await request(BASE_URL).get('/');
+      if (resp.status >= 200 && resp.status < 500) return;
       lastError = new Error(`API not ready: HTTP ${resp.status}`);
     } catch (e) {
       lastError = e;
     }
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, 500);
+      (timer as any).unref?.();
+    });
   }
 
   throw lastError ?? new Error('API not ready');
@@ -26,7 +29,7 @@ async function waitForApiReady() {
 describeApi('Integration - Full Flow', () => {
   beforeAll(async () => {
     await waitForApiReady();
-  });
+  }, 60_000);
 
   it('registers, logs in (Passport local), creates private countdown, and enforces privacy', async () => {
     const unique = Date.now() + Math.floor(Math.random() * 1000);
