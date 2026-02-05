@@ -7,7 +7,7 @@
   "scripts": {
     "start:server": "node src/server/index.js",
     "start:client": "node src/client/index.js",
-    "test": "node tests/run-tests.js"
+    "test": "jest --testTimeout=30000 --forceExit"
   },
   "dependencies": {
     "express": "^4.19.2",

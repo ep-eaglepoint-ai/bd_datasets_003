@@ -49,71 +49,79 @@ function createServerDb() {
 
     return new Promise((resolve, reject) => {
       db.serialize(() => {
-        db.run('BEGIN TRANSACTION');
-
-        let insertedCount = 0;
-        let addedVolume = 0;
-
-        const insertStmt = db.prepare(
-          'INSERT OR IGNORE INTO processed_events (id, timestamp, volume) VALUES (?, ?, ?)'
-        );
-
-        // Track all insert callbacks
-        const insertPromises = events.map((ev) => {
-          return new Promise((innerResolve) => {
-            insertStmt.run(
-              [ev.id, ev.timestamp, ev.volume],
-              function (err) {
-                if (err) {
-                  innerResolve({ success: false, error: err });
-                  return;
-                }
-                if (!existing.has(ev.id)) {
-                  insertedCount += 1;
-                  addedVolume += ev.volume;
-                }
-                innerResolve({ success: true });
-              }
-            );
-          });
-        });
-
-        insertStmt.finalize((err) => {
-          if (err) {
-            db.run('ROLLBACK', () => reject(err));
-            return;
+        db.run('BEGIN TRANSACTION', (beginErr) => {
+          if (beginErr) {
+            return reject(beginErr);
           }
 
-          // Wait for all inserts to complete
-          Promise.all(insertPromises)
-            .then((results) => {
-              const failedInsert = results.find((r) => !r.success);
-              if (failedInsert) {
-                db.run('ROLLBACK', () => reject(failedInsert.error));
+          const insertStmt = db.prepare(
+            'INSERT OR IGNORE INTO processed_events (id, timestamp, volume) VALUES (?, ?, ?)'
+          );
+
+          let insertedCount = 0;
+          let addedVolume = 0;
+          let completedInserts = 0;
+          let hasError = false;
+
+          // Process all inserts sequentially within the transaction
+          function processNextInsert(index) {
+            if (hasError || index >= events.length) {
+              // All inserts processed, finalize and commit
+              insertStmt.finalize((finalizeErr) => {
+                if (hasError || finalizeErr) {
+                  db.run('ROLLBACK', () => {
+                    reject(finalizeErr || new Error('Insert failed'));
+                  });
+                  return;
+                }
+
+                // Update stats only after all inserts are confirmed complete
+                db.run(
+                  'UPDATE stats SET value = value + ? WHERE key = ?',
+                  [addedVolume, 'total_volume'],
+                  (updateErr) => {
+                    if (updateErr) {
+                      db.run('ROLLBACK', () => reject(updateErr));
+                      return;
+                    }
+                    db.run('COMMIT', (commitErr) => {
+                      if (commitErr) {
+                        reject(commitErr);
+                      } else {
+                        resolve({ insertedCount, addedVolume });
+                      }
+                    });
+                  }
+                );
+              });
+              return;
+            }
+
+            const ev = events[index];
+            insertStmt.run([ev.id, ev.timestamp, ev.volume], function (err) {
+              if (err) {
+                hasError = true;
+                insertStmt.finalize(() => {
+                  db.run('ROLLBACK', () => reject(err));
+                });
                 return;
               }
 
-              db.run(
-                'UPDATE stats SET value = value + ? WHERE key = ?',
-                [addedVolume, 'total_volume'],
-                (updateErr) => {
-                  if (updateErr) {
-                    db.run('ROLLBACK', () => reject(updateErr));
-                    return;
-                  }
-                  db.run('COMMIT', (commitErr) => {
-                    if (commitErr) {
-                      reject(commitErr);
-                    } else {
-                      resolve({ insertedCount, addedVolume });
-                    }
-                  });
-                }
-              );
-            })
-            .catch((batchErr) => {
-              db.run('ROLLBACK', () => reject(batchErr));
+              // Check if this was a new insert (not ignored due to duplicate)
+              // We need to check changes property to see if row was actually inserted
+              if (this.changes > 0 && !existing.has(ev.id)) {
+                insertedCount += 1;
+                addedVolume += ev.volume;
+              }
+
+              completedInserts++;
+              // Process next insert
+              processNextInsert(index + 1);
             });
+          }
+
+          // Start processing inserts
+          processNextInsert(0);
         });
       });
     });
