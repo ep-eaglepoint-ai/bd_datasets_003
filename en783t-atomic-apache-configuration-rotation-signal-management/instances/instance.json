@@ -1,0 +1,11 @@
+{
+            "instance_id": "EN783T",
+            "problem_statement": "Automating web server configuration is high-risk. A naive automation script simply copies a new config file to /etc/httpd/conf.d/ and runs restart. If the new config contains a syntax error, the web server crashes and stays down. The engineering "Trap" here is the order of operations and atomicity. The model must implement a "Test-Then-Apply" logic. Furthermore, simply restarting the service drops active connections. The correct approach is a "Graceful Reload" via OS Signals (SIGHUP), which requires finding the target Process ID (PID) by reading and parsing the PID file manually, as external service managers are forbidden",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/en783t-atomic-apache-configuration-rotation-signal-management",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        

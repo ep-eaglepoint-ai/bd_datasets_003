@@ -1,0 +1,258 @@
+diff --git a/repository_after/automator.go b/repository_after/automator.go
+new file mode 100644
+index 0000000..c39bea2
+--- /dev/null
++++ b/repository_after/automator.go
+@@ -0,0 +1,83 @@
++package main
++
++import (
++	"context"
++	"fmt"
++	"os"
++	"path/filepath"
++	"time"
++)
++
++// Automator is the config deployment daemon.
++type Automator struct {
++	StagingDir string
++	LiveDir    string
++	RejectDir  string
++	PidFile    string
++	Ticker     *time.Ticker
++	Validator  Validator
++	Log        func(string) // stdout status messages
++}
++
++// Run starts the daemon loop: each tick, scan staging and process .conf files.
++func (a *Automator) Run(ctx context.Context) {
++	for {
++		select {
++		case <-ctx.Done():
++			return
++		case <-a.Ticker.C:
++			a.scanStaging(ctx)
++		}
++	}
++}
++
++// scanStaging lists staging, processes each .conf file (validate -> move -> reload).
++func (a *Automator) scanStaging(ctx context.Context) {
++	entries, err := os.ReadDir(a.StagingDir)
++	if err != nil {
++		if a.Log != nil {
++			a.Log(fmt.Sprintf("Cannot read staging dir: %v", err))
++		}
++		return
++	}
++	for _, e := range entries {
++		if e.IsDir() {
++			continue
++		}
++		if filepath.Ext(e.Name()) != ".conf" {
++			continue
++		}
++		stagingPath := filepath.Join(a.StagingDir, e.Name())
++		a.processOne(ctx, stagingPath, e.Name())
++	}
++}
++
++func (a *Automator) processOne(ctx context.Context, stagingPath, name string) {
++	// 1. Dry-run validation
++	if err := a.Validator.Validate(ctx, stagingPath); err != nil {
++		rejectPath := filepath.Join(a.RejectDir, name)
++		if moveErr := MoveToRejected(stagingPath, rejectPath); moveErr != nil {
++			if a.Log != nil {
++				a.Log(fmt.Sprintf("Syntax check failed, could not move to rejected: %v", moveErr))
++			}
++			return
++		}
++		if a.Log != nil {
++			a.Log("Syntax check failed, moved to rejected")
++		}
++		return
++	}
++	// 2. Atomic move to live
++	livePath := filepath.Join(a.LiveDir, name)
++	if err := MoveToLive(stagingPath, livePath); err != nil {
++		if a.Log != nil {
++			a.Log(fmt.Sprintf("Could not move to live: %v", err))
++		}
++		return
++	}
++	if a.Log != nil {
++		a.Log(fmt.Sprintf("Valid config applied: %s", name))
++	}
++	// 3. Graceful reload: read PID and send SIGHUP
++	SendReload(a.PidFile, a.Log)
++}
+diff --git a/repository_after/deploy.go b/repository_after/deploy.go
+new file mode 100644
+index 0000000..568f2f1
+--- /dev/null
++++ b/repository_after/deploy.go
+@@ -0,0 +1,14 @@
++package main
++
++import "os"
++
++// MoveToLive atomically moves a file from staging to live using os.Rename.
++// On POSIX this guarantees no partial reads.
++func MoveToLive(stagingPath, livePath string) error {
++	return os.Rename(stagingPath, livePath)
++}
++
++// MoveToRejected moves a file from staging to the rejected directory.
++func MoveToRejected(stagingPath, rejectPath string) error {
++	return os.Rename(stagingPath, rejectPath)
++}
+diff --git a/repository_after/go.mod b/repository_after/go.mod
+new file mode 100644
+index 0000000..1fd704d
+--- /dev/null
++++ b/repository_after/go.mod
+@@ -0,0 +1,3 @@
++module repository_after
++
++go 1.21
+diff --git a/repository_after/main.go b/repository_after/main.go
+new file mode 100644
+index 0000000..9511cba
+--- /dev/null
++++ b/repository_after/main.go
+@@ -0,0 +1,55 @@
++package main
++
++import (
++	"context"
++	"flag"
++	"fmt"
++	"os"
++	"os/signal"
++	"syscall"
++	"time"
++)
++
++func main() {
++	stagingDir := flag.String("staging", "/var/www/staging", "Staging directory for .conf files")
++	liveDir := flag.String("live", "/etc/httpd/conf.d", "Live Apache config directory")
++	rejectDir := flag.String("reject", "/var/www/rejected", "Rejected config directory")
++	pidFile := flag.String("pidfile", "/var/run/httpd.pid", "Apache PID file")
++	pollInterval := flag.Duration("interval", 5*time.Second, "Poll interval")
++	apacheBinary := flag.String("apache", "apachectl", "Apache binary for -t (apachectl or httpd)")
++	flag.Parse()
++
++	// Ensure directories exist (create staging/reject if needed; live may already exist)
++	for _, dir := range []string{*stagingDir, *rejectDir} {
++		if err := os.MkdirAll(dir, 0755); err != nil {
++			fmt.Fprintf(os.Stderr, "Cannot create directory %s: %v\n", dir, err)
++			os.Exit(1)
++		}
++	}
++
++	validator := NewApacheValidator(*apacheBinary)
++	ticker := time.NewTicker(*pollInterval)
++	defer ticker.Stop()
++
++	a := &Automator{
++		StagingDir: *stagingDir,
++		LiveDir:    *liveDir,
++		RejectDir:  *rejectDir,
++		PidFile:    *pidFile,
++		Ticker:     ticker,
++		Validator:  validator,
++		Log:        func(s string) { fmt.Println(s) },
++	}
++
++	ctx, cancel := context.WithCancel(context.Background())
++	defer cancel()
++
++	go func() {
++		sigCh := make(chan os.Signal, 1)
++		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
++		<-sigCh
++		cancel()
++	}()
++
++	a.Run(ctx)
++}
+diff --git a/repository_after/signal.go b/repository_after/signal.go
+new file mode 100644
+index 0000000..355ce53
+--- /dev/null
++++ b/repository_after/signal.go
+@@ -0,0 +1,37 @@
++package main
++
++import (
++	"fmt"
++	"os"
++	"strconv"
++	"strings"
++	"syscall"
++)
++
++// SendReload reads the PID from pidFile and sends SIGHUP to that process.
++// If the process does not exist (stale PID file), it logs and returns without error (daemon must not crash).
++func SendReload(pidFile string, log func(string)) error {
++	data, err := os.ReadFile(pidFile)
++	if err != nil {
++		return err
++	}
++	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
++	if err != nil {
++		return err
++	}
++	proc, err := os.FindProcess(pid)
++	if err != nil {
++		return err
++	}
++	if err := proc.Signal(syscall.SIGHUP); err != nil {
++		// Stale PID or process not running: log and continue, do not crash
++		if log != nil {
++			log(fmt.Sprintf("Apache not running (stale PID file): %v", err))
++		}
++		return nil
++	}
++	if log != nil {
++		log(fmt.Sprintf("Reload signal sent to PID %d", pid))
++	}
++	return nil
++}
+diff --git a/repository_after/validator.go b/repository_after/validator.go
+new file mode 100644
+index 0000000..482d04a
+--- /dev/null
++++ b/repository_after/validator.go
+@@ -0,0 +1,30 @@
++package main
++
++import (
++	"context"
++	"os/exec"
++)
++
++// Validator validates an Apache config file (e.g. dry-run syntax check).
++type Validator interface {
++	Validate(ctx context.Context, configPath string) error
++}
++
++// ApacheValidator runs apachectl -t -f <file> (or httpd -t -f <file>).
++type ApacheValidator struct {
++	Binary string // "apachectl" or "httpd"
++}
++
++// NewApacheValidator returns a validator using the given binary name.
++func NewApacheValidator(binary string) *ApacheValidator {
++	if binary == "" {
++		binary = "apachectl"
++	}
++	return &ApacheValidator{Binary: binary}
++}
++
++// Validate runs the Apache syntax check against the config file.
++func (v *ApacheValidator) Validate(ctx context.Context, configPath string) error {
++	cmd := exec.CommandContext(ctx, v.Binary, "-t", "-f", configPath)
++	return cmd.Run()
++}
