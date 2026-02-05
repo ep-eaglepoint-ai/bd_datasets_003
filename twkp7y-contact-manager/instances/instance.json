@@ -1,0 +1,12 @@
+{
+            "instance_id": "TWKP7Y",
+            "problem_statement": "A small business owner needs a simple C++ console application to manage their professional contacts. They currently keep contact information in various places—sticky notes, phone contacts, and email folders—making it difficult to find someone's details quickly. They want a centralized system where contacts can be added, searched, updated, and deleted, with all data saved to a file for persistence.
+The owner needs to store names, phone numbers, email addresses, and optional notes for each contact. They frequently need to search for contacts by partial name or find all contacts that work at a particular company. The system should be simple to use through a text-based menu and should prevent duplicate entries based on email address.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/twkp7y-contact-manager",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
