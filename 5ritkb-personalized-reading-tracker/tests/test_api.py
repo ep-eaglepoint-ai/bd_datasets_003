@@ -33,25 +33,36 @@ def auth_header(app):
         return {"Authorization": f"Bearer {token}"}
 
 def test_book_search_functionality(client, app):
-    """Verify that users can search for books by title or author."""
+    """ users can search for books by title or author."""
     response = client.get('/api/books/search?q=Gatsby')
     assert response.status_code == 200
     assert any("Gatsby" in b['title'] for b in response.json)
 
 def test_custom_shelf_creation_and_assignment(client, auth_header):
-    """Verify users can create personal shelves and assign books to them."""
-    # Create shelf
+    """ users can create personal shelves and assign books to them."""
     client.post('/api/shelves', headers=auth_header, json={"name": "Winter Reads"})
     
-    # Assign book
     resp = client.post('/api/shelf/add', headers=auth_header, json={
         "id": "123", "title": "The Hobbit", "status": "Winter Reads"
     })
     assert resp.status_code == 201
     assert "Winter Reads" in resp.json['msg']
 
+def test_library_listing_and_format(client, auth_header, app):
+    """ users can view their library with correct cover images and statuses."""
+    client.post('/api/shelf/add', headers=auth_header, json={
+        "id": "cover_test", "title": "Cover Art", "status": "want-to-read", "cover": "http://test.jpg"
+    })
+    
+    response = client.get('/api/library', headers=auth_header)
+    assert response.status_code == 200
+    books = response.json
+    assert len(books) > 0
+    assert "cover_image" in books[0]
+    assert books[0]["cover_image"] == "http://test.jpg"
+
 def test_note_persistence_on_active_books(client, auth_header, app):
-    """Ensure notes can be added to books currently being read without finishing them."""
+    """ users can add notes to books currently being read without finishing them."""
     client.post('/api/shelf/add', headers=auth_header, json={
         "id": "456", "title": "1984", "status": "currently-reading"
     })
@@ -65,29 +76,36 @@ def test_note_persistence_on_active_books(client, auth_header, app):
     assert resp.status_code == 200
     
     with app.app_context():
-        # Using the updated Session.get syntax to avoid the legacy warning
         book = db.session.get(UserBook, bid)
         assert book.notes == "Very interesting world-building."
         assert book.status == "currently-reading"
 
 def test_dashboard_metrics_and_pace_logic(client, auth_header, app):
-    """Verify calculation of reading streaks, average time, and yearly goal projection."""
+    """ users can view their dashboard with reading streaks, average time, and yearly goal projection."""
     with app.app_context():
         u = User.query.filter_by(username="testuser").first()
-        b = UserBook(user_id=u.id, book_id="789", title="Active Book", status="currently-reading")
+        # Create a book that took 2 days to read for average_time test
+        start = datetime.utcnow() - timedelta(days=5)
+        finish = datetime.utcnow() - timedelta(days=3)
+        
+        b = UserBook(
+            user_id=u.id, book_id="789", title="Timed Book", 
+            status="finished", start_date=start, finish_date=finish, rating=5
+        )
         db.session.add(b)
         db.session.flush()
         
-        # Mock activity log for streak
-        yesterday = datetime.utcnow().date() - timedelta(days=1)
+        today = datetime.utcnow().date()
+        yesterday = today - timedelta(days=1)
         db.session.add(ReadingLog(user_book_id=b.id, date=yesterday, pages_read=5))
-        db.session.add(ReadingLog(user_book_id=b.id, date=datetime.utcnow().date(), pages_read=5))
+        db.session.add(ReadingLog(user_book_id=b.id, date=today, pages_read=5))
         db.session.commit()
 
     stats = client.get('/api/user/stats', headers=auth_header).json
     assert stats['streak'] >= 2
+    assert stats['average_rating'] == 5.0
+    assert stats['avg_reading_time'] == 2.0  # (5-3 = 2)
     assert "pace_status" in stats
-    assert "avg_reading_time" in stats
 
 def test_book_deletion(client, auth_header, app):
     """Verify that books can be successfully removed from the user library"""

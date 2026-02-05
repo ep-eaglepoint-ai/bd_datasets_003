@@ -7,7 +7,7 @@ import FinishBookModal from '../components/FinishBookModal.vue';
 import BookCover from '../components/BookCover.vue';
 import { 
   BookOpen, Flame, BarChart3, CheckCircle, ArrowRight, 
-  Bookmark, Star, Play, Trash2 
+  Bookmark, Star, Play, Trash2, Clock 
 } from 'lucide-vue-next';
 
 // State Management
@@ -110,13 +110,21 @@ onMounted(fetchDashboard);
         </div>
       </div>
 
-      <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 col-span-1 md:col-span-2">
+      <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex items-center gap-4">
+        <div class="p-3 bg-purple-100 text-purple-600 rounded-2xl"><Clock /></div>
+        <div>
+          <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Avg Time</p>
+          <p class="text-2xl font-black text-slate-800">{{ stats?.avg_reading_time?.toFixed(1) || '0.0' }} <span class="text-xs">Days</span></p>
+        </div>
+      </div>
+
+      <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
         <div class="flex justify-between items-end mb-3">
-          <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Yearly Goal Progress</p>
+          <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Yearly Goal</p>
           <p class="text-sm font-black text-indigo-600">{{ stats?.completed_this_year }} / {{ stats?.yearly_goal }}</p>
         </div>
-        <div class="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
-          <div class="bg-indigo-600 h-full transition-all duration-1000 ease-out shadow-[0_0_12px_rgba(79,70,229,0.4)]" 
+        <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+          <div class="bg-indigo-600 h-full transition-all duration-1000 ease-out" 
                :style="{ width: Math.min(((stats?.completed_this_year || 0) / (stats?.yearly_goal || 1)) * 100, 100) + '%' }">
           </div>
         </div>
