@@ -9,6 +9,9 @@ from routes import categories, products, search
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # In test environment, DB is prepared by conftest
+    # But for production, we ensure the extension exists
+    async with engine.begin() as conn:
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
     yield
 
 app = FastAPI(title="E-commerce API", lifespan=lifespan)

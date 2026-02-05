@@ -1,8 +1,10 @@
 import json
-from typing import Optional
+import base64
+from typing import Any, Optional
+from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy import asc, desc, func, or_, select
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import asc, desc, func, or_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
@@ -52,6 +54,28 @@ def _serialize_product(product: Product) -> ProductResponse:
     )
 
 
+def _encode_cursor(value: Any, product_id: int) -> str:
+    if isinstance(value, datetime):
+        value = value.isoformat()
+    return base64.b64encode(f"{value},{product_id}".encode()).decode()
+
+
+def _decode_cursor(cursor: str, sort_type: type) -> tuple[Any, int]:
+    try:
+        decoded = base64.b64decode(cursor).decode().split(",")
+        val = decoded[0]
+        pid = int(decoded[1])
+        if sort_type is int:
+            val = int(val)
+        elif sort_type is float:
+            val = float(val)
+        elif sort_type is datetime:
+            val = datetime.fromisoformat(val)
+        return val, pid
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid cursor")
+
+
 def _apply_filters(
     query,
     category_id: Optional[int],
@@ -81,6 +105,7 @@ async def search_products(
     q: str = Query(..., min_length=1),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
+    cursor: Optional[str] = None,
     category_id: Optional[int] = None,
     brand_id: Optional[int] = None,
     min_price: Optional[float] = None,
@@ -97,6 +122,7 @@ async def search_products(
             "q": q,
             "page": page,
             "page_size": page_size,
+            "cursor": cursor,
             "category_id": category_id,
             "brand_id": brand_id,
             "min_price": min_price,
@@ -121,7 +147,19 @@ async def search_products(
         func.coalesce(Product.description, "").op("%")(q),
     )
 
-    base_query = select(Product).where(Product.is_active == True).where(search_predicate)
+    if sort_by == "relevance":
+        base_query = select(Product, relevance_score).where(Product.is_active == True).where(search_predicate)
+        sort_column_expr = relevance_score
+        sort_type = float
+        order_by = desc(relevance_score)
+        tie_breaker = desc(Product.id)
+    else:
+        base_query = select(Product).where(Product.is_active == True).where(search_predicate)
+        sort_column_expr = getattr(Product, sort_by)
+        sort_type = getattr(Product, sort_by).type.python_type
+        order_by = desc(sort_column_expr) if sort_order == "desc" else asc(sort_column_expr)
+        tie_breaker = desc(Product.id) if sort_order == "desc" else asc(Product.id)
+
     base_query = _apply_filters(
         base_query,
         category_id,
@@ -147,14 +185,6 @@ async def search_products(
     )
     total = (await db.execute(count_query)).scalar_one()
 
-    if sort_by == "relevance":
-        order_by = desc(relevance_score)
-        tie_breaker = desc(Product.id)
-    else:
-        sort_column = getattr(Product, sort_by)
-        order_by = desc(sort_column) if sort_order == "desc" else asc(sort_column)
-        tie_breaker = desc(Product.id) if sort_order == "desc" else asc(Product.id)
-
     query = (
         base_query.options(
             joinedload(Product.category),
@@ -163,12 +193,37 @@ async def search_products(
             selectinload(Product.tags),
         )
         .order_by(order_by, tie_breaker)
-        .offset((page - 1) * page_size)
-        .limit(page_size)
     )
 
+    if cursor:
+        cursor_val, cursor_id = _decode_cursor(cursor, sort_type)
+        if sort_by == "relevance" or sort_order == "desc":
+            query = query.where(tuple_(sort_column_expr, Product.id) < (cursor_val, cursor_id))
+        else:
+            query = query.where(tuple_(sort_column_expr, Product.id) > (cursor_val, cursor_id))
+        query = query.limit(page_size)
+    else:
+        query = query.offset((page - 1) * page_size).limit(page_size)
+
     result = await db.execute(query)
-    products = result.scalars().unique().all()
+    
+    products = []
+    last_val = None
+    
+    if sort_by == "relevance":
+        rows = result.unique().all()
+        for row in rows:
+            products.append(row[0]) # Product
+            last_val = row[1]       # Score
+    else:
+        products = result.scalars().unique().all()
+        if products:
+             last_val = getattr(products[-1], sort_by)
+
+    next_cursor = None
+    if products and len(products) == page_size:
+        last_product = products[-1]
+        next_cursor = _encode_cursor(last_val, last_product.id)
 
     response = ProductListResponse(
         products=[_serialize_product(product) for product in products],
@@ -176,11 +231,11 @@ async def search_products(
         page=page,
         page_size=page_size,
         total_pages=(total + page_size - 1) // page_size,
+        next_cursor=next_cursor,
     )
 
     await cache_set(redis, cache_key, response.model_dump_json(), SEARCH_TTL_SECONDS)
     return response
-
 
 @router.post("/filters", response_model=ProductListResponse)
 async def search_with_filters(
@@ -201,6 +256,8 @@ async def search_with_filters(
     cached = await cache_get(redis, cache_key)
     if cached:
         return ProductListResponse.model_validate(json.loads(cached))
+
+    base_query = select(Product).where(Product.is_active == True)
 
     base_query = select(Product).where(Product.is_active == True)
 

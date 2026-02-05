@@ -99,7 +99,7 @@ def run_tests(target: str) -> dict:
 
     return {
         "success": result.returncode == 0,
-        "exit_code": result.returncode,
+        "return_code": result.returncode,
         "tests": tests,
         "summary": summary,
         "stdout": result.stdout,
@@ -130,25 +130,62 @@ def map_criteria(tests: list[dict]) -> dict:
 
 def main() -> None:
     run_id = generate_run_id()
+    start_ts = time.time()
+    started_at = datetime.utcnow().isoformat() + "Z"
 
     before_results = run_tests("before")
     after_results = run_tests("after")
 
+    end_ts = time.time()
+    finished_at = datetime.utcnow().isoformat() + "Z"
+    duration = end_ts - start_ts
+
+    # Determine passed status based on test outcomes, ignoring exit code if necessary
+    before_passed = before_results["summary"]["failed"] == 0 and before_results["summary"]["errors"] == 0
+    after_passed = after_results["summary"]["failed"] == 0 and after_results["summary"]["errors"] == 0
+    
+    passed_gate = after_passed and not before_passed
+    
+    improvement_summary = ""
+    if passed_gate:
+        improvement_summary = "Repository after passes all correctness tests while repository before fails as expected."
+    elif after_passed:
+        improvement_summary = "Repository after passes tests, but repository before also passed (metrics comparison needed?)."
+    else:
+        improvement_summary = "Repository after failed tests."
+
     report = {
         "run_id": run_id,
-        "tool": "Product Search Optimization Evaluator",
-        "started_at": datetime.utcnow().isoformat() + "Z",
+        "started_at": started_at,
+        "finished_at": finished_at,
+        "duration_seconds": duration,
         "environment": get_environment_info(),
-        "before": before_results,
-        "after": after_results,
-        "criteria_analysis": {
-            "before": map_criteria(before_results["tests"]),
-            "after": map_criteria(after_results["tests"]),
+        "before": {
+            "tests": {
+                "passed": before_passed,
+                "return_code": before_results["return_code"],
+                "output": before_results["stdout"] + "\n" + before_results.get("stderr", "")
+            },
+            "test_cases": before_results["tests"],
+            "criteria_analysis": map_criteria(before_results["tests"]),
+            "metrics": {}
+        },
+        "after": {
+            "tests": {
+                "passed": after_passed,
+                "return_code": after_results["return_code"],
+                "output": after_results["stdout"] + "\n" + after_results.get("stderr", "")
+            },
+            "test_cases": after_results["tests"],
+            "criteria_analysis": map_criteria(after_results["tests"]),
+            "metrics": {}
         },
         "comparison": {
-            "summary": "Containerized Evaluation",
-            "success": after_results["success"],
+            "passed_gate": passed_gate,
+            "improvement_summary": improvement_summary
         },
+        "success": passed_gate,
+        "error": None
     }
 
     output_path = generate_output_path()

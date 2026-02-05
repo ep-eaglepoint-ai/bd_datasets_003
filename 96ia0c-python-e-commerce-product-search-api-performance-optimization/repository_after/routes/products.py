@@ -1,8 +1,10 @@
 import json
-from typing import Optional
+import base64
+from typing import Any, Optional
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import asc, desc, func, select
+from sqlalchemy import asc, desc, func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
@@ -66,10 +68,33 @@ def _serialize_product(product: Product) -> ProductResponse:
     )
 
 
+def _encode_cursor(value: Any, product_id: int) -> str:
+    if isinstance(value, datetime):
+        value = value.isoformat()
+    return base64.b64encode(f"{value},{product_id}".encode()).decode()
+
+
+def _decode_cursor(cursor: str, sort_type: type) -> tuple[Any, int]:
+    try:
+        decoded = base64.b64decode(cursor).decode().split(",")
+        val = decoded[0]
+        pid = int(decoded[1])
+        if sort_type is int:
+            val = int(val)
+        elif sort_type is float:
+            val = float(val)
+        elif sort_type is datetime:
+            val = datetime.fromisoformat(val)
+        return val, pid
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid cursor")
+
+
 @router.get("", response_model=ProductListResponse)
 async def get_products(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
+    cursor: Optional[str] = None,
     category_id: Optional[int] = None,
     brand_id: Optional[int] = None,
     min_price: Optional[float] = None,
@@ -84,6 +109,7 @@ async def get_products(
         {
             "page": page,
             "page_size": page_size,
+            "cursor": cursor,
             "category_id": category_id,
             "brand_id": brand_id,
             "min_price": min_price,
@@ -117,12 +143,30 @@ async def get_products(
             selectinload(Product.tags),
         )
         .order_by(order_by, tie_breaker)
-        .offset((page - 1) * page_size)
-        .limit(page_size)
     )
+
+    if cursor:
+        sort_type = getattr(Product, sort_by).type.python_type
+        cursor_val, cursor_id = _decode_cursor(cursor, sort_type)
+        if sort_order == "desc":
+            query = query.where(tuple_(sort_column, Product.id) < (cursor_val, cursor_id))
+        else:
+            query = query.where(tuple_(sort_column, Product.id) > (cursor_val, cursor_id))
+        query = query.limit(page_size)
+    else:
+        query = query.offset((page - 1) * page_size).limit(page_size)
 
     result = await db.execute(query)
     products = result.scalars().unique().all()
+
+    next_cursor = None
+    if products and len(products) == page_size:
+        last_product = products[-1]
+        next_cursor = _encode_cursor(getattr(last_product, sort_by), last_product.id)
+    
+    # If we used cursor, we might want to skip next_cursor if we're at the end. 
+    # But usually we return it until no results. 
+    # With limit(page_size), if we got page_size items, there *might* be more.
 
     response = ProductListResponse(
         products=[_serialize_product(product) for product in products],
@@ -130,6 +174,7 @@ async def get_products(
         page=page,
         page_size=page_size,
         total_pages=(total + page_size - 1) // page_size,
+        next_cursor=next_cursor,
     )
 
     await cache_set(redis, cache_key, response.model_dump_json(), LIST_TTL_SECONDS)

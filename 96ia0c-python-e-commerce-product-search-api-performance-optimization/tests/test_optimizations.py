@@ -155,3 +155,28 @@ def test_engine_pool_configuration(repo_modules):
 
     assert pool_size is not None and pool_size >= 10
     assert max_overflow is not None and max_overflow >= 20
+
+@pytest.mark.asyncio
+async def test_deep_pagination_uses_cursor(client, repo_modules, prepared_db):
+    response = await client.get("/api/products", params={"page": 1, "page_size": 10})
+    assert response.status_code == 200
+    data = response.json()
+    assert "next_cursor" in data
+    cursor = data["next_cursor"]
+    
+    # Cursor might be None if no more pages, but with 120 items and page_size 10, it should be there.
+    assert cursor is not None
+    
+    response_cursor = await client.get("/api/products", params={"cursor": cursor, "page_size": 10})
+    assert response_cursor.status_code == 200
+    data_cursor = response_cursor.json()
+    assert len(data_cursor["products"]) > 0
+    assert data["products"][0]["id"] != data_cursor["products"][0]["id"]
+
+@pytest.mark.asyncio
+async def test_pg_trgm_extension_enabled(repo_modules, prepared_db):
+    engine = repo_modules["database"].engine
+    async with engine.begin() as conn:
+        result = await conn.execute(text("SELECT count(*) FROM pg_extension WHERE extname = 'pg_trgm'"))
+        count = result.scalar()
+    assert count == 1
