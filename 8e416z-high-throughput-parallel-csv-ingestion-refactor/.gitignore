@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+.pytest_cache/
+*.pyc
+.venv/
+.env
+
+# Node
+node_modules/
+
+# OS
+.DS_Store
+evaluation/????-??-??/
+mock.db
+transactions.db
+errors.csv
+input.csv
+test_rows.csv
