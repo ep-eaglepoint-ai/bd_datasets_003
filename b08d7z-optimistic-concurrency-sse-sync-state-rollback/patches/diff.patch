@@ -1,0 +1,929 @@
+diff --git a/repository_before/.gitkeep b/repository_before/.gitkeep
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/repository_after/backend/go.mod b/repository_after/backend/go.mod
+new file mode 100644
+index 0000000..69b6778
+--- /dev/null
++++ b/repository_after/backend/go.mod
+@@ -0,0 +1,3 @@
++module seat-reservation-backend
++
++go 1.21
+\ No newline at end of file
+diff --git a/repository_after/backend/main.go b/repository_after/backend/main.go
+new file mode 100644
+index 0000000..19f3b3e
+--- /dev/null
++++ b/repository_after/backend/main.go
+@@ -0,0 +1,211 @@
++// High-Concurrency Seat Reservation Backend
++// Principal Full Stack Engineer Implementation
++//
++// This module implements a raw HTTP server for seat reservations with:
++// - Thread-safe seat management using sync.Mutex
++// - Real-time updates via Server-Sent Events
++// - Concurrent booking handling with proper conflict resolution
++//
++// REQ-1: Uses only Go standard library (no external dependencies)
++// REQ-2: sync.Mutex protects all seat decrement operations
++// REQ-3: Server-Sent Events with proper headers
++// REQ-4: Broadcasts updates to all connected clients
++
++package main
++
++import (
++	"encoding/json"
++	"fmt"
++	"log"
++	"net/http"
++	"os"
++	"strconv"
++	"sync"
++)
++
++// SeatReservationServer manages concurrent seat bookings with real-time updates
++type SeatReservationServer struct {
++	// REQ-2: sync.Mutex protects the availableSeats counter from race conditions
++	availableSeats int        // Current number of available seats
++	seatMutex      sync.Mutex // Protects availableSeats during concurrent access
++
++	// Client management for Server-Sent Events broadcasting
++	sseClients   map[chan string]bool // Active SSE client connections
++	clientsMutex sync.Mutex           // Protects sseClients map during concurrent access
++}
++
++// BookingResponse represents the JSON response for booking requests
++type BookingResponse struct {
++	Success        bool   `json:"success"`
++	AvailableSeats int    `json:"availableSeats,omitempty"`
++	Error          string `json:"error,omitempty"`
++}
++
++// NewSeatReservationServer creates a new server instance with initial seat count
++func NewSeatReservationServer(initialSeats int) *SeatReservationServer {
++	return &SeatReservationServer{
++		availableSeats: initialSeats,
++		sseClients:     make(map[chan string]bool),
++	}
++}
++
++// addSSEClient safely adds a new SSE client to the broadcast list
++func (s *SeatReservationServer) addSSEClient(clientChannel chan string) {
++	s.clientsMutex.Lock()
++	defer s.clientsMutex.Unlock()
++	s.sseClients[clientChannel] = true
++}
++
++// removeSSEClient safely removes an SSE client and closes its channel
++func (s *SeatReservationServer) removeSSEClient(clientChannel chan string) {
++	s.clientsMutex.Lock()
++	defer s.clientsMutex.Unlock()
++	delete(s.sseClients, clientChannel)
++	close(clientChannel)
++}
++
++// REQ-4: broadcastSeatUpdate sends seat count updates to all connected SSE clients
++func (s *SeatReservationServer) broadcastSeatUpdate(seatCount int) {
++	message := fmt.Sprintf("%d", seatCount)
++
++	s.clientsMutex.Lock()
++	defer s.clientsMutex.Unlock()
++
++	// Send update to all connected clients
++	for clientChannel := range s.sseClients {
++		select {
++		case clientChannel <- message:
++			// Message sent successfully
++		default:
++			// Client channel is blocked, remove it to prevent memory leaks
++			delete(s.sseClients, clientChannel)
++			close(clientChannel)
++		}
++	}
++}
++
++// REQ-3: handleSSEEvents implements Server-Sent Events endpoint
++// Streams real-time seat inventory updates to connected clients
++func (s *SeatReservationServer) handleSSEEvents(w http.ResponseWriter, r *http.Request) {
++	// REQ-3: Set required SSE headers
++	w.Header().Set("Content-Type", "text/event-stream")
++	w.Header().Set("Cache-Control", "no-cache")
++	w.Header().Set("Connection", "keep-alive")
++	w.Header().Set("Access-Control-Allow-Origin", "*")
++
++	// Create dedicated channel for this client
++	clientChannel := make(chan string)
++	s.addSSEClient(clientChannel)
++	defer s.removeSSEClient(clientChannel)
++
++	// Send current seat count immediately upon connection
++	s.seatMutex.Lock()
++	currentSeats := s.availableSeats
++	s.seatMutex.Unlock()
++
++	fmt.Fprintf(w, "data: %d\n\n", currentSeats)
++	if flusher, ok := w.(http.Flusher); ok {
++		flusher.Flush()
++	}
++
++	// Listen for updates and client disconnection
++	for {
++		select {
++		case update := <-clientChannel:
++			// Send seat count update to client
++			fmt.Fprintf(w, "data: %s\n\n", update)
++			if flusher, ok := w.(http.Flusher); ok {
++				flusher.Flush()
++			}
++		case <-r.Context().Done():
++			// Client disconnected, cleanup handled by defer
++			return
++		}
++	}
++}
++
++// REQ-2: handleSeatBooking processes seat reservation requests with mutex protection
++// Returns 200 OK on success, 409 Conflict when no seats available
++func (s *SeatReservationServer) handleSeatBooking(w http.ResponseWriter, r *http.Request) {
++	// Only accept POST requests
++	if r.Method != "POST" {
++		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
++		return
++	}
++
++	// Set response headers
++	w.Header().Set("Access-Control-Allow-Origin", "*")
++	w.Header().Set("Content-Type", "application/json")
++
++	// REQ-2: Critical section - mutex protects seat decrement operation
++	s.seatMutex.Lock()
++
++	if s.availableSeats > 0 {
++		// Seat available - perform atomic decrement
++		s.availableSeats--
++		newSeatCount := s.availableSeats
++		s.seatMutex.Unlock()
++
++		// REQ-4: Broadcast update to all SSE clients after successful booking
++		s.broadcastSeatUpdate(newSeatCount)
++
++		// Return success response
++		response := BookingResponse{
++			Success:        true,
++			AvailableSeats: newSeatCount,
++		}
++		w.WriteHeader(http.StatusOK)
++		json.NewEncoder(w).Encode(response)
++
++	} else {
++		// No seats available - return conflict
++		s.seatMutex.Unlock()
++
++		response := BookingResponse{
++			Success: false,
++			Error:   "No seats available",
++		}
++		w.WriteHeader(http.StatusConflict)
++		json.NewEncoder(w).Encode(response)
++	}
++}
++
++// handleCORSPreflight handles CORS preflight requests
++func (s *SeatReservationServer) handleCORSPreflight(w http.ResponseWriter, r *http.Request) {
++	w.Header().Set("Access-Control-Allow-Origin", "*")
++	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
++	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
++	w.WriteHeader(http.StatusOK)
++}
++
++// REQ-1: main function uses only Go standard library
++func main() {
++	initialSeats := 10
++	if raw := os.Getenv("INITIAL_SEATS"); raw != "" {
++		if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 0 {
++			initialSeats = parsed
++		}
++	}
++
++	// Initialize server with configurable available seats (default 10)
++	server := NewSeatReservationServer(initialSeats)
++
++	// Register HTTP handlers
++	http.HandleFunc("/events", server.handleSSEEvents)
++	http.HandleFunc("/book", server.handleSeatBooking)
++	http.HandleFunc("/", server.handleCORSPreflight)
++
++	port := os.Getenv("PORT")
++	if port == "" {
++		port = "8080"
++	}
++
++	// Start HTTP server
++	log.Printf("🚀 High-Concurrency Seat Reservation Server starting on :%s", port)
++	log.Println("📡 SSE Endpoint: GET /events")
++	log.Println("🎫 Booking Endpoint: POST /book")
++
++	if err := http.ListenAndServe(":"+port, nil); err != nil {
++		log.Fatal("❌ Server failed to start:", err)
++	}
++}
+
+diff --git a/repository_after/frontend/index.html b/repository_after/frontend/index.html
+new file mode 100644
+index 0000000..072a57e
+--- /dev/null
++++ b/repository_after/frontend/index.html
+@@ -0,0 +1,13 @@
++<!doctype html>
++<html lang="en">
++  <head>
++    <meta charset="UTF-8" />
++    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
++    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
++    <title>frontend</title>
++  </head>
++  <body>
++    <div id="root"></div>
++    <script type="module" src="/src/main.tsx"></script>
++  </body>
++</html>
+diff --git a/repository_after/frontend/package.json b/repository_after/frontend/package.json
+new file mode 100644
+index 0000000..eded7cd
+--- /dev/null
++++ b/repository_after/frontend/package.json
+@@ -0,0 +1,30 @@
++{
++  "name": "frontend",
++  "private": true,
++  "version": "0.0.0",
++  "type": "module",
++  "scripts": {
++    "dev": "vite",
++    "build": "tsc -b && vite build",
++    "lint": "eslint .",
++    "preview": "vite preview"
++  },
++  "dependencies": {
++    "react": "^19.2.0",
++    "react-dom": "^19.2.0"
++  },
++  "devDependencies": {
++    "@eslint/js": "^9.39.1",
++    "@types/node": "^24.10.1",
++    "@types/react": "^19.2.5",
++    "@types/react-dom": "^19.2.3",
++    "@vitejs/plugin-react": "^5.1.1",
++    "eslint": "^9.39.1",
++    "eslint-plugin-react-hooks": "^7.0.1",
++    "eslint-plugin-react-refresh": "^0.4.24",
++    "globals": "^16.5.0",
++    "typescript": "~5.9.3",
++    "typescript-eslint": "^8.46.4",
++    "vite": "^7.2.4"
++  }
++}
+
+diff --git a/repository_after/frontend/src/App.css b/repository_after/frontend/src/App.css
+new file mode 100644
+index 0000000..b9d355d
+--- /dev/null
++++ b/repository_after/frontend/src/App.css
+@@ -0,0 +1,42 @@
++#root {
++  max-width: 1280px;
++  margin: 0 auto;
++  padding: 2rem;
++  text-align: center;
++}
++
++.logo {
++  height: 6em;
++  padding: 1.5em;
++  will-change: filter;
++  transition: filter 300ms;
++}
++.logo:hover {
++  filter: drop-shadow(0 0 2em #646cffaa);
++}
++.logo.react:hover {
++  filter: drop-shadow(0 0 2em #61dafbaa);
++}
++
++@keyframes logo-spin {
++  from {
++    transform: rotate(0deg);
++  }
++  to {
++    transform: rotate(360deg);
++  }
++}
++
++@media (prefers-reduced-motion: no-preference) {
++  a:nth-of-type(2) .logo {
++    animation: logo-spin infinite 20s linear;
++  }
++}
++
++.card {
++  padding: 2em;
++}
++
++.read-the-docs {
++  color: #888;
++}
+diff --git a/repository_after/frontend/src/App.tsx b/repository_after/frontend/src/App.tsx
+new file mode 100644
+index 0000000..03312ef
+--- /dev/null
++++ b/repository_after/frontend/src/App.tsx
+@@ -0,0 +1,7 @@
++import { SeatBookingDemo } from './SeatBookingDemo'
++
++function App() {
++  return <SeatBookingDemo />
++}
++
++export default App
+\ No newline at end of file
+diff --git a/repository_after/frontend/src/SeatBookingDemo.tsx b/repository_after/frontend/src/SeatBookingDemo.tsx
+new file mode 100644
+index 0000000..8611a5e
+--- /dev/null
++++ b/repository_after/frontend/src/SeatBookingDemo.tsx
+@@ -0,0 +1,196 @@
++/**
++ * Seat Booking Demo Component
++ * Demonstrates high-concurrency seat reservation with optimistic UI
++ */
++
++import React from 'react';
++import { useSeatBooking } from './hooks/useSeatBooking';
++
++const getConnectionStatusStyle = (status: 'connected' | 'disconnected' | 'reconnecting') => {
++  const baseStyle = {
++    width: '12px',
++    height: '12px',
++    borderRadius: '50%',
++    display: 'inline-block',
++    marginRight: '8px',
++  };
++
++  switch (status) {
++    case 'connected':
++      return { ...baseStyle, backgroundColor: '#28a745' };
++    case 'reconnecting':
++      return { ...baseStyle, backgroundColor: '#ffc107' };
++    case 'disconnected':
++      return { ...baseStyle, backgroundColor: '#dc3545' };
++    default:
++      return { ...baseStyle, backgroundColor: '#6c757d' };
++  }
++};
++
++export const SeatBookingDemo: React.FC = () => {
++  const { 
++    availableSeats, 
++    isLoading, 
++    error, 
++    connectionStatus, 
++    bookSeat 
++  } = useSeatBooking();
++
++  const isBookingDisabled = isLoading || availableSeats === 0 || connectionStatus === 'disconnected';
++
++  return (
++    <div style={{ 
++      padding: '32px', 
++      fontFamily: 'system-ui, -apple-system, sans-serif',
++      maxWidth: '600px',
++      margin: '0 auto',
++      backgroundColor: '#f8f9fa',
++      borderRadius: '12px',
++      boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
++    }}>
++      <h1 style={{ 
++        color: '#2c3e50',
++        marginBottom: '24px',
++        textAlign: 'center'
++      }}>
++        🎫 High-Concurrency Seat Reservation
++      </h1>
++      
++      {/* Seat Counter Display */}
++      <div style={{ 
++        padding: '20px',
++        backgroundColor: 'white',
++        borderRadius: '8px',
++        marginBottom: '20px',
++        border: '2px solid #e9ecef'
++      }}>
++        <h2 style={{ 
++          margin: '0 0 16px 0',
++          color: '#495057',
++          fontSize: '24px'
++        }}>
++          Available Seats: <span style={{ color: '#007bff' }}>{availableSeats}</span>
++        </h2>
++        
++        {/* Connection Status Indicator */}
++        <div style={{ 
++          display: 'flex', 
++          alignItems: 'center', 
++          marginBottom: '12px',
++          fontSize: '14px',
++          color: '#6c757d'
++        }}>
++          <span style={getConnectionStatusStyle(connectionStatus)}></span>
++          <span>Real-time Connection: </span>
++          <strong style={{ 
++            marginLeft: '4px',
++            textTransform: 'capitalize',
++            color: connectionStatus === 'connected' ? '#28a745' : '#dc3545'
++          }}>
++            {connectionStatus}
++          </strong>
++        </div>
++
++        {/* Loading State */}
++        {isLoading && (
++          <div style={{ 
++            color: '#007bff',
++            fontSize: '14px',
++            fontWeight: '500',
++            marginBottom: '8px'
++          }}>
++            ⏳ Processing optimistic booking...
++          </div>
++        )}
++
++        {/* Error Display */}
++        {error && (
++          <div style={{ 
++            color: '#dc3545',
++            fontSize: '14px',
++            padding: '8px 12px',
++            backgroundColor: '#f8d7da',
++            border: '1px solid #f5c6cb',
++            borderRadius: '4px',
++            marginBottom: '8px'
++          }}>
++            ❌ {error}
++          </div>
++        )}
++      </div>
++      
++      {/* Booking Button */}
++      <button 
++        onClick={bookSeat}
++        disabled={isBookingDisabled}
++        style={{
++          width: '100%',
++          padding: '16px 24px',
++          fontSize: '18px',
++          fontWeight: '600',
++          backgroundColor: !isBookingDisabled ? '#007bff' : '#6c757d',
++          color: 'white',
++          border: 'none',
++          borderRadius: '8px',
++          cursor: !isBookingDisabled ? 'pointer' : 'not-allowed',
++          transition: 'all 0.2s ease',
++          marginBottom: '24px'
++        }}
++      >
++        {availableSeats > 0 
++          ? '🎫 Book Seat (Optimistic UI)' 
++          : '❌ No Seats Available'
++        }
++      </button>
++      
++      {/* Feature Showcase */}
++      <div style={{ 
++        padding: '20px',
++        backgroundColor: 'white',
++        borderRadius: '8px',
++        border: '2px solid #e9ecef'
++      }}>
++        <h3 style={{ 
++          margin: '0 0 16px 0',
++          color: '#495057',
++          fontSize: '18px'
++        }}>
++          🚀 System Features Demonstrated:
++        </h3>
++        
++        <ul style={{ 
++          margin: 0, 
++          paddingLeft: '20px',
++          lineHeight: '1.6',
++          color: '#6c757d'
++        }}>
++          <li><strong>Optimistic UI:</strong> Immediate seat count decrement for instant feedback</li>
++          <li><strong>Automatic Rollback:</strong> State reverts on booking failures or conflicts</li>
++          <li><strong>Server Authority:</strong> Real-time updates override local state via SSE</li>
++          <li><strong>Concurrency Protection:</strong> Thread-safe operations with mutex locking</li>
++          <li><strong>Connection Monitoring:</strong> Live status of real-time data stream</li>
++          <li><strong>Error Handling:</strong> Graceful degradation with descriptive messages</li>
++        </ul>
++      </div>
++
++      {/* Testing Instructions */}
++      <div style={{ 
++        marginTop: '20px',
++        padding: '16px',
++        backgroundColor: '#e7f3ff',
++        border: '1px solid #b8daff',
++        borderRadius: '6px',
++        fontSize: '14px',
++        color: '#004085'
++      }}>
++        <strong>🧪 Testing Instructions:</strong>
++        <ol style={{ margin: '8px 0 0 0', paddingLeft: '20px' }}>
++          <li>Open multiple browser tabs to test real-time synchronization</li>
++          <li>Click "Book Seat" to observe optimistic UI behavior</li>
++          <li>Watch automatic rollback when booking conflicts occur</li>
++          <li>Monitor connection status during network interruptions</li>
++        </ol>
++      </div>
++    </div>
++  );
++};
+\ No newline at end of file
+
+diff --git a/repository_after/frontend/src/hooks/useSeatBooking.ts b/repository_after/frontend/src/hooks/useSeatBooking.ts
+new file mode 100644
+index 0000000..7478628
+--- /dev/null
++++ b/repository_after/frontend/src/hooks/useSeatBooking.ts
+@@ -0,0 +1,187 @@
++/**
++ * High-Concurrency Seat Reservation Frontend Hook
++ * Principal Full Stack Engineer Implementation
++ * 
++ * This custom React hook implements optimistic UI with automatic rollback for seat bookings:
++ * - Immediate local state updates for responsiveness (Optimistic UI)
++ * - Automatic rollback on booking failures or network errors
++ * - Real-time synchronization via Server-Sent Events (Server Authority)
++ * - Connection status management and error handling
++ *
++ * REQ-1: Uses only native fetch and EventSource (no external libraries)
++ * REQ-5: useRef tracks previous state for rollback purposes
++ * REQ-6: State decrements before fetch promise resolves (Optimistic)
++ * REQ-7: Automatic rollback on fetch failures or non-200 responses
++ * REQ-8: useEffect manages EventSource connection lifecycle
++ */
++
++import { useState, useEffect, useRef, useCallback } from 'react';
++
++// Type definitions for seat booking state management
++interface SeatBookingState {
++  availableSeats: number;
++  isLoading: boolean;
++  error: string | null;
++}
++
++interface UseSeatBookingReturn {
++  availableSeats: number;
++  isLoading: boolean;
++  error: string | null;
++  connectionStatus: 'connected' | 'disconnected' | 'reconnecting';
++  bookSeat: () => Promise<void>;
++}
++
++/**
++ * Custom React hook for managing seat reservations with optimistic UI
++ * 
++ * @param serverUrl - Base URL of the seat reservation server
++ * @returns Hook interface with seat state and booking function
++ */
++export const useSeatBooking = (
++  serverUrl: string = 'http://localhost:8080'
++): UseSeatBookingReturn => {
++  
++  // REQ-5: useState manages current seat booking state
++  const [seatState, setSeatState] = useState<SeatBookingState>({
++    availableSeats: 0,
++    isLoading: false,
++    error: null,
++  });
++
++  // Connection status for SSE monitoring
++  const [connectionStatus, setConnectionStatus] = useState<
++    'connected' | 'disconnected' | 'reconnecting'
++  >('disconnected');
++
++  // REQ-5: useRef tracks previous seat count for rollback functionality
++  const previousSeatCountRef = useRef<number>(0);
++  const eventSourceRef = useRef<EventSource | null>(null);
++
++  // Update previous seat count whenever current count changes
++  useEffect(() => {
++    previousSeatCountRef.current = seatState.availableSeats;
++  }, [seatState.availableSeats]);
++
++  // REQ-8: useEffect manages EventSource connection lifecycle
++  useEffect(() => {
++    // REQ-1: Create EventSource using native browser API (no external libraries)
++    const eventSource = new EventSource(`${serverUrl}/events`);
++    eventSourceRef.current = eventSource;
++    setConnectionStatus('reconnecting');
++
++    // Handle successful SSE connection
++    eventSource.onopen = () => {
++      setConnectionStatus('connected');
++      setSeatState(prev => ({ ...prev, error: null }));
++    };
++
++    // Handle incoming seat count updates from server
++    eventSource.onmessage = (event) => {
++      const newSeatCount = parseInt(event.data, 10);
++      
++      if (!isNaN(newSeatCount)) {
++        // Server Authority: Override local state with server data
++        setSeatState(prev => ({
++          ...prev,
++          availableSeats: newSeatCount,
++          error: null,
++        }));
++      }
++    };
++
++    // Handle SSE connection errors
++    eventSource.onerror = () => {
++      setConnectionStatus('disconnected');
++      setSeatState(prev => ({
++        ...prev,
++        error: 'Real-time connection lost',
++      }));
++    };
++
++    // REQ-8: Cleanup EventSource connection on component unmount
++    return () => {
++      eventSource.close();
++      eventSourceRef.current = null;
++      setConnectionStatus('disconnected');
++    };
++  }, [serverUrl]);
++
++  /**
++   * REQ-6 & REQ-7: Optimistic seat booking with automatic rollback
++   * 
++   * Implementation strategy:
++   * 1. Immediately decrement local state (Optimistic UI)
++   * 2. Send booking request to server
++   * 3. On success: Keep optimistic state
++   * 4. On failure: Rollback to previous state
++   */
++  const bookSeat = useCallback(async (): Promise<void> => {
++    // Prevent multiple concurrent bookings
++    if (seatState.isLoading || seatState.availableSeats <= 0) {
++      return;
++    }
++
++    // Store current state for potential rollback
++    const currentSeatCount = seatState.availableSeats;
++    
++    // REQ-6: Optimistic UI - decrement state BEFORE fetch resolves
++    setSeatState(prev => ({
++      ...prev,
++      availableSeats: Math.max(0, prev.availableSeats - 1),
++      isLoading: true,
++      error: null,
++    }));
++
++    try {
++      // REQ-1: Use native fetch API (no external libraries like axios)
++      const response = await fetch(`${serverUrl}/book`, {
++        method: 'POST',
++        headers: {
++          'Content-Type': 'application/json',
++        },
++      });
++
++      // REQ-7: Handle non-200 responses with automatic rollback
++      if (!response.ok) {
++        // Rollback optimistic state to previous value
++        setSeatState(prev => ({
++          ...prev,
++          availableSeats: currentSeatCount,
++          isLoading: false,
++          error: response.status === 409 
++            ? 'No seats available - booking conflict' 
++            : `Booking failed with status ${response.status}`,
++        }));
++        return;
++      }
++
++      // Success: Parse response and maintain optimistic state
++      await response.json();
++      
++      setSeatState(prev => ({
++        ...prev,
++        isLoading: false,
++        error: null,
++      }));
++
++    } catch (networkError) {
++      // REQ-7: Handle network errors with automatic rollback
++      setSeatState(prev => ({
++        ...prev,
++        availableSeats: currentSeatCount, // Rollback to previous value
++        isLoading: false,
++        error: 'Network error - please check your connection',
++      }));
++    }
++  }, [serverUrl, seatState.availableSeats, seatState.isLoading]);
++
++  // Return hook interface
++  return {
++    availableSeats: seatState.availableSeats,
++    isLoading: seatState.isLoading,
++    error: seatState.error,
++    connectionStatus,
++    bookSeat,
++  };
++};
+\ No newline at end of file
+diff --git a/repository_after/frontend/src/index.css b/repository_after/frontend/src/index.css
+new file mode 100644
+index 0000000..08a3ac9
+--- /dev/null
++++ b/repository_after/frontend/src/index.css
+@@ -0,0 +1,68 @@
++:root {
++  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
++  line-height: 1.5;
++  font-weight: 400;
++
++  color-scheme: light dark;
++  color: rgba(255, 255, 255, 0.87);
++  background-color: #242424;
++
++  font-synthesis: none;
++  text-rendering: optimizeLegibility;
++  -webkit-font-smoothing: antialiased;
++  -moz-osx-font-smoothing: grayscale;
++}
++
++a {
++  font-weight: 500;
++  color: #646cff;
++  text-decoration: inherit;
++}
++a:hover {
++  color: #535bf2;
++}
++
++body {
++  margin: 0;
++  display: flex;
++  place-items: center;
++  min-width: 320px;
++  min-height: 100vh;
++}
++
++h1 {
++  font-size: 3.2em;
++  line-height: 1.1;
++}
++
++button {
++  border-radius: 8px;
++  border: 1px solid transparent;
++  padding: 0.6em 1.2em;
++  font-size: 1em;
++  font-weight: 500;
++  font-family: inherit;
++  background-color: #1a1a1a;
++  cursor: pointer;
++  transition: border-color 0.25s;
++}
++button:hover {
++  border-color: #646cff;
++}
++button:focus,
++button:focus-visible {
++  outline: 4px auto -webkit-focus-ring-color;
++}
++
++@media (prefers-color-scheme: light) {
++  :root {
++    color: #213547;
++    background-color: #ffffff;
++  }
++  a:hover {
++    color: #747bff;
++  }
++  button {
++    background-color: #f9f9f9;
++  }
++}
+diff --git a/repository_after/frontend/src/main.tsx b/repository_after/frontend/src/main.tsx
+new file mode 100644
+index 0000000..bef5202
+--- /dev/null
++++ b/repository_after/frontend/src/main.tsx
+@@ -0,0 +1,10 @@
++import { StrictMode } from 'react'
++import { createRoot } from 'react-dom/client'
++import './index.css'
++import App from './App.tsx'
++
++createRoot(document.getElementById('root')!).render(
++  <StrictMode>
++    <App />
++  </StrictMode>,
++)
+diff --git a/repository_after/frontend/tsconfig.app.json b/repository_after/frontend/tsconfig.app.json
+new file mode 100644
+index 0000000..a9b5a59
+--- /dev/null
++++ b/repository_after/frontend/tsconfig.app.json
+@@ -0,0 +1,28 @@
++{
++  "compilerOptions": {
++    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
++    "target": "ES2022",
++    "useDefineForClassFields": true,
++    "lib": ["ES2022", "DOM", "DOM.Iterable"],
++    "module": "ESNext",
++    "types": ["vite/client"],
++    "skipLibCheck": true,
++
++    /* Bundler mode */
++    "moduleResolution": "bundler",
++    "allowImportingTsExtensions": true,
++    "verbatimModuleSyntax": true,
++    "moduleDetection": "force",
++    "noEmit": true,
++    "jsx": "react-jsx",
++
++    /* Linting */
++    "strict": true,
++    "noUnusedLocals": true,
++    "noUnusedParameters": true,
++    "erasableSyntaxOnly": true,
++    "noFallthroughCasesInSwitch": true,
++    "noUncheckedSideEffectImports": true
++  },
++  "include": ["src"]
++}
+diff --git a/repository_after/frontend/tsconfig.json b/repository_after/frontend/tsconfig.json
+new file mode 100644
+index 0000000..1ffef60
+--- /dev/null
++++ b/repository_after/frontend/tsconfig.json
+@@ -0,0 +1,7 @@
++{
++  "files": [],
++  "references": [
++    { "path": "./tsconfig.app.json" },
++    { "path": "./tsconfig.node.json" }
++  ]
++}
+diff --git a/repository_after/frontend/tsconfig.node.json b/repository_after/frontend/tsconfig.node.json
+new file mode 100644
+index 0000000..8a67f62
+--- /dev/null
++++ b/repository_after/frontend/tsconfig.node.json
+@@ -0,0 +1,26 @@
++{
++  "compilerOptions": {
++    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
++    "target": "ES2023",
++    "lib": ["ES2023"],
++    "module": "ESNext",
++    "types": ["node"],
++    "skipLibCheck": true,
++
++    /* Bundler mode */
++    "moduleResolution": "bundler",
++    "allowImportingTsExtensions": true,
++    "verbatimModuleSyntax": true,
++    "moduleDetection": "force",
++    "noEmit": true,
++
++    /* Linting */
++    "strict": true,
++    "noUnusedLocals": true,
++    "noUnusedParameters": true,
++    "erasableSyntaxOnly": true,
++    "noFallthroughCasesInSwitch": true,
++    "noUncheckedSideEffectImports": true
++  },
++  "include": ["vite.config.ts"]
++}
+diff --git a/repository_after/frontend/vite.config.ts b/repository_after/frontend/vite.config.ts
+new file mode 100644
+index 0000000..8b0f57b
+--- /dev/null
++++ b/repository_after/frontend/vite.config.ts
+@@ -0,0 +1,7 @@
++import { defineConfig } from 'vite'
++import react from '@vitejs/plugin-react'
++
++// https://vite.dev/config/
++export default defineConfig({
++  plugins: [react()],
++})
