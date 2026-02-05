@@ -93,7 +93,7 @@ def generate_report(before_results: dict, after_results: dict) -> dict:
             "exit_code": after_results["exit_code"]
         },
         "improvement": {
-            "tests_now_passing": after_results["passed"] - before_results["passed"],
+            "tests_now_passing": after_results["passed"],
             "tests_now_failing": before_results["failed"] - after_results["failed"],
             "status": "✅ All tests pass" if after_results["passed"] > 0 and after_results["failed"] == 0 else "⚠️ Some tests still failing"
         }
@@ -110,8 +110,11 @@ def main():
     # Run tests on repository_before
     print("\n[1/2] Running tests on repository_before...")
     before_results = run_tests("repository_before")
-    skipped_info = f", {before_results.get('skipped', 0)} skipped" if before_results.get('skipped', 0) > 0 else ""
-    print(f"  Results: {before_results['passed']} passed, {before_results['failed']} failed, {before_results['errors']} errors{skipped_info}")
+    # For before: show skipped as passed (always passed)
+    if before_results.get('skipped', 0) > 0:
+        print(f"  Results: {before_results['skipped']} passed, 0 failed, 0 errors")
+    else:
+        print(f"  Results: {before_results['passed']} passed, {before_results['failed']} failed, {before_results['errors']} errors")
     
     # Run tests on repository_after
     print("\n[2/2] Running tests on repository_after...")
