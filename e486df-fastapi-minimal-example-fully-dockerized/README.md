@@ -1,6 +1,6 @@
 ### Test for Before
 ```bash
-docker compose run --rm -e PYTHONPATH=/app/repository_before:/app app /bin/bash -c "pytest -v tests/test_app.py || true"
+docker compose run --rm -e "PYTHONPATH=/app/repository_before:/app" app /bin/bash -c "pytest -v tests/test_app.py || true"
 ```
 
 ### Test for After
