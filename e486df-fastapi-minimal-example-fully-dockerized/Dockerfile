@@ -17,6 +17,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY repository_after/app.py .
 
+# Create evaluation/reports directory and ensure it's writable by anyone
+# This prevents permission errors in CI environments when mounting volumes
+RUN mkdir -p /app/evaluation/reports && chmod -R 777 /app/evaluation
+
 # Create non-root user for security
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
