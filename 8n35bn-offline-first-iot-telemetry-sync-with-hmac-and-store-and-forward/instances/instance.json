@@ -16,10 +16,12 @@
                 "should persist events to disk before sending",
                 "should aggregate multiple events into single HTTP request",
                 "should handle connection errors gracefully without crashing",
-                "should handle ECONNRESET errors gracefully",
-                "should handle 500 errors gracefully and retry",
+                "should handle ECONNRESET errors gracefully and continue WAL appends and retries",
+                "should handle 500 errors gracefully, continue WAL appends, and retry",
                 "should continue generating events while sync loop encounters persistent network failures",
-                "should eventually align server total volume with client total volume after transient failures"
+                "should eventually align server total volume with client total volume after transient failures (mock server)",
+                "should align server total volume with client total volume using real server idempotency",
+                "should safely handle concurrent appends while reading batches"
             ],
             "PASS_TO_PASS": []
         }
