@@ -1,0 +1,11 @@
+{
+            "instance_id": "ZGISLN",
+            "problem_statement": "Traditional personal finance tools often rely on static lists and tables that make it difficult to understand how money flows between income, expenses, and savings. The objective of this project is to build a React-based Personal Finance Flow Simulator that uses an interactive, visual workspace to model financial behavior as connected flows. By allowing users to drag, connect, and configure financial nodes, the system provides real-time feedback on balances, surpluses, and deficits, helping users better understand and experiment with their financial decisions.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/zgisln-personal-finance-flow-simulator",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
