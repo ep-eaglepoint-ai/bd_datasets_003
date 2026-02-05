@@ -37,9 +37,11 @@ const STATUS_ORDER: Record<NotificationState["status"], number> = {
   ACKED: 3,
 };
 
+
 function canTransition(current: NotificationState["status"], next: NotificationState["status"]): boolean {
   return STATUS_ORDER[next] > STATUS_ORDER[current];
 }
+
 
 export function processNotificationEvents(events: NotificationEvent[]): {
   states: Record<string, NotificationState>;
@@ -56,85 +58,77 @@ export function processNotificationEvents(events: NotificationEvent[]): {
     eventsProcessed: [],
   };
 
-  function addRejectedCount(reason: string): void {
-    report.rejected[reason] = (report.rejected[reason] || 0) + 1;
-  }
+
+  const handleRejected = (entry: ProcessingReport['eventsProcessed'][number], reason: string, label: string) => {
+    report.rejected[label] = (report.rejected[label] || 0) + 1;
+    entry.outcome = "rejected";
+    entry.reason = reason;
+    report.eventsProcessed.push(entry);
+  };
 
   events.forEach((ev, index) => {
-   
     const entry: ProcessingReport['eventsProcessed'][number] = {
       eventIndex: index,
       eventId: ev.eventId,
       notificationId: ev.notificationId,
       type: ev.type,
       timestamp: ev.timestamp,
-      outcome: "rejected",
+      outcome: "applied", 
     };
 
-    
-    if (ev.notificationId && ev.notificationId.trim() !== "") {
-      if (!states[ev.notificationId]) {
-        states[ev.notificationId] = {
-          status: "NONE",
-          lastSeenAt: ev.timestamp,
-          ackCount: 0,
-        };
-      } else if (ev.timestamp > states[ev.notificationId].lastSeenAt) {
-        states[ev.notificationId].lastSeenAt = ev.timestamp;
-      }
 
-     
-      if (appliedEventIds.has(ev.eventId)) {
-        report.duplicates++;
-        entry.outcome = "duplicate";
-        report.eventsProcessed.push(entry);
-        return;
-      }
-
-   
-      if (!["SENT", "DELIVERED", "ACKED"].includes(ev.type)) {
-        addRejectedCount("invalid_event_type");
-        entry.reason = "invalid event type";
-        report.eventsProcessed.push(entry);
-        return;
-      }
-
-      const state = states[ev.notificationId];
-
-     
-      if (state.status === "ACKED") {
-        addRejectedCount("terminal_state_ACKED");
-        entry.reason = "already ACKED (terminal)";
-        report.eventsProcessed.push(entry);
-        return;
-      }
-
-   
-      if (!canTransition(state.status, ev.type)) {
-        const reason = `invalid_transition_${state.status}_to_${ev.type}`;
-        addRejectedCount(reason);
-        entry.reason = `cannot transition ${state.status} → ${ev.type}`;
-        report.eventsProcessed.push(entry);
-        return;
-      }
-
-     
-      appliedEventIds.add(ev.eventId);
-      report.applied++;
-
-      if (ev.type === "ACKED") {
-        state.ackCount += 1;
-      }
-
-      state.status = ev.type;
-
-      entry.outcome = "applied";
-      report.eventsProcessed.push(entry);
-    } else {
-      addRejectedCount("missing_or_empty_notificationId");
-      entry.reason = "missing or empty notificationId";
-      report.eventsProcessed.push(entry);
+    if (!ev.notificationId || ev.notificationId.trim() === "") {
+      return handleRejected(entry, "missing or empty notificationId", "missing_or_empty_notificationId");
     }
+
+
+    if (appliedEventIds.has(ev.eventId)) {
+      report.duplicates++;
+      entry.outcome = "duplicate";
+      report.eventsProcessed.push(entry);
+      return;
+    }
+
+ 
+    if (!states[ev.notificationId]) {
+      states[ev.notificationId] = {
+        status: "NONE",
+        lastSeenAt: 0,
+        ackCount: 0,
+      };
+    }
+
+    const state = states[ev.notificationId];
+
+
+    if (!["SENT", "DELIVERED", "ACKED"].includes(ev.type)) {
+      return handleRejected(entry, "invalid event type", "invalid_event_type");
+    }
+
+
+    if (state.status === "ACKED") {
+      return handleRejected(entry, "already ACKED (terminal)", "terminal_state_ACKED");
+    }
+
+ 
+    if (!canTransition(state.status, ev.type)) {
+      const label = `invalid_transition_${state.status}_to_${ev.type}`;
+      return handleRejected(entry, `cannot transition ${state.status} → ${ev.type}`, label);
+    }
+
+
+    appliedEventIds.add(ev.eventId);
+    report.applied++;
+
+    if (ev.type === "ACKED") {
+      state.ackCount += 1;
+    }
+
+    state.status = ev.type;
+    state.lastSeenAt = Math.max(state.lastSeenAt, ev.timestamp);
+    
+    entry.outcome = "applied";
+    report.eventsProcessed.push(entry);
   });
 
   return { states, report };
