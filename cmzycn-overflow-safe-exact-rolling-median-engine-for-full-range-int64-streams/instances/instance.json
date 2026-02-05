@@ -1,0 +1,11 @@
+{
+            "instance_id": "CMZYCN",
+            "problem_statement": "Engineer a robust Linux utility to compute the exact rolling median of a signed 64-bit integer stream (int64_t) via stdin. The system must achieve O(log n) update complexity using a Dual-Heap (Min-Max) architecture. A critical "Gold Gap" requirement is the elimination of Undefined Behavior (UB) during middle-element summation; the implementation must handle cases where a + b exceeds 2^{63}-1 without precision loss or overflow. Given the "Exact Correctness" constraint, floating-point arithmetic is prohibited. Medians for even-sized sets must be output as exact rational representations (e.g., x.5 or n/d). The engine must process 10^7+ integers in a single pass, maintaining strict memory efficiency and silently discarding malformed input without interrupting the stream.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/cmzycn-overflow-safe-exact-rolling-median-engine-for-full-range-int64-streams",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
