@@ -61,20 +61,29 @@ I implemented stable ordering using a strict versioning sequence.
 - **Concurrency Control**: verified that concurrent commands on the same aggregate fail fast if they try to write to the same version.
 - **Reference**: [Optimistic Locking with JPA/JDBC](https://vladmihalcea.com/optimistic-locking-version-property/)
 
-## 8. Eliminate Race Conditions in Projections
+## 8. Ensure Events Contain Complete Delta Information
+
+Events must carry all the data needed for projections to update read models correctly.
+
+- **Problem**: Initially, `ItemRemovedEvent` only contained `orderId` and `productId`, but the projection needed to decrement `total_amount` which requires knowing the price and quantity.
+- **Solution**: Enhanced `ItemRemovedEvent` to include `quantity` and `price` fields. The `Order.removeItem()` method now captures these values before removal.
+- **Impact**: The `ProjectionHandler` can now properly decrement both `item_count` and `total_amount` when items are removed, maintaining read model accuracy.
+- **Reference**: [Event Design Best Practices](https://www.eventstore.com/blog/event-design-best-practices)
+
+## 9. Eliminate Race Conditions in Projections
 
 - **Async Execution**: Configured a `ThreadPoolTaskExecutor` with a `corePoolSize(1)` in `AsyncConfig`.
 - **Why**: Standard async pools might process Event A (Version 1) and Event B (Version 2) in parallel or out of order. Restricting to a single thread (or partitioning by ID in a real distributed system) guarantees FIFO processing.
 - **Reference**: [Spring @Async Guide](https://www.baeldung.com/spring-async)
 
-## 9. Guarantee Idempotency
+## 10. Guarantee Idempotency
 
 Implemented a check at the start of command processing. If a `commandId` exists in `processed_commands`, the request is rejected immediately.
 
 - **Benefit**: Retries from the client/broker don't corrupt the state or trigger duplicate side effects.
 - **Reference**: [Idempotency Key Pattern](https://stripe.com/blog/idempotency)
 
-## 10. Result: Measurable Performance Gains + Predictable Signals
+## 11. Result: Measurable Performance Gains + Predictable Signals
 
 The solution successfully handles:
 

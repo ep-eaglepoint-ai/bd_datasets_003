@@ -31,8 +31,8 @@ public class ProjectionHandler {
             );
         } else if (event instanceof ItemRemovedEvent e) {
             jdbcTemplate.update(
-                "UPDATE order_projections SET item_count = item_count - 1, updated_at = ? WHERE id = ?",
-                Timestamp.from(Instant.now()), e.orderId
+                "UPDATE order_projections SET item_count = item_count - 1, total_amount = total_amount - ?, updated_at = ? WHERE id = ?",
+                e.price.multiply(BigDecimal.valueOf(e.quantity)), Timestamp.from(Instant.now()), e.orderId
             );
         } else if (event instanceof OrderSubmittedEvent e) {
             jdbcTemplate.update(

@@ -49,8 +49,9 @@ public class Order {
         if (!items.containsKey(productId)) {
             throw new IllegalArgumentException("Product not found in order: " + productId);
         }
+        OrderItem item = items.get(productId);
         items.remove(productId);
-        pendingEvents.add(new ItemRemovedEvent(id, productId));
+        pendingEvents.add(new ItemRemovedEvent(id, productId, item.getQuantity(), item.getPrice()));
     }
 
     public void submit(String shippingAddress) {
