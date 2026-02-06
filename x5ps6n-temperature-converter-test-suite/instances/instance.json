@@ -1,0 +1,11 @@
+{
+            "instance_id": "X5PS6N",
+            "problem_statement": "Write a comprehensive Jest/React Testing Library test suite for a React temperature converter component that converts between Celsius and Fahrenheit. The test suite must verify mathematical accuracy, input handling, and bidirectional synchronization between the two input fields.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/x5ps6n-temperature-converter-test-suite",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
