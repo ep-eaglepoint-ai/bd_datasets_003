@@ -1,0 +1,13 @@
+{
+            "instance_id": "T9TCB2",
+            "problem_statement": "A team built a 100MB container filesystem supporting hierarchical directories, inode-based storage with block pointers, and atomic operations (create, read, write, delete). However, rushed development introduced serious flaws: allocated blocks aren't consistently persisted in inodes, directory traversal treats paths as flat namespaces instead of hierarchical, and delete operations leak storage by failing to clear bitmap state fully. These defects cause silent data corruption, gradual space loss, and inconsistent state during normal use.
+
+Before deployment, the filesystem must be validated against core invariants through precise, testable specifications that expose failure modes and enforce: correct inode pointer management, real hierarchical path resolution, and atomic multi-block operations. The team needs automated tests distinguishing superficial implementations from production-quality designs.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/t9tcb2-hierarchical-block-based-filesystem-with-atomic-operations",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
