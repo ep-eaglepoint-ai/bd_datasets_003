@@ -1,0 +1,36 @@
+services:
+  test-before:
+    build: .
+    volumes:
+      - .:/app
+    environment:
+      - TARGET_REPO=repository_before
+    # Compile parser (if possible), then test runner, then run
+    command: >
+      bash -c "
+      if [ ! -f repository_before/CMakeLists.txt ]; then
+        echo 'No CMakeLists.txt in repository_before. Skipping build.';
+      else
+        cd repository_before && mkdir -p build && cd build && cmake .. && make;
+      fi &&
+      cd /app && g++ -std=c++17 tests/test_parser.cpp -o test_runner && ./test_runner || true
+      "
+
+  test-after:
+    build: .
+    volumes:
+      - .:/app
+    environment:
+      - TARGET_REPO=repository_after
+    command: >
+      bash -c "
+      cd repository_after && mkdir -p build && cd build && cmake .. && make &&
+      cd /app && g++ -std=c++17 tests/test_parser.cpp -o test_runner && ./test_runner || true
+      "
+
+  evaluation:
+    build: .
+    volumes:
+      - .:/app
+    command: >
+      bash -c "g++ -std=c++17 evaluation/evaluation.cpp -o evaluation_runner && ./evaluation_runner || true"
