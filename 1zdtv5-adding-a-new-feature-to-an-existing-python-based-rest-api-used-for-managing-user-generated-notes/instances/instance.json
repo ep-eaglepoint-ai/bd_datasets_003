@@ -1,0 +1,11 @@
+{
+            "instance_id": "1ZDTV5",
+            "problem_statement": "Users have reported difficulty tracking changes made to their notes over time, especially when content is frequently edited. Once a note is updated, previous content is permanently lost, making it impossible to review or recover earlier versions. This limitation reduces trust in the system for long-form or iterative note-taking. The issue becomes more apparent as users rely on notes for important or evolving information.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/1zdtv5-adding-a-new-feature-to-an-existing-python-based-rest-api-used-for-managing-user-generated-notes",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
