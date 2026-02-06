@@ -1,0 +1,11 @@
+{
+            "instance_id": "HB3NTF",
+            "problem_statement": "A task management frontend built with React and TypeScript includes four core components: a login form with client-side validation and async submission, a task creation/editing form with field validation and status/priority dropdowns, a search filter with debounced input and filter dropdowns, and a task list with delete confirmation and status transition buttons. All components are fully functional but have no test coverage, so regressions in validation logic, async error handling, accessibility attributes, or user interaction flows go undetected. The components live in components/LoginForm.tsx, components/TaskForm.tsx, components/SearchFilter.tsx, and components/TaskList.tsx, with dependencies defined in package.json.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/hb3ntf-react-task-manager-components-jest-rtl-test-suite",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
