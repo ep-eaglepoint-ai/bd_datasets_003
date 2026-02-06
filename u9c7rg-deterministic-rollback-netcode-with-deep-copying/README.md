@@ -1,11 +1,15 @@
 # U9C7RG - Deterministic Rollback Netcode with Deep Copying
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Commands
 
-    ## After Test Docker Command
-    <docker after command here>
+#### 1. Test the Solution
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+```bash
+docker-compose run test-after
+```
+
+#### 2. Generate Evaluation Report
+
+```bash
+docker-compose run evaluation
+```

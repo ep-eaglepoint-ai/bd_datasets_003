@@ -1,11 +1,22 @@
 {
             "instance_id": "U9C7RG",
             "problem_statement": "n fast-paced multiplayer games, inputs arrive late. To maintain a responsive game, the server cannot wait; it predicts forward. When the real input arrives (e.g., "Player jumped 5 frames ago"), the server must "Rewind time," change the past, and "Replay" history. The Memory Trap here is Pointer Aliasing. If the GameState contains pointers (e.g., []*Entity), a naive model will copy the slice header but not the underlying structs. When the rollback logic modifies the entity's position during re-simulation, it accidentally overwrites the saved history in the ring buffer, destroying the integrity of the timeline. The model must implement a true Deep Copy or use value semantics strictly.",
-            "base_commit": "repository_before/",
+            "base_commit": null,
             "test_patch": "tests/",
             "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/u9c7rg-deterministic-rollback-netcode-with-deep-copying",
             "environment_setup": "Dockerfile",
-            "FAIL_TO_PASS": [],
+            "FAIL_TO_PASS": [
+                "TestEntityCreation",
+                "TestSimulationCreation",
+                "TestBasicTick",
+                "TestEulerIntegration",
+                "TestAABBCollisionDetection",
+                "TestLateJumpInput",
+                "TestDeepCopyPreservesHistory",
+                "TestRingBufferWrap",
+                "TestInputApplication",
+                "TestMultipleEntities"
+            ],
             "PASS_TO_PASS": []
         }
         
