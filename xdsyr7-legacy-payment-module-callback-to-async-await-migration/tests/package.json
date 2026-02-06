@@ -1,0 +1,12 @@
+{
+  "name": "payment-tests",
+  "version": "1.0.0",
+  "scripts": {
+    "test": "jest --forceExit"
+  },
+  "dependencies": {
+    "jest": "^29.7.0",
+    "mysql": "^2.18.1",
+    "pg": "^8.11.3"
+  }
+}
