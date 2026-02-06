@@ -1,6 +1,9 @@
 services:
   app:
     build: .
-    volumes:
-      - .:/app
     working_dir: /app
+    volumes:
+      - node_modules_cache:/app/node_modules
+
+volumes:
+  node_modules_cache:
