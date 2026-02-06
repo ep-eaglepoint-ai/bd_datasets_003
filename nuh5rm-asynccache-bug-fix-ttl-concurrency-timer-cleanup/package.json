@@ -1,0 +1,15 @@
+{
+  "name": "asynccache-evaluation",
+  "version": "1.0.0",
+  "description": "AsyncCache evaluation tests",
+  "main": "index.js",
+  "scripts": {
+    "test:before": "node test_runner.js repository_before/AysncCache.js",
+    "test:after": "node test_runner.js repository_after/AsyncCache.js",
+    "test:report": "node evaluation/run_evaluation.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {}
+}

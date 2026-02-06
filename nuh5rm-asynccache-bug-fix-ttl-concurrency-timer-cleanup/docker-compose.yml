@@ -1,0 +1,8 @@
+# Docker Compose file for AsyncCache Evaluation
+
+services:
+  app:
+    build: .
+    volumes:
+      - .:/repo
+    working_dir: /repo
