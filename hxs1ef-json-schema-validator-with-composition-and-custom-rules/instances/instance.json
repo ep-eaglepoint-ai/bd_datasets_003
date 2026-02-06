@@ -1,0 +1,11 @@
+{
+            "instance_id": "HXS1EF",
+            "problem_statement": "An internal API gateway needs a JSON schema validation library to validate incoming request payloads before routing to downstream services. The current validator only supports basic type checking for strings and numbers but lacks support for nested structures, array validation, required field enforcement, type-specific constraints, schema composition, default value injection, and custom validation rules. Payloads with deeply nested objects and arrays pass through unvalidated, and there is no way to combine multiple schemas or register domain-specific validation logic. Core logic is in validator.js and package.json lists no external dependencies.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/hxs1ef-json-schema-validator-with-composition-and-custom-rules",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
