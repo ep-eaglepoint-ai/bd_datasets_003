@@ -1,0 +1,41 @@
+# Node
+node_modules/
+.npm
+
+# Next.js
+.next/
+out/
+
+# Prisma
+*.db
+*.db-journal
+
+# Testing
+test-results.json
+coverage/
+
+# Evaluation reports
+evaluation/**/report.json
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Build
+dist/
+build/
+
+# Logs
+*.log
+npm-debug.log*

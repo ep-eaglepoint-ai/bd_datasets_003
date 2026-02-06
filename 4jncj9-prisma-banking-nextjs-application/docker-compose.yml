@@ -1,0 +1,19 @@
+services:
+  app-after:
+    build: .
+    command: npm test
+    environment:
+      - NODE_ENV=test
+      - DATABASE_URL=file:./test.db
+    volumes:
+      - ./tests:/app/tests:ro
+      - ./repository_after:/app/repository_after:ro
+
+  evaluation:
+    build: .
+    command: node evaluation/evaluation.js
+    environment:
+      - NODE_ENV=test
+      - DATABASE_URL=file:./test.db
+    volumes:
+      - ./evaluation:/app/evaluation
