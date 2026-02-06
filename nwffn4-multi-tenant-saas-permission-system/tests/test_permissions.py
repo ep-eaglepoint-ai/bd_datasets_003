@@ -14,7 +14,7 @@ from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from accounts.models import (
     Organization, Team, Project, Task,
-    OrganizationMember, TeamMember, ProjectMember,
+    OrganizationMember, ProjectMember,
     CustomRole, PermissionOverride
 )
 from permissions.services.permission_checker import permission_checker

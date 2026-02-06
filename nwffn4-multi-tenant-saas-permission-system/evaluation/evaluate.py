@@ -83,7 +83,6 @@ def run_metrics(repo_name):
     
     try:
         sys.path.insert(0, str(repo_path))
-        import os
         os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'saas_platform.settings')
         
         import django

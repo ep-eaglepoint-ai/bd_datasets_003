@@ -9,7 +9,7 @@ class AuditLog(models.Model):
     permission = models.CharField(max_length=50)
     granted = models.BooleanField()
     cached = models.BooleanField(default=False)
-    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+    timestamp = models.DateTimeField(db_index=True)
 
     class Meta:
         indexes = [

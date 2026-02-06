@@ -41,6 +41,9 @@ class ProjectViewSet(viewsets.ViewSet):
         if not all([team_id, name, slug]):
             return Response({'error': 'Missing required fields'}, status=status.HTTP_400_BAD_REQUEST)
 
+        if not hasattr(request.user, 'current_organization') or not request.user.current_organization:
+            return Response({'error': 'No organization context'}, status=status.HTTP_400_BAD_REQUEST)
+
         try:
             team = Team.objects.get(id=team_id, organization=request.user.current_organization)
         except Team.DoesNotExist:
@@ -53,6 +56,9 @@ class ProjectViewSet(viewsets.ViewSet):
         return Response({'id': project.id, 'name': project.name, 'slug': project.slug}, status=status.HTTP_201_CREATED)
 
     def retrieve(self, request, pk=None):
+        if not hasattr(request.user, 'current_organization') or not request.user.current_organization:
+            return Response({'error': 'No organization context'}, status=status.HTTP_400_BAD_REQUEST)
+
         try:
             project = Project.objects.select_related('team__organization').get(
                 pk=pk, team__organization=request.user.current_organization
@@ -66,6 +72,9 @@ class ProjectViewSet(viewsets.ViewSet):
         return Response({'id': project.id, 'name': project.name, 'slug': project.slug})
 
     def update(self, request, pk=None):
+        if not hasattr(request.user, 'current_organization') or not request.user.current_organization:
+            return Response({'error': 'No organization context'}, status=status.HTTP_400_BAD_REQUEST)
+
         try:
             project = Project.objects.select_related('team__organization').get(
                 pk=pk, team__organization=request.user.current_organization
@@ -83,6 +92,9 @@ class ProjectViewSet(viewsets.ViewSet):
         return Response({'id': project.id, 'name': project.name, 'slug': project.slug})
 
     def destroy(self, request, pk=None):
+        if not hasattr(request.user, 'current_organization') or not request.user.current_organization:
+            return Response({'error': 'No organization context'}, status=status.HTTP_400_BAD_REQUEST)
+
         try:
             project = Project.objects.select_related('team__organization').get(
                 pk=pk, team__organization=request.user.current_organization

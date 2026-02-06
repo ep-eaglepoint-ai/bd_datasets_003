@@ -7,4 +7,4 @@ docker-compose run --rm test_before
 docker-compose run --rm test_after
 
 ## Evaluation Docker Command
-docker-compose run --rm evalution
+docker-compose run --rm evaluation

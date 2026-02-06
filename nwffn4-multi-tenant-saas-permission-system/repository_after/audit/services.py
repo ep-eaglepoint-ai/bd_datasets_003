@@ -18,8 +18,9 @@ class AuditService:
                 cached=cached,
                 timestamp=timezone.now()
             )
-        except Exception:
-            pass
+        except Exception as e:
+            # Silently fail to avoid breaking permission checks
+            logger.error(f"Failed to log permission check: {e}")
 
     def bulk_log_permission_checks(self, entries):
         try:
@@ -36,8 +37,9 @@ class AuditService:
                 for entry in entries
             ]
             AuditLog.objects.bulk_create(audit_logs)
-        except Exception:
-            pass
+        except Exception as e:
+            # Silently fail to avoid breaking bulk permission checks
+            logger.error(f"Failed to bulk log permission checks: {e}")
 
 
 audit_service = AuditService()

@@ -1,21 +1,17 @@
-diff --git repository_before/accounts/__pycache__/__init__.cpython-311.pyc repository_before/accounts/__pycache__/__init__.cpython-311.pyc
-deleted file mode 100644
-index fae8ea1..0000000
-Binary files repository_before/accounts/__pycache__/__init__.cpython-311.pyc and /dev/null differ
-diff --git repository_before/accounts/__pycache__/admin.cpython-311.pyc repository_before/accounts/__pycache__/admin.cpython-311.pyc
-deleted file mode 100644
-index a9a18b8..0000000
-Binary files repository_before/accounts/__pycache__/admin.cpython-311.pyc and /dev/null differ
-diff --git repository_before/accounts/__pycache__/apps.cpython-311.pyc repository_before/accounts/__pycache__/apps.cpython-311.pyc
-deleted file mode 100644
-index 4166136..0000000
-Binary files repository_before/accounts/__pycache__/apps.cpython-311.pyc and /dev/null differ
-diff --git repository_before/accounts/__pycache__/models.cpython-311.pyc repository_before/accounts/__pycache__/models.cpython-311.pyc
-deleted file mode 100644
-index 103c049..0000000
-Binary files repository_before/accounts/__pycache__/models.cpython-311.pyc and /dev/null differ
+diff --git repository_before/accounts/__pycache__/__init__.cpython-311.pyc repository_after/accounts/__pycache__/__init__.cpython-311.pyc
+index fae8ea1..6667269 100644
+Binary files repository_before/accounts/__pycache__/__init__.cpython-311.pyc and repository_after/accounts/__pycache__/__init__.cpython-311.pyc differ
+diff --git repository_before/accounts/__pycache__/admin.cpython-311.pyc repository_after/accounts/__pycache__/admin.cpython-311.pyc
+index a9a18b8..c4c35d9 100644
+Binary files repository_before/accounts/__pycache__/admin.cpython-311.pyc and repository_after/accounts/__pycache__/admin.cpython-311.pyc differ
+diff --git repository_before/accounts/__pycache__/apps.cpython-311.pyc repository_after/accounts/__pycache__/apps.cpython-311.pyc
+index 4166136..5750ba1 100644
+Binary files repository_before/accounts/__pycache__/apps.cpython-311.pyc and repository_after/accounts/__pycache__/apps.cpython-311.pyc differ
+diff --git repository_before/accounts/__pycache__/models.cpython-311.pyc repository_after/accounts/__pycache__/models.cpython-311.pyc
+index 103c049..b5f4678 100644
+Binary files repository_before/accounts/__pycache__/models.cpython-311.pyc and repository_after/accounts/__pycache__/models.cpython-311.pyc differ
 diff --git repository_before/accounts/models.py repository_after/accounts/models.py
-index 558bebe..1ea7bdc 100644
+index 558bebe..ead5443 100644
 --- repository_before/accounts/models.py
 +++ repository_after/accounts/models.py
 @@ -1,5 +1,6 @@
@@ -38,7 +34,7 @@ index 558bebe..1ea7bdc 100644
  
  class Organization(models.Model):
      name = models.CharField(max_length=200)
-@@ -54,47 +61,121 @@ class OrganizationMember(models.Model):
+@@ -54,47 +61,138 @@ class OrganizationMember(models.Model):
      organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='members')
      user = models.ForeignKey(User, on_delete=models.CASCADE)
      role = models.CharField(max_length=50, default='member')
@@ -137,6 +133,23 @@ index 558bebe..1ea7bdc 100644
 +            )
 +
 +    def save(self, *args, **kwargs):
++        """
++        Ensure that model validation (including the permissions subset check in
++        clean()) is run whenever this instance is saved via the ORM.
++        
++        Note:
++            Django does not call save() or full_clean() for bulk operations such
++            as bulk_create(), bulk_update(), or queryset.update(). As a result,
++            the constraint that `permissions` must be a subset of the base role's
++            permissions is NOT enforced for those operations.
++            
++            When creating or updating CustomRole instances in bulk, callers must
++            either:
++              * avoid using bulk_* / update() and instead save each instance
++                individually (so this method is invoked), or
++              * explicitly call full_clean() on each instance before performing
++                the bulk write.
++        """
 +        self.full_clean()
 +        super().save(*args, **kwargs)
 +
@@ -178,7 +191,7 @@ new file mode 100644
 index 0000000..6587c7d
 Binary files /dev/null and repository_after/audit/__pycache__/services.cpython-311.pyc differ
 diff --git repository_before/audit/models.py repository_after/audit/models.py
-index ae8aa83..dec529f 100644
+index ae8aa83..3a3b090 100644
 --- repository_before/audit/models.py
 +++ repository_after/audit/models.py
 @@ -4,12 +4,21 @@ from django.conf import settings
@@ -194,7 +207,7 @@ index ae8aa83..dec529f 100644
 +    permission = models.CharField(max_length=50)
 +    granted = models.BooleanField()
 +    cached = models.BooleanField(default=False)
-+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
++    timestamp = models.DateTimeField(db_index=True)
 +
 +    class Meta:
 +        indexes = [
@@ -209,10 +222,10 @@ index ae8aa83..dec529f 100644
 -        return f"{self.user} - {self.action} - {self.resource_type}:{self.resource_id}"
 +        return f"{self.user} - {self.permission} - {self.resource_type}:{self.resource_id}"
 diff --git repository_before/audit/services.py repository_after/audit/services.py
-index 00acfc5..84b037f 100644
+index 00acfc5..ada83a2 100644
 --- repository_before/audit/services.py
 +++ repository_after/audit/services.py
-@@ -1,17 +1,43 @@
+@@ -1,17 +1,45 @@
  from audit.models import AuditLog
 +from django.utils import timezone
 +import logging
@@ -242,8 +255,9 @@ index 00acfc5..84b037f 100644
 +                cached=cached,
 +                timestamp=timezone.now()
 +            )
-+        except Exception:
-+            pass
++        except Exception as e:
++            # Silently fail to avoid breaking permission checks
++            logger.error(f"Failed to log permission check: {e}")
 +
 +    def bulk_log_permission_checks(self, entries):
 +        try:
@@ -260,8 +274,9 @@ index 00acfc5..84b037f 100644
 +                for entry in entries
 +            ]
 +            AuditLog.objects.bulk_create(audit_logs)
-+        except Exception:
-+            pass
++        except Exception as e:
++            # Silently fail to avoid breaking bulk permission checks
++            logger.error(f"Failed to bulk log permission checks: {e}")
  
  
  audit_service = AuditService()
@@ -313,10 +328,10 @@ index 98a9671..0637386 100644
 Binary files repository_before/permissions/services/__pycache__/__init__.cpython-311.pyc and repository_after/permissions/services/__pycache__/__init__.cpython-311.pyc differ
 diff --git repository_after/permissions/services/__pycache__/cache_invalidation.cpython-311.pyc repository_after/permissions/services/__pycache__/cache_invalidation.cpython-311.pyc
 new file mode 100644
-index 0000000..60040e1
+index 0000000..5836ab2
 Binary files /dev/null and repository_after/permissions/services/__pycache__/cache_invalidation.cpython-311.pyc differ
 diff --git repository_before/permissions/services/__pycache__/permission_checker.cpython-311.pyc repository_after/permissions/services/__pycache__/permission_checker.cpython-311.pyc
-index 6badbd6..eb8a56c 100644
+index 6badbd6..27c79d3 100644
 Binary files repository_before/permissions/services/__pycache__/permission_checker.cpython-311.pyc and repository_after/permissions/services/__pycache__/permission_checker.cpython-311.pyc differ
 diff --git repository_after/permissions/services/cache_invalidation.py repository_after/permissions/services/cache_invalidation.py
 new file mode 100644
@@ -394,14 +409,15 @@ index 0000000..c7eaa28
 +
 +cache_invalidation_service = CacheInvalidationService()
 diff --git repository_before/permissions/services/permission_checker.py repository_after/permissions/services/permission_checker.py
-index a31bb71..0e17949 100644
+index bcf8363..0e17949 100644
 --- repository_before/permissions/services/permission_checker.py
 +++ repository_after/permissions/services/permission_checker.py
-@@ -1,11 +1,15 @@
+@@ -1,10 +1,15 @@
  from accounts.models import (
-     Organization, Team, Project, Task,
-     OrganizationMember, TeamMember, ProjectMember,
--    CustomRole, PermissionOverride
+-    Team, Project, Task,
+-    OrganizationMember, TeamMember, ProjectMember
++    Organization, Team, Project, Task,
++    OrganizationMember, TeamMember, ProjectMember,
 +    PermissionOverride
  )
 +from audit.services import audit_service
@@ -415,7 +431,7 @@ index a31bb71..0e17949 100644
      'owner': ['create', 'read', 'update', 'delete', 'manage_members', 'manage_roles'],
      'admin': ['create', 'read', 'update', 'delete', 'manage_members'],
      'member': ['create', 'read', 'update'],
-@@ -15,49 +19,283 @@ ROLE_PERMISSIONS = {
+@@ -14,49 +19,283 @@ ROLE_PERMISSIONS = {
  
  class PermissionChecker:
  
@@ -789,7 +805,7 @@ diff --git repository_before/projects/__pycache__/views.cpython-311.pyc reposito
 index 02a3040..311e3f1 100644
 Binary files repository_before/projects/__pycache__/views.cpython-311.pyc and repository_after/projects/__pycache__/views.cpython-311.pyc differ
 diff --git repository_before/projects/views.py repository_after/projects/views.py
-index 66fe508..0aa0d04 100644
+index 66fe508..1ea1035 100644
 --- repository_before/projects/views.py
 +++ repository_after/projects/views.py
 @@ -8,20 +8,29 @@ from permissions.services.permission_checker import permission_checker
@@ -835,16 +851,20 @@ index 66fe508..0aa0d04 100644
          return Response(data)
  
      def create(self, request):
-@@ -33,7 +42,7 @@ class ProjectViewSet(viewsets.ViewSet):
+@@ -32,8 +41,11 @@ class ProjectViewSet(viewsets.ViewSet):
+         if not all([team_id, name, slug]):
              return Response({'error': 'Missing required fields'}, status=status.HTTP_400_BAD_REQUEST)
  
++        if not hasattr(request.user, 'current_organization') or not request.user.current_organization:
++            return Response({'error': 'No organization context'}, status=status.HTTP_400_BAD_REQUEST)
++
          try:
 -            team = Team.objects.get(id=team_id)
 +            team = Team.objects.get(id=team_id, organization=request.user.current_organization)
          except Team.DoesNotExist:
              return Response({'error': 'Team not found'}, status=status.HTTP_404_NOT_FOUND)
  
-@@ -41,11 +50,13 @@ class ProjectViewSet(viewsets.ViewSet):
+@@ -41,11 +53,16 @@ class ProjectViewSet(viewsets.ViewSet):
              return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
  
          project = Project.objects.create(team=team, name=name, slug=slug)
@@ -852,6 +872,9 @@ index 66fe508..0aa0d04 100644
 +        return Response({'id': project.id, 'name': project.name, 'slug': project.slug}, status=status.HTTP_201_CREATED)
  
      def retrieve(self, request, pk=None):
++        if not hasattr(request.user, 'current_organization') or not request.user.current_organization:
++            return Response({'error': 'No organization context'}, status=status.HTTP_400_BAD_REQUEST)
++
          try:
 -            project = Project.objects.get(pk=pk)
 +            project = Project.objects.select_related('team__organization').get(
@@ -860,9 +883,13 @@ index 66fe508..0aa0d04 100644
          except Project.DoesNotExist:
              return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
  
-@@ -56,7 +67,9 @@ class ProjectViewSet(viewsets.ViewSet):
+@@ -55,8 +72,13 @@ class ProjectViewSet(viewsets.ViewSet):
+         return Response({'id': project.id, 'name': project.name, 'slug': project.slug})
  
      def update(self, request, pk=None):
++        if not hasattr(request.user, 'current_organization') or not request.user.current_organization:
++            return Response({'error': 'No organization context'}, status=status.HTTP_400_BAD_REQUEST)
++
          try:
 -            project = Project.objects.get(pk=pk)
 +            project = Project.objects.select_related('team__organization').get(
@@ -871,9 +898,13 @@ index 66fe508..0aa0d04 100644
          except Project.DoesNotExist:
              return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
  
-@@ -71,7 +84,9 @@ class ProjectViewSet(viewsets.ViewSet):
+@@ -70,8 +92,13 @@ class ProjectViewSet(viewsets.ViewSet):
+         return Response({'id': project.id, 'name': project.name, 'slug': project.slug})
  
      def destroy(self, request, pk=None):
++        if not hasattr(request.user, 'current_organization') or not request.user.current_organization:
++            return Response({'error': 'No organization context'}, status=status.HTTP_400_BAD_REQUEST)
++
          try:
 -            project = Project.objects.get(pk=pk)
 +            project = Project.objects.select_related('team__organization').get(

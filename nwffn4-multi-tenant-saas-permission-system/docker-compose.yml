@@ -49,7 +49,7 @@ services:
       - db
       - redis
 
-  evalution:
+  evaluation:
     build: .
     command: python evaluation/evaluate.py
     volumes:

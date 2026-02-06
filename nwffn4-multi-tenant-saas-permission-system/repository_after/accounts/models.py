@@ -154,6 +154,23 @@ class CustomRole(models.Model):
             )
 
     def save(self, *args, **kwargs):
+        """
+        Ensure that model validation (including the permissions subset check in
+        clean()) is run whenever this instance is saved via the ORM.
+        
+        Note:
+            Django does not call save() or full_clean() for bulk operations such
+            as bulk_create(), bulk_update(), or queryset.update(). As a result,
+            the constraint that `permissions` must be a subset of the base role's
+            permissions is NOT enforced for those operations.
+            
+            When creating or updating CustomRole instances in bulk, callers must
+            either:
+              * avoid using bulk_* / update() and instead save each instance
+                individually (so this method is invoked), or
+              * explicitly call full_clean() on each instance before performing
+                the bulk write.
+        """
         self.full_clean()
         super().save(*args, **kwargs)
 
