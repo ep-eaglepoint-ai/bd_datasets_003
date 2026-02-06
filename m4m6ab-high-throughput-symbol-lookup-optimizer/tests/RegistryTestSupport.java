@@ -29,9 +29,24 @@ final class RegistryTestSupport {
         }
 
         Path projectRoot = Path.of(".").toAbsolutePath().normalize();
-        Path sourceFile = projectRoot
-                .resolve("repository_" + repo)
-                .resolve("MarketRegistry.java");
+        Path sourceFile;
+        
+        if ("after".equals(repo)) {
+            // repository_after uses canonical path: repository_after/src/main/java/com/quantflow/MarketRegistry.java
+            sourceFile = projectRoot
+                    .resolve("repository_after")
+                    .resolve("src")
+                    .resolve("main")
+                    .resolve("java")
+                    .resolve("com")
+                    .resolve("quantflow")
+                    .resolve("MarketRegistry.java");
+        } else {
+            // repository_before uses old location: repository_before/MarketRegistry.java
+            sourceFile = projectRoot
+                    .resolve("repository_before")
+                    .resolve("MarketRegistry.java");
+        }
 
         if (!Files.exists(sourceFile)) {
             throw new IllegalStateException("Source not found: " + sourceFile);

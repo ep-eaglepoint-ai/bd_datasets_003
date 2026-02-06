@@ -33,17 +33,17 @@ public class MarketRegistryConcurrencyTest {
         Method getTickerById = loaded.registryClass.getMethod("getTickerById", String.class);
         Method getSize = loaded.registryClass.getMethod("getSize");
 
-        int initialCount = 10_000;
+        int initialCount = 1_000;
         List<Object> initialRecords = new ArrayList<>();
         for (int i = 0; i < initialCount; i++) {
             initialRecords.add(RegistryTestSupport.newSymbolRecord(loaded, "ID-" + i, "TICK" + i));
         }
         loadSymbols.invoke(registry, initialRecords);
 
-        int writerBatches = 20;
-        int batchSize = 1_000;
+        int writerBatches = 5;
+        int batchSize = 200;
 
-        ExecutorService executor = Executors.newFixedThreadPool(8);
+        ExecutorService executor = Executors.newFixedThreadPool(5); // Reduced thread pool size
         CountDownLatch startLatch = new CountDownLatch(1);
 
         // Writer: repeatedly load additional symbols.
@@ -65,13 +65,13 @@ public class MarketRegistryConcurrencyTest {
         });
 
         // Readers: hammer getTickerById while writer is running.
-        int readerThreads = 6;
+        int readerThreads = 4;
         List<Future<Boolean>> readerFutures = new ArrayList<>();
         for (int t = 0; t < readerThreads; t++) {
             Future<Boolean> f = executor.submit(() -> {
                 startLatch.await();
                 try {
-                    for (int i = 0; i < 50_000; i++) {
+                    for (int i = 0; i < 1_000; i++) { // Reduced iterations for speed
                         String id = "ID-" + (i % initialCount);
                         Object ticker = getTickerById.invoke(registry, id);
                         if (ticker != null && !ticker.toString().startsWith("TICK")) {

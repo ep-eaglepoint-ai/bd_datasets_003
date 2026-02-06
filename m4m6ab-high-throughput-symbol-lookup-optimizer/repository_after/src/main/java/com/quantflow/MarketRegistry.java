@@ -3,7 +3,6 @@
 package com.quantflow;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -18,8 +17,8 @@ class SymbolRecord {
     private final String ticker;
 
     public SymbolRecord(String internalId, String ticker) {
-        this.internalId = Objects.requireNonNull(internalId, "internalId");
-        this.ticker = Objects.requireNonNull(ticker, "ticker");
+        this.internalId = internalId;
+        this.ticker = ticker;
     }
 
     public String getInternalId() {
@@ -34,13 +33,18 @@ class SymbolRecord {
 /**
  * MarketRegistry handles the mapping of internal IDs to market tickers.
  *
-+ * Optimized implementation:
+ * Optimized implementation:
  * - Uses a ConcurrentHashMap for O(1) average-time lookups.
  * - Provides thread-safe reads and updates without external synchronization.
  * - Avoids redundant copies of symbol strings by storing only the
  *   internalId → ticker mapping.
  */
 public class MarketRegistry {
+
+    /**
+     * Maintains the original list for behavior compatibility (null elements, etc.)
+     */
+    private final List<SymbolRecord> records = new java.util.ArrayList<>();
 
     /**
      * Concurrent hash-based index from internal ID to ticker.
@@ -65,16 +69,18 @@ public class MarketRegistry {
      * @param newRecords list of symbol records to add; must not be null
      */
     public void loadSymbols(List<SymbolRecord> newRecords) {
-        if (newRecords == null) {
-            return;
-        }
-        // Using for-each avoids creating intermediate collections and keeps
-        // memory overhead minimal (only one map entry per symbol).
-        for (SymbolRecord record : newRecords) {
-            if (record == null) {
-                continue;
+        // Preserve original behavior: addAll throws NPE if newRecords is null
+        this.records.addAll(newRecords);
+        // Populate the hash map for O(1) lookups while preserving first-match semantics
+        // Only process newly added records to avoid rebuilding entire map
+        int startIndex = this.records.size() - newRecords.size();
+        for (int i = startIndex; i < this.records.size(); i++) {
+            SymbolRecord record = this.records.get(i);
+            // Preserve original behavior: allow null elements in list
+            if (record != null && record.getInternalId() != null) {
+                // Use putIfAbsent to preserve first-match behavior (original returns first match)
+                idToTicker.putIfAbsent(record.getInternalId(), record.getTicker());
             }
-            idToTicker.put(record.getInternalId(), record.getTicker());
         }
     }
 
@@ -92,9 +98,22 @@ public class MarketRegistry {
      * @return the ticker string or null if not found.
      */
     public String getTickerById(String internalId) {
+        // Preserve original behavior: if internalId is null, original would iterate and call
+        // record.getInternalId().equals(null). If any record has null internalId, this throws NPE.
+        // To match this behavior, we check the map first (fast path), but if null and we have
+        // records with null internalId, we need to preserve the NPE behavior.
+        // For simplicity and to match the most common case where null input would cause issues,
+        // we use the original linear search when internalId is null to preserve exact behavior.
         if (internalId == null) {
+            // Preserve original NPE behavior: iterate and call equals which may throw NPE
+            for (SymbolRecord record : records) {
+                if (record.getInternalId().equals(internalId)) {
+                    return record.getTicker();
+                }
+            }
             return null;
         }
+        // Fast O(1) path for non-null IDs
         return idToTicker.get(internalId);
     }
 
@@ -107,7 +126,7 @@ public class MarketRegistry {
      * @return the number of symbols currently registered.
      */
     public int getSize() {
-        return idToTicker.size();
+        return records.size();
     }
 
     /**
@@ -124,6 +143,7 @@ public class MarketRegistry {
     public static void main(String[] args) {
         final int symbolCount = 100_000;
         final int iterations = 1_000_000;
+        final int warmupIterations = 100_000;
 
         java.util.List<SymbolRecord> records = new java.util.ArrayList<>(symbolCount);
         for (int i = 0; i < symbolCount; i++) {
@@ -134,53 +154,42 @@ public class MarketRegistry {
         MarketRegistry optimized = new MarketRegistry();
         optimized.loadSymbols(records);
 
-        // Naive registry for comparison (local, not used elsewhere)
-        NaiveMarketRegistry naive = new NaiveMarketRegistry();
-        naive.loadSymbols(records);
-
+        // Warmup
         String targetId = "ID-" + (symbolCount - 1);
+        for (int i = 0; i < warmupIterations; i++) {
+            optimized.getTickerById(targetId);
+        }
 
+        // Benchmark optimized
         long start = System.nanoTime();
         for (int i = 0; i < iterations; i++) {
             optimized.getTickerById(targetId);
         }
         long optimizedElapsedMicros = (System.nanoTime() - start) / 1_000;
 
+        // Benchmark original O(N) approach by simulating linear search on the records list
+        // Create a separate list to simulate the original O(N) behavior without accessing private fields
+        java.util.List<SymbolRecord> recordsCopy = new java.util.ArrayList<>(records);
         start = System.nanoTime();
         for (int i = 0; i < iterations; i++) {
-            naive.getTickerById(targetId);
+            // Simulate original O(N) linear search behavior
+            for (SymbolRecord record : recordsCopy) {
+                if (record != null && record.getInternalId() != null && record.getInternalId().equals(targetId)) {
+                    String ticker = record.getTicker();
+                    break;
+                }
+            }
         }
         long naiveElapsedMicros = (System.nanoTime() - start) / 1_000;
 
         System.out.println("Optimized (O(1)) elapsed µs: " + optimizedElapsedMicros);
         System.out.println("Naive (O(N)) elapsed µs:     " + naiveElapsedMicros);
-    }
-
-    /**
-     * Internal naive implementation used solely for benchmarking to
-     * illustrate the difference between O(N) and O(1) lookups.
-     */
-    private static final class NaiveMarketRegistry {
-        private final java.util.List<SymbolRecord> records = new java.util.ArrayList<>();
-
-        public void loadSymbols(java.util.List<SymbolRecord> newRecords) {
-            if (newRecords != null) {
-                records.addAll(newRecords);
-            }
-        }
-
-        public String getTickerById(String internalId) {
-            if (internalId == null) {
-                return null;
-            }
-            for (SymbolRecord record : records) {
-                if (record.getInternalId().equals(internalId)) {
-                    return record.getTicker();
-                }
-            }
-            return null;
+        
+        // Assert that O(1) is faster (with reasonable margin for measurement variance)
+        if (optimizedElapsedMicros >= naiveElapsedMicros) {
+            System.err.println("WARNING: Optimized implementation not faster than naive!");
+            System.exit(1);
         }
     }
 }
-
 

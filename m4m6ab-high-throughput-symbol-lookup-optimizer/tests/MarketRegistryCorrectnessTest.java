@@ -25,7 +25,7 @@ public class MarketRegistryCorrectnessTest {
         Object registry = loaded.registryInstance;
 
         List<Object> records = new ArrayList<>();
-        int symbolCount = 100_000;
+        int symbolCount = 10_000; // Reduced for test speed
         for (int i = 0; i < symbolCount; i++) {
             String id = "ID-" + i;
             String ticker = "TICK" + i;

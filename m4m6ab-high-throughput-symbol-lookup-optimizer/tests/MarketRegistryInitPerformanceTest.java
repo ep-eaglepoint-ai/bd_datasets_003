@@ -35,11 +35,15 @@ public class MarketRegistryInitPerformanceTest {
         loadSymbols.invoke(registry, records);
         long elapsedMillis = (System.nanoTime() - startNanos) / 1_000_000L;
 
-        // Allow a generous upper bound for diverse environments, but still
-        // ensure the implementation is not excessively slow.
+        // Requirement 5: initialization should complete in under 500ms for 100k symbols
+        // We allow some margin (1000ms) for CI/test environments, but the implementation
+        // should be optimized to meet the 500ms target on typical hardware.
         assertTrue(
-                elapsedMillis < 10_000,
-                "loadSymbols for 100k symbols should complete well under 10 seconds; actual ms=" + elapsedMillis
+                elapsedMillis < 1_000,
+                String.format(
+                        "loadSymbols for 100k symbols should complete in under 500ms (allowing 1000ms for test environments); actual ms=%d",
+                        elapsedMillis
+                )
         );
     }
 }

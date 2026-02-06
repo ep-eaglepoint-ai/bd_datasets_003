@@ -8,16 +8,22 @@
             "FAIL_TO_PASS": [
                 "MarketRegistryStructureTest#usesHashBasedLookupStructure",
                 "MarketRegistryStructureTest#usesThreadSafeCollectionForQueriesWhenRequired",
-                "MarketRegistryConcurrencyTest#supportsConcurrentReadsAndSymbolLoads"
+                "MarketRegistryConcurrencyTest#supportsConcurrentReadsAndSymbolLoads",
+                "MarketRegistryEdgeCasesTest#loadSymbolsAllowsNullElementsInList"
             ],
             "PASS_TO_PASS": [
+                "MarketRegistryBenchmarkTest#benchmarkDemonstratesO1OutperformsON",
                 "MarketRegistryCorrectnessTest#returnsTickerForExistingId",
                 "MarketRegistryCorrectnessTest#returnsNullForMissingId",
                 "MarketRegistryCorrectnessTest#supportsMultipleInternalIdsMappingToSameTicker",
                 "MarketRegistryEdgeCasesTest#emptyRegistryReturnsNullForAnyId",
                 "MarketRegistryEdgeCasesTest#getTickerByIdWithNullIdReturnsNull",
                 "MarketRegistryEdgeCasesTest#multipleLoadsAccumulateSymbolsWithNonOverlappingIds",
-                "MarketRegistryInitPerformanceTest#loadSymbolsForHundredThousandEntriesCompletesWithinReasonableTime"
+                "MarketRegistryEdgeCasesTest#duplicateInternalIdsPreserveFirstMatchSemantics",
+                "MarketRegistryEdgeCasesTest#loadSymbolsWithNullThrowsNullPointerException",
+                "MarketRegistryEdgeCasesTest#symbolRecordConstructorAllowsNulls",
+                "MarketRegistryInitPerformanceTest#loadSymbolsForHundredThousandEntriesCompletesWithinReasonableTime",
+                "MarketRegistryMemoryTest#registryWithHundredThousandSymbolsStaysWithinMemoryLimit"
             ]
         }
         

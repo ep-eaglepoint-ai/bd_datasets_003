@@ -8,6 +8,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * Additional edge-case coverage that is applied identically to both the
@@ -68,6 +69,83 @@ public class MarketRegistryEdgeCasesTest {
         assertEquals("TICK9999", getTickerById.invoke(registry, "ID-9999"));
         assertEquals("TICK10000", getTickerById.invoke(registry, "ID-10000"));
         assertEquals("TICK19999", getTickerById.invoke(registry, "ID-19999"));
+    }
+
+    @Test
+    void duplicateInternalIdsPreserveFirstMatchSemantics() throws Exception {
+        RegistryTestSupport.LoadedRegistry loaded = RegistryTestSupport.loadRegistry();
+
+        Object registry = loaded.registryInstance;
+        Method loadSymbols = loaded.registryClass.getMethod("loadSymbols", List.class);
+        Method getTickerById = loaded.registryClass.getMethod("getTickerById", String.class);
+
+        // Same internal ID appears twice with different tickers
+        List<Object> records = new ArrayList<>();
+        records.add(RegistryTestSupport.newSymbolRecord(loaded, "DUPLICATE-ID", "FIRST-TICKER"));
+        records.add(RegistryTestSupport.newSymbolRecord(loaded, "DUPLICATE-ID", "SECOND-TICKER"));
+
+        loadSymbols.invoke(registry, records);
+
+        // Original behavior: first match wins (ArrayList linear search returns first)
+        // Optimized behavior: putIfAbsent preserves first-match semantics
+        assertEquals("FIRST-TICKER", getTickerById.invoke(registry, "DUPLICATE-ID"));
+    }
+
+    @Test
+    void loadSymbolsWithNullThrowsNullPointerException() throws Exception {
+        RegistryTestSupport.LoadedRegistry loaded = RegistryTestSupport.loadRegistry();
+
+        Object registry = loaded.registryInstance;
+        Method loadSymbols = loaded.registryClass.getMethod("loadSymbols", List.class);
+
+        // Original behavior: addAll throws NPE if list is null
+        // This should be preserved in optimized version
+        assertThrows(Exception.class, () -> {
+            loadSymbols.invoke(registry, new Object[]{null});
+        }, "loadSymbols(null) should throw NullPointerException");
+    }
+
+    @Test
+    void loadSymbolsAllowsNullElementsInList() throws Exception {
+        RegistryTestSupport.LoadedRegistry loaded = RegistryTestSupport.loadRegistry();
+
+        Object registry = loaded.registryInstance;
+        Method loadSymbols = loaded.registryClass.getMethod("loadSymbols", List.class);
+        Method getTickerById = loaded.registryClass.getMethod("getTickerById", String.class);
+        Method getSize = loaded.registryClass.getMethod("getSize");
+
+        // Original behavior: null elements are allowed in the list
+        List<Object> records = new ArrayList<>();
+        records.add(RegistryTestSupport.newSymbolRecord(loaded, "ID-1", "TICK1"));
+        records.add(null); // null element
+        records.add(RegistryTestSupport.newSymbolRecord(loaded, "ID-2", "TICK2"));
+
+        loadSymbols.invoke(registry, records);
+
+        // Size should include null elements (original behavior)
+        int size = ((Number) getSize.invoke(registry)).intValue();
+        assertEquals(3, size, "Size should include null elements");
+
+        // Valid records should still work
+        assertEquals("TICK1", getTickerById.invoke(registry, "ID-1"));
+        assertEquals("TICK2", getTickerById.invoke(registry, "ID-2"));
+    }
+
+    @Test
+    void symbolRecordConstructorAllowsNulls() throws Exception {
+        RegistryTestSupport.LoadedRegistry loaded = RegistryTestSupport.loadRegistry();
+
+        // Original behavior: SymbolRecord constructor allows null internalId and ticker
+        // This should be preserved (no Objects.requireNonNull)
+        Object record1 = RegistryTestSupport.newSymbolRecord(loaded, null, "TICKER");
+        Object record2 = RegistryTestSupport.newSymbolRecord(loaded, "ID", null);
+        Object record3 = RegistryTestSupport.newSymbolRecord(loaded, null, null);
+
+        // If constructor allowed nulls, these should not throw
+        // We just verify they can be created
+        assert record1 != null;
+        assert record2 != null;
+        assert record3 != null;
     }
 }
 
