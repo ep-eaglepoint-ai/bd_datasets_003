@@ -1,4 +1,3 @@
-process.env.NODE_OPTIONS = "--experimental-vm-modules";
 
 import path from "path";
 import { runCLI } from "jest";

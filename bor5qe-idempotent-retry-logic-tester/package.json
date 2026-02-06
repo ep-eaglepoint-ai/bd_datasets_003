@@ -4,8 +4,8 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "test": "NODE_OPTIONS=--experimental-vm-modules jest",
-    "metatest": "NODE_OPTIONS=--experimental-vm-modules node tests/network.metatest.js"
+    "test": "jest",
+    "metatest": "node tests/network.metatest.js"
   },
   "devDependencies": {
     "@jest/globals": "^30.2.0",
