@@ -1,0 +1,108 @@
+diff --git a/repository_before/analytics_service.js b/repository_after/analytics_service.js
+index 94178d9..4e397e7 100644
+--- a/repository_before/analytics_service.js
++++ b/repository_after/analytics_service.js
+@@ -1,18 +1,46 @@
+-
+-// filename: analytics_service.js
++/**
++ * Optimized analytics service for calculating unique visitors.
++ * Refactored from O(n^2) to O(n) using Set data structure.
++ *
++ * Performance Requirements:
++ * - Time Complexity: O(n)
++ * - Memory Limit: 250MB heap
++ * - Target: Process 200k entries in <100ms
++ */
+ 
+ /**
+- * Current implementation is too slow for production logs.
+- * Refactor to meet performance and memory constraints.
++ * Calculate the number of unique visitors from log entries.
++ *
++ * @param {Array} logs - Array of log entries with userId property
++ * @returns {number} Count of unique visitors
++ *
++ * @example
++ * const logs = [
++ *   { userId: '123' },
++ *   { userId: '456' },
++ *   { userId: '123' }
++ * ];
++ * getUniqueVisitors(logs); // Returns 2
+  */
+-// entry : { userId: uuid}
+ export function getUniqueVisitors(logs) {
+-    const uniqueUsers = [];
+-    for (const entry of logs) {
+-        // THE TRAP: Array.includes is O(n), making the total O(n^2)
+-        if (!uniqueUsers.includes(entry.userId)) {
+-            uniqueUsers.push(entry.userId);
+-        }
+-    }
+-    return uniqueUsers.length;
+-}
+\ No newline at end of file
++  // Fast path for non-array or empty inputs
++  if (!Array.isArray(logs) || logs.length === 0) {
++    return 0;
++  }
++
++  // Use Set for O(1) membership checks and inserts – overall O(n)
++  const uniqueUsers = new Set();
++  // Classic for loop is slightly faster than for...of in tight loops
++  for (let i = 0, len = logs.length; i < len; i++) {
++    const entry = logs[i];
++    if (!entry) continue;
++
++    const userId = entry.userId;
++    // Filter out null/undefined userIds but allow other falsy values like 0 or ""
++    if (userId === null || userId === undefined) continue;
++
++    uniqueUsers.add(userId);
++  }
++
++  return uniqueUsers.size;
++}
+
+diff --git a/repository_before/jest.config.js b/repository_after/jest.config.js
+index 58e34da..f53e899 100644
+--- a/repository_before/jest.config.js
++++ b/repository_after/jest.config.js
+@@ -2,10 +2,14 @@ export default {
+   testEnvironment: "node",
+   roots: ["<rootDir>/../tests"],
+   testMatch: ["**/*.test.js"],
++  // No transforms needed; we rely on native ESM support
++  transform: {},
++  moduleFileExtensions: ["js"],
+   verbose: true,
+   maxWorkers: 1,
+-  extensionsToTreatAsEsm: [".js"], // This tells Jest to treat .js files as ES modules
++  modulePaths: ["<rootDir>/node_modules"],
++  // Ensure Jest resolves the ESM build of uuid correctly in Node 20
+   moduleNameMapper: {
+-    "^uuid$": "<rootDir>/node_modules/uuid/dist/esm-node/index.js",
++    "^uuid$": "<rootDir>/uuid.js",
+   },
+ };
+
+diff --git a/repository_after/uuid.js b/repository_after/uuid.js
+new file mode 100644
+index 0000000..ad06e9d
+--- /dev/null
++++ b/repository_after/uuid.js
+@@ -0,0 +1,13 @@
++// Lightweight UUID v4 generator for tests.
++// Not cryptographically secure, but good enough for uniqueness in this suite.
++export function v4() {
++  const template = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx";
++  return template.replace(/[xy]/g, (ch) => {
++    const r = (Math.random() * 16) | 0;
++    const v = ch === "x" ? r : (r & 0x3) | 0x8;
++    return v.toString(16);
++  });
++}
++
++export default { v4 };
++
