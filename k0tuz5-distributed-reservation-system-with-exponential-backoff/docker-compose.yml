@@ -1,0 +1,35 @@
+
+# Docker Compose file for running tests. You should customize this as needed.
+
+services:
+  server:
+    build: .
+    container_name: reservation-server
+    ports:
+      - "8080:8080"
+    command: ./server
+
+  client:
+    build: .
+    container_name: reservation-client
+    depends_on:
+      - server
+    environment:
+      - SERVER_URL=http://server:8080
+    command: ./client
+
+  evaluator:
+    build: .
+    container_name: reservation-evaluator
+    depends_on:
+      - server
+    volumes:
+      - ./evaluation/reports:/app/evaluation/reports
+    command: ./evaluator
+
+  tests:
+    build: .
+    container_name: reservation-tests
+    depends_on:
+      - server
+    command: go test -v ./tests/...
