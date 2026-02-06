@@ -15,11 +15,12 @@ services:
       timeout: 5s
       retries: 5
 
-  backend:
+  app:
     build: .
-    command: python repository_after/manage.py runserver 0.0.0.0:8000
+    command: python manage.py runserver 0.0.0.0:8000
     volumes:
       - .:/app
+    working_dir: /app/repository_after
     ports:
       - "8000:8000"
     depends_on:
@@ -27,19 +28,20 @@ services:
         condition: service_healthy
     environment:
       - DATABASE_URL=postgres://postgres:postgres@db:5432/flashsale
+      - PYTHONPATH=/app:/app/repository_after
 
   frontend:
     build: .
-    command: sh -c "cd frontend && npm run dev -- --host 0.0.0.0"
+    # We are already in the correct folder because of working_dir
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
     volumes:
       - .:/app
-      - /app/frontend/node_modules   # avoid permission issues
+    # This points Docker to the folder containing package.json and index.html
+    working_dir: /app/repository_after/frontend
     ports:
-      - "5173:5173"                  # Vite default port
+      - "5173:5173"
     depends_on:
-      - backend
-    environment:
-      - VITE_API_URL=http://backend:8000/api
+      - app
 
 volumes:
   pgdata:

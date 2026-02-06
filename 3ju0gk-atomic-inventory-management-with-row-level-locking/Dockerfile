@@ -1,39 +1,36 @@
-# Dockerfile  (at repository root – only one file)
-
+# Dockerfile
 FROM python:3.11-slim
 
-# Common environment variables
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=off
-
-# Install system dependencies needed for both Python (psycopg2) and Node (basic build tools)
+# Install system dependencies + Node.js 20
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libpq-dev \
     curl \
-    gnupg \
     ca-certificates \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && npm install -g npm@latest \
     && rm -rf /var/lib/apt/lists/*
 
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    NODE_ENV=development
+
 WORKDIR /app
 
-# Copy backend requirements and install Python deps
-COPY requirements.txt .
+# Backend dependencies
+COPY repository_after/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy frontend package files and install Node deps
-COPY frontend/package*.json ./frontend/
-RUN cd frontend && npm ci --legacy-peer-deps
+# Frontend dependencies
+COPY repository_after/frontend/package*.json ./frontend/
+WORKDIR /app/frontend
+RUN npm install
 
-# Copy the rest of the project
-COPY . .
+# Copy the rest of the code
+WORKDIR /app
+COPY repository_after/ .
 
-# Expose both ports (Django + Vite / React dev server)
 EXPOSE 8000 5173
 
-# Default command = backend (most common default)
-CMD ["python", "repository_after/manage.py", "runserver", "0.0.0.0:8000"]
+CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
