@@ -1,0 +1,11 @@
+{
+            "instance_id": "0CNIQC",
+            "problem_statement": "A stateful microservice needs a production-grade LSM storage engine that survives container crashes and performs efficient compaction. The current implementation has critical crash consistency issues, incorrect compaction logic, and memory bloat. Required: atomic WAL/Manifest updates, true SSTable merging with key range management, bounded memory usage, and proper recovery from SIGKILL.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/0cniqc-crash-consistent-lsm-storage-engine-with-true-leveled-compaction",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
