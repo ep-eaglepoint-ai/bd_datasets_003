@@ -1,0 +1,11 @@
+{
+            "instance_id": "R66CTU",
+            "problem_statement": "Standard Refresh Token rotation reduces the lifespan of a stolen token, but it does not stop an attacker who steals the RT before it is used. In a race condition (or if the attacker acts first), the attacker gets a new valid token, and the legitimate user gets a "Invalid Token" error. The sophisticated solution is Reuse Detection: if the server sees an RT being presented after it has already been rotated (flagged as used), it assumes a breach has occurred. The strict security response is not just to reject the request, but to find the Child (the new valid token generated from that old parent) and revoke it immediately, forcing the legitimate user to re-login.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/r66ctu-jwt-refresh-token-rotation-with-reuse-detection",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
