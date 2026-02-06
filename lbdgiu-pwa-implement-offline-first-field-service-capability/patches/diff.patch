@@ -1,0 +1,776 @@
+diff --git a/repository_before/.gitkeep b/repository_before/.gitkeep
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/repository_after/client/.gitignore b/repository_after/client/.gitignore
+new file mode 100644
+index 0000000..7ceb59f
+--- /dev/null
++++ b/repository_after/client/.gitignore
+@@ -0,0 +1,25 @@
++# Logs
++logs
++*.log
++npm-debug.log*
++yarn-debug.log*
++yarn-error.log*
++pnpm-debug.log*
++lerna-debug.log*
++
++node_modules
++dist
++dist-ssr
++*.local
++
++# Editor directories and files
++.vscode/*
++!.vscode/extensions.json
++.idea
++.DS_Store
++*.suo
++*.ntvs*
++*.njsproj
++*.sln
++*.sw?
++.env
+diff --git a/repository_after/client/Dockerfile b/repository_after/client/Dockerfile
+new file mode 100644
+index 0000000..0595c0d
+--- /dev/null
++++ b/repository_after/client/Dockerfile
+@@ -0,0 +1,6 @@
++FROM node:22-alpine AS build
++WORKDIR /app
++COPY package*.json ./
++RUN npm install
++COPY . .
++RUN npm run build
+\ No newline at end of file
+diff --git a/repository_after/client/eslint.config.js b/repository_after/client/eslint.config.js
+new file mode 100644
+index 0000000..4fa125d
+--- /dev/null
++++ b/repository_after/client/eslint.config.js
+@@ -0,0 +1,29 @@
++import js from '@eslint/js'
++import globals from 'globals'
++import reactHooks from 'eslint-plugin-react-hooks'
++import reactRefresh from 'eslint-plugin-react-refresh'
++import { defineConfig, globalIgnores } from 'eslint/config'
++
++export default defineConfig([
++  globalIgnores(['dist']),
++  {
++    files: ['**/*.{js,jsx}'],
++    extends: [
++      js.configs.recommended,
++      reactHooks.configs.flat.recommended,
++      reactRefresh.configs.vite,
++    ],
++    languageOptions: {
++      ecmaVersion: 2020,
++      globals: globals.browser,
++      parserOptions: {
++        ecmaVersion: 'latest',
++        ecmaFeatures: { jsx: true },
++        sourceType: 'module',
++      },
++    },
++    rules: {
++      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
++    },
++  },
++])
+diff --git a/repository_after/client/index.html b/repository_after/client/index.html
+new file mode 100644
+index 0000000..35947f2
+--- /dev/null
++++ b/repository_after/client/index.html
+@@ -0,0 +1,15 @@
++<!doctype html>
++<html lang="en">
++
++<head>
++  <meta charset="UTF-8" />
++  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
++  <title>PWA-Implement-Offline-First-Field-Service-Capability</title>
++</head>
++
++<body>
++  <div id="root"></div>
++  <script type="module" src="/src/main.jsx"></script>
++</body>
++
++</html>
+\ No newline at end of file
+diff --git a/repository_after/client/package.json b/repository_after/client/package.json
+new file mode 100644
+index 0000000..866fe10
+--- /dev/null
++++ b/repository_after/client/package.json
+@@ -0,0 +1,28 @@
++{
++  "name": "my-offline-app",
++  "private": true,
++  "version": "0.0.0",
++  "type": "module",
++  "scripts": {
++    "dev": "vite",
++    "build": "vite build",
++    "lint": "eslint .",
++    "preview": "vite preview"
++  },
++  "dependencies": {
++    "react": "^19.2.0",
++    "react-dom": "^19.2.0"
++  },
++  "devDependencies": {
++    "@eslint/js": "^9.39.1",
++    "@types/react": "^19.2.5",
++    "@types/react-dom": "^19.2.3",
++    "@vitejs/plugin-react": "^5.1.1",
++    "eslint": "^9.39.1",
++    "eslint-plugin-react-hooks": "^7.0.1",
++    "eslint-plugin-react-refresh": "^0.4.24",
++    "globals": "^16.5.0",
++    "vite": "^7.2.4",
++    "vite-plugin-pwa": "^1.2.0"
++  }
++}
+diff --git a/repository_after/client/src/App.jsx b/repository_after/client/src/App.jsx
+new file mode 100644
+index 0000000..5024077
+--- /dev/null
++++ b/repository_after/client/src/App.jsx
+@@ -0,0 +1,84 @@
++import React, { useState } from 'react';
++import SyncStatusIndicator from './components/SyncStatusIndicator';
++import { purgeOldRecords, saveReportLocal } from './services/db';
++
++function App() {
++  const [isSaving, setIsSaving] = useState(false);
++
++  // Run cleanup on mount
++  React.useEffect(() => {
++    purgeOldRecords();
++  }, []);
++
++  const handleSubmit = async (e) => {
++    e.preventDefault();
++    setIsSaving(true);
++
++    const formData = new FormData(e.target);
++    const report = {
++      id: crypto.randomUUID(),
++      technician: formData.get('technician'),
++      location: formData.get('location'),
++      notes: formData.get('notes'),
++      details: {
++        equipmentStatus: formData.get('status'),
++        timestamp: new Date().toISOString()
++      }
++    };
++
++    try {
++      // Save to IndexedDB
++      await saveReportLocal(report);
++      alert('Report saved locally! It will sync automatically when online.');
++      e.target.reset();
++    } catch (error) {
++      console.error('Failed to save locally:', error);
++    } finally {
++      setIsSaving(false);
++    }
++  };
++
++  return (
++    <div className="app-container" style={{ padding: '20px', maxWidth: '600px' }}>
++      <h1>Field Service Reporting</h1>
++
++      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
++        <label>
++          Technician Name:
++          <input name="technician" required style={{ width: '100%', padding: '8px' }} />
++        </label>
++
++        <label>
++          Job Location:
++          <input name="location" required style={{ width: '100%', padding: '8px' }} />
++        </label>
++
++        <label>
++          Equipment Status:
++          <select name="status" style={{ width: '100%', padding: '8px' }}>
++            <option value="operational">Operational</option>
++            <option value="needs-repair">Needs Repair</option>
++            <option value="critical">Critical</option>
++          </select>
++        </label>
++
++        <label>
++          Work Notes:
++          <textarea name="notes" rows="4" style={{ width: '100%', padding: '8px' }} />
++        </label>
++
++        <button
++          type="submit"
++          disabled={isSaving}
++          style={{ padding: '10px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '4px' }}
++        >
++          {isSaving ? 'Saving...' : 'Save Report'}
++        </button>
++      </form>
++
++      <SyncStatusIndicator />
++    </div>
++  );
++}
++
++export default App;
+\ No newline at end of file
+diff --git a/repository_after/client/src/components/SyncStatusIndicator.jsx b/repository_after/client/src/components/SyncStatusIndicator.jsx
+new file mode 100644
+index 0000000..7b697c2
+--- /dev/null
++++ b/repository_after/client/src/components/SyncStatusIndicator.jsx
+@@ -0,0 +1,32 @@
++import React from 'react';
++import { useSyncManager } from '../hooks/useSyncManager';
++
++const SyncStatusIndicator = () => {
++    const { syncStatus } = useSyncManager();
++
++    const statusColors = {
++        'Offline': '#ef4444',    // Red
++        'Syncing...': '#3b82f6', // Blue
++        'Success': '#22c55e',    // Green
++        'Online': '#22c55e'      // Green
++    };
++
++    return (
++        <div style={{
++            position: 'fixed',
++            bottom: '20px',
++            right: '20px',
++            padding: '10px 20px',
++            borderRadius: '20px',
++            backgroundColor: statusColors[syncStatus] || '#6b7280',
++            color: 'white',
++            fontWeight: 'bold',
++            boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
++            transition: 'all 0.3s ease'
++        }}>
++            Status: {syncStatus}
++        </div>
++    );
++};
++
++export default SyncStatusIndicator;
+\ No newline at end of file
+diff --git a/repository_after/client/src/hooks/useSyncManager.js b/repository_after/client/src/hooks/useSyncManager.js
+new file mode 100644
+index 0000000..540e722
+--- /dev/null
++++ b/repository_after/client/src/hooks/useSyncManager.js
+@@ -0,0 +1,69 @@
++import { useState, useEffect } from 'react';
++import { getPendingReports, markAsSynced } from '../services/db';
++import { uploadReport } from '../services/api';
++
++export const useSyncManager = () => {
++    const [syncStatus, setSyncStatus] = useState(navigator.onLine ? 'Online' : 'Offline'); // Offline, Syncing..., Success
++
++    const performSync = async () => {
++        const pending = await getPendingReports();
++        if (pending.length === 0) return;
++
++        setSyncStatus('Syncing...');
++
++        // Chunking (Process 5 reports at a time)
++        const CHUNK_SIZE = 5;
++        for (let i = 0; i < pending.length; i += CHUNK_SIZE) {
++            const chunk = pending.slice(i, i + CHUNK_SIZE);
++
++            let conflictDetected = false;
++            for (const report of chunk) {
++                if (conflictDetected) break;
++
++                try {
++                    await uploadReport(report);
++                    await markAsSynced(report.id); // Update status in IndexedDB
++                } catch (err) {
++                    // If we detect a server-side conflict (412), stop the rest of this sync run.
++                    if (String(err?.message || '').includes('CONFLICT') || err?.status === 412) {
++                        conflictDetected = true;
++                    }
++                    console.error(`Failed to sync report ${report.id}:`, err);
++                }
++            }
++
++            if (conflictDetected) {
++                break;
++            }
++
++            // Small breather to keep UI responsive
++            await new Promise(resolve => setTimeout(resolve, 50));
++        }
++
++        setSyncStatus('Success');
++        setTimeout(() => setSyncStatus(navigator.onLine ? 'Online' : 'Offline'), 3000);
++    };
++
++    useEffect(() => {
++        // Listen for 'online' event
++        const handleOnline = () => {
++            setSyncStatus('Online');
++            performSync();
++        };
++
++        const handleOffline = () => setSyncStatus('Offline');
++
++        window.addEventListener('online', handleOnline);
++        window.addEventListener('offline', handleOffline);
++
++        // Initial check
++        if (navigator.onLine) performSync();
++
++        return () => {
++            window.removeEventListener('online', handleOnline);
++            window.removeEventListener('offline', handleOffline);
++        };
++    }, []);
++
++    return { syncStatus, performSync };
++};
+\ No newline at end of file
+diff --git a/repository_after/client/src/main.jsx b/repository_after/client/src/main.jsx
+new file mode 100644
+index 0000000..2a12263
+--- /dev/null
++++ b/repository_after/client/src/main.jsx
+@@ -0,0 +1,22 @@
++import { StrictMode } from 'react'
++import { createRoot } from 'react-dom/client'
++import App from './App.jsx'
++
++createRoot(document.getElementById('root')).render(
++  <StrictMode>
++    <App />
++  </StrictMode>,
++)
++
++// Service Worker Registration
++if ('serviceWorker' in navigator) {
++  window.addEventListener('load', () => {
++    navigator.serviceWorker.register('/src/sw/service-worker.js')
++      .then(reg => {
++        console.log('SW Registered with scope:', reg.scope);
++      })
++      .catch(err => {
++        console.error('SW Registration failed:', err);
++      });
++  });
++}
+\ No newline at end of file
+diff --git a/repository_after/client/src/services/api.js b/repository_after/client/src/services/api.js
+new file mode 100644
+index 0000000..d3c0f58
+--- /dev/null
++++ b/repository_after/client/src/services/api.js
+@@ -0,0 +1,33 @@
++const SERVER_URL = import.meta.env.VITE_SERVER_URL;
++
++export const uploadReport = async (report, attempt = 0) => {
++    const MAX_RETRIES = 5;
++
++    try {
++        // send local last_modified to the server
++        const response = await fetch(`${SERVER_URL}/reports`, {
++            method: 'POST',
++            headers: {
++                'Content-Type': 'application/json',
++                'If-Unmodified-Since': new Date(report.last_modified).toUTCString()
++            },
++            body: JSON.stringify(report),
++        });
++
++        if (response.status === 412) {
++            throw new Error('CONFLICT: Server has a newer version of this report.');
++        }
++
++        if (!response.ok) throw new Error('Network response was not ok');
++
++        return await response.json();
++    } catch (error) {
++        // Exponential Backoff
++        if (attempt < MAX_RETRIES && !error.message.includes('CONFLICT')) {
++            const delay = Math.pow(2, attempt) * 1000;
++            await new Promise(res => setTimeout(res, delay));
++            return uploadReport(report, attempt + 1);
++        }
++        throw error;
++    }
++};
+\ No newline at end of file
+diff --git a/repository_after/client/src/services/db.js b/repository_after/client/src/services/db.js
+new file mode 100644
+index 0000000..c38553f
+--- /dev/null
++++ b/repository_after/client/src/services/db.js
+@@ -0,0 +1,103 @@
++const DB_NAME = 'FieldServiceDB';
++const DB_VERSION = 1;
++const STORE_NAME = 'reports';
++
++export const initDB = () => {
++    return new Promise((resolve, reject) => {
++        const request = indexedDB.open(DB_NAME, DB_VERSION);
++
++        request.onupgradeneeded = (event) => {
++            const db = event.target.result;
++            if (!db.objectStoreNames.contains(STORE_NAME)) {
++                const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
++                store.createIndex('status', 'status', { unique: false });
++                store.createIndex('timestamp', 'timestamp', { unique: false });
++            }
++        };
++
++        request.onsuccess = () => resolve(request.result);
++        request.onerror = () => reject(request.error);
++    });
++};
++
++export const saveReportLocal = async (report) => {
++    const db = await initDB();
++    return new Promise((resolve, reject) => {
++        const transaction = db.transaction(STORE_NAME, 'readwrite');
++        const store = transaction.objectStore(STORE_NAME);
++
++        const entry = {
++            ...report,
++            status: 'pending',
++            timestamp: Date.now(),
++            last_modified: Date.now()
++        };
++
++        const request = store.put(entry);
++        request.onsuccess = () => resolve(true);
++        request.onerror = () => reject(request.error);
++    });
++};
++
++export const getPendingReports = async () => {
++    const db = await initDB();
++    return new Promise((resolve, reject) => {
++        const transaction = db.transaction(STORE_NAME, 'readonly');
++        const store = transaction.objectStore(STORE_NAME);
++        const index = store.index('status');
++        const request = index.getAll('pending');
++
++        request.onsuccess = () => resolve(request.result);
++        request.onerror = () => reject(request.error);
++    });
++};
++
++/**
++ * NEW: Updates a record status to 'synced' after successful API upload
++ */
++export const markAsSynced = async (id) => {
++    const db = await initDB();
++    return new Promise((resolve, reject) => {
++        const transaction = db.transaction(STORE_NAME, 'readwrite');
++        const store = transaction.objectStore(STORE_NAME);
++
++        const getRequest = store.get(id);
++        getRequest.onsuccess = () => {
++            const data = getRequest.result;
++            if (data) {
++                data.status = 'synced';
++                store.put(data);
++            }
++            resolve();
++        };
++        getRequest.onerror = () => reject(getRequest.error);
++    });
++};
++
++export const purgeOldRecords = async () => {
++    const db = await initDB();
++    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
++    const cutoff = Date.now() - SEVEN_DAYS_MS;
++
++    return new Promise((resolve, reject) => {
++        const transaction = db.transaction(STORE_NAME, 'readwrite');
++        const store = transaction.objectStore(STORE_NAME);
++        const index = store.index('timestamp');
++
++        const range = IDBKeyRange.upperBound(cutoff);
++        const cursorRequest = index.openCursor(range);
++
++        cursorRequest.onsuccess = (event) => {
++            const cursor = event.target.result;
++            if (cursor) {
++                if (cursor.value.status === 'synced') {
++                    cursor.delete();
++                }
++                cursor.continue();
++            }
++        };
++
++        transaction.oncomplete = () => resolve();
++        transaction.onerror = () => reject(transaction.error);
++    });
++};
+\ No newline at end of file
+diff --git a/repository_after/client/src/sw/service-worker.js b/repository_after/client/src/sw/service-worker.js
+new file mode 100644
+index 0000000..96993d5
+--- /dev/null
++++ b/repository_after/client/src/sw/service-worker.js
+@@ -0,0 +1,52 @@
++const CACHE_NAME = 'field-service-v1';
++const ASSETS_TO_CACHE = [
++    '/',
++    '/index.html',
++    '/src/main.jsx',
++    '/manifest.json',
++    // other critical assets like CSS or logos here
++];
++
++// Skip waiting and claim clients immediately
++self.addEventListener('install', (event) => {
++    event.waitUntil(
++        caches.open(CACHE_NAME).then((cache) => {
++            console.log('Caching shell assets');
++            return cache.addAll(ASSETS_TO_CACHE);
++        })
++    );
++    self.skipWaiting();
++});
++
++self.addEventListener('activate', (event) => {
++    event.waitUntil(self.clients.claim());
++    // Clean up old caches if version changes
++    event.waitUntil(
++        caches.keys().then((keys) => {
++            return Promise.all(
++                keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))
++            );
++        })
++    );
++});
++
++// Cache-First Strategy
++self.addEventListener('fetch', (event) => {
++    if (event.request.method !== 'GET') return;
++
++    event.respondWith(
++        caches.match(event.request).then((cachedResponse) => {
++            if (cachedResponse) {
++                return cachedResponse;
++            }
++            return fetch(event.request).then((networkResponse) => {
++                return networkResponse;
++            });
++        }).catch(() => {
++            // If both fail (offline and not in cache), show offline fallback
++            if (event.request.mode === 'navigate') {
++                return caches.match('/');
++            }
++        })
++    );
++});
+\ No newline at end of file
+diff --git a/repository_after/client/vite.config.js b/repository_after/client/vite.config.js
+new file mode 100644
+index 0000000..afb2bd7
+--- /dev/null
++++ b/repository_after/client/vite.config.js
+@@ -0,0 +1,25 @@
++import { defineConfig } from 'vite';
++import react from '@vitejs/plugin-react';
++import { VitePWA } from 'vite-plugin-pwa';
++
++export default defineConfig({
++  plugins: [
++    react(),
++    VitePWA({
++      registerType: 'autoUpdate',
++      workbox: {
++        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
++        runtimeCaching: [
++          {
++            urlPattern: ({ request }) => request.destination === 'image',
++            handler: 'CacheFirst',
++            options: {
++              cacheName: 'images-cache',
++              expiration: { maxEntries: 50 },
++            },
++          },
++        ],
++      },
++    }),
++  ],
++});
+\ No newline at end of file
+diff --git a/repository_after/server/.gitignore b/repository_after/server/.gitignore
+new file mode 100644
+index 0000000..97aca2e
+--- /dev/null
++++ b/repository_after/server/.gitignore
+@@ -0,0 +1,2 @@
++.env
++node_modules
+\ No newline at end of file
+diff --git a/repository_after/server/Dockerfile b/repository_after/server/Dockerfile
+new file mode 100644
+index 0000000..6168066
+--- /dev/null
++++ b/repository_after/server/Dockerfile
+@@ -0,0 +1,5 @@
++FROM node:22-alpine
++WORKDIR /app
++COPY package*.json ./
++RUN npm install
++COPY . .
+\ No newline at end of file
+diff --git a/repository_after/server/db_init.js b/repository_after/server/db_init.js
+new file mode 100644
+index 0000000..226d3e6
+--- /dev/null
++++ b/repository_after/server/db_init.js
+@@ -0,0 +1,41 @@
++import 'dotenv/config';
++import { Pool } from 'pg';
++
++export const pool = new Pool({
++    user: process.env.PG_USER,
++    host: process.env.PG_HOST,
++    database: process.env.PG_DATABASE,
++    password: process.env.PG_PASSWORD,
++    port: Number(process.env.PG_PORT),
++});
++
++const initQuery = `
++  CREATE TABLE IF NOT EXISTS reports (
++      id UUID PRIMARY KEY,
++      technician TEXT NOT NULL,
++      location TEXT,
++      notes TEXT,
++      status TEXT,
++      details JSONB,
++      last_modified BIGINT NOT NULL
++  );
++
++  -- Index for faster lookups during conflict resolution
++  CREATE INDEX IF NOT EXISTS idx_reports_last_modified ON reports(last_modified);
++`;
++
++const setupDatabase = async () => {
++    try {
++        console.log('--- Initializing Remote Postgres Database ---');
++        const client = await pool.connect();
++
++        await client.query(initQuery);
++
++        console.log('✅ Success: Table "reports" is ready.');
++        client.release();
++    } catch (err) {
++        console.error('❌ Error initializing database:', err.message);
++    }
++};
++
++setupDatabase();
+\ No newline at end of file
+diff --git a/repository_after/server/package.json b/repository_after/server/package.json
+new file mode 100644
+index 0000000..1b5b6a7
+--- /dev/null
++++ b/repository_after/server/package.json
+@@ -0,0 +1,12 @@
++{
++    "scripts": {
++        "db:init": "node server/db-init.js",
++        "server": "node server/server.js"
++    },
++    "dependencies": {
++        "cors": "^2.8.6",
++        "dotenv": "^17.2.3",
++        "express": "^5.2.1",
++        "pg": "^8.18.0"
++    }
++}
+diff --git a/repository_after/server/server.js b/repository_after/server/server.js
+new file mode 100644
+index 0000000..57055e3
+--- /dev/null
++++ b/repository_after/server/server.js
+@@ -0,0 +1,68 @@
++import express from 'express';
++import cors from 'cors';
++import 'dotenv/config';
++import { pool } from './db_init.js';
++
++const app = express();
++
++app.use(cors({
++    origin: 'http://localhost:5173', // Vite dev URL
++    allowedHeaders: ['Content-Type', 'If-Unmodified-Since'],
++    methods: ['GET', 'POST', 'OPTIONS']
++}));
++app.use(express.json());
++
++app.post('/reports', async (req, res) => {
++    const report = req.body;
++    const clientIfUnmodifiedSince = req.headers['if-unmodified-since'];
++
++    try {
++        // 1. Conflict Detection Logic
++        const existing = await pool.query('SELECT last_modified FROM reports WHERE id = $1', [report.id]);
++
++        if (existing.rows.length > 0) {
++            const serverLastModified = parseInt(existing.rows[0].last_modified);
++            const clientLastModified = new Date(clientIfUnmodifiedSince).getTime();
++
++            // If server version is newer than what the client thinks, block the update
++            if (serverLastModified > clientLastModified) {
++                return res.status(412).json({ error: 'Conflict: Server has a newer version.' });
++            }
++        }
++
++        // 2. Upsert (Update or Insert) Logic
++        const query = `
++            INSERT INTO reports (id, technician, location, notes, status, details, last_modified)
++            VALUES ($1, $2, $3, $4, $5, $6, $7)
++            ON CONFLICT (id) DO UPDATE SET
++                technician = EXCLUDED.technician,
++                location = EXCLUDED.location,
++                notes = EXCLUDED.notes,
++                status = EXCLUDED.status,
++                details = EXCLUDED.details,
++                last_modified = EXCLUDED.last_modified
++            RETURNING *;
++            `;
++
++        const values = [
++            report.id,
++            report.technician,
++            report.location,
++            report.notes,
++            report.details.equipmentStatus,
++            report.details,
++            report.last_modified
++        ];
++
++        const result = await pool.query(query, values);
++        console.log(`Report ${report.id} synchronized.`);
++        res.status(200).json(result.rows[0]);
++
++    } catch (err) {
++        console.error(err);
++        res.status(500).send('Server Error');
++    }
++});
++
++const port = process.env.PORT || 3000;
++app.listen(port, () => console.log(`Remote API running on http://localhost:${port}`));
+\ No newline at end of file

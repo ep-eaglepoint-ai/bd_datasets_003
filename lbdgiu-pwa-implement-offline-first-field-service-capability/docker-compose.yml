@@ -1,0 +1,25 @@
+services:
+  server:
+    build: ./repository_after/server
+    expose:
+      - "4000"
+    container_name: field-service-api
+
+  client:
+    build: ./repository_after/client
+    ports:
+      - "80:80"
+    depends_on:
+      - server
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    depends_on:
+      - server
+    environment:
+      - VITE_SERVER_URL=http://server:4000 
+    volumes:
+      - .:/app
+      - /app/node_modules
