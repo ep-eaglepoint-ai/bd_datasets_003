@@ -1,0 +1,11 @@
+{
+            "instance_id": "O8SV9U",
+            "problem_statement": "Cryptographic hashing functions like Scrypt are designed to be slow and memory-hard to resist brute-force attacks. In Node.js, running these synchronously (scryptSync) is catastrophic for throughput. While Node.js offers asynchronous variants (scrypt), these rely on the internal libuv thread pool (default size 4). If a high volume of hash requests comes in, they saturate the libuv pool, blocking other OS-level operations like File I/O and DNS lookups.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/o8sv9u-offloading-scrypt-hashing-to-custom-worker-threads",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
