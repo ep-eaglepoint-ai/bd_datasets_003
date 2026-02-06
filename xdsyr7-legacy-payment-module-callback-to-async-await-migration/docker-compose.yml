@@ -8,7 +8,7 @@ services:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: payments
     volumes:
-      - ./sql/init_mysql.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./repository_after/sql/init_mysql.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       timeout: 20s
@@ -20,7 +20,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: payments
     volumes:
-      - ./sql/init_postgres.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./repository_after/sql/init_postgres.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       timeout: 20s
