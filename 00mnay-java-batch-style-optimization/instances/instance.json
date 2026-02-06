@@ -1,0 +1,13 @@
+{
+            "instance_id": "00MNAY",
+            "problem_statement": "Noticed severe performance degradation and inconsistent behavior while reviewing a Java-based batch processing application responsible for generating user reports. The issue surfaced during analysis of the user processing and report generation flow, where the system constructs user records, processes user names, aggregates results into a report, and performs a final analysis pass before printing output.
+
+The system currently performs excessive redundant iteration, inefficient string manipulation, and repeated full scans over collections, leading to cubic and quadratic time complexity in critical paths. Static global state causes hidden coupling between components, making the application difficult to test and reason about. Profiling shows unnecessary memory allocations and garbage creation during report construction and analysis. As input size increases, runtime and memory usage grow unpredictably, making the system unsuitable for benchmarking and regression testing without refactoring.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/00mnay-java-batch-style-optimization",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
