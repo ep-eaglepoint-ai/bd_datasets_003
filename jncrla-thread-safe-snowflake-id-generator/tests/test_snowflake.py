@@ -5,8 +5,19 @@ import threading
 import unittest
 from unittest.mock import patch
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "repository_after"))
-from snowflake import SnowflakeGenerator, ClockMovedBackwardsError, CUSTOM_EPOCH_MS
+_repo = os.environ.get("REPO_PATH", "repository_after")
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", _repo))
+try:
+    from snowflake import SnowflakeGenerator, ClockMovedBackwardsError, CUSTOM_EPOCH_MS
+except ImportError:
+    class ClockMovedBackwardsError(Exception):
+        pass
+    class SnowflakeGenerator:
+        def __init__(self, machine_id=0):
+            pass
+        def next_id(self):
+            raise NotImplementedError("No implementation in this repo path")
+    CUSTOM_EPOCH_MS = 1704067200000
 
 
 class TestBitLayout(unittest.TestCase):
