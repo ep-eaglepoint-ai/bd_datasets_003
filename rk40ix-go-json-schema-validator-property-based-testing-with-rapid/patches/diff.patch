@@ -1,5 +1,5 @@
 diff --git a/repository_before/go.mod b/repository_after/go.mod
-index 5f78ba8..b74d368 100644
+index 5f78ba89..b74d368f 100644
 --- a/repository_before/go.mod
 +++ b/repository_after/go.mod
 @@ -3,3 +3,5 @@ module json-validator
@@ -10,7 +10,7 @@ index 5f78ba8..b74d368 100644
 +replace pgregory.net/rapid => ./pgregory.net/rapid
 diff --git a/repository_after/pgregory.net/rapid/go.mod b/repository_after/pgregory.net/rapid/go.mod
 new file mode 100644
-index 0000000..ca86645
+index 00000000..ca866454
 --- /dev/null
 +++ b/repository_after/pgregory.net/rapid/go.mod
 @@ -0,0 +1,3 @@
@@ -19,10 +19,10 @@ index 0000000..ca86645
 +go 1.21
 diff --git a/repository_after/pgregory.net/rapid/rapid.go b/repository_after/pgregory.net/rapid/rapid.go
 new file mode 100644
-index 0000000..6dc3d0a
+index 00000000..450fee21
 --- /dev/null
 +++ b/repository_after/pgregory.net/rapid/rapid.go
-@@ -0,0 +1,322 @@
+@@ -0,0 +1,323 @@
 +package rapid
 +
 +import (
@@ -119,16 +119,19 @@ index 0000000..6dc3d0a
 +func CheckExpectFailure(t *testing.T, prop func(*T)) ShrinkResult {
 +	t.Helper()
 +	rt := &T{rnd: rand.New(rand.NewSource(time.Now().UnixNano())), tb: t}
-+	msg, failed := runProperty(rt, prop, nil)
-+	if !failed {
-+		t.Fatalf("expected property failure but it passed")
++	for i := 0; i < defaultRuns; i++ {
++		_, failed := runProperty(rt, prop, nil)
++		if !failed {
++			continue
++		}
++		shrunk := shrinkFailure(rt, prop)
++		return ShrinkResult{Values: shrunk, JSON: formatValues(shrunk)}
 +	}
-+	_ = msg
-+	shrunk := shrinkFailure(rt, prop)
-+	return ShrinkResult{Values: shrunk, JSON: formatValues(shrunk)}
++	t.Fatalf("expected property failure but it passed after %d runs", defaultRuns)
++	return ShrinkResult{}
 +}
 +
-+func runProperty(t *T, prop func(*T), replay []any) (string, bool) {
++func runProperty(t *T, prop func(*T), replay []any) (msg string, failed bool) {
 +	if replay != nil {
 +		t.replaying = true
 +		t.replay = replay
@@ -138,8 +141,6 @@ index 0000000..6dc3d0a
 +		t.draws = nil
 +		t.drawIndex = 0
 +	}
-+	var msg string
-+	var failed bool
 +	defer func() {
 +		if r := recover(); r != nil {
 +			switch v := r.(type) {
@@ -346,7 +347,7 @@ index 0000000..6dc3d0a
 +	return []string{"", string(r[:half])}
 +}
 diff --git a/repository_before/validator/arrays.go b/repository_after/validator/arrays.go
-index 47d11d6..998e20e 100644
+index 47d11d6a..998e20e5 100644
 --- a/repository_before/validator/arrays.go
 +++ b/repository_after/validator/arrays.go
 @@ -1,9 +1,18 @@
@@ -389,7 +390,7 @@ index 47d11d6..998e20e 100644
  	}
  
 diff --git a/repository_before/validator/objects.go b/repository_after/validator/objects.go
-index 73a9e23..0f150fe 100644
+index 73a9e237..0f150fe3 100644
 --- a/repository_before/validator/objects.go
 +++ b/repository_after/validator/objects.go
 @@ -12,7 +12,11 @@ func validateObject(schema *Schema, data interface{}, path string) error {
@@ -406,7 +407,7 @@ index 73a9e23..0f150fe 100644
  	}
  
 diff --git a/repository_before/validator/strings.go b/repository_after/validator/strings.go
-index ec7e243..971a8a8 100644
+index ec7e2437..971a8a83 100644
 --- a/repository_before/validator/strings.go
 +++ b/repository_after/validator/strings.go
 @@ -2,11 +2,13 @@ package validator
@@ -462,7 +463,7 @@ index ec7e243..971a8a8 100644
  }
 diff --git a/repository_after/validator/test_validator_feature_tests_test.go b/repository_after/validator/test_validator_feature_tests_test.go
 new file mode 100644
-index 0000000..140cd08
+index 00000000..140cd080
 --- /dev/null
 +++ b/repository_after/validator/test_validator_feature_tests_test.go
 @@ -0,0 +1,595 @@
