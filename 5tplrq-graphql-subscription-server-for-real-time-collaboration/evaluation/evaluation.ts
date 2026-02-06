@@ -69,6 +69,19 @@ function runMetrics(repoPath: string): Record<string, any> {
 }
 
 function evaluate(repoName: string, projectName: string): EvaluationResult {
+    const repoDir = join(ROOT, repoName);
+    if (!existsSync(join(repoDir, 'package.json'))) {
+        console.log(`[Evaluator] Skipping ${repoName} (package.json not found)`);
+        return {
+            tests: {
+                passed: false,
+                return_code: 0,
+                output: "Skipped: package.json not found in repository."
+            },
+            metrics: {}
+        };
+    }
+
     const tests = runTests(repoName, projectName);
     const metrics = runMetrics(repoName);
     return { tests, metrics };

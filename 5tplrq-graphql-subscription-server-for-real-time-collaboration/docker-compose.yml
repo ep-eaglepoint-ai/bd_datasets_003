@@ -3,8 +3,8 @@ services:
     build: 
       context: ./${REPO_PATH:-repository_after}
       dockerfile: ../Dockerfile
-    ports:
-      - "4000:4000"
+    # ports:
+    #   - "4000:4000"
     environment:
       - DATABASE_URL=postgresql://user:pass@db:5432/collab_db
       - REDIS_HOST=redis
@@ -43,7 +43,7 @@ services:
       dockerfile: ../Dockerfile
     command: sh -c "sleep 15 && npm test"
     volumes:
-      - ./tests:/app/tests
+      - ${HOST_PROJECT_PATH:-.}/tests:/app/tests
     environment:
       - DATABASE_URL=postgresql://user:pass@db:5432/collab_db
       - REDIS_HOST=redis
@@ -70,3 +70,4 @@ services:
     working_dir: /project
     environment:
       - REPO_PATH=repository_after
+      - HOST_PROJECT_PATH=${PWD}
