@@ -1,0 +1,223 @@
+"""
+Switchable Normalization (SN) - PyTorch Implementation (fixed)
+
+This implementation:
+- Computes BatchNorm, InstanceNorm, and LayerNorm statistics in a single forward pass.
+- Uses learnable logits for mean and variance importance; converts them with softmax.
+- Maintains running_mean and running_var for BatchNorm when track_running_stats=True.
+- Uses unbiased=False variance (population variance).
+- Applies shared affine scale and bias (per-channel) after normalization.
+- Broadcast-safe reshaping and explicit dtype/device alignment for mixed precision.
+- Compatible with PyTorch autograd and can replace nn.BatchNorm2d.
+"""
+
+from typing import Optional
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+class SwitchableNorm2d(nn.Module):
+    """
+    Switchable Normalization for 2D conv inputs (N, C, H, W).
+
+    Parameters
+    ----------
+    num_features : int
+        Number of channels C.
+    eps : float
+        Small epsilon for numerical stability.
+    momentum : float
+        Momentum for running stats update (same semantics as BatchNorm).
+    affine : bool
+        If True, applies learnable per-channel scale and bias.
+    track_running_stats : bool
+        If True, maintain running_mean and running_var for BN path.
+    """
+
+    def __init__(
+        self,
+        num_features: int,
+        eps: float = 1e-5,
+        momentum: float = 0.1,
+        affine: bool = True,
+        track_running_stats: bool = True,
+        device: Optional[torch.device] = None,
+        dtype: Optional[torch.dtype] = None,
+    ):
+        factory_kwargs = {"device": device, "dtype": dtype}
+        super().__init__()
+
+        self.num_features = int(num_features)
+        self.eps = float(eps)
+        self.momentum = float(momentum)
+        self.affine = bool(affine)
+        self.track_running_stats = bool(track_running_stats)
+
+        # Learnable logits for mean and variance importance (BN, IN, LN)
+        # Keep as logits so softmax produces convex coeffs.
+        self.mean_logits = nn.Parameter(torch.zeros(3, **factory_kwargs))
+        self.var_logits = nn.Parameter(torch.zeros(3, **factory_kwargs))
+
+        # Affine per-channel parameters (gamma and beta), shape (C,)
+        if self.affine:
+            self.weight = nn.Parameter(torch.ones(self.num_features, **factory_kwargs))
+            self.bias = nn.Parameter(torch.zeros(self.num_features, **factory_kwargs))
+        else:
+            self.register_parameter("weight", None)
+            self.register_parameter("bias", None)
+
+        # Running statistics for BN path only
+        if self.track_running_stats:
+            self.register_buffer("running_mean", torch.zeros(self.num_features, **factory_kwargs))
+            self.register_buffer("running_var", torch.ones(self.num_features, **factory_kwargs))
+            # num_batches_tracked must be long
+            self.register_buffer(
+                "num_batches_tracked", torch.tensor(0, dtype=torch.long, device=device)
+            )
+        else:
+            self.register_buffer("running_mean", None)
+            self.register_buffer("running_var", None)
+            self.register_buffer("num_batches_tracked", None)
+
+        self.reset_parameters()
+
+    def reset_running_stats(self) -> None:
+        if self.track_running_stats:
+            self.running_mean.zero_()
+            self.running_var.fill_(1)
+            if self.num_batches_tracked is not None:
+                self.num_batches_tracked.zero_()
+
+    def reset_parameters(self) -> None:
+        # Initialize running stats and affine params
+        self.reset_running_stats()
+        if self.affine:
+            nn.init.ones_(self.weight)
+            nn.init.zeros_(self.bias)
+        # Initialize logits to small unequal values so softmax isn't exactly uniform
+        with torch.no_grad():
+            self.mean_logits.copy_(torch.tensor([0.4, 0.3, 0.3], device=self.mean_logits.device))
+            self.var_logits.copy_(torch.tensor([0.4, 0.3, 0.3], device=self.var_logits.device))
+
+    def extra_repr(self) -> str:
+        return (
+            f"{self.num_features}, eps={self.eps}, momentum={self.momentum}, "
+            f"affine={self.affine}, track_running_stats={self.track_running_stats}"
+        )
+
+    def _softmax_coeffs(self, logits: torch.Tensor, dtype: torch.dtype, device: torch.device) -> torch.Tensor:
+        """
+        Compute softmax-normalized coefficients from logits, returning a tensor
+        on given dtype and device for safe arithmetic with input.
+        """
+        # Convert logits to desired device/dtype for stable operations with x
+        l = logits.to(device=device, dtype=dtype)
+        coeffs = F.softmax(l, dim=0)
+        return coeffs
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.dim() != 4:
+            raise ValueError("SwitchableNorm2d expects 4D input (N, C, H, W)")
+
+        N, C, H, W = x.shape
+        if C != self.num_features:
+            raise ValueError(f"Expected input with {self.num_features} channels, got {C}")
+
+        device = x.device
+        dtype = x.dtype
+
+        # Compute softmax-normalized importance coefficients on input dtype/device
+        mean_coeffs = self._softmax_coeffs(self.mean_logits, dtype=dtype, device=device)  # (3,)
+        var_coeffs = self._softmax_coeffs(self.var_logits, dtype=dtype, device=device)    # (3,)
+
+        # Compute BN statistics (per-channel over N,H,W)
+        # Use unbiased=False (population variance)
+        mean_bn = x.mean(dim=(0, 2, 3))
+        var_bn = x.var(dim=(0, 2, 3), unbiased=False)
+
+        # Compute IN statistics (per-sample per-channel over H,W)
+        mean_in = x.mean(dim=(2, 3))
+        var_in = x.var(dim=(2, 3), unbiased=False)
+
+        # Compute LN statistics (per-sample over C,H,W) -> shapes (N,)
+        mean_ln = x.view(N, -1).mean(dim=1)  # (N,)
+        var_ln = x.view(N, -1).var(dim=1, unbiased=False)  # (N,)
+
+        # Update running stats for BN path in training mode (in-place updates)
+        if self.training and self.track_running_stats:
+            if self.num_batches_tracked is not None:
+                self.num_batches_tracked += 1
+            exponential_average_factor = self.momentum
+            with torch.no_grad():
+                rm = self.running_mean
+                rv = self.running_var
+                if rm is not None and rv is not None:
+                    # In-place update to preserve buffer identity
+                    rm.mul_(1 - exponential_average_factor)
+                    rm.add_(mean_bn.detach().to(rm.dtype), alpha=exponential_average_factor)
+                    rv.mul_(1 - exponential_average_factor)
+                    rv.add_(var_bn.detach().to(rv.dtype), alpha=exponential_average_factor)
+
+        # In eval, BN path should use running stats if tracked
+        if not self.training and self.track_running_stats:
+            mean_bn_use = self.running_mean.to(device=device, dtype=dtype)
+            var_bn_use = self.running_var.to(device=device, dtype=dtype)
+        else:
+            mean_bn_use = mean_bn.to(device=device, dtype=dtype)
+            var_bn_use = var_bn.to(device=device, dtype=dtype)
+
+        # Reshape for broadcasting to (N, C, 1, 1)
+        mean_bn_t = mean_bn_use.view(1, C, 1, 1).expand(N, C, 1, 1)
+        var_bn_t = var_bn_use.view(1, C, 1, 1).expand(N, C, 1, 1)
+        mean_in_t = mean_in.to(device=device, dtype=dtype).view(N, C, 1, 1)
+        var_in_t = var_in.to(device=device, dtype=dtype).view(N, C, 1, 1)
+        mean_ln_t = mean_ln.to(device=device, dtype=dtype).view(N, 1, 1, 1).expand(N, C, 1, 1)
+        var_ln_t = var_ln.to(device=device, dtype=dtype).view(N, 1, 1, 1).expand(N, C, 1, 1)
+
+        # Combine means and variances using softmax coefficients (order: BN, IN, LN)
+        mc = mean_coeffs.view(3, 1, 1, 1).to(device=device, dtype=dtype)
+        vc = var_coeffs.view(3, 1, 1, 1).to(device=device, dtype=dtype)
+
+        mean_comb = mc[0] * mean_bn_t + mc[1] * mean_in_t + mc[2] * mean_ln_t
+        var_comb = vc[0] * var_bn_t + vc[1] * var_in_t + vc[2] * var_ln_t
+
+        # Normalize (population variance) with epsilon stabilization
+        x_norm = (x - mean_comb) / torch.sqrt(var_comb + self.eps)
+
+        # Apply affine per-channel transform if requested
+        if self.affine:
+            w = self.weight.view(1, C, 1, 1).to(device=device, dtype=dtype)
+            b = self.bias.view(1, C, 1, 1).to(device=device, dtype=dtype)
+            out = x_norm * w + b
+        else:
+            out = x_norm
+
+        return out
+
+
+class AdaptiveSwitchableNorm2d(SwitchableNorm2d):
+    """
+    Optional adaptive variant that initializes the logits based on a provided
+    layer_depth value in [0,1] so shallow layers can favor IN, mid layers BN,
+    deep layers LN. This only sets initial logits; learning still decides final mix.
+    """
+
+    def __init__(self, num_features: int, layer_depth: float = 0.5, **kwargs):
+        # store layer_depth then call parent init
+        self.layer_depth = float(layer_depth)
+        super().__init__(num_features, **kwargs)
+        self._init_depth_aware_weights()
+
+    def _init_depth_aware_weights(self) -> None:
+        with torch.no_grad():
+            if self.layer_depth < 0.33:
+                w = torch.tensor([0.0, 1.0, 0.0], dtype=self.mean_logits.dtype, device=self.mean_logits.device)
+            elif self.layer_depth < 0.66:
+                w = torch.tensor([1.0, 0.0, 0.0], dtype=self.mean_logits.dtype, device=self.mean_logits.device)
+            else:
+                w = torch.tensor([0.0, 0.0, 1.0], dtype=self.mean_logits.dtype, device=self.mean_logits.device)
+            # set both mean and var logits so softmax will reflect desired initial bias
+            self.mean_logits.copy_(w)
+            self.var_logits.copy_(w)

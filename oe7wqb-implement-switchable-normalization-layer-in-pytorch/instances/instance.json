@@ -1,0 +1,11 @@
+{
+            "instance_id": "OE7WQB",
+            "problem_statement": "Create a PyTorch layer that dynamically combines BatchNorm, InstanceNorm, and LayerNorm using learnable importance weights, allowing the network to automatically select the optimal normalization type per layer while maintaining training stability, efficiency, and compatibility with standard convolutional architectures.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/oe7wqb-implement-switchable-normalization-layer-in-pytorch",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
