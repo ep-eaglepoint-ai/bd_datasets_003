@@ -1,0 +1,11 @@
+{
+            "instance_id": "VDIN6Y",
+            "problem_statement": "An e-commerce ML platform struggles with manual feature engineering from heterogeneous data sources (REST, GraphQL, Avro, JSON logs), causing model degradation and high engineering costs. They need an automated polyglot schema inference engine that generates type-safe feature accessors, handles real-time schema evolution, infers semantic relationships, and produces optimized code in multiple languages (TypeScript, Python, Go) within strict performance and resource limits.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/vdin6y-automated-polyglot-feature-accessor-engine-with-sub-500ms-schema-inference-and-50mb-memory-cap",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
