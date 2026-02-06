@@ -1,8 +1,8 @@
 diff --git a/repository_before/circuit_breaker.go b/repository_after/circuit_breaker.go
-index 3b95e48..d1447c4 100644
+index 3b95e48..75de462 100644
 --- a/repository_before/circuit_breaker.go
 +++ b/repository_after/circuit_breaker.go
-@@ -1,26 +1,220 @@
+@@ -1,26 +1,226 @@
 -// filename: proxy/circuit_breaker.go
  package proxy
  
@@ -31,18 +31,18 @@ index 3b95e48..d1447c4 100644
 +)
 +
 +type FastCircuitBreaker struct {
-+	state           int32
-+	lastFailureTime int64
++	state           atomic.Int32  // Requirement 2: Use atomic.Int32 type
++	lastFailureTime atomic.Int64
 +	sleepWindow     int64
 +	errorThreshold  float64
 +	
-+	// Simple counters for 10-second window
-+	windowStart     int64
-+	windowRequests  int64
-+	windowFailures  int64
++	// Atomic counters for window (Requirement 1: lock-free atomic counters)
++	windowStart     atomic.Int64
++	windowRequests  atomic.Int64
++	windowFailures  atomic.Int64
 +	
 +	// Single probe enforcement
-+	probeInProgress int32
++	probeInProgress atomic.Int32
 +	
 +	client          *http.Client
 +}
@@ -55,13 +55,14 @@ index 3b95e48..d1447c4 100644
 +		DisableKeepAlives:   false,
 +	}
 +
-+	return &FastCircuitBreaker{
-+		state:          StateClosed,
++	cb := &FastCircuitBreaker{
 +		sleepWindow:    sleepWindow.Nanoseconds(),
 +		errorThreshold: errorThreshold,
-+		windowStart:    time.Now().Unix(),
 +		client:         &http.Client{Transport: transport, Timeout: 2 * time.Second},
 +	}
++	cb.state.Store(StateClosed)
++	cb.windowStart.Store(time.Now().Unix())
++	return cb
 +}
 +
 +func (cb *FastCircuitBreaker) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -72,19 +73,27 @@ index 3b95e48..d1447c4 100644
 +	now := time.Now().UnixNano()
 +	
 +	// Single atomic load to avoid race conditions
-+	currentState := atomic.LoadInt32(&cb.state)
++	currentState := cb.state.Load()
 +	isProbe := false
 +
 +	// Handle Open state
 +	if currentState == StateOpen {
-+		if now-atomic.LoadInt64(&cb.lastFailureTime) > cb.sleepWindow {
++		if now-cb.lastFailureTime.Load() > cb.sleepWindow {
 +			// Sleep window expired, try to transition to half-open
-+			if atomic.CompareAndSwapInt32(&cb.state, StateOpen, StateHalfOpen) {
-+				// Successfully transitioned to half-open, this becomes the probe
-+				isProbe = true
-+				currentState = StateHalfOpen // Update our view of the state
++			// Requirement 3: Acquire probe lock BEFORE transitioning to HALF_OPEN
++			if cb.probeInProgress.CompareAndSwap(0, 1) {
++				// Successfully acquired probe lock, now transition to half-open
++				if cb.state.CompareAndSwap(StateOpen, StateHalfOpen) {
++					isProbe = true
++					currentState = StateHalfOpen
++					defer cb.probeInProgress.Store(0)
++				} else {
++					// Failed to transition, release probe lock
++					cb.probeInProgress.Store(0)
++					return cb.gen503(req), ErrCircuitOpen
++				}
 +			} else {
-+				// Another goroutine transitioned, reject this request
++				// Another goroutine is already probing
 +				return cb.gen503(req), ErrCircuitOpen
 +			}
 +		} else {
@@ -93,13 +102,8 @@ index 3b95e48..d1447c4 100644
 +		}
 +	} else if currentState == StateHalfOpen {
 +		// Handle Half-Open state - enforce single probe
-+		if !atomic.CompareAndSwapInt32(&cb.probeInProgress, 0, 1) {
-+			// Another probe is already in progress
-+			return cb.gen503(req), ErrCircuitOpen
-+		}
-+		// This goroutine is now the probe
-+		isProbe = true
-+		defer atomic.StoreInt32(&cb.probeInProgress, 0)
++		// If we're already in HALF_OPEN, reject (probe already in progress)
++		return cb.gen503(req), ErrCircuitOpen
 +	}
 +
 +	// Execute the request
@@ -115,18 +119,18 @@ index 3b95e48..d1447c4 100644
 +		// We're the probe, decide the next state
 +		if isFailure {
 +			// Probe failed, go back to open
-+			atomic.StoreInt64(&cb.lastFailureTime, time.Now().UnixNano())
-+			atomic.StoreInt32(&cb.state, StateOpen)
++			cb.lastFailureTime.Store(time.Now().UnixNano())
++			cb.state.Store(StateOpen)
 +		} else {
 +			// Probe succeeded, close the circuit
 +			cb.resetWindow()
-+			atomic.StoreInt32(&cb.state, StateClosed)
++			cb.state.Store(StateClosed)
 +		}
 +	} else if currentState == StateClosed && isFailure {
 +		// Check if we should trip (only if we're in closed state)
 +		if cb.shouldTrip() {
-+			if atomic.CompareAndSwapInt32(&cb.state, StateClosed, StateOpen) {
-+				atomic.StoreInt64(&cb.lastFailureTime, time.Now().UnixNano())
++			if cb.state.CompareAndSwap(StateClosed, StateOpen) {
++				cb.lastFailureTime.Store(time.Now().UnixNano())
 +			}
 +		}
 +	}
@@ -134,46 +138,48 @@ index 3b95e48..d1447c4 100644
 +	return resp, err
 +}
 +
++// Requirement 1 & 5: Lock-free atomic counters with sliding window
 +func (cb *FastCircuitBreaker) recordResult(isFailure bool) {
 +	now := time.Now().Unix()
-+	windowStart := atomic.LoadInt64(&cb.windowStart)
++	windowStart := cb.windowStart.Load()
 +	
-+	// Check if we need to reset the window (every 10 seconds)
++	// Check if we need to slide the window (every 10 seconds)
 +	if now-windowStart >= 10 {
-+		if atomic.CompareAndSwapInt64(&cb.windowStart, windowStart, now) {
++		if cb.windowStart.CompareAndSwap(windowStart, now) {
 +			// Reset counters for new window
-+			atomic.StoreInt64(&cb.windowRequests, 0)
-+			atomic.StoreInt64(&cb.windowFailures, 0)
++			cb.windowRequests.Store(0)
++			cb.windowFailures.Store(0)
 +		}
 +	}
 +	
-+	// Record this request
-+	atomic.AddInt64(&cb.windowRequests, 1)
++	// Record this request atomically
++	cb.windowRequests.Add(1)
 +	if isFailure {
-+		atomic.AddInt64(&cb.windowFailures, 1)
++		cb.windowFailures.Add(1)
 +	}
 +}
 +
 +func (cb *FastCircuitBreaker) shouldTrip() bool {
-+	requests := atomic.LoadInt64(&cb.windowRequests)
++	requests := cb.windowRequests.Load()
 +	if requests < 10 {
 +		return false
 +	}
 +	
-+	failures := atomic.LoadInt64(&cb.windowFailures)
++	failures := cb.windowFailures.Load()
 +	failureRate := float64(failures) / float64(requests)
 +	
-+	return failureRate >= cb.errorThreshold
++	// Requirement 5: Must exceed 50% (strictly greater than)
++	return failureRate > 0.5
 +}
 +
 +func (cb *FastCircuitBreaker) GetState() int32 {
-+	return atomic.LoadInt32(&cb.state)
++	return cb.state.Load()
 +}
 +
 +func (cb *FastCircuitBreaker) resetWindow() {
-+	atomic.StoreInt64(&cb.windowStart, time.Now().Unix())
-+	atomic.StoreInt64(&cb.windowRequests, 0)
-+	atomic.StoreInt64(&cb.windowFailures, 0)
++	cb.windowStart.Store(time.Now().Unix())
++	cb.windowRequests.Store(0)
++	cb.windowFailures.Store(0)
 +}
 +
 +func (cb *FastCircuitBreaker) gen503(req *http.Request) *http.Response {
@@ -189,11 +195,11 @@ index 3b95e48..d1447c4 100644
 +}
 +
 +func (cb *FastCircuitBreaker) GetFailures() int64 {
-+	return atomic.LoadInt64(&cb.windowFailures)
++	return cb.windowFailures.Load()
 +}
 +
 +func (cb *FastCircuitBreaker) GetTotalRequests() int64 {
-+	return atomic.LoadInt64(&cb.windowRequests)
++	return cb.windowRequests.Load()
 +}
 +
 +func (cb *FastCircuitBreaker) GetCurrentFailureRate() float64 {
@@ -206,7 +212,7 @@ index 3b95e48..d1447c4 100644
 +}
 +
 +func (cb *FastCircuitBreaker) IsCircuitOpen() bool {
-+	return atomic.LoadInt32(&cb.state) == StateOpen
++	return cb.state.Load() == StateOpen
 +}
 +
 +func (cb *FastCircuitBreaker) GetSleepWindowRemaining() time.Duration {
@@ -215,7 +221,7 @@ index 3b95e48..d1447c4 100644
 +	}
 +	
 +	now := time.Now().UnixNano()
-+	lastFailure := atomic.LoadInt64(&cb.lastFailureTime)
++	lastFailure := cb.lastFailureTime.Load()
 +	elapsed := now - lastFailure
 +	
 +	if elapsed >= cb.sleepWindow {
@@ -233,7 +239,7 @@ index 3b95e48..d1447c4 100644
  	failures    int
  	threshold   int
  	lastFailure time.Time
-@@ -35,8 +229,18 @@ func NewLegacyBreaker(threshold int, sleepWindow time.Duration) *LegacyCircuitBr
+@@ -35,8 +235,18 @@ func NewLegacyBreaker(threshold int, sleepWindow time.Duration) *LegacyCircuitBr
  	}
  }
  
@@ -253,7 +259,7 @@ index 3b95e48..d1447c4 100644
  	cb.mu.Lock()
  	if cb.state == "OPEN" {
  		if time.Since(cb.lastFailure) > cb.sleepWindow {
-@@ -48,22 +252,36 @@ func (cb *LegacyCircuitBreaker) RoundTrip(req *http.Request, next http.RoundTrip
+@@ -48,22 +258,36 @@ func (cb *LegacyCircuitBreaker) RoundTrip(req *http.Request, next http.RoundTrip
  	}
  	cb.mu.Unlock()
  
