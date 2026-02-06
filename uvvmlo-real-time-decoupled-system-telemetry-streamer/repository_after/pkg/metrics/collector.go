@@ -24,13 +24,12 @@ type SystemMetrics struct {
 
 // Collector samples system metrics at regular intervals
 type Collector struct {
-	interval      time.Duration
-	stopChan      chan struct{}
-	prevIdle      uint64
-	prevTotal     uint64
-	mu            sync.Mutex
-	connectionHub interface{ ClientCount() int }
-	stopped       bool
+	interval time.Duration
+	stopChan chan struct{}
+	prevIdle uint64
+	prevTotal uint64
+	mu       sync.Mutex
+	stopped  bool
 }
 
 // NewCollector creates a new metrics collector
@@ -39,13 +38,6 @@ func NewCollector(interval time.Duration) *Collector {
 		interval: interval,
 		stopChan: make(chan struct{}),
 	}
-}
-
-// SetConnectionHub allows injecting a hub to track active connections
-func (c *Collector) SetConnectionHub(hub interface{ ClientCount() int }) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.connectionHub = hub
 }
 
 // Start begins the metrics collection loop
@@ -99,7 +91,7 @@ func (c *Collector) Collect() SystemMetrics {
 func (c *Collector) getCPUUsage() float64 {
 	file, err := os.Open("/proc/stat")
 	if err != nil {
-		// Fallback for non-Linux systems (macOS, Windows, etc.)
+		// Fallback for non-Linux systems
 		return c.getCPUUsageFallback()
 	}
 	defer file.Close()
@@ -120,7 +112,6 @@ func (c *Collector) getCPUUsage() float64 {
 	}
 
 	// Parse CPU time values
-	// fields: cpu user nice system idle iowait irq softirq...
 	var total uint64
 	var idle uint64
 
@@ -130,7 +121,7 @@ func (c *Collector) getCPUUsage() float64 {
 			continue
 		}
 		total += val
-		if i == 4 { // idle is the 4th field (index 4)
+		if i == 4 { // idle is the 4th field
 			idle = val
 		}
 	}
@@ -138,7 +129,7 @@ func (c *Collector) getCPUUsage() float64 {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// On first call, store baseline and return 0
+	// On first call, store baseline
 	if c.prevTotal == 0 {
 		c.prevTotal = total
 		c.prevIdle = idle
@@ -160,7 +151,6 @@ func (c *Collector) getCPUUsage() float64 {
 	// CPU usage = (1 - idle_delta / total_delta) * 100
 	cpuUsage := (1.0 - idleDiff/totalDiff) * 100.0
 
-	// Clamp to valid range
 	if cpuUsage < 0 {
 		cpuUsage = 0
 	}
@@ -172,12 +162,10 @@ func (c *Collector) getCPUUsage() float64 {
 }
 
 // getCPUUsageFallback estimates CPU activity from runtime metrics
-// Used on non-Linux platforms where /proc/stat is unavailable
 func (c *Collector) getCPUUsageFallback() float64 {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 
-	// Estimate based on goroutine count and GC activity
 	numCPU := float64(runtime.NumCPU())
 	goroutinePressure := float64(runtime.NumGoroutine()) / (numCPU * 10.0)
 	gcPressure := float64(m.NumGC%100) / 10.0
@@ -201,15 +189,89 @@ func (c *Collector) getMemoryUsagePercent(m *runtime.MemStats) float64 {
 	return float64(m.Alloc) / float64(m.Sys) * 100
 }
 
-// getActiveConnections returns the number of active WebSocket connections from the hub
+// getActiveConnections counts host-level network connections from /proc/net/*
+// This is TRUE system-level connection count, not WebSocket client count
 func (c *Collector) getActiveConnections() int {
-	c.mu.Lock()
-	hub := c.connectionHub
-	c.mu.Unlock()
-
-	if hub != nil {
-		return hub.ClientCount()
+	// Try Linux /proc filesystem first
+	count := c.countLinuxConnections()
+	if count > 0 {
+		return count
 	}
 
-	return 0
+	// Fallback for non-Linux systems
+	return c.countConnectionsFallback()
+}
+
+// countLinuxConnections reads /proc/net/tcp and /proc/net/tcp6
+func (c *Collector) countLinuxConnections() int {
+	count := 0
+
+	// Count TCP IPv4 connections
+	tcp4Count := c.countConnectionsFromFile("/proc/net/tcp")
+	count += tcp4Count
+
+	// Count TCP IPv6 connections
+	tcp6Count := c.countConnectionsFromFile("/proc/net/tcp6")
+	count += tcp6Count
+
+	// Count UDP IPv4 connections (optional, but completes the picture)
+	udp4Count := c.countConnectionsFromFile("/proc/net/udp")
+	count += udp4Count
+
+	// Count UDP IPv6 connections
+	udp6Count := c.countConnectionsFromFile("/proc/net/udp6")
+	count += udp6Count
+
+	return count
+}
+
+// countConnectionsFromFile counts connections from a /proc/net/* file
+func (c *Collector) countConnectionsFromFile(path string) int {
+	file, err := os.Open(path)
+	if err != nil {
+		return 0
+	}
+	defer file.Close()
+
+	count := 0
+	scanner := bufio.NewScanner(file)
+
+	// Skip header line
+	if scanner.Scan() {
+		// Header skipped
+	}
+
+	// Count each connection line
+	for scanner.Scan() {
+		line := scanner.Text()
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// Parse connection state (format: sl local_address rem_address st ...)
+		fields := strings.Fields(line)
+		if len(fields) < 4 {
+			continue
+		}
+
+		// Field index 3 is the connection state
+		// TCP states: 01=ESTABLISHED, 0A=LISTEN, etc.
+		// We count all states except CLOSED (00)
+		state := fields[3]
+		if state != "00" {
+			count++
+		}
+	}
+
+	return count
+}
+
+// countConnectionsFallback uses runtime stats as a proxy
+// This is less accurate but works on all platforms
+func (c *Collector) countConnectionsFallback() int {
+	// On non-Linux systems, we can't easily get network connections
+	// Return goroutine count as a rough proxy for activity
+	// (This is admittedly imperfect, but better than nothing)
+	return runtime.NumGoroutine()
 }

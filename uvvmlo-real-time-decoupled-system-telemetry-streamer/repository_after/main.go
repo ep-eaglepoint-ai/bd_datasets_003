@@ -15,7 +15,7 @@ func main() {
 	go h.Run()
 
 	collector := metrics.NewCollector(1 * time.Second)
-	collector.SetConnectionHub(h) // Inject hub for connection tracking
+	// No need to inject hub - collector now reads actual system connections
 	go collector.Start(h.Broadcast)
 
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
