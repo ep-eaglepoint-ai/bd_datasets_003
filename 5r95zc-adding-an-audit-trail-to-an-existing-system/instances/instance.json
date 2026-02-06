@@ -1,0 +1,11 @@
+{
+            "instance_id": "5R95ZC",
+            "problem_statement": "We need to add an audit trail for leave request actions (create, approve, reject) so that who did what and when is recorded for compliance and support. The feature must be additive: existing create/approve/reject behavior and APIs stay the same, while new audit storage and a read-only query API are introduced. Recording audit entries must not cause the main operation to fail if the audit write fails, and the audit query must support filtering by actor, action type, leave request id, and date range with pagination and a bounded page size.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/5r95zc-adding-an-audit-trail-to-an-existing-system",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
