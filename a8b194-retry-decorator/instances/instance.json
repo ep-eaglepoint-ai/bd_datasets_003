@@ -1,0 +1,27 @@
+{
+  "instance_id": "A8B194",
+  "problem_statement": "Implement a Python @retry decorator that supports both synchronous and asynchronous functions with configurable retry counts, backoff strategies (fixed, linear, exponential), and selective exception handling to gracefully handle transient failures. The decorator must preserve function signatures and docstrings, use appropriate sleeping mechanisms (time.sleep vs asyncio.sleep), and raise a RetryError containing the attempt count and final exception when all retries are exhausted. The solution must provide resilient retry logic for network timeouts, rate limits, and temporary service issues while maintaining clean API usage and proper async/sync detection.",
+  "base_commit": "repository_before/",
+  "test_patch": "tests/",
+  "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/a8b194-retry-decorator",
+  "environment_setup": "Dockerfile",
+  "FAIL_TO_PASS": [
+    "tests/test_retry.py::TestRetryDecorator::test_retry_sync_success",
+    "tests/test_retry.py::TestRetryDecorator::test_retry_sync_failure",
+    "tests/test_retry.py::TestRetryDecorator::test_retry_sync_eventual_success",
+    "tests/test_retry.py::TestRetryDecorator::test_retry_async_success",
+    "tests/test_retry.py::TestRetryDecorator::test_retry_async_failure",
+    "tests/test_retry.py::TestRetryDecorator::test_retry_backoff_fixed",
+    "tests/test_retry.py::TestRetryDecorator::test_retry_backoff_linear",
+    "tests/test_retry.py::TestRetryDecorator::test_retry_backoff_exponential",
+    "tests/test_retry.py::TestRetryDecorator::test_retry_specific_exception",
+    "tests/test_retry.py::TestRetryDecorator::test_retry_validation",
+    "tests/test_retry.py::TestRetryDecorator::test_retry_preserve_metadata",
+    "tests/test_retry.py::TestRetryDecorator::test_retry_async_eventual_success",
+    "tests/test_retry.py::TestRetryDecorator::test_retry_max_attempts_one",
+    "tests/test_retry.py::TestRetryDecorator::test_retry_multiple_exception_types",
+    "tests/test_retry.py::TestRetryDecorator::test_retry_error_message",
+    "tests/test_retry.py::TestRetryDecorator::test_retry_zero_delay"
+  ],
+  "PASS_TO_PASS": []
+}

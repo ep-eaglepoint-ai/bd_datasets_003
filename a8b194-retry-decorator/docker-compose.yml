@@ -1,0 +1,15 @@
+services:
+  test:
+    build: .
+    command: pytest -q tests --cov=repository_after --cov-report=term-missing
+    environment:
+      - PYTHONPATH=/app
+    volumes:
+      - .:/app
+  evaluation:
+    build: .
+    command: python3 evaluation/evaluation.py
+    environment:
+      - PYTHONPATH=/app
+    volumes:
+      - .:/app
