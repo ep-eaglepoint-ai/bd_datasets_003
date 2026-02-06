@@ -1,4 +1,4 @@
-const { polls, voters, generatePollId, calculatePercentages } = require('../utils/pollUtils');
+const { polls, generatePollId, calculatePercentages } = require('../utils/pollUtils');
 
 const createPoll = (req, res) => {
   const { question, options } = req.body;
@@ -62,24 +62,11 @@ const vote = (req, res) => {
     return res.status(404).json({ error: 'Poll not found' });
   }
 
-  // Get voter identifier from header or IP
-  const voterId = req.headers['x-voter-id'] || req.ip || req.connection.remoteAddress;
-  
-  // Check if voter has already voted on this poll
-  if (!voters[id]) {
-    voters[id] = new Set();
-  }
-  
-  if (voters[id].has(voterId)) {
-    return res.status(403).json({ error: 'Already voted' });
-  }
-
   if (typeof optionIndex !== 'number' || !Number.isInteger(optionIndex) || optionIndex < 0 || optionIndex >= poll.options.length) {
     return res.status(400).json({ error: 'Invalid option' });
   }
 
   poll.votes[optionIndex]++;
-  voters[id].add(voterId);
 
   const percentages = calculatePercentages(poll.votes);
 

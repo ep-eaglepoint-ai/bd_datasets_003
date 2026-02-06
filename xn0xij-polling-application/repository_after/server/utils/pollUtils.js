@@ -1,5 +1,4 @@
 const polls = {};
-const voters = {};
 
 const generatePollId = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -35,4 +34,4 @@ const calculatePercentages = (votes) => {
   return roundedPercentages;
 };
 
-module.exports = { polls, voters, generatePollId, calculatePercentages };
+module.exports = { polls, generatePollId, calculatePercentages };

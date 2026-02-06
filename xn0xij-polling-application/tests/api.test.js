@@ -1,11 +1,10 @@
 const request = require('supertest');
 const app = require('../repository_after/server/index');
-const { polls, voters } = require('../repository_after/server/utils/pollUtils');
+const { polls } = require('../repository_after/server/utils/pollUtils');
 
 describe('Poll API', () => {
   beforeEach(() => {
     Object.keys(polls).forEach(key => delete polls[key]);
-    Object.keys(voters).forEach(key => delete voters[key]);
   });
 
   describe('POST /api/polls', () => {
@@ -133,7 +132,6 @@ describe('Poll API', () => {
 
       const res = await request(app)
         .post(`/api/polls/${pollId}/vote`)
-        .set('X-Voter-Id', 'voter1')
         .send({ optionIndex: 0 });
 
       expect(res.status).toBe(200);
@@ -153,7 +151,6 @@ describe('Poll API', () => {
 
       const res = await request(app)
         .post(`/api/polls/${pollId}/vote`)
-        .set('X-Voter-Id', 'voter1')
         .send({ optionIndex: 99 });
 
       expect(res.status).toBe(400);
@@ -172,7 +169,6 @@ describe('Poll API', () => {
 
       const res = await request(app)
         .post(`/api/polls/${pollId}/vote`)
-        .set('X-Voter-Id', 'voter1')
         .send({ optionIndex: -1 });
 
       expect(res.status).toBe(400);
@@ -191,7 +187,6 @@ describe('Poll API', () => {
 
       const res = await request(app)
         .post(`/api/polls/${pollId}/vote`)
-        .set('X-Voter-Id', 'voter1')
         .send({ optionIndex: 1.5 });
 
       expect(res.status).toBe(400);
@@ -210,7 +205,6 @@ describe('Poll API', () => {
 
       const res = await request(app)
         .post(`/api/polls/${pollId}/vote`)
-        .set('X-Voter-Id', 'voter1')
         .send({ optionIndex: NaN });
 
       expect(res.status).toBe(400);
@@ -229,14 +223,41 @@ describe('Poll API', () => {
 
       const res = await request(app)
         .post(`/api/polls/${pollId}/vote`)
-        .set('X-Voter-Id', 'voter1')
         .send({ optionIndex: null });
 
       expect(res.status).toBe(400);
       expect(res.body.error).toBe('Invalid option');
     });
 
-    it('should return 403 with "Already voted" for duplicate votes', async () => {
+    it('should accept multiple votes from backend (localStorage prevents this on frontend)', async () => {
+      const createRes = await request(app)
+        .post('/api/polls')
+        .send({
+          question: 'Lunch?',
+          options: ['Pizza', 'Sushi']
+        });
+
+      const pollId = createRes.body.pollId;
+
+      // Backend doesn't track voters - it accepts all votes
+      // Frontend localStorage prevents duplicate voting in the UI
+      const res1 = await request(app)
+        .post(`/api/polls/${pollId}/vote`)
+        .send({ optionIndex: 0 });
+
+      expect(res1.status).toBe(200);
+      expect(res1.body.votes[0]).toBe(1);
+
+      // Backend accepts another vote (frontend would prevent this via localStorage)
+      const res2 = await request(app)
+        .post(`/api/polls/${pollId}/vote`)
+        .send({ optionIndex: 1 });
+
+      expect(res2.status).toBe(200);
+      expect(res2.body.votes).toEqual([1, 1]);
+    });
+
+    it('should allow multiple votes on same poll', async () => {
       const createRes = await request(app)
         .post('/api/polls')
         .send({
@@ -247,43 +268,15 @@ describe('Poll API', () => {
       const pollId = createRes.body.pollId;
 
       // First vote
-      await request(app)
-        .post(`/api/polls/${pollId}/vote`)
-        .set('X-Voter-Id', 'voter1')
-        .send({ optionIndex: 0 });
-
-      // Second vote from same voter
-      const res = await request(app)
-        .post(`/api/polls/${pollId}/vote`)
-        .set('X-Voter-Id', 'voter1')
-        .send({ optionIndex: 1 });
-
-      expect(res.status).toBe(403);
-      expect(res.body.error).toBe('Already voted');
-    });
-
-    it('should allow different voters to vote on same poll', async () => {
-      const createRes = await request(app)
-        .post('/api/polls')
-        .send({
-          question: 'Lunch?',
-          options: ['Pizza', 'Sushi']
-        });
-
-      const pollId = createRes.body.pollId;
-
-      // First voter
       const res1 = await request(app)
         .post(`/api/polls/${pollId}/vote`)
-        .set('X-Voter-Id', 'voter1')
         .send({ optionIndex: 0 });
 
       expect(res1.status).toBe(200);
 
-      // Second voter
+      // Second vote
       const res2 = await request(app)
         .post(`/api/polls/${pollId}/vote`)
-        .set('X-Voter-Id', 'voter2')
         .send({ optionIndex: 1 });
 
       expect(res2.status).toBe(200);
@@ -304,15 +297,12 @@ describe('Poll API', () => {
 
       await request(app)
         .post(`/api/polls/${pollId}/vote`)
-        .set('X-Voter-Id', 'voter1')
         .send({ optionIndex: 0 });
       await request(app)
         .post(`/api/polls/${pollId}/vote`)
-        .set('X-Voter-Id', 'voter2')
         .send({ optionIndex: 1 });
       const res = await request(app)
         .post(`/api/polls/${pollId}/vote`)
-        .set('X-Voter-Id', 'voter3')
         .send({ optionIndex: 2 });
 
       const sum = res.body.percentages.reduce((a, b) => a + b, 0);

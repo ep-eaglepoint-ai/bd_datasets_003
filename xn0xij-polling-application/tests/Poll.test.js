@@ -140,38 +140,22 @@ describe('Poll Component - UI Behavior', () => {
       expect(screen.queryByText('Submit Vote')).not.toBeInTheDocument();
     });
 
-    it('should handle 403 response from backend and update UI', async () => {
+    it('should prevent voting when localStorage indicates already voted', async () => {
+      localStorage.setItem('voted_TEST123', 'true');
+      
       fetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ ...mockPollData, votes: [0, 0, 0], percentages: [0, 0, 0] })
+        json: async () => mockPollData
       });
 
       render(<Poll pollId="TEST123" onBack={jest.fn()} />);
 
       await waitFor(() => {
-        expect(screen.getByText('Submit Vote')).toBeInTheDocument();
+        expect(screen.getByText('Results')).toBeInTheDocument();
       });
 
-      const radioButtons = screen.getAllByRole('radio');
-      fireEvent.click(radioButtons[0]);
-
-      fetch.mockResolvedValueOnce({
-        ok: false,
-        status: 403,
-        json: async () => ({ error: 'Already voted' })
-      });
-
-      const submitButton = screen.getByText('Submit Vote');
-      fireEvent.click(submitButton);
-
-      await waitFor(() => {
-        expect(localStorage.getItem('voted_TEST123')).toBe('true');
-      });
-
-      // After 403, component should show results
-      await waitFor(() => {
-        expect(screen.queryByText('Submit Vote')).not.toBeInTheDocument();
-      });
+      // Should show results, not voting interface
+      expect(screen.queryByText('Submit Vote')).not.toBeInTheDocument();
     });
   });
 
@@ -371,9 +355,7 @@ describe('Poll Component - UI Behavior', () => {
       expect(screen.getByText('6 votes (25%)')).toBeInTheDocument();
     });
 
-    it('should maintain voter ID across page refreshes', async () => {
-      localStorage.setItem('voterId', 'voter_12345');
-      
+    it('should store vote in localStorage after successful vote', async () => {
       fetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ ...mockPollData, votes: [0, 0, 0], percentages: [0, 0, 0] })
@@ -397,14 +379,12 @@ describe('Poll Component - UI Behavior', () => {
       fireEvent.click(submitButton);
 
       await waitFor(() => {
-        expect(fetch).toHaveBeenCalledWith(
-          expect.any(String),
-          expect.objectContaining({
-            headers: expect.objectContaining({
-              'X-Voter-Id': 'voter_12345'
-            })
-          })
-        );
+        expect(localStorage.getItem('voted_TEST123')).toBe('true');
+      });
+
+      // Should now show results
+      await waitFor(() => {
+        expect(screen.getByText('Results')).toBeInTheDocument();
       });
     });
   });

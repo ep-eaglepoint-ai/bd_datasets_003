@@ -17689,10 +17689,10 @@ index 0000000..2ef8173
 +}
 diff --git a/repository_after/client/src/components/Poll.js b/repository_after/client/src/components/Poll.js
 new file mode 100644
-index 0000000..537158e
+index 0000000..2b2defa
 --- /dev/null
 +++ b/repository_after/client/src/components/Poll.js
-@@ -0,0 +1,179 @@
+@@ -0,0 +1,164 @@
 +import React, { useState, useEffect } from 'react';
 +import './Poll.css';
 +
@@ -17738,30 +17738,15 @@ index 0000000..537158e
 +    }
 +
 +    try {
-+      // Generate or retrieve voter ID
-+      let voterId = localStorage.getItem('voterId');
-+      if (!voterId) {
-+        voterId = `voter_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-+        localStorage.setItem('voterId', voterId);
-+      }
-+
 +      const response = await fetch(`/api/polls/${pollId}/vote`, {
 +        method: 'POST',
 +        headers: {
-+          'Content-Type': 'application/json',
-+          'X-Voter-Id': voterId
++          'Content-Type': 'application/json'
 +        },
 +        body: JSON.stringify({ optionIndex: selectedOption }),
 +      });
 +
 +      const data = await response.json();
-+
-+      if (response.status === 403) {
-+        setError('Already voted');
-+        localStorage.setItem(`voted_${pollId}`, 'true');
-+        setHasVoted(true);
-+        return;
-+      }
 +
 +      if (!response.ok) {
 +        setError(data.error || 'Failed to vote');
@@ -18010,11 +17995,11 @@ index 0000000..b5df592
 +CMD ["node", "index.js"]
 diff --git a/repository_after/server/controllers/pollController.js b/repository_after/server/controllers/pollController.js
 new file mode 100644
-index 0000000..2355535
+index 0000000..576ade9
 --- /dev/null
 +++ b/repository_after/server/controllers/pollController.js
-@@ -0,0 +1,112 @@
-+const { polls, voters, generatePollId, calculatePercentages } = require('../utils/pollUtils');
+@@ -0,0 +1,99 @@
++const { polls, generatePollId, calculatePercentages } = require('../utils/pollUtils');
 +
 +const createPoll = (req, res) => {
 +  const { question, options } = req.body;
@@ -18078,24 +18063,11 @@ index 0000000..2355535
 +    return res.status(404).json({ error: 'Poll not found' });
 +  }
 +
-+  // Get voter identifier from header or IP
-+  const voterId = req.headers['x-voter-id'] || req.ip || req.connection.remoteAddress;
-+  
-+  // Check if voter has already voted on this poll
-+  if (!voters[id]) {
-+    voters[id] = new Set();
-+  }
-+  
-+  if (voters[id].has(voterId)) {
-+    return res.status(403).json({ error: 'Already voted' });
-+  }
-+
 +  if (typeof optionIndex !== 'number' || !Number.isInteger(optionIndex) || optionIndex < 0 || optionIndex >= poll.options.length) {
 +    return res.status(400).json({ error: 'Invalid option' });
 +  }
 +
 +  poll.votes[optionIndex]++;
-+  voters[id].add(voterId);
 +
 +  const percentages = calculatePercentages(poll.votes);
 +
@@ -22964,12 +22936,11 @@ index 0000000..8d2c41f
 +module.exports = router;
 diff --git a/repository_after/server/utils/pollUtils.js b/repository_after/server/utils/pollUtils.js
 new file mode 100644
-index 0000000..9c2d4ec
+index 0000000..f1a7572
 --- /dev/null
 +++ b/repository_after/server/utils/pollUtils.js
-@@ -0,0 +1,38 @@
+@@ -0,0 +1,37 @@
 +const polls = {};
-+const voters = {};
 +
 +const generatePollId = () => {
 +  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -23005,4 +22976,4 @@ index 0000000..9c2d4ec
 +  return roundedPercentages;
 +};
 +
-+module.exports = { polls, voters, generatePollId, calculatePercentages };
++module.exports = { polls, generatePollId, calculatePercentages };

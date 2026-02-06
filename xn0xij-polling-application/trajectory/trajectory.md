@@ -13,12 +13,11 @@ This project implements a **full-stack polling application** with React frontend
 - **Poll Component**: Vote on polls and view real-time results
 - **Features**:
   - Dynamic option management (add/remove options)
-  - One vote per poll using localStorage + backend tracking
+  - One vote per poll using localStorage only (frontend tracking)
   - Real-time results with progress bars
   - Winner highlighting (including ties)
   - Shareable poll links with copy-to-clipboard
   - Responsive UI with custom CSS
-  - Voter ID persistence across page refreshes
 
 #### **Backend (Express/Node.js)**
 - **API Endpoints**:
@@ -28,19 +27,17 @@ This project implements a **full-stack polling application** with React frontend
   - `GET /api/polls/:id/results` - Get results
   
 - **Features**:
-  - In-memory poll storage with voter tracking
+  - In-memory poll storage (no voter tracking)
   - Short readable poll IDs (6 characters, e.g., "ABC123")
   - Comprehensive validation (question, options, vote index)
   - Backend percentage calculation (always sums to 100%)
-  - HTTP 403 "Already voted" enforcement
   - Proper error handling with HTTP status codes
   - Edge case handling (NaN, floats, null values)
 
 #### **Key Rules Implemented**:
 - ✅ Poll must have 2-5 options
 - ✅ Question and options cannot be empty (backend validation)
-- ✅ One vote per poll per user (localStorage + backend tracking)
-- ✅ HTTP 403 returned for duplicate votes
+- ✅ One vote per poll per user (localStorage only, no IP tracking)
 - ✅ Percentages calculated on backend using largest remainder method
 - ✅ Zero votes show 0% (not NaN)
 - ✅ Options display in creation order (not sorted by votes)
@@ -53,10 +50,10 @@ This project implements a **full-stack polling application** with React frontend
 - Poll creation validation (empty question, wrong number of options, empty options)
 - Vote submission and validation
 - Edge case validation (NaN, floats, null, negative numbers)
-- HTTP 403 "Already voted" enforcement
+- Backend accepts multiple votes (localStorage prevents duplicate voting on frontend)
 - Percentage calculation accuracy
-- Error handling (404, 400, 403 status codes)
-- Multiple voters on same poll
+- Error handling (404, 400 status codes)
+- Multiple votes on same poll
 
 #### **Frontend Logic Tests** (`tests/frontend.test.js`) - 10 tests
 - localStorage voting restrictions
@@ -69,7 +66,7 @@ This project implements a **full-stack polling application** with React frontend
 - Voting UI rendering and interactions
 - Radio button selection (exactly one option)
 - Submit button enable/disable logic
-- Voting restrictions (localStorage and backend 403)
+- Voting restrictions (localStorage only)
 - Results display with vote counts and percentages
 - Winner highlighting (single and tied winners)
 - Zero votes handling
@@ -225,7 +222,6 @@ This project implements a **full-stack polling application** with React frontend
 - ✅ Empty option string rejection (backend validation)
 - ✅ Invalid option index rejection (including NaN, floats, null)
 - ✅ Poll not found (404) handling
-- ✅ Already voted (403) handling with backend tracking
 - ✅ Frontend sends all options to backend (no bypassing)
 
 ### Percentage Calculation
@@ -236,8 +232,8 @@ This project implements a **full-stack polling application** with React frontend
 - ✅ Handles ties correctly
 
 ### User Experience
-- ✅ One vote per poll (localStorage + backend tracking)
-- ✅ Voter ID persistence across page refreshes
+- ✅ One vote per poll (localStorage only, no IP tracking)
+- ✅ Clear localStorage allows voting again (new "user")
 - ✅ Immediate results after voting
 - ✅ Winner highlighting
 - ✅ Tie highlighting (all tied options)
@@ -343,7 +339,7 @@ docker-compose restart server client
 
 1. **Separate package.json files**: Optimizes Docker image sizes and build caching
 2. **In-memory storage**: Simplifies implementation (can be replaced with database)
-3. **localStorage + Backend tracking**: Dual-layer voting restriction (client UX + server enforcement)
+3. **localStorage-only voting restriction**: Frontend-only tracking, no IP or backend voter tracking (allows "clear localStorage and vote again" behavior)
 4. **Backend percentage calculation**: Ensures consistency and accuracy
 5. **Short poll IDs**: User-friendly (ABC123 vs UUID)
 6. **No external UI libraries**: Demonstrates core React/Express skills
@@ -368,9 +364,9 @@ Coverage:
 ```
 
 ### Test Breakdown:
-- **Backend API Tests** (18): Poll creation, voting, validation, HTTP status codes
+- **Backend API Tests** (18): Poll creation, voting, validation, HTTP status codes, no voter tracking
 - **Backend Logic Tests** (10): localStorage, winner calculation, option ordering
-- **Poll Component Tests** (27): UI rendering, voting flow, results display, persistence
+- **Poll Component Tests** (27): UI rendering, voting flow, results display, localStorage persistence
 - **CreatePoll Component Tests** (13): Form validation, backend error handling
 
 ## Conclusion
@@ -382,6 +378,6 @@ This implementation provides a **production-ready polling application** with:
 - ✅ Industry best practices
 - ✅ React component testing with Testing Library
 - ✅ Backend validation enforcement
-- ✅ HTTP 403 "Already voted" implementation
+- ✅ localStorage-only vote tracking (no IP tracking)
 - ✅ Edge case handling (NaN, floats, null)
 - ✅ Lightweight production deployment with serve
