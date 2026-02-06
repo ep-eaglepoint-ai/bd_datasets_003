@@ -9,4 +9,3 @@
     ## Evaluation Docker Command
     docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v $(pwd):$(pwd) -w $(pwd) docker:latest sh -c "apk add --no-cache nodejs npm && npm install -g tsx && npx tsx evaluation/evaluation.ts"
     
-    docker compose up --build -d app db redis
