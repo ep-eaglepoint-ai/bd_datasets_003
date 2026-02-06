@@ -7,7 +7,7 @@ public class JsonPathEvaluator {
 
     public static Object evaluate(Object root, String path) {
         if (path == null) {
-             throw new IllegalArgumentException("Path cannot be null");
+             throw new JsonPathException("Path cannot be null"); // addressed throws json exception
         }
         List<Token> tokens = tokenize(path);
         return evaluateTokens(root, tokens, 0);
@@ -53,7 +53,7 @@ public class JsonPathEvaluator {
             if (c == '.') {
                 if (i == 0) throw new JsonPathException("Path cannot start with dot");
                 if (i == len - 1) throw new JsonPathException("Path cannot end with dot");
-                if (path.charAt(i + 1) == '.') throw new JsonPathException("Empty path segment detected");
+                if (i + 1 < len && path.charAt(i + 1) == '.') throw new JsonPathException("Empty path segment detected");  // empty path behavior handled
                 // Allow .[ notation by just skipping dot
                 i++;
                 continue;
@@ -78,11 +78,16 @@ public class JsonPathEvaluator {
                     while (i < len && Character.isDigit(path.charAt(i))) {
                         i++;
                     }
+                    int index;
                     try {
-                        tokens.add(new Token(Token.Type.INDEX, Integer.parseInt(path.substring(start, i))));
+                        index = Integer.parseInt(path.substring(start, i));
                     } catch (NumberFormatException e) {
                         throw new JsonPathException("Invalid integer index");
                     }
+                    if (index < 0) {  // Negative array indices behavior handled
+                        throw new JsonPathException("Negative array indices are not allowed: " + index);
+                    }
+                    tokens.add(new Token(Token.Type.INDEX, index));
                 } else if (first == '\'' || first == '"') {
                     char quote = first;
                     i++;
@@ -123,6 +128,10 @@ public class JsonPathEvaluator {
                 int start = i;
                 // Read until dot, open bracket, or end of string
                 while (i < len && path.charAt(i) != '.' && path.charAt(i) != '[') {
+                    char propChar = path.charAt(i);
+                    if (!Character.isLetterOrDigit(propChar) && propChar != '_' && propChar != '$') {  // invalid char in property name handled
+                        throw new JsonPathException("Invalid character in property name: " + propChar);
+                    }
                     i++;
                 }
                 String prop = path.substring(start, i);
@@ -145,7 +154,7 @@ public class JsonPathEvaluator {
 
         if (token.type == Token.Type.PROPERTY) {
             if (!(current instanceof Map)) {
-                throw new JsonPathException("Expected Map for property access but got " + current.getClass().getSimpleName());
+                throw new JsonPathException("Expected Map for property access but got " + current.getClass().getSimpleName()); // wildcard traversal for primitives handled
             }
             Map<?, ?> map = (Map<?, ?>) current;
             String key = (String) token.value;
@@ -168,7 +177,7 @@ public class JsonPathEvaluator {
 
         } else if (token.type == Token.Type.WILDCARD) {
             if (!(current instanceof List)) {
-                throw new JsonPathException("Expected List for wildcard access but got " + current.getClass().getSimpleName());
+                throw new JsonPathException("Expected List for wildcard access but got " + current.getClass().getSimpleName()); // wildcard only for arrays handled
             }
             List<?> list = (List<?>) current;
             List<Object> results = new ArrayList<>();

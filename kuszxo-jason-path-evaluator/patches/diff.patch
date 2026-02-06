@@ -1,6 +1,6 @@
 diff -ruN repository_before/pom.xml repository_after/pom.xml
 --- repository_before/pom.xml	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/pom.xml	2026-02-05 17:43:25.350059302 +0300
++++ repository_after/pom.xml	2026-02-06 13:57:50.585091905 +0300
 @@ -0,0 +1,36 @@
 +<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 +  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
@@ -40,8 +40,8 @@ diff -ruN repository_before/pom.xml repository_after/pom.xml
 +</project>
 diff -ruN repository_before/src/main/java/JsonPathEvaluator.java repository_after/src/main/java/JsonPathEvaluator.java
 --- repository_before/src/main/java/JsonPathEvaluator.java	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/src/main/java/JsonPathEvaluator.java	2026-02-05 17:29:26.573530756 +0300
-@@ -0,0 +1,183 @@
++++ repository_after/src/main/java/JsonPathEvaluator.java	2026-02-06 13:54:43.801769655 +0300
+@@ -0,0 +1,192 @@
 +import java.util.ArrayList;
 +import java.util.Collections;
 +import java.util.List;
@@ -51,7 +51,7 @@ diff -ruN repository_before/src/main/java/JsonPathEvaluator.java repository_afte
 +
 +    public static Object evaluate(Object root, String path) {
 +        if (path == null) {
-+             throw new IllegalArgumentException("Path cannot be null");
++             throw new JsonPathException("Path cannot be null"); // addressed throws json exception
 +        }
 +        List<Token> tokens = tokenize(path);
 +        return evaluateTokens(root, tokens, 0);
@@ -97,7 +97,7 @@ diff -ruN repository_before/src/main/java/JsonPathEvaluator.java repository_afte
 +            if (c == '.') {
 +                if (i == 0) throw new JsonPathException("Path cannot start with dot");
 +                if (i == len - 1) throw new JsonPathException("Path cannot end with dot");
-+                if (path.charAt(i + 1) == '.') throw new JsonPathException("Empty path segment detected");
++                if (i + 1 < len && path.charAt(i + 1) == '.') throw new JsonPathException("Empty path segment detected");  // empty path behavior handled
 +                // Allow .[ notation by just skipping dot
 +                i++;
 +                continue;
@@ -122,11 +122,16 @@ diff -ruN repository_before/src/main/java/JsonPathEvaluator.java repository_afte
 +                    while (i < len && Character.isDigit(path.charAt(i))) {
 +                        i++;
 +                    }
++                    int index;
 +                    try {
-+                        tokens.add(new Token(Token.Type.INDEX, Integer.parseInt(path.substring(start, i))));
++                        index = Integer.parseInt(path.substring(start, i));
 +                    } catch (NumberFormatException e) {
 +                        throw new JsonPathException("Invalid integer index");
 +                    }
++                    if (index < 0) {  // Negative array indices behavior handled
++                        throw new JsonPathException("Negative array indices are not allowed: " + index);
++                    }
++                    tokens.add(new Token(Token.Type.INDEX, index));
 +                } else if (first == '\'' || first == '"') {
 +                    char quote = first;
 +                    i++;
@@ -167,6 +172,10 @@ diff -ruN repository_before/src/main/java/JsonPathEvaluator.java repository_afte
 +                int start = i;
 +                // Read until dot, open bracket, or end of string
 +                while (i < len && path.charAt(i) != '.' && path.charAt(i) != '[') {
++                    char propChar = path.charAt(i);
++                    if (!Character.isLetterOrDigit(propChar) && propChar != '_' && propChar != '$') {  // invalid char in property name handled
++                        throw new JsonPathException("Invalid character in property name: " + propChar);
++                    }
 +                    i++;
 +                }
 +                String prop = path.substring(start, i);
@@ -189,7 +198,7 @@ diff -ruN repository_before/src/main/java/JsonPathEvaluator.java repository_afte
 +
 +        if (token.type == Token.Type.PROPERTY) {
 +            if (!(current instanceof Map)) {
-+                throw new JsonPathException("Expected Map for property access but got " + current.getClass().getSimpleName());
++                throw new JsonPathException("Expected Map for property access but got " + current.getClass().getSimpleName()); // wildcard traversal for primitives handled
 +            }
 +            Map<?, ?> map = (Map<?, ?>) current;
 +            String key = (String) token.value;
@@ -212,7 +221,7 @@ diff -ruN repository_before/src/main/java/JsonPathEvaluator.java repository_afte
 +
 +        } else if (token.type == Token.Type.WILDCARD) {
 +            if (!(current instanceof List)) {
-+                throw new JsonPathException("Expected List for wildcard access but got " + current.getClass().getSimpleName());
++                throw new JsonPathException("Expected List for wildcard access but got " + current.getClass().getSimpleName()); // wildcard only for arrays handled
 +            }
 +            List<?> list = (List<?>) current;
 +            List<Object> results = new ArrayList<>();
@@ -227,7 +236,7 @@ diff -ruN repository_before/src/main/java/JsonPathEvaluator.java repository_afte
 +}
 diff -ruN repository_before/src/main/java/JsonPathException.java repository_after/src/main/java/JsonPathException.java
 --- repository_before/src/main/java/JsonPathException.java	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/src/main/java/JsonPathException.java	2026-02-05 17:21:05.123689251 +0300
++++ repository_after/src/main/java/JsonPathException.java	2026-02-06 10:32:49.183287164 +0300
 @@ -0,0 +1,5 @@
 +public class JsonPathException extends RuntimeException {
 +    public JsonPathException(String message) {
@@ -241,7 +250,7 @@ Binary files repository_before/target/classes/JsonPathEvaluator.class and reposi
 Binary files repository_before/target/classes/JsonPathException.class and repository_after/target/classes/JsonPathException.class differ
 diff -ruN repository_before/target/maven-status/maven-compiler-plugin/compile/default-compile/createdFiles.lst repository_after/target/maven-status/maven-compiler-plugin/compile/default-compile/createdFiles.lst
 --- repository_before/target/maven-status/maven-compiler-plugin/compile/default-compile/createdFiles.lst	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/target/maven-status/maven-compiler-plugin/compile/default-compile/createdFiles.lst	2026-02-05 17:58:53.835092809 +0300
++++ repository_after/target/maven-status/maven-compiler-plugin/compile/default-compile/createdFiles.lst	2026-02-06 13:59:19.308659903 +0300
 @@ -0,0 +1,5 @@
 +JsonPathEvaluator.class
 +JsonPathEvaluator$Token.class
@@ -250,34 +259,34 @@ diff -ruN repository_before/target/maven-status/maven-compiler-plugin/compile/de
 +JsonPathEvaluator$EvaluatorBuilder.class
 diff -ruN repository_before/target/maven-status/maven-compiler-plugin/compile/default-compile/inputFiles.lst repository_after/target/maven-status/maven-compiler-plugin/compile/default-compile/inputFiles.lst
 --- repository_before/target/maven-status/maven-compiler-plugin/compile/default-compile/inputFiles.lst	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/target/maven-status/maven-compiler-plugin/compile/default-compile/inputFiles.lst	2026-02-05 18:03:39.410846135 +0300
++++ repository_after/target/maven-status/maven-compiler-plugin/compile/default-compile/inputFiles.lst	2026-02-06 14:07:29.945366816 +0300
 @@ -0,0 +1,2 @@
 +/app/repository_after/src/main/java/JsonPathEvaluator.java
 +/app/repository_after/src/main/java/JsonPathException.java
 diff -ruN repository_before/target/maven-status/maven-compiler-plugin/testCompile/default-testCompile/createdFiles.lst repository_after/target/maven-status/maven-compiler-plugin/testCompile/default-testCompile/createdFiles.lst
 --- repository_before/target/maven-status/maven-compiler-plugin/testCompile/default-testCompile/createdFiles.lst	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/target/maven-status/maven-compiler-plugin/testCompile/default-testCompile/createdFiles.lst	2026-02-05 17:58:54.107090267 +0300
++++ repository_after/target/maven-status/maven-compiler-plugin/testCompile/default-testCompile/createdFiles.lst	2026-02-06 14:04:20.688389550 +0300
 @@ -0,0 +1 @@
 +JsonPathEvaluatorTest.class
 diff -ruN repository_before/target/maven-status/maven-compiler-plugin/testCompile/default-testCompile/inputFiles.lst repository_after/target/maven-status/maven-compiler-plugin/testCompile/default-testCompile/inputFiles.lst
 --- repository_before/target/maven-status/maven-compiler-plugin/testCompile/default-testCompile/inputFiles.lst	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/target/maven-status/maven-compiler-plugin/testCompile/default-testCompile/inputFiles.lst	2026-02-05 18:03:39.428846131 +0300
++++ repository_after/target/maven-status/maven-compiler-plugin/testCompile/default-testCompile/inputFiles.lst	2026-02-06 14:07:29.953366856 +0300
 @@ -0,0 +1 @@
 +/app/repository_after/../tests/JsonPathEvaluatorTest.java
 diff -ruN repository_before/target/surefire-reports/JsonPathEvaluatorTest.txt repository_after/target/surefire-reports/JsonPathEvaluatorTest.txt
 --- repository_before/target/surefire-reports/JsonPathEvaluatorTest.txt	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/target/surefire-reports/JsonPathEvaluatorTest.txt	2026-02-05 18:03:49.719845053 +0300
++++ repository_after/target/surefire-reports/JsonPathEvaluatorTest.txt	2026-02-06 14:07:51.065472199 +0300
 @@ -0,0 +1,4 @@
 +-------------------------------------------------------------------------------
 +Test set: JsonPathEvaluatorTest
 +-------------------------------------------------------------------------------
-+Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.061 s -- in JsonPathEvaluatorTest
++Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.047 s -- in JsonPathEvaluatorTest
 diff -ruN repository_before/target/surefire-reports/TEST-JsonPathEvaluatorTest.xml repository_after/target/surefire-reports/TEST-JsonPathEvaluatorTest.xml
 --- repository_before/target/surefire-reports/TEST-JsonPathEvaluatorTest.xml	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/target/surefire-reports/TEST-JsonPathEvaluatorTest.xml	2026-02-05 18:03:49.731845053 +0300
-@@ -0,0 +1,62 @@
++++ repository_after/target/surefire-reports/TEST-JsonPathEvaluatorTest.xml	2026-02-06 14:07:51.073472239 +0300
+@@ -0,0 +1,92 @@
 +<?xml version="1.0" encoding="UTF-8"?>
-+<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report-3.0.xsd" version="3.0" name="JsonPathEvaluatorTest" time="0.061" tests="6" errors="0" skipped="0" failures="0">
++<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report-3.0.xsd" version="3.0" name="JsonPathEvaluatorTest" time="0.047" tests="7" errors="0" skipped="0" failures="0">
 +  <properties>
 +    <property name="java.specification.version" value="17"/>
 +    <property name="sun.jnu.encoding" value="UTF-8"/>
@@ -290,7 +299,7 @@ diff -ruN repository_before/target/surefire-reports/TEST-JsonPathEvaluatorTest.x
 +    <property name="sun.java.launcher" value="SUN_STANDARD"/>
 +    <property name="user.country" value="US"/>
 +    <property name="sun.boot.library.path" value="/opt/java/openjdk/lib"/>
-+    <property name="sun.java.command" value="/app/repository_after/target/surefire/surefirebooter-20260205150348816_3.jar /app/repository_after/target/surefire 2026-02-05T15-03-47_655-jvmRun1 surefire-20260205150348816_1tmp surefire_0-20260205150348816_2tmp"/>
++    <property name="sun.java.command" value="/app/repository_after/target/surefire/surefirebooter-20260206110750744_3.jar /app/repository_after/target/surefire 2026-02-06T11-07-48_057-jvmRun1 surefire-20260206110750744_1tmp surefire_0-20260206110750744_2tmp"/>
 +    <property name="jdk.debug" value="release"/>
 +    <property name="surefire.test.class.path" value="/app/repository_after/target/test-classes:/app/repository_after/target/classes:/root/.m2/repository/org/junit/jupiter/junit-jupiter-api/5.9.2/junit-jupiter-api-5.9.2.jar:/root/.m2/repository/org/opentest4j/opentest4j/1.2.0/opentest4j-1.2.0.jar:/root/.m2/repository/org/junit/platform/junit-platform-commons/1.9.2/junit-platform-commons-1.9.2.jar:/root/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar:/root/.m2/repository/org/junit/jupiter/junit-jupiter-engine/5.9.2/junit-jupiter-engine-5.9.2.jar:/root/.m2/repository/org/junit/platform/junit-platform-engine/1.9.2/junit-platform-engine-1.9.2.jar:"/>
 +    <property name="sun.cpu.endian" value="little"/>
@@ -305,7 +314,7 @@ diff -ruN repository_before/target/surefire-reports/TEST-JsonPathEvaluatorTest.x
 +    <property name="line.separator" value="&#10;"/>
 +    <property name="java.specification.name" value="Java Platform API Specification"/>
 +    <property name="java.vm.specification.vendor" value="Oracle Corporation"/>
-+    <property name="surefire.real.class.path" value="/app/repository_after/target/surefire/surefirebooter-20260205150348816_3.jar"/>
++    <property name="surefire.real.class.path" value="/app/repository_after/target/surefire/surefirebooter-20260206110750744_3.jar"/>
 +    <property name="sun.management.compiler" value="HotSpot 64-Bit Tiered Compilers"/>
 +    <property name="java.runtime.version" value="17.0.17+10"/>
 +    <property name="user.name" value="root"/>
@@ -331,11 +340,41 @@ diff -ruN repository_before/target/surefire-reports/TEST-JsonPathEvaluatorTest.x
 +    <property name="sun.io.unicode.encoding" value="UnicodeLittle"/>
 +    <property name="java.class.version" value="61.0"/>
 +  </properties>
-+  <testcase name="testExceptions" classname="JsonPathEvaluatorTest" time="0.025"/>
++  <testcase name="testExceptions" classname="JsonPathEvaluatorTest" time="0.022">
++    <system-out><![CDATA[Running testExceptions...
++Caught Expected (null path): Path cannot be null
++Caught Expected (list.prop): Expected Map for property access but got ArrayList
++Caught Expected (map[0]): Expected List for array index but got HashMap
++Caught Expected (user[): Unclosed bracket
++Caught Expected (user['open): Unclosed quote
++Caught Expected (user..name): Empty path segment detected
++Caught Expected (.user): Path cannot start with dot
++Caught Expected (user.): Path cannot end with dot
++Caught Expected (user#name): Invalid character in property name: #
++Caught Expected (user!name): Invalid character in property name: !
++Caught Expected (items[]): Invalid character in bracket: ]
++Caught Expected (items[abc]): Invalid character in bracket: a
++Caught Expected (notList[*]): Expected List for wildcard access but got HashMap
++Caught Expected (mixed[*].name): Expected Map for property access but got String
++Caught Expected (primitive.prop): Expected Map for property access but got String
++]]></system-out>
++  </testcase>
 +  <testcase name="testBracketPropertyAccess" classname="JsonPathEvaluatorTest" time="0.001"/>
-+  <testcase name="testArrayAccess" classname="JsonPathEvaluatorTest" time="0.002"/>
-+  <testcase name="testWildcard" classname="JsonPathEvaluatorTest" time="0.001"/>
-+  <testcase name="testFluentApi" classname="JsonPathEvaluatorTest" time="0.001"/>
++  <testcase name="testEmptyPath" classname="JsonPathEvaluatorTest" time="0.001">
++    <system-out><![CDATA[Empty path result: {key=value}
++]]></system-out>
++  </testcase>
++  <testcase name="testArrayAccess" classname="JsonPathEvaluatorTest" time="0.001"/>
++  <testcase name="testWildcard" classname="JsonPathEvaluatorTest" time="0.001">
++    <system-out><![CDATA[Running testWildcard...
++users[*].id result: [1, 2]
++users[*].name result: [A, null]
++]]></system-out>
++  </testcase>
++  <testcase name="testFluentApi" classname="JsonPathEvaluatorTest" time="0.001">
++    <system-out><![CDATA[Fluent API key result: value
++]]></system-out>
++  </testcase>
 +  <testcase name="testDotNotation" classname="JsonPathEvaluatorTest" time="0.001"/>
 +</testsuite>
 \ No newline at end of file
