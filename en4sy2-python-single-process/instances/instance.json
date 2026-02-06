@@ -1,0 +1,13 @@
+{
+            "instance_id": "EN4SY2",
+            "problem_statement": "Noticed significant runtime slowdowns and excessive memory usage while testing a Python-based data aggregation script used for offline analytics. The issue became apparent during evaluation of a function responsible for loading records, performing string normalization, computing aggregate statistics, and generating a textual summary for console output.
+
+The current implementation relies on deeply nested loops, repeated recomputation of identical values, inefficient string concatenation, unnecessary intermediate data structures, and shared mutable state. These issues cause quadratic and cubic time complexity in critical paths and produce large amounts of temporary objects. As input size increases, runtime and memory consumption grow unpredictably, making the script unsuitable for benchmarking, regression testing, or production usage without refactoring.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/en4sy2-python-single-process",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
