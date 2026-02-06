@@ -37,11 +37,3 @@ Runs the evaluation script and writes `evaluation/report.json`.
 ```bash
 docker compose run --rm app python evaluation/evaluation.py
 ```
-
-### 5. Generate diff.patch
-
-Creates a unified diff (added as `+`, removed as `-`) between `repository_before/` and `repository_after/`. Run from the project root.
-
-```bash
-git diff --no-index repository_before/ repository_after/ > patches/diff.patch
-```
