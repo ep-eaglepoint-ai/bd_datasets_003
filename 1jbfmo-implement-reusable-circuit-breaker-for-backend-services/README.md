@@ -1,11 +1,12 @@
-# 1JBFMO - Implement Reusable Circuit Breaker for Backend Services
+# Implement Reusable Circuit Breaker for Backend Services
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Running Tests
 
-    ## After Test Docker Command
-    <docker after command here>
+```bash
+docker compose run --rm app npm test
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## Running Evaluation
+
+```bash
+docker compose run --rm app node evaluation/evaluation.js
