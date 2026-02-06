@@ -1,11 +1,11 @@
 # BOR5QE - Idempotent-Retry-Logic-Tester
 
     ## Before Test Docker Command
-    <docker before command here>
+    docker compose run --rm   -e IMPL_PATH="./repository_before/network.js"   -e TEST_PATH="repository_before"   app npm run metatest
 
     ## After Test Docker Command
-    <docker after command here>
+    docker compose run --rm   -e IMPL_PATH="./repository_after/network.js"   -e TEST_PATH="repository_after"   app npm run metatest
 
     ## Evaluation Docker Command
-    <evaluation command here>
+    docker compose run app
     

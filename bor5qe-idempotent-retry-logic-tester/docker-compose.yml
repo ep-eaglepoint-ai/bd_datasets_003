@@ -3,6 +3,8 @@
 services:
   app:
     build: .
-    command: pytest -q tests
+    command: node evaluation/evaluator.js
+    environment:
+      - NODE_OPTIONS=--experimental-vm-modules
     volumes:
       - .:/app
