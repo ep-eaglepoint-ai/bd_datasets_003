@@ -1,0 +1,11 @@
+{
+            "instance_id": "GLBTDK",
+            "problem_statement": "An embedded imaging pipeline needs a low level utility capable of injecting or updating a Copyright EXIF tag inside JPEG images without reencoding or corrupting image data. The tool must operate directly on raw JPEG binaries, safely navigating the APP1 EXIF segment, validating TIFF headers, handling mixed endianness, and modifying IFD0 entries in place. If the tag does not exist, the program must insert a new directory entry while shifting subsequent binary data and reindexing all affected offsets to preserve file integrity. This utility is intended for constrained or forensic environments where external EXIF libraries are unavailable or forbidden, and correctness under real world JPEG structures is critical.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/glbtdk-jpeg-exif-ifd0-in-place-copyright-injection",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
