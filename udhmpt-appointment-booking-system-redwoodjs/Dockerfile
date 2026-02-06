@@ -1,5 +1,8 @@
 FROM node:18
 
+# Set working directory
+WORKDIR /app
+
 # Install root dependencies
 COPY package.json package-lock.json* ./
 RUN npm ci --silent || npm install --silent
