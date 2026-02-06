@@ -11,7 +11,7 @@ This module contains pytest tests covering:
 
 import os
 import sys
-import pytest
+import pytest  # type: ignore
 from unittest.mock import patch
 
 from lrucache.lru import LRUCache
