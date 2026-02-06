@@ -1,0 +1,11 @@
+{
+            "instance_id": "TD499M",
+            "problem_statement": "The objective is to build a sophisticated state management utility for web forms that provides a professional undo/redo experience. Unlike standard implementations that capture every atomic change, this system must intelligently merge related sequential actions—such as rapid typing—into logical checkpoints while maintaining a strict memory cap and handling context switches between different form inputs.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/td499m-intelligent-undo-redo-history-manager",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
