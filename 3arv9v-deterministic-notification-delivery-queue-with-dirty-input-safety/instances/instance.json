@@ -1,0 +1,14 @@
+{
+            "instance_id": "3ARV9V",
+            "problem_statement": "Multiple internal services push notifications into a shared delivery queue. These notifications come from heterogeneous, untrusted sources and may be malformed, partially valid, or entirely invalid (non-dict values, missing fields, bad timestamps, inconsistent urgency values).
+The system requires a deterministic ordering module that ranks notifications for delivery using strict business rules, never crashes on dirty input, and produces identical output for the same input.
+Previous implementations failed due to subtle determinism violations (timestamp parsing behavior) and incomplete self-verification logic. The goal is to implement a robust, single-file ordering module that safely normalizes inputs, computes derived values efficiently, preserves stability when required, and proves correctness via a reliable self-test.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/3arv9v-deterministic-notification-delivery-queue-with-dirty-input-safety",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
