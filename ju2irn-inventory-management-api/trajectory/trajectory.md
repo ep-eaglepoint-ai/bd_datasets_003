@@ -34,14 +34,34 @@ Create a comprehensive test suite for an Express.js Inventory Management API usi
 
 ## Implementation
 
-### Files Created
+### Project Structure
 
-#### repository_after/package.json
+```
+ju2irn-inventory-management-api/
+├── package.json              # Shared dependencies & scripts
+├── jest.config.js            # Shared test configuration
+├── Dockerfile
+├── docker-compose.yml
+├── repository_before/
+│   └── index.js              # Original API code
+├── repository_after/
+│   ├── index.js              # API code (same as before)
+│   └── __tests__/
+│       └── api.test.js       # 72 API tests
+├── tests/
+│   └── meta-tests.test.js    # 56 meta tests
+└── evaluation/
+    └── evaluation.js         # Evaluation script
+```
+
+### Root package.json
 ```json
 {
   "scripts": {
+    "test:api": "jest --verbose --forceExit --testPathPattern=repository_after/__tests__",
+    "test:meta": "jest --verbose --testPathPattern=tests/",
     "test": "jest --verbose --forceExit",
-    "test:coverage": "jest --coverage --forceExit"
+    "test:coverage": "jest --coverage --forceExit --testPathPattern=repository_after/__tests__"
   },
   "devDependencies": {
     "jest": "^29.7.0",
@@ -50,12 +70,21 @@ Create a comprehensive test suite for an Express.js Inventory Management API usi
 }
 ```
 
-#### repository_after/jest.config.js
-- Test environment: node
-- Coverage threshold: 80% (branches, functions, lines, statements)
-- Coverage collection from index.js
+### Root jest.config.js
+```javascript
+module.exports = {
+  testEnvironment: 'node',
+  testMatch: [
+    '**/repository_after/__tests__/**/*.test.js',
+    '**/tests/**/*.test.js'
+  ],
+  coverageThreshold: {
+    global: { branches: 80, functions: 80, lines: 80, statements: 80 }
+  }
+};
+```
 
-#### repository_after/__tests__/api.test.js
+### repository_after/__tests__/api.test.js
 **72 tests organized into:**
 - GET /products (5 tests)
 - POST /products (11 tests)
@@ -67,13 +96,7 @@ Create a comprehensive test suite for an Express.js Inventory Management API usi
 - GET /inventory/low-stock (8 tests)
 - Integration Tests (4 tests)
 
-**Test Organization:**
-- Success Cases
-- Error Cases
-- Edge Cases
-- Integration Tests
-
-#### tests/meta-tests.test.js
+### tests/meta-tests.test.js
 **56 tests validating:**
 - Route Coverage (9 tests)
 - Response Code Coverage (8 tests)
@@ -113,33 +136,38 @@ docker-compose run repo-after
 docker-compose run evaluation
 ```
 
+## Local Commands
+
+```bash
+# Install dependencies
+npm install
+
+# Run API tests
+npm run test:api
+
+# Run meta tests
+npm run test:meta
+
+# Run all tests
+npm test
+```
+
 ---
 
 ## Key Implementation Details
+
+### Shared Configuration
+- Single `package.json` at root with all dependencies
+- Single `jest.config.js` with test patterns for both directories
+- Both test suites share the same Jest and Supertest versions
 
 ### Test Independence
 - `beforeEach(() => resetData())` ensures clean state
 - Each test creates its own data
 - No shared state between tests
 
-### Helper Function
-```javascript
-const createProduct = async (productData = {}) => {
-  const defaultProduct = {
-    sku: 'TEST-SKU-001',
-    name: 'Test Product',
-    price: 29.99,
-    category: 'electronics',
-    stockLevel: 100
-  };
-  return await request(app).post('/products').send({ ...defaultProduct, ...productData });
-};
-```
-
 ### Naming Convention
 All tests follow: "should [behavior] when [condition]"
-- "should return 201 with created product when all required fields are provided"
-- "should return 400 with insufficient stock message when fulfilling more than available"
 
 ---
 
@@ -154,3 +182,4 @@ All requirements met:
 - ✅ Naming convention followed
 - ✅ 80% coverage threshold configured
 - ✅ Meta tests validate all requirements
+- ✅ Shared root-level configuration
