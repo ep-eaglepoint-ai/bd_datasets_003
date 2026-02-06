@@ -1,0 +1,165 @@
+diff --git a/cn1t2f-leave-request-management-system-for-employee-leave-handling/evaluation/evaluation.py b/cn1t2f-leave-request-management-system-for-employee-leave-handling/evaluation/evaluation.py
+index 9ddda3e..58e1726 100644
+--- a/cn1t2f-leave-request-management-system-for-employee-leave-handling/evaluation/evaluation.py
++++ b/cn1t2f-leave-request-management-system-for-employee-leave-handling/evaluation/evaluation.py
+@@ -1,13 +1,12 @@
+ #!/usr/bin/env python3
+ import sys
+ import json
+-import time
+ import uuid
+ import platform
+ import subprocess
+ import os
+ from pathlib import Path
+-from datetime import datetime
++from datetime import datetime, timezone
+ 
+ ROOT = Path(__file__).resolve().parent.parent
+ REPORTS = ROOT / "evaluation" / "reports"
+@@ -21,7 +20,7 @@ def environment_info():
+ def run_tests(target_dir_name):
+     target_path = ROOT / target_dir_name
+     if not target_path.exists():
+-         return {
++        return {
+             "passed": False,
+             "return_code": -1,
+             "output": f"Directory {target_dir_name} does not exist"
+@@ -67,7 +66,7 @@ def evaluate(repo_name: str):
+ 
+ def run_evaluation():
+     run_id = str(uuid.uuid4())
+-    start = datetime.utcnow()
++    start = datetime.now(timezone.utc)
+     
+     # We expect 'before' to fail since it's empty/broken
+     before = evaluate("repository_before")
+@@ -80,7 +79,7 @@ def run_evaluation():
+         "improvement_summary": "Implemented full stack solution passing all tests."
+     }
+     
+-    end = datetime.utcnow()
++    end = datetime.now(timezone.utc)
+     return {
+         "run_id": run_id,
+         "started_at": start.isoformat() + "Z",
+diff --git a/cn1t2f-leave-request-management-system-for-employee-leave-handling/repository_after/app.py b/cn1t2f-leave-request-management-system-for-employee-leave-handling/repository_after/app.py
+index 7483011..2830b90 100644
+--- a/cn1t2f-leave-request-management-system-for-employee-leave-handling/repository_after/app.py
++++ b/cn1t2f-leave-request-management-system-for-employee-leave-handling/repository_after/app.py
+@@ -37,6 +37,8 @@ def create_app():
+ 
+     @app.route('/api/requests', methods=['POST'])
+     def create_request():
++        if not request.json:
++             return jsonify({"error": "Missing JSON body"}), 400
+         data = request.json
+         try:
+             req = LeaveService.create_request(
+@@ -80,6 +82,8 @@ def create_app():
+ 
+     @app.route('/api/requests/<int:req_id>/approve', methods=['POST'])
+     def approve_request(req_id):
++        if not request.json:
++            return jsonify({"error": "Missing JSON body"}), 400
+         data = request.json
+         manager_id = data.get('manager_id')
+         try:
+@@ -93,6 +97,8 @@ def create_app():
+ 
+     @app.route('/api/requests/<int:req_id>/reject', methods=['POST'])
+     def reject_request(req_id):
++        if not request.json:
++            return jsonify({"error": "Missing JSON body"}), 400
+         data = request.json
+         manager_id = data.get('manager_id')
+         try:
+diff --git a/cn1t2f-leave-request-management-system-for-employee-leave-handling/repository_after/models.py b/cn1t2f-leave-request-management-system-for-employee-leave-handling/repository_after/models.py
+index 02c59fb..1e0b62d 100644
+--- a/cn1t2f-leave-request-management-system-for-employee-leave-handling/repository_after/models.py
++++ b/cn1t2f-leave-request-management-system-for-employee-leave-handling/repository_after/models.py
+@@ -1,4 +1,4 @@
+-from datetime import datetime
++from datetime import datetime, timezone
+ from enum import Enum
+ from sqlalchemy import Integer, String, Date, ForeignKey, Enum as SQLEnum, DateTime
+ from sqlalchemy.orm import Mapped, mapped_column, relationship
+@@ -47,4 +47,4 @@ class AuditLog(db.Model):
+     previous_status: Mapped[LeaveStatus] = mapped_column(SQLEnum(LeaveStatus), nullable=True)
+     new_status: Mapped[LeaveStatus] = mapped_column(SQLEnum(LeaveStatus), nullable=False)
+     acting_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+-    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
++    timestamp: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+diff --git a/cn1t2f-leave-request-management-system-for-employee-leave-handling/repository_after/services.py b/cn1t2f-leave-request-management-system-for-employee-leave-handling/repository_after/services.py
+index c070217..59f9c15 100644
+--- a/cn1t2f-leave-request-management-system-for-employee-leave-handling/repository_after/services.py
++++ b/cn1t2f-leave-request-management-system-for-employee-leave-handling/repository_after/services.py
+@@ -25,27 +25,35 @@ class LeaveService:
+         if employee.role not in [UserRole.EMPLOYEE, UserRole.MANAGER]:
+              raise ServiceError("Invalid user role for leave request.")
+ 
+-        req = LeaveRequest(
+-            employee_id=employee_id,
+-            start_date=s_date,
+-            end_date=e_date,
+-            leave_type=leave_type,
+-            reason=reason,
+-            status=LeaveStatus.PENDING
+-        )
+-        db.session.add(req)
+-        db.session.commit()
+-        
+-        # Initial Audit Log
+-        audit = AuditLog(
+-            leave_request_id=req.id,
+-            previous_status=None,
+-            new_status=LeaveStatus.PENDING,
+-            acting_user_id=employee_id
+-        )
+-        db.session.add(audit)
+-        db.session.commit()
+-        return req
++        # Validate leave_type
++        if leave_type not in [lt.value for lt in LeaveType]:
++            raise ServiceError("Invalid leave type.")
++
++        try:
++            req = LeaveRequest(
++                employee_id=employee_id,
++                start_date=s_date,
++                end_date=e_date,
++                leave_type=leave_type,
++                reason=reason,
++                status=LeaveStatus.PENDING
++            )
++            db.session.add(req)
++            db.session.flush() # Generate ID
++            
++            # Initial Audit Log
++            audit = AuditLog(
++                leave_request_id=req.id,
++                previous_status=None,
++                new_status=LeaveStatus.PENDING,
++                acting_user_id=employee_id
++            )
++            db.session.add(audit)
++            db.session.commit()
++            return req
++        except Exception as e:
++            db.session.rollback()
++            raise e
+ 
+     @staticmethod
+     def _calculate_days(start, end):
+diff --git a/cn1t2f-leave-request-management-system-for-employee-leave-handling/tests/test_concurrency.py b/cn1t2f-leave-request-management-system-for-employee-leave-handling/tests/test_concurrency.py
+index 3437f86..588fa4f 100644
+--- a/cn1t2f-leave-request-management-system-for-employee-leave-handling/tests/test_concurrency.py
++++ b/cn1t2f-leave-request-management-system-for-employee-leave-handling/tests/test_concurrency.py
+@@ -1,6 +1,5 @@
+ import pytest
+ import threading
+-import threading
+ 
+ 
+ from app import create_app, db

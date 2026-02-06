@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leave Management System</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
+        .hidden { display: none; }
+        .card { border: 1px solid #ccc; padding: 1rem; margin-bottom: 1rem; border-radius: 4px; }
+        .status-PENDING { color: orange; }
+        .status-APPROVED { color: green; }
+        .status-REJECTED { color: red; }
+        button { cursor: pointer; padding: 0.5rem 1rem; }
+        input, select { padding: 0.5rem; margin-bottom: 0.5rem; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <h1>Leave Management System</h1>
+    
+    <div id="auth-view">
+        <h2>Login</h2>
+        <div id="user-list">Loading users...</div>
+    </div>
+
+    <div id="employee-dashboard" class="hidden">
+        <h2>Employee Dashboard: <span class="username-display"></span></h2>
+        <p>Balance: <span id="emp-balance"></span> days</p>
+        <button onclick="logout()">Logout</button>
+        
+        <div class="card">
+            <h3>Request Leave</h3>
+            <form id="leave-form">
+                <label>Start Date:</label> <input type="date" id="start-date" required><br>
+                <label>End Date:</label> <input type="date" id="end-date" required><br>
+                <label>Type:</label> 
+                <select id="leave-type">
+                    <option value="VACATION">Vacation</option>
+                    <option value="SICK">Sick</option>
+                    <option value="UNPAID">Unpaid</option>
+                </select><br>
+                <label>Reason:</label> <input type="text" id="reason"><br>
+                <button type="submit">Submit Request</button>
+            </form>
+            <p id="request-msg" class="error"></p>
+        </div>
+
+        <h3>My Requests</h3>
+        <div id="my-requests-list"></div>
+    </div>
+
+    <div id="manager-dashboard" class="hidden">
+        <h2>Manager Dashboard: <span class="username-display"></span></h2>
+        <button onclick="logout()">Logout</button>
+        
+        <h3>All Pending Requests</h3>
+        <div id="all-requests-list"></div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
