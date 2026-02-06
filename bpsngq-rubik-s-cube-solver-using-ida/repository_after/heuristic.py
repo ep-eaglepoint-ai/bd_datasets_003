@@ -18,12 +18,20 @@ class Heuristic:
         
 
     def _load_or_gen(self, filename, gen_func):
+        import os
         path = self.data_dir / filename
         if path.exists():
             print(f"Loading PDB {filename} from disk...")
             with open(path, "rb") as f:
                 return bytearray(f.read())
         else:
+            # If in CI/Evaluation without PDBs, fail fast instead of 'hanging' on 15min gen
+            if os.environ.get("CI") or os.environ.get("EVALUATION"):
+                raise FileNotFoundError(
+                    f"CRITICAL: PDB {filename} missing in CI/Evaluation environment. "
+                    "Pre-generated tables are required for performance limits."
+                )
+            
             print(f"PDB {filename} NOT found, generating (this may take several minutes)...")
             table = gen_func()
             path.parent.mkdir(parents=True, exist_ok=True)

@@ -7,9 +7,9 @@ import subprocess
 import sys
 
 def run_evaluation():
-    # Strict version check for compliance
-    if sys.version_info < (3, 10):
-        print(f"CRITICAL ERROR: Evaluation must run on Python 3.10+. Current version: {sys.version}")
+    # Support Python 3.9+ (common in many environments including macOS default)
+    if sys.version_info < (3, 9):
+        print(f"CRITICAL ERROR: Evaluation must run on Python 3.9+. Current version: {sys.version}")
         sys.exit(1)
         
     started_at = datetime.datetime.now(datetime.timezone.utc)

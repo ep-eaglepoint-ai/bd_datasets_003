@@ -44,7 +44,7 @@ While BFS can solve shallow cubes, the state space (43 quintillion) makes it imp
 - **Structural Tests**: Verify PDB files exist and contain 665,280 entries (`test_pdb_integrity.py`).
 - **Mathematical Proofs**:
     - `test_heuristic_consistency_random_sampling`: Verify the Triangle Inequality $|h(s) - h(s')| \le 1$ to prove admissibility at scale.
-    - `test_heuristic_admissibility_scan`: Exhaustive BFS scan of 46,000 states to verify lower bounds.
+    - `test_heuristic_admissibility_scan`: Exhaustive BFS scan of ~2,600 states (depth 4) to verify lower bounds.
 - **Integration Tests**:
     - `test_solver_strict_optimality_check`: Negative proof (verifying no solution at $D-1$).
     - `test_10_move_random_scramble`: Performance benchmark in Docker (Python 3.11).
@@ -99,10 +99,10 @@ EP Array → `get_subset_rank` (Permutation ranking) → Binary Table Lookup (Me
 **Requirements Completion**:
 - **REQ-08**: ✅ 8-move optimal solved in **0.16s** (Docker).
 - **REQ-09/11**: ✅ Complete 6-edge PDBs implemented and verified.
-- **REQ-12**: ✅ Strict optimality proven (Negative proofs at $D-1$ for canonical 7 and 8 move HTM optimal scrambles).
+- **REQ-12**: ✅ Strict optimality consistency (Negative proofs at $D-1$ for canonical 7 and 8 move HTM optimal scrambles).
 
 **Quality Metrics**:
-- **Test Coverage**: 41 tests passed in the target environment.
+- **Test Coverage**: 39 core tests passed + 2 benchmarks (Docker).
 - **Robustness**: Validated against parity violations and invalid Singmaster inputs.
 
 ### 11. Phase 11: DOCUMENT THE DECISION (Capture Context for Future)
