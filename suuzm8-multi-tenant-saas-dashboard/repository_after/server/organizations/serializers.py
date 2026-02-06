@@ -100,13 +100,36 @@ class APIKeySerializer(serializers.ModelSerializer):
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
+    name = serializers.SerializerMethodField()
+    username = serializers.CharField(source="user.username", read_only=True)
+    email = serializers.EmailField(source="user.email", read_only=True)
     primary_organization_slug = serializers.SlugField(write_only=True, required=False, allow_null=True)
     primary_organization = OrganizationSerializer(read_only=True)
 
     class Meta:
         model = UserProfile
-        fields = ["avatar_url", "timezone", "primary_organization", "primary_organization_slug", "updated_at"]
-        read_only_fields = ["primary_organization", "updated_at"]
+        fields = [
+            "name",
+            "username",
+            "email",
+            "avatar_url",
+            "timezone",
+            "primary_organization",
+            "primary_organization_slug",
+            "updated_at",
+        ]
+        read_only_fields = ["name", "username", "email", "primary_organization", "updated_at"]
+
+    def get_name(self, obj) -> str:
+        user = getattr(obj, "user", None)
+        if not user:
+            return ""
+        full = ""
+        try:
+            full = str(user.get_full_name() or "").strip()
+        except Exception:
+            full = ""
+        return full or str(getattr(user, "username", "") or "")
 
     def validate_timezone(self, value: str) -> str:
         if not value:

@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+from rest_framework.permissions import SAFE_METHODS
 from rest_framework.permissions import BasePermission
 
 from organizations.models import OrganizationMembership
+
+
+_SCOPE_LEVEL = {
+    "read": 0,
+    "write": 1,
+    "admin": 2,
+}
 
 
 def _get_org_slug(view) -> str | None:
@@ -51,3 +59,33 @@ class IsOwner(BasePermission):
         slug = view.kwargs.get("organization_slug")
         membership = _get_membership(request, slug) if slug else None
         return membership is not None and membership.has_permission(OrganizationMembership.Role.OWNER)
+
+
+class APIKeyScopeEnforcer(BasePermission):
+    """Enforce API key scopes on requests authenticated via APIKeyAuthentication.
+
+    View can declare:
+      - api_key_admin_actions = "*" or a set of action names requiring admin scope.
+      - api_key_required_scope = "read"|"write"|"admin" to override default.
+
+    Defaults:
+      - SAFE methods -> "read"
+      - unsafe methods -> "write"
+    """
+
+    def has_permission(self, request, view) -> bool:
+        api_key = getattr(request, "api_key", None)
+        if api_key is None:
+            return True
+
+        required = getattr(view, "api_key_required_scope", None)
+        if not required:
+            required = "read" if request.method in SAFE_METHODS else "write"
+
+        admin_actions = getattr(view, "api_key_admin_actions", None)
+        action = getattr(view, "action", None)
+        if admin_actions == "*" or (isinstance(admin_actions, set) and action in admin_actions):
+            required = "admin"
+
+        scope = getattr(api_key, "scope", "read")
+        return _SCOPE_LEVEL.get(str(scope), 0) >= _SCOPE_LEVEL.get(str(required), 2)

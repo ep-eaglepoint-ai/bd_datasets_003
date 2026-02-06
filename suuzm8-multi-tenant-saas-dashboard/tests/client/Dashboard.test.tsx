@@ -82,4 +82,21 @@ describe("Dashboard", () => {
     expect(screen.getByText("3")).toBeInTheDocument();
     expect(screen.getByText("2")).toBeInTheDocument();
   });
+
+  it("renders a clear error when the dashboard request fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ detail: "Server down" }), {
+            status: 500,
+            statusText: "Internal Server Error",
+          })
+      ) as unknown as typeof fetch
+    );
+
+    renderWithQuery(<Dashboard organizationSlug="acme" />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Server down");
+  });
 });

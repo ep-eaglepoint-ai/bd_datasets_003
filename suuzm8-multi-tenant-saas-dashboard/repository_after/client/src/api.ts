@@ -12,7 +12,15 @@ export async function apiFetchJson<T>(
   url: string,
   init?: RequestInit
 ): Promise<T> {
-  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+  const method = String(init?.method || "GET").toUpperCase();
+  const isSafe = method === "GET" || method === "HEAD" || method === "OPTIONS";
+  // Offline strategy: allow safe reads so React Query can serve cached data.
+  // Block mutating requests explicitly when offline.
+  if (
+    typeof navigator !== "undefined" &&
+    navigator.onLine === false &&
+    !isSafe
+  ) {
     throw new APIError("Offline");
   }
 

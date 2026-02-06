@@ -11,11 +11,11 @@ from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from organizations.models import APIKey, Invitation, Organization, OrganizationMembership, Project, UserProfile
-from organizations.permissions import IsAdmin, IsMember, IsOrganizationMember, IsOwner
+from organizations.permissions import APIKeyScopeEnforcer, IsAdmin, IsMember, IsOrganizationMember, IsOwner
 from organizations.serializers import (
     APIKeyCreateSerializer,
     APIKeySerializer,
@@ -29,7 +29,8 @@ from organizations.serializers import (
 
 
 class OrganizationViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, APIKeyScopeEnforcer]
+    api_key_admin_actions = {"destroy"}
 
     def get_queryset(self):
         return Organization.objects.filter(memberships__user=self.request.user, memberships__is_active=True).distinct()
@@ -38,6 +39,17 @@ class OrganizationViewSet(viewsets.ModelViewSet):
         if self.action == "create":
             return OrganizationCreateSerializer
         return OrganizationSerializer
+
+    def destroy(self, request, *args, **kwargs):
+        org = self.get_object()
+        membership = OrganizationMembership.objects.filter(
+            organization=org,
+            user=request.user,
+            is_active=True,
+        ).first()
+        if membership is None or not membership.has_permission(OrganizationMembership.Role.ADMIN):
+            return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+        return super().destroy(request, *args, **kwargs)
 
 
 class OrganizationScopedMixin:
@@ -55,6 +67,7 @@ class OrganizationScopedMixin:
 
 class MembershipViewSet(OrganizationScopedMixin, viewsets.ModelViewSet):
     serializer_class = MembershipSerializer
+    api_key_admin_actions = {"create", "update", "partial_update", "destroy"}
 
     def get_queryset(self):
         org = self.get_organization()
@@ -62,8 +75,8 @@ class MembershipViewSet(OrganizationScopedMixin, viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in {"list", "retrieve"}:
-            return [IsAuthenticated(), IsOrganizationMember()]
-        return [IsAuthenticated(), IsAdmin()]
+            return [IsAuthenticated(), IsOrganizationMember(), APIKeyScopeEnforcer()]
+        return [IsAuthenticated(), IsAdmin(), APIKeyScopeEnforcer()]
 
 
 class ProjectViewSet(OrganizationScopedMixin, viewsets.ModelViewSet):
@@ -79,8 +92,8 @@ class ProjectViewSet(OrganizationScopedMixin, viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in {"list", "retrieve"}:
-            return [IsAuthenticated(), IsOrganizationMember()]
-        return [IsAuthenticated(), IsMember()]
+            return [IsAuthenticated(), IsOrganizationMember(), APIKeyScopeEnforcer()]
+        return [IsAuthenticated(), IsMember(), APIKeyScopeEnforcer()]
 
     def perform_create(self, serializer):
         org = self.get_organization()
@@ -89,6 +102,7 @@ class ProjectViewSet(OrganizationScopedMixin, viewsets.ModelViewSet):
 
 class InvitationViewSet(OrganizationScopedMixin, viewsets.ModelViewSet):
     serializer_class = InvitationSerializer
+    api_key_required_scope = "admin"
 
     def get_queryset(self):
         org = self.get_organization()
@@ -96,8 +110,8 @@ class InvitationViewSet(OrganizationScopedMixin, viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in {"list", "retrieve", "create"}:
-            return [IsAuthenticated(), IsAdmin()]
-        return [IsAuthenticated(), IsAdmin()]
+            return [IsAuthenticated(), IsAdmin(), APIKeyScopeEnforcer()]
+        return [IsAuthenticated(), IsAdmin(), APIKeyScopeEnforcer()]
 
     def perform_create(self, serializer):
         org = self.get_organization()
@@ -110,7 +124,8 @@ class InvitationViewSet(OrganizationScopedMixin, viewsets.ModelViewSet):
 
 
 class APIKeyViewSet(OrganizationScopedMixin, viewsets.GenericViewSet, mixins.ListModelMixin, mixins.CreateModelMixin):
-    permission_classes = [IsAuthenticated, IsAdmin]
+    permission_classes = [IsAuthenticated, IsAdmin, APIKeyScopeEnforcer]
+    api_key_required_scope = "admin"
 
     def get_queryset(self):
         org = self.get_organization()
@@ -126,9 +141,17 @@ class APIKeyViewSet(OrganizationScopedMixin, viewsets.GenericViewSet, mixins.Lis
         ctx["organization"] = self.get_organization()
         return ctx
 
+    @action(detail=True, methods=["post"], url_path="revoke")
+    def revoke(self, request, organization_slug=None, pk=None):
+        api_key = self.get_object()
+        if api_key.revoked_at is not None:
+            return Response({"detail": "Already revoked"}, status=status.HTTP_400_BAD_REQUEST)
+        api_key.revoke()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class OrganizationDashboardViewSet(OrganizationScopedMixin, viewsets.ViewSet):
-    permission_classes = [IsAuthenticated, IsOrganizationMember]
+    permission_classes = [IsAuthenticated, IsOrganizationMember, APIKeyScopeEnforcer]
 
     @action(detail=False, methods=["get"], url_path="dashboard")
     def dashboard(self, request, organization_slug=None):
@@ -169,7 +192,12 @@ class OrganizationDashboardViewSet(OrganizationScopedMixin, viewsets.ViewSet):
 
 
 class JoinViewSet(viewsets.ViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
+
+    def get_permissions(self):
+        if getattr(self, "action", None) == "accept":
+            return [IsAuthenticated()]
+        return [AllowAny()]
 
     def _get_invitation(self, token: str) -> Invitation:
         return get_object_or_404(Invitation.objects.select_related("organization"), token=token)
@@ -219,7 +247,8 @@ class ProfileViewSet(viewsets.ViewSet):
 
 
 class TransferOwnershipViewSet(OrganizationScopedMixin, viewsets.ViewSet):
-    permission_classes = [IsAuthenticated, IsOwner]
+    permission_classes = [IsAuthenticated, IsOwner, APIKeyScopeEnforcer]
+    api_key_required_scope = "admin"
 
     @action(detail=False, methods=["post"], url_path="transfer_ownership")
     def transfer(self, request, organization_slug=None):

@@ -374,3 +374,87 @@ def test_api_key_rate_limit_1000_per_hour_returns_429_with_retry_after(api_clien
     assert retry_after is not None
     retry_after_int = int(retry_after)
     assert 1 <= retry_after_int <= 3600
+
+
+@pytest.mark.django_db
+def test_organization_delete_requires_admin_or_owner(api_client, user, user2):
+    org = Organization.objects.create(name="Org")
+    OrganizationMembership.objects.create(organization=org, user=user, role=OrganizationMembership.Role.MEMBER)
+    OrganizationMembership.objects.create(organization=org, user=user2, role=OrganizationMembership.Role.ADMIN)
+
+    api_client.force_authenticate(user=user)
+    resp = api_client.delete(f"/api/organizations/{org.id}/")
+    assert resp.status_code == 403
+    assert Organization.objects.filter(id=org.id).exists() is True
+
+    api_client.force_authenticate(user=user2)
+    resp2 = api_client.delete(f"/api/organizations/{org.id}/")
+    assert resp2.status_code in (200, 204)
+    assert Organization.objects.filter(id=org.id).exists() is False
+
+
+@pytest.mark.django_db
+def test_api_key_revoke_endpoint_revokes_and_blocks_future_auth(api_client, user):
+    org = Organization.objects.create(name="Org")
+    OrganizationMembership.objects.create(organization=org, user=user, role=OrganizationMembership.Role.OWNER)
+
+    api_key, plaintext = APIKey.create_with_plaintext(organization=org, created_by=user, scope=APIKey.Scope.ADMIN)
+
+    api_client.force_authenticate(user=user)
+    resp = api_client.post(f"/api/organizations/{org.slug}/api-keys/{api_key.id}/revoke/")
+    assert resp.status_code == 204
+
+    api_key.refresh_from_db()
+    assert api_key.revoked_at is not None
+
+    # Clear user auth so the API key must be used.
+    api_client.force_authenticate(user=None)
+    resp2 = api_client.get(f"/api/organizations/{org.slug}/dashboard/", HTTP_X_API_KEY=plaintext)
+    assert resp2.status_code in (401, 403)
+
+
+@pytest.mark.django_db
+def test_api_key_scopes_enforced_read_cannot_write_but_write_can(api_client, user):
+    org = Organization.objects.create(name="Org")
+    OrganizationMembership.objects.create(organization=org, user=user, role=OrganizationMembership.Role.OWNER)
+
+    read_key, read_plain = APIKey.create_with_plaintext(organization=org, created_by=user, scope=APIKey.Scope.READ)
+    write_key, write_plain = APIKey.create_with_plaintext(organization=org, created_by=user, scope=APIKey.Scope.WRITE)
+    assert read_key.is_active is True
+    assert write_key.is_active is True
+
+    url = f"/api/organizations/{org.slug}/projects/"
+    resp = api_client.post(url, {"name": "P1", "description": "d"}, format="json", HTTP_X_API_KEY=read_plain)
+    assert resp.status_code == 403
+
+    resp2 = api_client.post(url, {"name": "P2", "description": "d"}, format="json", HTTP_X_API_KEY=write_plain)
+    assert resp2.status_code in (200, 201)
+
+
+@pytest.mark.django_db
+def test_api_key_write_scope_cannot_access_admin_endpoints_but_admin_can(api_client, user):
+    org = Organization.objects.create(name="Org")
+    OrganizationMembership.objects.create(organization=org, user=user, role=OrganizationMembership.Role.OWNER)
+
+    _k1, write_plain = APIKey.create_with_plaintext(organization=org, created_by=user, scope=APIKey.Scope.WRITE)
+    _k2, admin_plain = APIKey.create_with_plaintext(organization=org, created_by=user, scope=APIKey.Scope.ADMIN)
+
+    url = f"/api/organizations/{org.slug}/invitations/"
+    payload = {"email": "invitee@example.com", "role": OrganizationMembership.Role.MEMBER}
+
+    resp = api_client.post(url, payload, format="json", HTTP_X_API_KEY=write_plain)
+    assert resp.status_code == 403
+
+    resp2 = api_client.post(url, payload, format="json", HTTP_X_API_KEY=admin_plain)
+    assert resp2.status_code in (200, 201)
+
+
+@pytest.mark.django_db
+def test_join_validate_is_public(api_client, user):
+    org = Organization.objects.create(name="Org")
+    OrganizationMembership.objects.create(organization=org, user=user, role=OrganizationMembership.Role.OWNER)
+    inv = Invitation.objects.create(organization=org, email="new@example.com", created_by=user)
+
+    api_client.force_authenticate(user=None)
+    resp = api_client.get(f"/api/join/{inv.token}/")
+    assert resp.status_code == 200
