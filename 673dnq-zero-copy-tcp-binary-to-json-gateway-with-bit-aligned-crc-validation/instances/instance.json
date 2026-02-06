@@ -1,0 +1,11 @@
+{
+            "instance_id": "673DNQ",
+            "problem_statement": "A sensor data ingestion system needs to parse multiplexed bit-packed binary streams over TCP. The current implementation uses WebSocket instead of raw TCP, has incorrect CRC validation, and copies data instead of using zero-copy offsets. Required: raw TCP stream handling with proper bit-aligned CRC-16-CCITT, true zero-copy architecture using buffer offsets, and correct lock-free ring buffer.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/673dnq-zero-copy-tcp-binary-to-json-gateway-with-bit-aligned-crc-validation",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
