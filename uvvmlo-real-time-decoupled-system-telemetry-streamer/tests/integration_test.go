@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,14 +15,14 @@ import (
 	wshandler "telemetry-streamer/pkg/websocket"
 )
 
-// TestFullIntegration uses PRODUCTION WebSocket handler (FIX #4)
+// TestFullIntegration uses PRODUCTION WebSocket handler
 func TestFullIntegration(t *testing.T) {
 	h := hub.NewHub()
 	go h.Run()
 	defer h.Stop()
 
 	collector := metrics.NewCollector(100 * time.Millisecond)
-	collector.SetConnectionHub(h)
+	// No longer need to inject hub - collector reads host-level connections from /proc/net/*
 	go collector.Start(h.Broadcast)
 	defer collector.Stop()
 
@@ -58,8 +57,8 @@ func TestFullIntegration(t *testing.T) {
 		t.Error("Invalid timestamp")
 	}
 
-	t.Logf("Received valid metrics: CPU=%.2f%%, Memory=%.2f%%, Goroutines=%d",
-		m.CPUUsage, m.MemoryUsagePercent, m.NumGoroutines)
+	t.Logf("Received valid metrics: CPU=%.2f%%, Memory=%.2f%%, Goroutines=%d, ActiveConnections=%d",
+		m.CPUUsage, m.MemoryUsagePercent, m.NumGoroutines, m.ActiveConnections)
 }
 
 // TestMultipleClientsReceiveMetrics uses production handler
