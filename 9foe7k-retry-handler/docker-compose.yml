@@ -1,14 +1,14 @@
-version: '3.8'
 services:
   test:
     build: .
+    image: retry-handler-env
     command: mvn test
     volumes:
       - .:/app
     working_dir: /app/repository_after
 
   evaluation:
-    build: .
+    image: retry-handler-env
     command: python3 evaluation/evaluation.py
     volumes:
       - .:/app
