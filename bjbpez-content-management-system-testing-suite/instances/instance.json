@@ -1,0 +1,11 @@
+{
+            "instance_id": "BJBPEZ",
+            "problem_statement": "The Content Management System (CMS) supports article creation, versioning, and an editorial workflow, but its correctness and reliability depend heavily on proper validation of state transitions, version history, and concurrent operations. Without a comprehensive automated testing suite, regressions can lead to broken editorial workflows, corrupted version history, incorrect publishing behavior, and data inconsistencies under concurrent access. The objective of this task is to design a robust pytest-based testing suite that validates all critical CMS behaviors, ensuring correctness across article lifecycle management, version control, workflow transitions, search functionality, and concurrency handling.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/bjbpez-content-management-system-testing-suite",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
