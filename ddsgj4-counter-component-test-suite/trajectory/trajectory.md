@@ -59,75 +59,58 @@ Based on the prompt requirements, I researched the following resources to unders
 Based on my research and the requirements, I made the following decisions:
 
 ### Method Choice 1: Using React Testing Library's `render()`
-I chose to use the `render` function from React Testing Library because it provides a realistic DOM representation of the component. This approach works because it renders the actual React component tree, allowing us to test the component as a user would see it. The alternative would have been to mock the component, but that would not provide realistic test coverage.
+The `render` function from React Testing Library is used because it provides a realistic DOM representation of the component. This approach works because it renders the actual React component tree, allowing the component to be tested as a user would see it. The alternative of mocking the component would not provide realistic test coverage.
 
 ### Method Choice 2: Using `userEvent.setup()` with `async/await`
-I decided to use `userEvent.setup()` before each interaction and wrap clicks in `async/await` because this ensures proper event handling and synchronization. This approach works because React state updates are asynchronous, and waiting for the promise to resolve ensures the UI has updated before assertions. This is better than synchronous clicks which might cause race conditions.
+`userEvent.setup()` is used before each interaction with clicks wrapped in `async/await` because this ensures proper event handling and synchronization. This approach works because React state updates are asynchronous, and waiting for the promise to resolve ensures the UI has updated before assertions. This is better than synchronous clicks which might cause race conditions.
 
 ### Method Choice 3: Using `data-testid` for element selection
-I chose to use `screen.getByTestId` for selecting elements because the component explicitly provides `data-testid` attributes for the count display and all buttons. This approach works because it's the most reliable way to select elements when they're specifically tagged for testing, and it matches the component's structure.
+`screen.getByTestId` is used for selecting elements because the component explicitly provides `data-testid` attributes for the count display and all buttons. This approach works because it's the most reliable way to select elements when they're specifically tagged for testing, and it matches the component's structure.
 
 ### Method Choice 4: Using `toHaveTextContent` for assertions
-I selected `toHaveTextContent` for verifying count values because it directly checks the rendered text content of the element. This approach works because it verifies what the user actually sees on the screen, which aligns with the testing philosophy of checking user-facing behavior.
+`toHaveTextContent` is used for verifying count values because it directly checks the rendered text content of the element. This approach works because it verifies what the user actually sees on the screen, which aligns with the testing philosophy of checking user-facing behavior.
 
 ### Method Choice 5: Organizing tests with `describe` blocks
-I organized tests into logical `describe` blocks (Basic Functionality, Sequence Tests, Edge Cases, Boundary Constraints, UI Elements Presence) because this structure makes the test suite more maintainable and readable. This approach works because it groups related tests together, making it easier to identify which aspect of the component is being tested.
+Tests are organized into logical `describe` blocks (Basic Functionality, Sequence Tests, Edge Cases, Boundary Constraints, UI Elements Presence) because this structure makes the test suite more maintainable and readable. This approach works because it groups related tests together, making it easier to identify which aspect of the component is being tested.
 
 ## 6. Solution Implementation and Explanation
 
-Based on my research and method decisions, I implemented the test suite as follows:
+Based on the research and method decisions, the test suite is implemented as follows:
 
 ### Test Structure:
 ```javascript
-import React, { useState } from 'react';
+import React from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-
-// Mock the Counter component since repository_before can't be modified
-const Counter = () => {
-  const [count, setCount] = useState(0);
-  const countPlus = () => setCount(count + 1);
-  const countMinus = () => setCount(count - 1);
-  const resetVal = () => setCount(0);
-  return (
-    <div>
-      <h1 data-testid="count">{count}</h1>
-      <button data-testid="increment" onClick={countPlus}>Count+</button>
-      <button data-testid="reset" onClick={resetVal}>Reset</button>
-      <button data-testid="decrement" onClick={countMinus}>Count-</button>
-    </div>
-  );
-};
-
-export { Counter };
+import { Counter } from './App';
 ```
 
-I created a mock Counter component that mirrors the original component's structure. This approach works because it allows the test suite to run independently without modifying the original repository. The component uses React's `useState` hook to manage the count value, providing all three required actions: increment, decrement, and reset.
+The test suite imports the Counter component. This ensures that tests exercise the actual implementation, catching any bugs that may exist in the codebase. The Counter component uses React's `useState` hook to manage the count value, providing all three required actions: increment, decrement, and reset.
 
 ### Basic Functionality Tests:
-I implemented tests that verify the fundamental operations of the counter. Each test follows the pattern of setting up the user event, performing the action, and asserting the expected result. For example, the increment test clicks the increment button once and verifies the count changes from 0 to 1.
+The test suite includes tests that verify the fundamental operations of the counter. Each test follows the pattern of setting up the user event, performing the action, and asserting the expected result. For example, the increment test clicks the increment button once and verifies the count changes from 0 to 1.
 
 ### Sequence Tests:
-I added tests for sequential operations to ensure the counter correctly accumulates multiple clicks. These tests perform multiple clicks in sequence and verify the final count matches expectations. For instance, three increments should result in a count of 3.
+The test suite includes tests for sequential operations to ensure the counter correctly accumulates multiple clicks. These tests perform multiple clicks in sequence and verify the final count matches expectations. For instance, three increments result in a count of 3.
 
 ### Edge Cases Tests:
-I specifically tested edge cases like rapid clicking, reset after many operations, and decrementing from 0. The rapid clicking test performs 5 quick clicks to verify all interactions are registered. The decrement from 0 test ensures the counter correctly produces -1 instead of 0 or throwing an error.
+The test suite includes tests for edge cases like rapid clicking, reset after many operations, and decrementing from 0. The rapid clicking test performs 5 quick clicks to verify all interactions are registered. The decrement from 0 test ensures the counter correctly produces -1 instead of 0 or throwing an error.
 
 ### Boundary Constraints Tests:
-I added tests for handling large numbers and alternating operations to ensure the counter remains accurate under stress. These tests perform 100 rapid increments or decrements to verify the counter can handle boundary values.
+The test suite includes tests for handling large numbers and alternating operations to ensure the counter remains accurate under stress. These tests perform 100 rapid increments or decrements to verify the counter can handle boundary values.
 
 ### UI Elements Presence Tests:
-I verified that all UI elements (count display, increment button, decrement button, reset button) are present and clickable. These tests ensure the component's structure is correct before testing functionality.
+The test suite verifies that all UI elements (count display, increment button, decrement button, reset button) are present and clickable. These tests ensure the component's structure is correct before testing functionality.
 
 ## 7. How Solution Handles Constraints, Requirements, and Edge Cases
 
 ### Handling Constraints:
 
 **Constraint: No mocking useState or setCount**
-The solution handles this constraint by using the actual `useState` hook in the mock component. Each test interacts with the component through user actions (clicks), which trigger the real state management. This works because React's state management is tested through its public interface (user interactions and DOM updates).
+The solution handles this constraint by importing and testing the actual Counter component that uses `useState`. Each test interacts with the component through user actions (clicks), which trigger the real state management. This works because React's state management is tested through its public interface (user interactions and DOM updates).
 
 **Constraint: No testing internal state directly**
-The solution handles this constraint by only querying the DOM for visible content. I use `screen.getByTestId('count')` and then verify the `textContent` or use `toHaveTextContent`. This works because it only tests what the user can see, not how the component is implemented internally.
+The solution handles this constraint by only querying the DOM for visible content. The tests use `screen.getByTestId('count')` and then verify the `textContent` or use `toHaveTextContent`. This works because it only tests what the user can see, not how the component is implemented internally.
 
 **Constraint: Must use Jest with React Testing Library and user-event**
 The solution handles this constraint by importing and using all three libraries as required. The test structure follows Jest conventions with `describe` blocks and `test` functions. React Testing Library handles rendering, and user-event handles interactions.

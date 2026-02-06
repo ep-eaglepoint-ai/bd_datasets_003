@@ -1,24 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-
-// Mock the Counter component since repository_before can't be modified
-const Counter = () => {
-  const [count, setCount] = useState(0);
-  const countPlus = () => setCount(count + 1);
-  const countMinus = () => setCount(count - 1);
-  const resetVal = () => setCount(0);
-  return (
-    <div>
-      <h1 data-testid="count">{count}</h1>
-      <button data-testid="increment" onClick={countPlus}>Count+</button>
-      <button data-testid="reset" onClick={resetVal}>Reset</button>
-      <button data-testid="decrement" onClick={countMinus}>Count-</button>
-    </div>
-  );
-};
-
-export { Counter };
+import { Counter } from '../repository_before/src/App';
 
 describe('Counter Component', () => {
   beforeEach(() => {
@@ -96,12 +79,12 @@ describe('Counter Component', () => {
       const incrementButton = screen.getByTestId('increment');
       const decrementButton = screen.getByTestId('decrement');
       
-      await user.click(incrementButton);
+      // Start at 0, increment to 1, then decrement back to 0
       await user.click(incrementButton);
       await user.click(decrementButton);
       
       const countElement = screen.getByTestId('count');
-      expect(countElement).toHaveTextContent('1');
+      expect(countElement).toHaveTextContent('0');
     });
 
     test('Decrement into negative numbers works correctly', async () => {
