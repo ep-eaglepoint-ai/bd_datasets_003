@@ -109,7 +109,7 @@ def run_tests() -> Dict[str, Any]:
 
 def run_meta_test() -> Dict[str, Any]:
     print("Running Meta-Tests...")
-    cmd = ["python3", str(ROOT / "tests" / "meta_test.py")]
+    cmd = ["java", str(ROOT / "tests" / "MetaTest.java")]
     result = subprocess.run(cmd, capture_output=True, text=True)
     return {
         "passed": result.returncode == 0,
