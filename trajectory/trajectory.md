@@ -1,33 +1,33 @@
-# Trajectory
+ Trajectory
 
-## Analysis: How I Deconstructed the Prompt
+Analysis: How I Deconstructed the Prompt
 
 From the start, I identified that this task was not only about writing tests, but about delivering a comprehensive, production-ready test suite that validates a critical financial calculation engine. The requirements implied real-world constraints: precision, edge cases, performance, and maintainability.
 
 Key requirements I extracted:
 
-1. **Parameterized testing** for tiered tax calculations covering boundary conditions
-2. **Adversarial testing** for leap year date arithmetic
-3. **Precision verification** at multiple decimal places (2nd and 8th)
-4. **Negative testing** for invalid inputs and edge cases
-5. **Stress testing** with 5,000 transactions and memory constraints
-6. **Currency precision** validation to prevent premature truncation
-7. **Progressive tax verification** to ensure incremental calculation
-8. **Property-based testing** to verify invariants
-9. **95%+ branch coverage** requirement
-10. **300-line file limit** per test file
+1. Parameterized testing for tiered tax calculations covering boundary conditions
+2. Adversarial testing for leap year date arithmetic
+3. Precision verification at multiple decimal places (2nd and 8th)
+4. Negative testing for invalid inputs and edge cases
+5. Stress testing with 5,000 transactions and memory constraints
+6. Currency precision validation to prevent premature truncation
+7. Progressive tax verification to ensure incremental calculation
+8. Property-based testing to verify invariants
+9. 95%+ branch coverage requirement
+10. 300-line file limit per test file
 
 The line limit was a strong signal that modular design was expected, not code compression. The comprehensive requirements indicated this needed to be a rigorous, enterprise-grade test suite.
 
 I framed the problem in three layers:
 
-- **Mathematical layer**: Decimal precision, rounding modes (ROUND_HALF_UP), tiered tax calculations, interest accrual
-- **Testing layer**: pytest framework, parameterization, fixtures, coverage analysis, adversarial testing
-- **Deployment layer**: Docker-based testing, evaluation automation, CI/CD compatibility
+- Mathematical layer**: Decimal precision, rounding modes (ROUND_HALF_UP), tiered tax calculations, interest accrual
+- Testing layer**: pytest framework, parameterization, fixtures, coverage analysis, adversarial testing
+- Deployment layer**: Docker-based testing, evaluation automation, CI/CD compatibility
 
-## Strategy: Why This Design and Patterns Were Chosen
+Strategy: Why This Design and Patterns Were Chosen
 
-### Modular Test File Structure
+ Modular Test File Structure
 
 To stay under the 300-line limit while maintaining clarity and organization, I split the test suite into focused modules:
 
@@ -41,12 +41,12 @@ To stay under the 300-line limit while maintaining clarity and organization, I s
 - `test_fiscal_engine.py` – Main file that imports all modules
 
 This separation improved:
-- **Readability**: Each file focuses on a specific aspect
-- **Maintainability**: Easy to locate and update specific test categories
-- **Testability**: Can run individual test suites independently
-- **Coverage tracking**: Clear organization for coverage analysis
+- Readability**: Each file focuses on a specific aspect
+- Maintainability**: Easy to locate and update specific test categories
+- Testability**: Can run individual test suites independently
+- Coverage tracking**: Clear organization for coverage analysis
 
-### Parameterized Testing Strategy
+ Parameterized Testing Strategy
 
 For Requirement 1 (parameterized testing), I used `@pytest.mark.parametrize` to test multiple scenarios efficiently:
 
@@ -57,7 +57,7 @@ For Requirement 1 (parameterized testing), I used `@pytest.mark.parametrize` to 
 
 This approach ensures comprehensive coverage while keeping code DRY (Don't Repeat Yourself).
 
-### Adversarial Testing for Leap Years
+ Adversarial Testing for Leap Years
 
 For Requirement 2, I designed a test that specifically spans February 29th in a leap year (2024) to verify the Actual/365 day count convention handles leap years correctly. This tests the engine's date arithmetic robustness.
 
@@ -67,7 +67,7 @@ For Requirement 3, I created tests that verify ROUND_HALF_UP behavior at both 2n
 - `.005` should round to `.01` (rounds up)
 - `.004` should round to `.00` (rounds down)
 
-### Stress Testing with Memory Constraints
+Stress Testing with Memory Constraints
 
 For Requirement 5, I implemented a stress test that:
 - Generates 5,000 mock transactions
@@ -75,13 +75,13 @@ For Requirement 5, I implemented a stress test that:
 - Verifies memory overhead stays under 100MB
 - Tests the engine's efficiency on low-resource systems (512MB RAM constraint)
 
-### Property-Based Testing
+Property-Based Testing
 
 For Requirement 8, I implemented property-based tests using standard loops (as specified) to verify invariants:
 - Tax is always non-negative for any input
 - Tax is monotonic (higher income = higher or equal tax)
 
-### Import Strategy
+Import Strategy
 
 The test environment uses `sys.path.insert()` to add directories to the Python path. I ensured all test files use consistent absolute imports from `fiscal_engine` to avoid import issues across different execution contexts.
 
@@ -99,7 +99,7 @@ The evaluation script follows a template pattern:
 - Generates comparison report with coverage metrics
 - Exits with appropriate status codes
 
-## Execution: Step-by-Step Implementation
+Execution: Step-by-Step Implementation
 
 1. **Analyzed the FiscalPrecisionEngine implementation** to understand all methods and edge cases
 2. **Designed test structure** following the 9 requirements

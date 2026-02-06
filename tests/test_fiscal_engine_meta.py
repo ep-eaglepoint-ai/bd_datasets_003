@@ -62,8 +62,8 @@ class TestMetaTestSuite:
         assert interest > Decimal('0'), "Interest should be positive"
     
     def test_broken_invalid_input_detected(self, standard_brackets):
-        """Verify that broken_invalid_input.py is detected by negative tests."""
-        BrokenEngine = load_implementation('broken_invalid_input.py')
+        """Verify that broken_invalid_date_validation.py is detected by negative tests."""
+        BrokenEngine = load_implementation('broken_invalid_date_validation.py')
         engine = BrokenEngine(standard_brackets, Decimal('0.05'))
         
         # This should fail - broken implementation doesn't handle invalid dates
@@ -77,8 +77,8 @@ class TestMetaTestSuite:
             assert result == Decimal('0.00'), "Should return 0 for invalid date range"
     
     def test_broken_no_decimal_detected(self, standard_brackets):
-        """Verify that broken_no_decimal.py is detected by precision tests."""
-        BrokenEngine = load_implementation('broken_no_decimal.py')
+        """Verify that broken_precision_truncation.py is detected by precision tests."""
+        BrokenEngine = load_implementation('broken_precision_truncation.py')
         engine = BrokenEngine(standard_brackets, Decimal('0.05'))
         
         # Test high precision input
@@ -90,8 +90,8 @@ class TestMetaTestSuite:
         assert result['total_volume'] == high_precision, "Precision should be preserved"
     
     def test_broken_zero_division_detected(self, standard_brackets):
-        """Verify that broken_zero_division.py is detected."""
-        BrokenEngine = load_implementation('broken_zero_division.py')
+        """Verify that broken_zero_income_handling.py is detected."""
+        BrokenEngine = load_implementation('broken_zero_income_handling.py')
         engine = BrokenEngine(standard_brackets, Decimal('0.05'))
         
         # Test with zero income - should not raise ZeroDivisionError

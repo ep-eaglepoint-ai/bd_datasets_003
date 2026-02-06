@@ -12,12 +12,7 @@ getcontext().prec = 28
 # typing: Provides type hints for data shape documentation and static analysis.
 
 class FiscalPrecisionEngine:
-    """
-    A high-precision engine for calculating tiered taxes and pro-rated interest.
-    Data Shape: 
-    - Brackets: List[Dict] -> [{'limit': Decimal, 'rate': Decimal}, ...]
-    - Transactions: Dict -> {'amount': Decimal, 'currency': str, 'date': date}
-    """
+    
 
     def __init__(self, tax_brackets: List[Dict[str, Decimal]], annual_base_rate: Decimal):
         # Sort brackets by limit to ensure consistent iteration
