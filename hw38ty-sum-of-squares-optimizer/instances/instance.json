@@ -1,0 +1,11 @@
+{
+            "instance_id": "HW38TY",
+            "problem_statement": "You are a JavaScript engineer tasked with optimizing a function that computes the sum of squares of numeric array elements. The current implementation is inefficient and needs to be optimized to handle arrays of approximately 1 million elements efficiently. The array may contain null or undefined values, which should be ignored in the computation. Your task is to optimize the existing function for better runtime and lower memory usage while ensuring that the output remains the same as the original function.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/hw38ty-sum-of-squares-optimizer",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
