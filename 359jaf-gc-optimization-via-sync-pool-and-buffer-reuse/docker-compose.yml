@@ -1,0 +1,6 @@
+services:
+  app:
+    build: .
+    container_name: gc-optimization
+    volumes:
+      - .:/app
