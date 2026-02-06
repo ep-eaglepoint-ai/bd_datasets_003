@@ -1,7 +1,17 @@
-# Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
+FROM ubuntu:22.04
 
-FROM python:3.11-slim
+RUN apt-get update && apt-get install -y \
+    g++ \
+    make \
+    libgtest-dev \
+    cmake \
+    && cd /usr/src/googletest && cmake . && make && \
+    cp lib/libgtest*.a /usr/lib/ \
+    && apt-get remove -y cmake \
+    && apt-get autoremove -y \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+CMD ["make", "test"]

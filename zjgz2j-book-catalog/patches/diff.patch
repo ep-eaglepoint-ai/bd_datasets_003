@@ -1,0 +1,674 @@
+diff --git a/repository_after/Book.cpp b/repository_after/Book.cpp
+new file mode 100644
+index 0000000..ec5d9d9
+--- /dev/null
++++ b/repository_after/Book.cpp
+@@ -0,0 +1,40 @@
++#include "Book.h"
++#include <sstream>
++
++Book::Book() : isAvailable(true) {}
++
++Book::Book(const std::string& isbn, const std::string& title, const std::string& author)
++    : isbn(isbn), title(title), author(author), isAvailable(true) {}
++
++std::string Book::serialize() const {
++    std::ostringstream oss;
++    oss << isbn << "|" << title << "|" << author << "|"
++        << (isAvailable ? "1" : "0") << "|" << borrowedBy << "|" << dueDate;
++    return oss.str();
++}
++
++Book Book::deserialize(const std::string& line) {
++    Book book;
++    std::istringstream iss(line);
++    std::string token;
++
++    if (!std::getline(iss, token, '|')) return book;
++    book.isbn = token;
++
++    if (!std::getline(iss, token, '|')) return book;
++    book.title = token;
++
++    if (!std::getline(iss, token, '|')) return book;
++    book.author = token;
++
++    if (!std::getline(iss, token, '|')) return book;
++    book.isAvailable = (token == "1");
++
++    if (!std::getline(iss, token, '|')) return book;
++    book.borrowedBy = token;
++
++    if (!std::getline(iss, token, '|')) return book;
++    book.dueDate = token;
++
++    return book;
++}
+diff --git a/repository_after/Book.h b/repository_after/Book.h
+new file mode 100644
+index 0000000..7b2e09c
+--- /dev/null
++++ b/repository_after/Book.h
+@@ -0,0 +1,22 @@
++#ifndef BOOK_H
++#define BOOK_H
++
++#include <string>
++
++class Book {
++public:
++    std::string isbn;
++    std::string title;
++    std::string author;
++    bool isAvailable;
++    std::string borrowedBy;
++    std::string dueDate;
++
++    Book();
++    Book(const std::string& isbn, const std::string& title, const std::string& author);
++
++    std::string serialize() const;
++    static Book deserialize(const std::string& line);
++};
++
++#endif
+diff --git a/repository_after/DateUtils.cpp b/repository_after/DateUtils.cpp
+new file mode 100644
+index 0000000..61e53c4
+--- /dev/null
++++ b/repository_after/DateUtils.cpp
+@@ -0,0 +1,63 @@
++#include "DateUtils.h"
++#include <sstream>
++#include <iomanip>
++
++bool isLeapYear(int year) {
++    return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
++}
++
++int daysInMonth(int month, int year) {
++    static const int days[] = {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
++    if (month == 2 && isLeapYear(year)) return 29;
++    if (month < 1 || month > 12) return 0;
++    return days[month];
++}
++
++bool parseDate(const std::string& date, int& year, int& month, int& day) {
++    if (date.size() != 10 || date[4] != '-' || date[7] != '-') return false;
++    try {
++        year = std::stoi(date.substr(0, 4));
++        month = std::stoi(date.substr(5, 2));
++        day = std::stoi(date.substr(8, 2));
++    } catch (...) {
++        return false;
++    }
++    if (year < 1) return false;
++    if (month < 1 || month > 12) return false;
++    if (day < 1 || day > daysInMonth(month, year)) return false;
++    return true;
++}
++
++std::string formatDate(int year, int month, int day) {
++    std::ostringstream oss;
++    oss << std::setfill('0') << std::setw(4) << year << "-"
++        << std::setw(2) << month << "-"
++        << std::setw(2) << day;
++    return oss.str();
++}
++
++std::string addDays(const std::string& date, int days) {
++    int year, month, day;
++    if (!parseDate(date, year, month, day)) return "";
++
++    day += days;
++    while (day > daysInMonth(month, year)) {
++        day -= daysInMonth(month, year);
++        month++;
++        if (month > 12) {
++            month = 1;
++            year++;
++        }
++    }
++
++    return formatDate(year, month, day);
++}
++
++bool isValidDate(const std::string& date) {
++    int y, m, d;
++    return parseDate(date, y, m, d);
++}
++
++bool isDateBefore(const std::string& date1, const std::string& date2) {
++    return date1 < date2;
++}
+diff --git a/repository_after/DateUtils.h b/repository_after/DateUtils.h
+new file mode 100644
+index 0000000..bfd963d
+--- /dev/null
++++ b/repository_after/DateUtils.h
+@@ -0,0 +1,14 @@
++#ifndef DATEUTILS_H
++#define DATEUTILS_H
++
++#include <string>
++
++bool isLeapYear(int year);
++int daysInMonth(int month, int year);
++bool parseDate(const std::string& date, int& year, int& month, int& day);
++std::string formatDate(int year, int month, int day);
++std::string addDays(const std::string& date, int days);
++bool isValidDate(const std::string& date);
++bool isDateBefore(const std::string& date1, const std::string& date2);
++
++#endif
+diff --git a/repository_after/Library.cpp b/repository_after/Library.cpp
+new file mode 100644
+index 0000000..a378129
+--- /dev/null
++++ b/repository_after/Library.cpp
+@@ -0,0 +1,215 @@
++#include "Library.h"
++#include "DateUtils.h"
++#include <fstream>
++#include <sstream>
++#include <algorithm>
++#include <cctype>
++#include <sys/stat.h>
++
++static std::string toLowerStr(const std::string& s) {
++    std::string result = s;
++    std::transform(result.begin(), result.end(), result.begin(),
++                   [](unsigned char c) { return std::tolower(c); });
++    return result;
++}
++
++Library::Library(const std::string& dataDir) : dataDir(dataDir) {
++    struct stat st;
++    if (stat(dataDir.c_str(), &st) != 0) {
++        mkdir(dataDir.c_str(), 0755);
++    }
++    loadData();
++}
++
++bool Library::addBook(const std::string& isbn, const std::string& title, const std::string& author) {
++    if (isbn.empty() || title.empty() || author.empty()) return false;
++    if (books.find(isbn) != books.end()) return false;
++
++    books[isbn] = Book(isbn, title, author);
++    saveData();
++    return true;
++}
++
++bool Library::addPatron(const std::string& id, const std::string& name) {
++    if (id.empty() || name.empty()) return false;
++    if (patrons.find(id) != patrons.end()) return false;
++
++    patrons[id] = Patron(id, name);
++    saveData();
++    return true;
++}
++
++bool Library::checkoutBook(const std::string& isbn, const std::string& patronId, const std::string& currentDate) {
++    auto bookIt = books.find(isbn);
++    if (bookIt == books.end()) return false;
++
++    if (!bookIt->second.isAvailable) return false;
++
++    auto patronIt = patrons.find(patronId);
++    if (patronIt == patrons.end()) return false;
++
++    std::string dueDate = addDays(currentDate, 14);
++    if (dueDate.empty()) return false;
++
++    bookIt->second.isAvailable = false;
++    bookIt->second.borrowedBy = patronId;
++    bookIt->second.dueDate = dueDate;
++    patronIt->second.addBook(isbn);
++
++    saveData();
++    return true;
++}
++
++bool Library::returnBook(const std::string& isbn) {
++    auto bookIt = books.find(isbn);
++    if (bookIt == books.end()) return false;
++
++    if (bookIt->second.isAvailable) return false;
++
++    std::string patronId = bookIt->second.borrowedBy;
++    auto patronIt = patrons.find(patronId);
++    if (patronIt != patrons.end()) {
++        patronIt->second.removeBook(isbn);
++    }
++
++    bookIt->second.isAvailable = true;
++    bookIt->second.borrowedBy = "";
++    bookIt->second.dueDate = "";
++
++    saveData();
++    return true;
++}
++
++std::vector<Book> Library::searchByTitle(const std::string& query) const {
++    std::vector<Book> results;
++    std::string lowerQuery = toLowerStr(query);
++
++    for (const auto& pair : books) {
++        std::string lowerTitle = toLowerStr(pair.second.title);
++        if (lowerTitle.find(lowerQuery) != std::string::npos) {
++            results.push_back(pair.second);
++        }
++    }
++    return results;
++}
++
++std::vector<Book> Library::searchByAuthor(const std::string& author) const {
++    std::vector<Book> results;
++    std::string lowerAuthor = toLowerStr(author);
++
++    for (const auto& pair : books) {
++        std::string lowerBookAuthor = toLowerStr(pair.second.author);
++        if (lowerBookAuthor.find(lowerAuthor) != std::string::npos) {
++            results.push_back(pair.second);
++        }
++    }
++    return results;
++}
++
++std::vector<Book> Library::getPatronBooks(const std::string& patronId) const {
++    std::vector<Book> results;
++    auto patronIt = patrons.find(patronId);
++    if (patronIt == patrons.end()) return results;
++
++    for (const auto& isbn : patronIt->second.borrowedBooks) {
++        auto bookIt = books.find(isbn);
++        if (bookIt != books.end()) {
++            results.push_back(bookIt->second);
++        }
++    }
++    return results;
++}
++
++std::vector<Book> Library::getOverdueBooks(const std::string& currentDate) const {
++    std::vector<Book> results;
++    for (const auto& pair : books) {
++        if (!pair.second.isAvailable && !pair.second.dueDate.empty()) {
++            if (isDateBefore(pair.second.dueDate, currentDate)) {
++                results.push_back(pair.second);
++            }
++        }
++    }
++    return results;
++}
++
++std::string Library::displayBookInfo(const std::string& isbn) const {
++    auto it = books.find(isbn);
++    if (it == books.end()) return "Book not found.";
++
++    const Book& book = it->second;
++    std::ostringstream oss;
++    oss << "ISBN: " << book.isbn << "\n";
++    oss << "Title: " << book.title << "\n";
++    oss << "Author: " << book.author << "\n";
++    oss << "Status: " << (book.isAvailable ? "Available" : "Checked Out") << "\n";
++
++    if (!book.isAvailable) {
++        oss << "Borrowed By: " << book.borrowedBy << "\n";
++        oss << "Due Date: " << book.dueDate << "\n";
++    }
++
++    return oss.str();
++}
++
++void Library::saveData() const {
++    std::string booksFile = dataDir + "/books.txt";
++    std::ofstream booksOut(booksFile);
++    if (booksOut.is_open()) {
++        for (const auto& pair : books) {
++            booksOut << pair.second.serialize() << "\n";
++        }
++        booksOut.close();
++    }
++
++    std::string patronsFile = dataDir + "/patrons.txt";
++    std::ofstream patronsOut(patronsFile);
++    if (patronsOut.is_open()) {
++        for (const auto& pair : patrons) {
++            patronsOut << pair.second.serialize() << "\n";
++        }
++        patronsOut.close();
++    }
++}
++
++void Library::loadData() {
++    books.clear();
++    patrons.clear();
++
++    std::string booksFile = dataDir + "/books.txt";
++    std::ifstream booksIn(booksFile);
++    if (booksIn.is_open()) {
++        std::string line;
++        while (std::getline(booksIn, line)) {
++            if (!line.empty()) {
++                Book book = Book::deserialize(line);
++                if (!book.isbn.empty()) {
++                    books[book.isbn] = book;
++                }
++            }
++        }
++        booksIn.close();
++    }
++
++    std::string patronsFile = dataDir + "/patrons.txt";
++    std::ifstream patronsIn(patronsFile);
++    if (patronsIn.is_open()) {
++        std::string line;
++        while (std::getline(patronsIn, line)) {
++            if (!line.empty()) {
++                Patron patron = Patron::deserialize(line);
++                if (!patron.patronId.empty()) {
++                    patrons[patron.patronId] = patron;
++                }
++            }
++        }
++        patronsIn.close();
++    }
++}
++
++const std::map<std::string, Book>& Library::getBooks() const {
++    return books;
++}
++
++const std::map<std::string, Patron>& Library::getPatrons() const {
++    return patrons;
++}
+diff --git a/repository_after/Library.h b/repository_after/Library.h
+new file mode 100644
+index 0000000..5a6f5df
+--- /dev/null
++++ b/repository_after/Library.h
+@@ -0,0 +1,38 @@
++#ifndef LIBRARY_H
++#define LIBRARY_H
++
++#include <string>
++#include <vector>
++#include <map>
++#include "Book.h"
++#include "Patron.h"
++
++class Library {
++private:
++    std::map<std::string, Book> books;
++    std::map<std::string, Patron> patrons;
++    std::string dataDir;
++
++public:
++    Library(const std::string& dataDir);
++
++    bool addBook(const std::string& isbn, const std::string& title, const std::string& author);
++    bool addPatron(const std::string& id, const std::string& name);
++    bool checkoutBook(const std::string& isbn, const std::string& patronId, const std::string& currentDate);
++    bool returnBook(const std::string& isbn);
++
++    std::vector<Book> searchByTitle(const std::string& query) const;
++    std::vector<Book> searchByAuthor(const std::string& author) const;
++    std::vector<Book> getPatronBooks(const std::string& patronId) const;
++    std::vector<Book> getOverdueBooks(const std::string& currentDate) const;
++
++    std::string displayBookInfo(const std::string& isbn) const;
++
++    void saveData() const;
++    void loadData();
++
++    const std::map<std::string, Book>& getBooks() const;
++    const std::map<std::string, Patron>& getPatrons() const;
++};
++
++#endif
+diff --git a/repository_after/Patron.cpp b/repository_after/Patron.cpp
+new file mode 100644
+index 0000000..e70a494
+--- /dev/null
++++ b/repository_after/Patron.cpp
+@@ -0,0 +1,62 @@
++#include "Patron.h"
++#include <sstream>
++#include <algorithm>
++
++Patron::Patron() {}
++
++Patron::Patron(const std::string& id, const std::string& name)
++    : patronId(id), name(name) {}
++
++int Patron::getBorrowedCount() const {
++    return static_cast<int>(borrowedBooks.size());
++}
++
++void Patron::addBook(const std::string& isbn) {
++    borrowedBooks.push_back(isbn);
++}
++
++void Patron::removeBook(const std::string& isbn) {
++    auto it = std::find(borrowedBooks.begin(), borrowedBooks.end(), isbn);
++    if (it != borrowedBooks.end()) {
++        borrowedBooks.erase(it);
++    }
++}
++
++bool Patron::hasBorrowed(const std::string& isbn) const {
++    return std::find(borrowedBooks.begin(), borrowedBooks.end(), isbn) != borrowedBooks.end();
++}
++
++std::string Patron::serialize() const {
++    std::ostringstream oss;
++    oss << patronId << "|" << name << "|";
++    for (size_t i = 0; i < borrowedBooks.size(); ++i) {
++        if (i > 0) oss << ",";
++        oss << borrowedBooks[i];
++    }
++    return oss.str();
++}
++
++Patron Patron::deserialize(const std::string& line) {
++    Patron patron;
++    std::istringstream iss(line);
++    std::string token;
++
++    if (!std::getline(iss, token, '|')) return patron;
++    patron.patronId = token;
++
++    if (!std::getline(iss, token, '|')) return patron;
++    patron.name = token;
++
++    if (!std::getline(iss, token, '|')) return patron;
++    if (!token.empty()) {
++        std::istringstream bookStream(token);
++        std::string isbn;
++        while (std::getline(bookStream, isbn, ',')) {
++            if (!isbn.empty()) {
++                patron.borrowedBooks.push_back(isbn);
++            }
++        }
++    }
++
++    return patron;
++}
+diff --git a/repository_after/Patron.h b/repository_after/Patron.h
+new file mode 100644
+index 0000000..b03cd3d
+--- /dev/null
++++ b/repository_after/Patron.h
+@@ -0,0 +1,25 @@
++#ifndef PATRON_H
++#define PATRON_H
++
++#include <string>
++#include <vector>
++
++class Patron {
++public:
++    std::string patronId;
++    std::string name;
++    std::vector<std::string> borrowedBooks;
++
++    Patron();
++    Patron(const std::string& id, const std::string& name);
++
++    int getBorrowedCount() const;
++    void addBook(const std::string& isbn);
++    void removeBook(const std::string& isbn);
++    bool hasBorrowed(const std::string& isbn) const;
++
++    std::string serialize() const;
++    static Patron deserialize(const std::string& line);
++};
++
++#endif
+diff --git a/repository_after/main.cpp b/repository_after/main.cpp
+new file mode 100644
+index 0000000..1c7c67a
+--- /dev/null
++++ b/repository_after/main.cpp
+@@ -0,0 +1,141 @@
++#include <iostream>
++#include <string>
++#include <vector>
++#include "Library.h"
++#include "DateUtils.h"
++
++static void printBooks(const std::vector<Book>& books) {
++    if (books.empty()) {
++        std::cout << "No books found.\n";
++        return;
++    }
++    for (const auto& book : books) {
++        std::cout << "  ISBN: " << book.isbn
++                  << " | Title: " << book.title
++                  << " | Author: " << book.author
++                  << " | " << (book.isAvailable ? "Available" : "Checked Out");
++        if (!book.isAvailable) {
++            std::cout << " (Due: " << book.dueDate << ")";
++        }
++        std::cout << "\n";
++    }
++}
++
++int main() {
++    std::string currentDate;
++    std::cout << "Welcome to the Library Catalog System\n";
++    std::cout << "Enter current date (YYYY-MM-DD): ";
++    std::getline(std::cin, currentDate);
++
++    while (!isValidDate(currentDate)) {
++        std::cout << "Invalid date format. Please enter date as YYYY-MM-DD: ";
++        std::getline(std::cin, currentDate);
++    }
++
++    Library library("./data");
++
++    int choice = 0;
++    while (choice != 8) {
++        std::cout << "\n===== Library Catalog System =====\n";
++        std::cout << "1. Add Book\n";
++        std::cout << "2. Add Patron\n";
++        std::cout << "3. Search Books\n";
++        std::cout << "4. Checkout Book\n";
++        std::cout << "5. Return Book\n";
++        std::cout << "6. View Patron's Books\n";
++        std::cout << "7. View Overdue Books\n";
++        std::cout << "8. Exit\n";
++        std::cout << "Enter choice: ";
++
++        std::string input;
++        std::getline(std::cin, input);
++        try {
++            choice = std::stoi(input);
++        } catch (...) {
++            std::cout << "Invalid input. Please enter a number.\n";
++            continue;
++        }
++
++        if (choice == 1) {
++            std::string isbn, title, author;
++            std::cout << "Enter ISBN: ";
++            std::getline(std::cin, isbn);
++            std::cout << "Enter Title: ";
++            std::getline(std::cin, title);
++            std::cout << "Enter Author: ";
++            std::getline(std::cin, author);
++            if (library.addBook(isbn, title, author)) {
++                std::cout << "Book added successfully.\n";
++            } else {
++                std::cout << "Failed to add book. ISBN may already exist or fields are empty.\n";
++            }
++        } else if (choice == 2) {
++            std::string id, name;
++            std::cout << "Enter Patron ID: ";
++            std::getline(std::cin, id);
++            std::cout << "Enter Name: ";
++            std::getline(std::cin, name);
++            if (library.addPatron(id, name)) {
++                std::cout << "Patron added successfully.\n";
++            } else {
++                std::cout << "Failed to add patron. ID may already exist or fields are empty.\n";
++            }
++        } else if (choice == 3) {
++            std::cout << "Search by (1) Title or (2) Author: ";
++            std::string searchChoice;
++            std::getline(std::cin, searchChoice);
++            std::cout << "Enter search query: ";
++            std::string query;
++            std::getline(std::cin, query);
++            std::vector<Book> results;
++            if (searchChoice == "1") {
++                results = library.searchByTitle(query);
++            } else if (searchChoice == "2") {
++                results = library.searchByAuthor(query);
++            } else {
++                std::cout << "Invalid search option.\n";
++                continue;
++            }
++            std::cout << "Search Results:\n";
++            printBooks(results);
++        } else if (choice == 4) {
++            std::string isbn, patronId;
++            std::cout << "Enter Book ISBN: ";
++            std::getline(std::cin, isbn);
++            std::cout << "Enter Patron ID: ";
++            std::getline(std::cin, patronId);
++            if (library.checkoutBook(isbn, patronId, currentDate)) {
++                std::cout << "Book checked out successfully.\n";
++            } else {
++                std::cout << "Checkout failed. Book may not exist, already checked out, or patron not found.\n";
++            }
++        } else if (choice == 5) {
++            std::string isbn;
++            std::cout << "Enter Book ISBN: ";
++            std::getline(std::cin, isbn);
++            if (library.returnBook(isbn)) {
++                std::cout << "Book returned successfully.\n";
++            } else {
++                std::cout << "Return failed. Book may not exist or was not checked out.\n";
++            }
++        } else if (choice == 6) {
++            std::string patronId;
++            std::cout << "Enter Patron ID: ";
++            std::getline(std::cin, patronId);
++            std::vector<Book> patronBooks = library.getPatronBooks(patronId);
++            std::cout << "Books checked out by patron " << patronId << ":\n";
++            printBooks(patronBooks);
++        } else if (choice == 7) {
++            std::vector<Book> overdue = library.getOverdueBooks(currentDate);
++            std::cout << "Overdue Books:\n";
++            printBooks(overdue);
++        } else if (choice == 8) {
++            library.saveData();
++            std::cout << "Data saved. Goodbye!\n";
++        } else {
++            std::cout << "Invalid choice. Please try again.\n";
++        }
++    }
++
++    return 0;
++}

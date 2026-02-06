@@ -1,12 +1,15 @@
-# Python
-__pycache__/
-*.pyc
-.venv/
-.env
+# Build artifacts
+build/
+library_catalog
+library_catalog_tests
+*.o
 
-# Node
-node_modules/
+# Data files
+data/
+test_data_*/
 
 # OS
 .DS_Store
+
+# Evaluation
 evaluation/*.json

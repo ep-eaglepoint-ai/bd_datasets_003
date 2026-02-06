@@ -1,11 +1,19 @@
-# ZJGZ2J - book catalog
+# ZJGZ2J - Book Catalog
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Before Test Docker Command
 
-    ## After Test Docker Command
-    <docker after command here>
+```bash
+SRC_DIR=repository_before docker compose run --rm app sh -c "make clean && make all && make test"
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## After Test Docker Command
+
+```bash
+SRC_DIR=repository_after docker compose run --rm app sh -c "make clean && make all && make test"
+```
+
+## Evaluation Docker Command
+
+```bash
+make eval && ./evaluation/evaluate
+```
