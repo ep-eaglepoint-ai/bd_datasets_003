@@ -52,7 +52,8 @@ function runEvaluate() {
   // Compose a shell command that runs npm test with JSON output and prints it
   const shCommand = `node -v; node -p \"JSON.stringify({node_version:process.version, platform:process.platform, os:require('os').type(), architecture:process.arch, hostname:require('os').hostname()})\"; npm test -- --json --outputFile=/tmp/jest-results.json --silent || true; cat /tmp/jest-results.json`;
 
-  const proc = spawnSync('docker', ['compose', 'run', '--rm', 'test', 'sh', '-c', shCommand], { encoding: 'utf8', maxBuffer: 50 * 1024 * 1024 });
+  // Execute the command directly on the current system (host or container)
+  const proc = spawnSync('sh', ['-c', shCommand], { encoding: 'utf8', maxBuffer: 50 * 1024 * 1024 });
 
   const finishedAt = new Date();
   const durationSeconds = (finishedAt.getTime() - startedAt.getTime()) / 1000;

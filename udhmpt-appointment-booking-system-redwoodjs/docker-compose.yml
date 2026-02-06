@@ -15,6 +15,8 @@ services:
       - .:/app
       - /app/node_modules
       - /app/repository_after/node_modules
+      - /app/repository_after/api/node_modules
+      - /app/repository_after/web/node_modules
     command: npm test --silent
 
   evaluate:
@@ -26,4 +28,6 @@ services:
       - .:/app
       - /app/node_modules
       - /app/repository_after/node_modules
+      - /app/repository_after/api/node_modules
+      - /app/repository_after/web/node_modules
     command: npx ts-node evaluation/evaluation.ts

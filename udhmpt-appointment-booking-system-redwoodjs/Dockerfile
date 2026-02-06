@@ -17,7 +17,8 @@ RUN cd repository_after && npm install --silent --legacy-peer-deps
 COPY . .
 
 # Pre-generate Prisma client during build
-RUN npx prisma generate --schema repository_after/api/db/schema.prisma
+# Running inside api dir helps Prisma resolve its internal engines correctly
+RUN cd repository_after/api && npx prisma generate --schema db/schema.prisma
 
 # Default command
 CMD ["npm", "test", "--silent"]

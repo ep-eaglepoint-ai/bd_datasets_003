@@ -156,7 +156,7 @@ export const searchAvailability = async ({ input }: SearchParams) => {
     const slotEnd = DateTime.fromISO(slot.endUtcISO)
 
     // Count overlapping bookings
-    const overlappingCount = existingBookings.filter((b) => {
+    const overlappingCount = existingBookings.filter((b: any) => {
       const bStart = DateTime.fromJSDate(b.startUtc)
       const bEnd = DateTime.fromJSDate(b.endUtc)
       return bEnd > slotStart && bStart < slotEnd

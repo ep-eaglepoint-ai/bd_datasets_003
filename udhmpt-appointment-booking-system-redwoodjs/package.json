@@ -6,12 +6,12 @@
     "test": "npx jest --runInBand tests/provider_onboarding.test.ts tests/security/authentication_authorization.test.ts tests/security/sql_injection_prevention.test.ts tests/performance/large_dataset_handling.test.ts tests/performance/realtime_update_performance.test.ts tests/integration/end_to_end_workflows.test.ts --silent"
   },
   "dependencies": {
-    "@prisma/client": "^6.19.2",
+    "@prisma/client": "5.22.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^9.0.10",
     "bcryptjs": "^3.0.3",
     "jsonwebtoken": "^9.0.3",
-    "luxon": "^3.3.0"
+    "luxon": "^3.4.0"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^5.16.5",
@@ -24,7 +24,7 @@
     "@types/uuid": "^9.0.0",
     "jest": "^29.5.0",
     "jest-environment-jsdom": "^29.5.0",
-    "prisma": "^6.19.2",
+    "prisma": "5.22.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "ts-jest": "^29.1.0",
