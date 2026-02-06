@@ -1,5 +1,8 @@
-FROM python:3.11-slim
+# Use official Go image
+FROM golang:1.21-bullseye
+
 WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+COPY . .
+
+CMD ["bash"]

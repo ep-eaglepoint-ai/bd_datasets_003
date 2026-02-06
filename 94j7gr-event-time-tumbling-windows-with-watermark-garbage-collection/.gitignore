@@ -3,9 +3,45 @@ __pycache__/
 *.pyc
 .venv/
 .env
+venv/
+*.egg-info/
+dist/
+build/
 
 # Node
 node_modules/
 
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+vendor/
+*.out
+
+# Evaluation outputs
+evaluation/*.json
+evaluation/**/*.json
+
+# Debug / logs
+debug.log
+*.log
+.cursor/
+.cursorignore
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
 # OS
 .DS_Store
+Thumbs.db
+Desktop.ini
+
+# Docker
+.docker/
