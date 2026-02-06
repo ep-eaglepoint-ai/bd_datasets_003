@@ -1,0 +1,480 @@
+diff --git a/repository_before/.gitkeep b/repository_before/.gitkeep
+deleted file mode 100644
+index e69de29b..00000000
+diff --git a/repository_after/audit_logger.go b/repository_after/audit_logger.go
+new file mode 100644
+index 00000000..1fca4993
+--- /dev/null
++++ b/repository_after/audit_logger.go
+@@ -0,0 +1,55 @@
++package main
++
++import (
++	"encoding/json"
++	"os"
++	"sync"
++	"time"
++)
++
++// AuditLogger handles writing audit events to a file
++type AuditLogger struct {
++	file  *os.File
++	mutex sync.Mutex
++}
++
++// AuditEvent represents a security audit event
++type AuditEvent struct {
++	Timestamp   time.Time `json:"timestamp"`
++	ContainerID string    `json:"container_id"`
++	StreamType  string    `json:"stream_type"`
++	Pattern     string    `json:"pattern"`
++	Redacted    string    `json:"redacted_match"`
++	Severity    string    `json:"severity"`
++}
++
++// NewAuditLogger creates a new audit logger
++func NewAuditLogger(filename string) (*AuditLogger, error) {
++	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
++	if err != nil {
++		return nil, err
++	}
++
++	return &AuditLogger{
++		file: file,
++	}, nil
++}
++
++// Log writes an audit event to the log file
++func (l *AuditLogger) Log(event AuditEvent) error {
++	l.mutex.Lock()
++	defer l.mutex.Unlock()
++
++	data, err := json.Marshal(event)
++	if err != nil {
++		return err
++	}
++
++	_, err = l.file.Write(append(data, '\n'))
++	return err
++}
++
++// Close closes the audit log file
++func (l *AuditLogger) Close() error {
++	return l.file.Close()
++}
+\ No newline at end of file
+diff --git a/repository_after/auditor.go b/repository_after/auditor.go
+new file mode 100644
+index 00000000..69f43703
+--- /dev/null
++++ b/repository_after/auditor.go
+@@ -0,0 +1,135 @@
++package main
++
++import (
++	"context"
++	"encoding/binary"
++	"fmt"
++	"io"
++	"log"
++	"net/http"
++	"time"
++)
++
++// LogAuditor performs real-time audit of Docker logs
++type LogAuditor struct {
++	config      *Config
++	auditLogger *AuditLogger
++}
++
++// StreamType represents the type of stream (stdout/stderr)
++type StreamType byte
++
++const (
++	StreamStdin  StreamType = 0
++	StreamStdout StreamType = 1
++	StreamStderr StreamType = 2
++)
++
++func (s StreamType) String() string {
++	switch s {
++	case StreamStdin:
++		return "stdin"
++	case StreamStdout:
++		return "stdout"
++	case StreamStderr:
++		return "stderr"
++	default:
++		return "unknown"
++	}
++}
++
++// AuditMultiplexedStream parses Docker's binary multiplexed stream and audits it
++func (a *LogAuditor) AuditMultiplexedStream(ctx context.Context, reader io.Reader, writer io.Writer, containerID string, flusher http.Flusher) error {
++	header := make([]byte, 8)
++
++	for {
++		// Check if context is done (client disconnected)
++		select {
++		case <-ctx.Done():
++			return ctx.Err()
++		default:
++		}
++
++		// Read 8-byte header: [stream_type(1)][padding(3)][size(4)]
++		n, err := io.ReadFull(reader, header)
++		if err != nil {
++			if err == io.EOF || n == 0 {
++				return nil
++			}
++			return fmt.Errorf("failed to read header: %v", err)
++		}
++
++		// Parse header
++		streamType := StreamType(header[0])
++		// Bytes 1-3 are padding (unused)
++		payloadSize := binary.BigEndian.Uint32(header[4:8])
++
++		if payloadSize == 0 {
++			continue
++		}
++
++		// Read payload based on size from header
++		payload := make([]byte, payloadSize)
++		_, err = io.ReadFull(reader, payload)
++		if err != nil {
++			return fmt.Errorf("failed to read payload of size %d: %v", payloadSize, err)
++		}
++
++		// Audit the payload asynchronously (non-blocking)
++		go a.auditPayload(containerID, streamType, payload)
++
++		// Write header to client (maintain binary stream integrity)
++		_, err = writer.Write(header)
++		if err != nil {
++			return fmt.Errorf("failed to write header: %v", err)
++		}
++
++		// Write payload to client
++		_, err = writer.Write(payload)
++		if err != nil {
++			return fmt.Errorf("failed to write payload: %v", err)
++		}
++
++		// Flush immediately to client (streaming, no buffering)
++		if flusher != nil {
++			flusher.Flush()
++		}
++	}
++}
++
++// auditPayload checks payload against regex patterns and logs matches
++func (a *LogAuditor) auditPayload(containerID string, streamType StreamType, payload []byte) {
++	payloadStr := string(payload)
++
++	for _, pattern := range a.config.SensitivePatterns {
++		matches := pattern.Regex.FindAllString(payloadStr, -1)
++		if len(matches) > 0 {
++			for _, match := range matches {
++				// Redact the match
++				redacted := redactString(match)
++
++				// Log audit event
++				event := AuditEvent{
++					Timestamp:   time.Now(),
++					ContainerID: containerID,
++					StreamType:  streamType.String(),
++					Pattern:     pattern.Name,
++					Redacted:    redacted,
++					Severity:    "HIGH",
++				}
++
++				if err := a.auditLogger.Log(event); err != nil {
++					log.Printf("Failed to log audit event: %v", err)
++				}
++			}
++		}
++	}
++}
++
++// redactString redacts sensitive data, showing only first and last 2 chars
++func redactString(s string) string {
++	if len(s) <= 6 {
++		return "***"
++	}
++	return s[:2] + "***" + s[len(s)-2:]
++}
+\ No newline at end of file
+diff --git a/repository_after/config.go b/repository_after/config.go
+new file mode 100644
+index 00000000..daf3cc90
+--- /dev/null
++++ b/repository_after/config.go
+@@ -0,0 +1,48 @@
++package main
++
++import (
++	"regexp"
++)
++
++// Config holds the configuration for the auditor
++type Config struct {
++	SensitivePatterns []SensitivePattern
++}
++
++// SensitivePattern represents a pattern to detect in logs
++type SensitivePattern struct {
++	Name  string
++	Regex *regexp.Regexp
++}
++
++// LoadConfig loads the default configuration with sensitive patterns
++func LoadConfig() *Config {
++	return &Config{
++		SensitivePatterns: []SensitivePattern{
++			{
++				Name:  "AWS Access Key",
++				Regex: regexp.MustCompile(`AKIA[0-9A-Z]{16}`),
++			},
++			{
++				Name:  "Generic API Key",
++				Regex: regexp.MustCompile(`(?i)api[_-]?key[_-]?[:=]\s*['"]?([a-zA-Z0-9_\-]{20,})['"]?`),
++			},
++			{
++				Name:  "Private Key",
++				Regex: regexp.MustCompile(`-----BEGIN\s+(?:RSA\s+)?PRIVATE\s+KEY-----`),
++			},
++			{
++				Name:  "Email Address",
++				Regex: regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`),
++			},
++			{
++				Name:  "Bearer Token",
++				Regex: regexp.MustCompile(`(?i)bearer\s+[a-zA-Z0-9_\-\.]{20,}`),
++			},
++			{
++				Name:  "Password",
++				Regex: regexp.MustCompile(`(?i)password[_-]?[:=]\s*['"]?([a-zA-Z0-9_\-!@#$%^&*]{8,})['"]?`),
++			},
++		},
++	}
++}
+\ No newline at end of file
+diff --git a/repository_after/main.go b/repository_after/main.go
+new file mode 100644
+index 00000000..b5e6c16f
+--- /dev/null
++++ b/repository_after/main.go
+@@ -0,0 +1,92 @@
++package main
++
++import (
++	"context"
++	"log"
++	"net"
++	"net/http"
++	"os"
++	"os/signal"
++	"syscall"
++	"time"
++)
++
++const (
++	dockerSocket = "/var/run/docker.sock"
++	proxyAddr    = ":2375"
++)
++
++func main() {
++	// Initialize audit logger
++	auditLogger, err := NewAuditLogger("audit.log")
++	if err != nil {
++		log.Fatalf("Failed to initialize audit logger: %v", err)
++	}
++	defer auditLogger.Close()
++
++	// Load configuration
++	config := LoadConfig()
++
++	// Create proxy handler
++	proxy := &DockerProxy{
++		auditor: &LogAuditor{
++			config:      config,
++			auditLogger: auditLogger,
++		},
++		socketPath: dockerSocket,
++	}
++
++	// Create HTTP server
++	server := &http.Server{
++		Addr:    proxyAddr,
++		Handler: proxy,
++	}
++
++	// Graceful shutdown
++	go func() {
++		sigChan := make(chan os.Signal, 1)
++		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
++		<-sigChan
++
++		log.Println("Shutting down proxy...")
++		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
++		defer cancel()
++		server.Shutdown(ctx)
++	}()
++
++	log.Printf("Docker Socket Proxy listening on %s", proxyAddr)
++	log.Printf("Proxying to %s", dockerSocket)
++
++	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
++		log.Fatalf("Server error: %v", err)
++	}
++}
++
++// DockerProxy handles proxying requests to Docker socket
++type DockerProxy struct {
++	auditor    *LogAuditor
++	socketPath string
++}
++
++func (p *DockerProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
++	// Create transport for Unix socket
++	transport := &http.Transport{
++		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
++			return net.Dial("unix", p.socketPath)
++		},
++	}
++
++	// Create client
++	client := &http.Client{
++		Transport: transport,
++	}
++
++	// Check if this is a logs request
++	if isLogsRequest(r) {
++		p.handleLogsRequest(w, r, client)
++		return
++	}
++
++	// Standard proxy for other requests
++	p.handleStandardProxy(w, r, client)
++}
+\ No newline at end of file
+diff --git a/repository_after/proxy.go b/repository_after/proxy.go
+new file mode 100644
+index 00000000..5ba34379
+--- /dev/null
++++ b/repository_after/proxy.go
+@@ -0,0 +1,112 @@
++package main
++
++import (
++	"fmt"
++	"io"
++	"net/http"
++	"regexp"
++	"strings"
++)
++
++// isLogsRequest checks if the request is for container logs
++func isLogsRequest(r *http.Request) bool {
++	path := r.URL.Path
++	return regexp.MustCompile(`^(/v[\d.]+)?/containers/[^/]+/logs$`).MatchString(path)
++}
++
++// handleStandardProxy handles non-logs requests with simple proxying
++func (p *DockerProxy) handleStandardProxy(w http.ResponseWriter, r *http.Request, client *http.Client) {
++	proxyReq, err := http.NewRequest(r.Method, "http://localhost"+r.URL.String(), r.Body)
++	if err != nil {
++		http.Error(w, fmt.Sprintf("Failed to create proxy request: %v", err), http.StatusInternalServerError)
++		return
++	}
++
++	// Copy headers
++	for key, values := range r.Header {
++		for _, value := range values {
++			proxyReq.Header.Add(key, value)
++		}
++	}
++
++	// Execute request
++	resp, err := client.Do(proxyReq)
++	if err != nil {
++		http.Error(w, fmt.Sprintf("Failed to proxy request: %v", err), http.StatusBadGateway)
++		return
++	}
++	defer resp.Body.Close()
++
++	// Copy response headers
++	for key, values := range resp.Header {
++		for _, value := range values {
++			w.Header().Add(key, value)
++		}
++	}
++
++	w.WriteHeader(resp.StatusCode)
++	io.Copy(w, resp.Body)
++}
++
++// handleLogsRequest handles container logs with binary stream parsing and auditing
++func (p *DockerProxy) handleLogsRequest(w http.ResponseWriter, r *http.Request, client *http.Client) {
++	containerID := extractContainerID(r.URL.Path)
++
++	proxyReq, err := http.NewRequest(r.Method, "http://localhost"+r.URL.String(), r.Body)
++	if err != nil {
++		http.Error(w, fmt.Sprintf("Failed to create proxy request: %v", err), http.StatusInternalServerError)
++		return
++	}
++
++	// Copy headers
++	for key, values := range r.Header {
++		for _, value := range values {
++			proxyReq.Header.Add(key, value)
++		}
++	}
++
++	ctx := r.Context()
++	proxyReq = proxyReq.WithContext(ctx)
++
++	resp, err := client.Do(proxyReq)
++	if err != nil {
++		http.Error(w, fmt.Sprintf("Failed to proxy request: %v", err), http.StatusBadGateway)
++		return
++	}
++	defer resp.Body.Close()
++
++	// Copy response headers
++	for key, values := range resp.Header {
++		for _, value := range values {
++			w.Header().Add(key, value)
++		}
++	}
++
++	w.WriteHeader(resp.StatusCode)
++
++	// Check if we can flush
++	flusher, canFlush := w.(http.Flusher)
++
++	// Check if this is a multiplexed stream
++	contentType := resp.Header.Get("Content-Type")
++	isMultiplexed := strings.Contains(contentType, "application/vnd.docker.raw-stream") ||
++		strings.Contains(contentType, "application/vnd.docker.multiplexed-stream") ||
++		r.URL.Query().Get("stdout") != "" ||
++		r.URL.Query().Get("stderr") != ""
++
++	if isMultiplexed && canFlush {
++		p.auditor.AuditMultiplexedStream(ctx, resp.Body, w, containerID, flusher)
++	} else {
++		io.Copy(w, resp.Body)
++	}
++}
++
++// extractContainerID extracts container ID from the URL path
++func extractContainerID(path string) string {
++	re := regexp.MustCompile(`/containers/([^/]+)/logs`)
++	matches := re.FindStringSubmatch(path)
++	if len(matches) > 1 {
++		return matches[1]
++	}
++	return "unknown"
++}
+\ No newline at end of file

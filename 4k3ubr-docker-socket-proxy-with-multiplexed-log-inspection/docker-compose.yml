@@ -1,9 +1,27 @@
-
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
+services:
   app:
     build: .
-    command: pytest -q tests
     volumes:
       - .:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    working_dir: /app
+    environment:
+      - CGO_ENABLED=0
+    command: /usr/local/bin/evaluation
+    
+  proxy:
+    build: .
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/app
+    ports:
+      - "2375:2375"
+    working_dir: /app/repository_after
+    command: /usr/local/bin/proxy
+    
+  test:
+    build: .
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: go test ./tests/... -v

@@ -1,11 +1,8 @@
 # 4K3UBR - Docker Socket Proxy with Multiplexed Log Inspection
 
-    ## Before Test Docker Command
-    <docker before command here>
-
     ## After Test Docker Command
-    <docker after command here>
+    docker compose run --rm app go test ./tests/... -v
 
     ## Evaluation Docker Command
-    <evaluation command here>
+    docker compose run --rm app go run ./evaluation
     
