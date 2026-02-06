@@ -5,7 +5,19 @@
             "test_patch": "tests/",
             "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/m4m6ab-high-throughput-symbol-lookup-optimizer",
             "environment_setup": "Dockerfile",
-            "FAIL_TO_PASS": [],
-            "PASS_TO_PASS": []
+            "FAIL_TO_PASS": [
+                "MarketRegistryStructureTest#usesHashBasedLookupStructure",
+                "MarketRegistryStructureTest#usesThreadSafeCollectionForQueriesWhenRequired",
+                "MarketRegistryConcurrencyTest#supportsConcurrentReadsAndSymbolLoads"
+            ],
+            "PASS_TO_PASS": [
+                "MarketRegistryCorrectnessTest#returnsTickerForExistingId",
+                "MarketRegistryCorrectnessTest#returnsNullForMissingId",
+                "MarketRegistryCorrectnessTest#supportsMultipleInternalIdsMappingToSameTicker",
+                "MarketRegistryEdgeCasesTest#emptyRegistryReturnsNullForAnyId",
+                "MarketRegistryEdgeCasesTest#getTickerByIdWithNullIdReturnsNull",
+                "MarketRegistryEdgeCasesTest#multipleLoadsAccumulateSymbolsWithNonOverlappingIds",
+                "MarketRegistryInitPerformanceTest#loadSymbolsForHundredThousandEntriesCompletesWithinReasonableTime"
+            ]
         }
         
