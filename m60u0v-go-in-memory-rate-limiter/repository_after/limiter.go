@@ -1,0 +1,208 @@
+package limiter
+
+import (
+	"sync"
+	"time"
+)
+
+// Clock allows deterministic testing and removes time.Now() from core logic.
+type Clock interface {
+	Now() time.Time
+}
+
+type systemClock struct{}
+
+func (systemClock) Now() time.Time { return time.Now() }
+
+// clientWindow tracks request timestamps for a single client.
+// Invariants:
+// - timestamps are non-decreasing (append-only).
+// - head is the index of the first timestamp that may be within the window.
+// - activeCount() == len(timestamps) - head.
+type clientWindow struct {
+	timestamps []int64 // unix nanos, append-only
+	head       int
+	lastSeen   int64 // unix nanos (last Allow call)
+}
+
+func (w *clientWindow) touch(nowNanos int64) {
+	w.lastSeen = nowNanos
+}
+
+func (w *clientWindow) activeCount() int {
+	return len(w.timestamps) - w.head
+}
+
+// prune removes timestamps <= cutoff, keeping only events strictly after cutoff.
+func (w *clientWindow) prune(cutoffNanos int64) {
+	// Advance head past expired timestamps.
+	for w.head < len(w.timestamps) && w.timestamps[w.head] <= cutoffNanos {
+		w.head++
+	}
+
+	// If fully pruned, reset to empty to release references.
+	if w.head >= len(w.timestamps) {
+		w.timestamps = w.timestamps[:0]
+		w.head = 0
+		return
+	}
+
+	// Compact if head has grown enough to retain too much unused capacity.
+	// This prevents long-lived clients from holding large backing arrays.
+	const minHeadToCompact = 64
+	if w.head >= minHeadToCompact && w.head*2 >= len(w.timestamps) {
+		active := make([]int64, len(w.timestamps)-w.head)
+		copy(active, w.timestamps[w.head:])
+		w.timestamps = active
+		w.head = 0
+	}
+}
+
+func (w *clientWindow) append(nowNanos int64) {
+	w.timestamps = append(w.timestamps, nowNanos)
+}
+
+func (w *clientWindow) empty() bool {
+	return len(w.timestamps) == 0
+}
+
+// SpamGuard implements a Sliding Window Log rate limiter.
+type SpamGuard struct {
+	mu sync.Mutex
+
+	maxReqs    int
+	windowSize time.Duration
+
+	clients map[string]*clientWindow
+
+	clock Clock
+
+	// Cleanup policy:
+	// - We do "lazy prune" on every Allow for that client.
+	// - We also do periodic sweeping to evict idle clients.
+	// An idle client is eligible for eviction if:
+	//   lastSeen <= now-windowSize-idleGrace
+	// meaning we keep records around a little longer than windowSize to avoid churn.
+	idleGrace  time.Duration
+	sweepEvery uint64
+	calls      uint64
+}
+
+// NewSpamGuard initializes the limiter with a specific max count and window size.
+func NewSpamGuard(maxReqs int, windowSize time.Duration) *SpamGuard {
+	if maxReqs <= 0 {
+		maxReqs = 1
+	}
+	if windowSize <= 0 {
+		windowSize = time.Second
+	}
+
+	return &SpamGuard{
+		maxReqs:     maxReqs,
+		windowSize:  windowSize,
+		clients:     make(map[string]*clientWindow),
+		clock:       systemClock{},
+		idleGrace:   windowSize, // keep idle clients at most ~2*window by default
+		sweepEvery:  1024,       // amortized sweep; deterministic tests can set to 1
+		calls:       0,
+	}
+}
+
+// Allow checks if the request should be permitted.
+// Returns true if allowed, false if rate limited.
+func (g *SpamGuard) Allow(clientID string) bool {
+	now := g.clock.Now()
+	nowN := now.UnixNano()
+	cutoff := now.Add(-g.windowSize).UnixNano()
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.calls++
+	if g.sweepEvery > 0 && (g.calls%g.sweepEvery) == 0 {
+		g.sweepLocked(now)
+	}
+
+	w := g.clients[clientID]
+	if w == nil {
+		w = &clientWindow{
+			// Small initial capacity; grows as needed, compacts later.
+			timestamps: make([]int64, 0, minInt(g.maxReqs, 64)),
+			head:       0,
+			lastSeen:   nowN,
+		}
+		g.clients[clientID] = w
+	} else {
+		w.touch(nowN)
+	}
+
+	// Sliding-window prune for this client.
+	w.prune(cutoff)
+
+	if w.activeCount() >= g.maxReqs {
+		// Reject without recording the attempt.
+		return false
+	}
+
+	w.append(nowN)
+	return true
+}
+
+// sweepLocked evicts idle clients and prunes their timestamps.
+// Must be called with g.mu held.
+func (g *SpamGuard) sweepLocked(now time.Time) {
+	if len(g.clients) == 0 {
+		return
+	}
+
+	// Clients idle longer than (windowSize + idleGrace) are eligible for eviction.
+	// This ensures their active window must be empty.
+	evictBefore := now.Add(-(g.windowSize + g.idleGrace)).UnixNano()
+	cutoff := now.Add(-g.windowSize).UnixNano()
+
+	for id, w := range g.clients {
+		// If not idle enough, skip quickly.
+		if w.lastSeen > evictBefore {
+			continue
+		}
+
+		// Prune to confirm emptiness.
+		w.prune(cutoff)
+		if w.empty() {
+			delete(g.clients, id)
+		}
+	}
+}
+
+// --- Test hooks (unexported but accessible within package tests) ---
+
+func (g *SpamGuard) SetClockForTests(c Clock) {
+	g.mu.Lock()
+	g.clock = c
+	g.mu.Unlock()
+}
+
+func (g *SpamGuard) SetSweepEveryForTests(n uint64) {
+	g.mu.Lock()
+	g.sweepEvery = n
+	g.mu.Unlock()
+}
+
+func (g *SpamGuard) SetIdleGraceForTests(d time.Duration) {
+	g.mu.Lock()
+	g.idleGrace = d
+	g.mu.Unlock()
+}
+
+func (g *SpamGuard) ClientCountForTests() int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return len(g.clients)
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
