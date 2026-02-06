@@ -1,0 +1,9 @@
+{
+  "name": "json-schema-validator",
+  "version": "1.0.0",
+  "description": "JSON Schema Validator",
+  "main": "validator.js",
+  "scripts": {
+    "test": "node test.js"
+  }
+}
