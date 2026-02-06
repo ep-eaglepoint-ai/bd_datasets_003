@@ -1,0 +1,11 @@
+{
+            "instance_id": "QD0U0Y",
+            "problem_statement": "You are tasked with creating an Employee Shift Scheduling System for a mid-size company to manage employee schedules, shift swaps, and availability. The previous manual scheduling system led to conflicts, missed shifts, and unbalanced workloads. The goal is to build a Node.js backend API that efficiently handles employee management, shift assignments, and shift swaps, while enforcing business rules to prevent issues like overlapping shifts and under-staffing.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/qd0u0y-employee-shift-scheduling-system",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
