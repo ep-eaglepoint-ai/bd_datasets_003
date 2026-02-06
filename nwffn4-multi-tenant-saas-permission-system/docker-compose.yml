@@ -1,8 +1,67 @@
-# Docker Compose file for running tests. You should customize this as needed.
+version: '3.8'
 
 services:
-  app:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: saas_platform
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+
+  redis:
+    image: redis:7.4.2-alpine
+
+  test_before:
     build: .
-    command: pytest -q tests
+    command: sh -c "sleep 5 && pytest tests -v --tb=no -q --create-db --nomigrations --ds=saas_platform.settings || exit 0"
+    volumes:
+      - ./repository_before:/app/repository_before
+      - ./tests:/app/tests
+    environment:
+      PYTHONPATH: /app/repository_before
+      DB_NAME: saas_platform_before
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_HOST: db
+      DB_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      - db
+      - redis
+
+  test_after:
+    build: .
+    command: sh -c "sleep 5 && pytest tests -v --tb=short -q --create-db --nomigrations --ds=saas_platform.settings"
+    volumes:
+      - ./repository_after:/app/repository_after
+      - ./tests:/app/tests
+    environment:
+      PYTHONPATH: /app/repository_after
+      DB_NAME: saas_platform_after
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_HOST: db
+      DB_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      - db
+      - redis
+
+  evalution:
+    build: .
+    command: python evaluation/evaluate.py
     volumes:
       - .:/app
+    environment:
+      DB_NAME: saas_platform
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_HOST: db
+      DB_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      - db
+      - redis

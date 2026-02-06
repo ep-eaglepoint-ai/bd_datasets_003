@@ -1,11 +1,10 @@
 # NWFFN4 - Multi-tenant SaaS Permission System
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Before Test Docker Command
+docker-compose run --rm test_before
 
-    ## After Test Docker Command
-    <docker after command here>
+## After Test Docker Command
+docker-compose run --rm test_after
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## Evaluation Docker Command
+docker-compose run --rm evalution

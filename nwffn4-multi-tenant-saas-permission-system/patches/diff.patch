@@ -1,0 +1,930 @@
+diff --git repository_before/accounts/__pycache__/__init__.cpython-311.pyc repository_before/accounts/__pycache__/__init__.cpython-311.pyc
+deleted file mode 100644
+index fae8ea1..0000000
+Binary files repository_before/accounts/__pycache__/__init__.cpython-311.pyc and /dev/null differ
+diff --git repository_before/accounts/__pycache__/admin.cpython-311.pyc repository_before/accounts/__pycache__/admin.cpython-311.pyc
+deleted file mode 100644
+index a9a18b8..0000000
+Binary files repository_before/accounts/__pycache__/admin.cpython-311.pyc and /dev/null differ
+diff --git repository_before/accounts/__pycache__/apps.cpython-311.pyc repository_before/accounts/__pycache__/apps.cpython-311.pyc
+deleted file mode 100644
+index 4166136..0000000
+Binary files repository_before/accounts/__pycache__/apps.cpython-311.pyc and /dev/null differ
+diff --git repository_before/accounts/__pycache__/models.cpython-311.pyc repository_before/accounts/__pycache__/models.cpython-311.pyc
+deleted file mode 100644
+index 103c049..0000000
+Binary files repository_before/accounts/__pycache__/models.cpython-311.pyc and /dev/null differ
+diff --git repository_before/accounts/models.py repository_after/accounts/models.py
+index 558bebe..1ea7bdc 100644
+--- repository_before/accounts/models.py
++++ repository_after/accounts/models.py
+@@ -1,5 +1,6 @@
+ from django.db import models
+ from django.contrib.auth.models import AbstractUser
++from django.core.exceptions import ValidationError
+ 
+ 
+ class User(AbstractUser):
+@@ -7,6 +8,12 @@ class User(AbstractUser):
+         'Organization', null=True, blank=True, on_delete=models.SET_NULL, related_name='current_users'
+     )
+ 
++    def switch_organization(self, organization):
++        if not OrganizationMember.objects.filter(user=self, organization=organization).exists():
++            raise PermissionError("User is not a member of this organization")
++        self.current_organization = organization
++        self.save(update_fields=['current_organization'])
++
+ 
+ class Organization(models.Model):
+     name = models.CharField(max_length=200)
+@@ -54,47 +61,121 @@ class OrganizationMember(models.Model):
+     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='members')
+     user = models.ForeignKey(User, on_delete=models.CASCADE)
+     role = models.CharField(max_length=50, default='member')
++    custom_role = models.ForeignKey('CustomRole', on_delete=models.SET_NULL, null=True, blank=True, related_name='org_members')
++    joined_at = models.DateTimeField(auto_now_add=True)
+ 
+     class Meta:
+         unique_together = ['organization', 'user']
++        indexes = [
++            models.Index(fields=['user', 'organization']),
++            models.Index(fields=['organization', 'role']),
++        ]
++
++    def get_permissions(self):
++        from permissions.services.permission_checker import PREDEFINED_ROLES
++        if self.custom_role:
++            return self.custom_role.permissions
++        return PREDEFINED_ROLES.get(self.role, [])
+ 
+ 
+ class TeamMember(models.Model):
+     team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name='members')
+     user = models.ForeignKey(User, on_delete=models.CASCADE)
+     role = models.CharField(max_length=50, default='member')
++    custom_role = models.ForeignKey('CustomRole', on_delete=models.SET_NULL, null=True, blank=True, related_name='team_members')
++    joined_at = models.DateTimeField(auto_now_add=True)
+ 
+     class Meta:
+         unique_together = ['team', 'user']
++        indexes = [
++            models.Index(fields=['user', 'team']),
++            models.Index(fields=['team', 'role']),
++        ]
++
++    def get_permissions(self):
++        from permissions.services.permission_checker import PREDEFINED_ROLES
++        if self.custom_role:
++            return self.custom_role.permissions
++        return PREDEFINED_ROLES.get(self.role, [])
+ 
+ 
+ class ProjectMember(models.Model):
+     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='members')
+     user = models.ForeignKey(User, on_delete=models.CASCADE)
+     role = models.CharField(max_length=50, default='member')
++    custom_role = models.ForeignKey('CustomRole', on_delete=models.SET_NULL, null=True, blank=True, related_name='project_members')
++    joined_at = models.DateTimeField(auto_now_add=True)
+ 
+     class Meta:
+         unique_together = ['project', 'user']
++        indexes = [
++            models.Index(fields=['user', 'project']),
++            models.Index(fields=['project', 'role']),
++        ]
++
++    def get_permissions(self):
++        from permissions.services.permission_checker import PREDEFINED_ROLES
++        if self.custom_role:
++            return self.custom_role.permissions
++        return PREDEFINED_ROLES.get(self.role, [])
+ 
+ 
+ class CustomRole(models.Model):
+     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='custom_roles')
+     name = models.CharField(max_length=100)
+-    base_predefined_role = models.CharField(max_length=50)
+-    permissions = models.ManyToManyField('permissions.Permission', related_name='custom_roles')
++    base_role = models.CharField(max_length=50, choices=[
++        ('owner', 'Owner'),
++        ('admin', 'Admin'),
++        ('member', 'Member'),
++        ('viewer', 'Viewer')
++    ])
++    permissions = models.JSONField(default=list)
++    created_at = models.DateTimeField(auto_now_add=True)
++    updated_at = models.DateTimeField(auto_now=True)
+ 
+     class Meta:
+         unique_together = ['organization', 'name']
++        indexes = [
++            models.Index(fields=['organization', 'base_role']),
++        ]
+ 
+     def __str__(self):
+         return f"{self.organization.name} - {self.name}"
+ 
++    def clean(self):
++        from permissions.services.permission_checker import PREDEFINED_ROLES
++        base_permissions = set(PREDEFINED_ROLES.get(self.base_role, []))
++        custom_permissions = set(self.permissions)
++        
++        if not custom_permissions.issubset(base_permissions):
++            excess = custom_permissions - base_permissions
++            raise ValidationError(
++                f"Permissions {excess} exceed base role '{self.base_role}' permissions"
++            )
++
++    def save(self, *args, **kwargs):
++        self.full_clean()
++        super().save(*args, **kwargs)
++
+ 
+ class PermissionOverride(models.Model):
+     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='permission_overrides')
+     resource_type = models.CharField(max_length=50)
+     resource_id = models.IntegerField()
+-    permissions = models.JSONField(default=dict)
++    permission = models.CharField(max_length=50, choices=[
++        ('create', 'Create'),
++        ('read', 'Read'),
++        ('update', 'Update'),
++        ('delete', 'Delete'),
++        ('manage_members', 'Manage Members'),
++        ('manage_roles', 'Manage Roles')
++    ])
++    is_granted = models.BooleanField()
++    created_at = models.DateTimeField(auto_now_add=True)
+ 
+     class Meta:
+-        unique_together = ['user', 'resource_type', 'resource_id']
++        unique_together = ['user', 'resource_type', 'resource_id', 'permission']
++        indexes = [
++            models.Index(fields=['user', 'resource_type', 'resource_id']),
++            models.Index(fields=['resource_type', 'resource_id']),
++        ]
+diff --git repository_before/audit/__pycache__/__init__.cpython-311.pyc repository_after/audit/__pycache__/__init__.cpython-311.pyc
+index 6761e6a..5f74425 100644
+Binary files repository_before/audit/__pycache__/__init__.cpython-311.pyc and repository_after/audit/__pycache__/__init__.cpython-311.pyc differ
+diff --git repository_before/audit/__pycache__/apps.cpython-311.pyc repository_after/audit/__pycache__/apps.cpython-311.pyc
+index 1126d75..a0d3e0e 100644
+Binary files repository_before/audit/__pycache__/apps.cpython-311.pyc and repository_after/audit/__pycache__/apps.cpython-311.pyc differ
+diff --git repository_before/audit/__pycache__/models.cpython-311.pyc repository_after/audit/__pycache__/models.cpython-311.pyc
+index cd3dd81..d415e41 100644
+Binary files repository_before/audit/__pycache__/models.cpython-311.pyc and repository_after/audit/__pycache__/models.cpython-311.pyc differ
+diff --git repository_after/audit/__pycache__/services.cpython-311.pyc repository_after/audit/__pycache__/services.cpython-311.pyc
+new file mode 100644
+index 0000000..6587c7d
+Binary files /dev/null and repository_after/audit/__pycache__/services.cpython-311.pyc differ
+diff --git repository_before/audit/models.py repository_after/audit/models.py
+index ae8aa83..dec529f 100644
+--- repository_before/audit/models.py
++++ repository_after/audit/models.py
+@@ -4,12 +4,21 @@ from django.conf import settings
+ 
+ class AuditLog(models.Model):
+     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+-    action = models.CharField(max_length=100)
+     resource_type = models.CharField(max_length=50)
+     resource_id = models.IntegerField()
+-    result = models.BooleanField()
+-    details = models.JSONField(default=dict)
+-    timestamp = models.DateTimeField(auto_now_add=True)
++    permission = models.CharField(max_length=50)
++    granted = models.BooleanField()
++    cached = models.BooleanField(default=False)
++    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
++
++    class Meta:
++        indexes = [
++            models.Index(fields=['user', 'timestamp']),
++            models.Index(fields=['resource_type', 'resource_id', 'timestamp']),
++            models.Index(fields=['timestamp']),
++            models.Index(fields=['granted', 'timestamp']),
++        ]
++        ordering = ['-timestamp']
+ 
+     def __str__(self):
+-        return f"{self.user} - {self.action} - {self.resource_type}:{self.resource_id}"
++        return f"{self.user} - {self.permission} - {self.resource_type}:{self.resource_id}"
+diff --git repository_before/audit/services.py repository_after/audit/services.py
+index 00acfc5..84b037f 100644
+--- repository_before/audit/services.py
++++ repository_after/audit/services.py
+@@ -1,17 +1,43 @@
+ from audit.models import AuditLog
++from django.utils import timezone
++import logging
++
++logger = logging.getLogger(__name__)
+ 
+ 
+ class AuditService:
+ 
+-    def log(self, user, action, resource_type, resource_id, result, details=None):
+-        AuditLog.objects.create(
+-            user=user,
+-            action=action,
+-            resource_type=resource_type,
+-            resource_id=resource_id,
+-            result=result,
+-            details=details or {}
+-        )
++    def log_permission_check(self, user, resource_type, resource_id, permission, result, cached=False):
++        try:
++            AuditLog.objects.create(
++                user=user,
++                resource_type=resource_type,
++                resource_id=resource_id,
++                permission=permission,
++                granted=result,
++                cached=cached,
++                timestamp=timezone.now()
++            )
++        except Exception:
++            pass
++
++    def bulk_log_permission_checks(self, entries):
++        try:
++            audit_logs = [
++                AuditLog(
++                    user=entry['user'],
++                    resource_type=entry['resource_type'],
++                    resource_id=entry['resource_id'],
++                    permission=entry['permission'],
++                    granted=entry['result'],
++                    cached=entry.get('cached', False),
++                    timestamp=timezone.now()
++                )
++                for entry in entries
++            ]
++            AuditLog.objects.bulk_create(audit_logs)
++        except Exception:
++            pass
+ 
+ 
+ audit_service = AuditService()
+diff --git repository_before/permissions/__pycache__/__init__.cpython-311.pyc repository_after/permissions/__pycache__/__init__.cpython-311.pyc
+index e28f048..31c670f 100644
+Binary files repository_before/permissions/__pycache__/__init__.cpython-311.pyc and repository_after/permissions/__pycache__/__init__.cpython-311.pyc differ
+diff --git repository_before/permissions/__pycache__/apps.cpython-311.pyc repository_after/permissions/__pycache__/apps.cpython-311.pyc
+index 9a72a96..85af425 100644
+Binary files repository_before/permissions/__pycache__/apps.cpython-311.pyc and repository_after/permissions/__pycache__/apps.cpython-311.pyc differ
+diff --git repository_before/permissions/__pycache__/models.cpython-311.pyc repository_after/permissions/__pycache__/models.cpython-311.pyc
+index 3e7130f..f94ca18 100644
+Binary files repository_before/permissions/__pycache__/models.cpython-311.pyc and repository_after/permissions/__pycache__/models.cpython-311.pyc differ
+diff --git repository_after/permissions/__pycache__/signals.cpython-311.pyc repository_after/permissions/__pycache__/signals.cpython-311.pyc
+new file mode 100644
+index 0000000..be4e248
+Binary files /dev/null and repository_after/permissions/__pycache__/signals.cpython-311.pyc differ
+diff --git repository_before/permissions/apps.py repository_after/permissions/apps.py
+index a34c8fd..a57d61e 100644
+--- repository_before/permissions/apps.py
++++ repository_after/permissions/apps.py
+@@ -4,3 +4,25 @@ from django.apps import AppConfig
+ class PermissionsConfig(AppConfig):
+     default_auto_field = 'django.db.models.BigAutoField'
+     name = 'permissions'
++
++    def ready(self):
++        from django.db.models.signals import post_save, post_delete
++        from .signals import (
++            invalidate_membership_cache,
++            invalidate_override_cache,
++            invalidate_custom_role_cache
++        )
++        from accounts.models import (
++            OrganizationMember, TeamMember, ProjectMember,
++            PermissionOverride, CustomRole
++        )
++        
++        for model in [OrganizationMember, TeamMember, ProjectMember]:
++            post_save.connect(invalidate_membership_cache, sender=model)
++            post_delete.connect(invalidate_membership_cache, sender=model)
++        
++        post_save.connect(invalidate_override_cache, sender=PermissionOverride)
++        post_delete.connect(invalidate_override_cache, sender=PermissionOverride)
++        
++        post_save.connect(invalidate_custom_role_cache, sender=CustomRole)
++        post_delete.connect(invalidate_custom_role_cache, sender=CustomRole)
+diff --git repository_before/permissions/services/__pycache__/__init__.cpython-311.pyc repository_after/permissions/services/__pycache__/__init__.cpython-311.pyc
+index 98a9671..0637386 100644
+Binary files repository_before/permissions/services/__pycache__/__init__.cpython-311.pyc and repository_after/permissions/services/__pycache__/__init__.cpython-311.pyc differ
+diff --git repository_after/permissions/services/__pycache__/cache_invalidation.cpython-311.pyc repository_after/permissions/services/__pycache__/cache_invalidation.cpython-311.pyc
+new file mode 100644
+index 0000000..60040e1
+Binary files /dev/null and repository_after/permissions/services/__pycache__/cache_invalidation.cpython-311.pyc differ
+diff --git repository_before/permissions/services/__pycache__/permission_checker.cpython-311.pyc repository_after/permissions/services/__pycache__/permission_checker.cpython-311.pyc
+index 6badbd6..eb8a56c 100644
+Binary files repository_before/permissions/services/__pycache__/permission_checker.cpython-311.pyc and repository_after/permissions/services/__pycache__/permission_checker.cpython-311.pyc differ
+diff --git repository_after/permissions/services/cache_invalidation.py repository_after/permissions/services/cache_invalidation.py
+new file mode 100644
+index 0000000..c7eaa28
+--- /dev/null
++++ repository_after/permissions/services/cache_invalidation.py
+@@ -0,0 +1,69 @@
++from django.core.cache import caches
++from accounts.models import Organization, Team, Project, Task, OrganizationMember, TeamMember, ProjectMember
++import logging
++
++logger = logging.getLogger(__name__)
++
++
++class CacheInvalidationService:
++
++    def __init__(self, cache=None):
++        self.cache = cache or caches['default']
++
++    def invalidate_user_resource(self, user_id, resource_type, resource_id):
++        permissions = ['create', 'read', 'update', 'delete', 'manage_members', 'manage_roles']
++        keys = [
++            f"perm:{user_id}:{resource_type}:{resource_id}:{perm}"
++            for perm in permissions
++        ]
++        try:
++            self.cache.delete_many(keys)
++            self._invalidate_descendants(user_id, resource_type, resource_id)
++        except Exception as e:
++            logger.error(f"Cache invalidation failed: {e}")
++
++    def invalidate_role_users(self, custom_role):
++        user_ids = set()
++        
++        user_ids.update(
++            OrganizationMember.objects.filter(custom_role=custom_role).values_list('user_id', flat=True)
++        )
++        user_ids.update(
++            TeamMember.objects.filter(custom_role=custom_role).values_list('user_id', flat=True)
++        )
++        user_ids.update(
++            ProjectMember.objects.filter(custom_role=custom_role).values_list('user_id', flat=True)
++        )
++        
++        for user_id in user_ids:
++            self._invalidate_user_organization(user_id, custom_role.organization_id)
++
++    def _invalidate_descendants(self, user_id, resource_type, resource_id):
++        if resource_type == 'organization':
++            self._invalidate_organization_descendants(user_id, resource_id)
++        elif resource_type == 'team':
++            self._invalidate_team_descendants(user_id, resource_id)
++        elif resource_type == 'project':
++            self._invalidate_project_descendants(user_id, resource_id)
++
++    def _invalidate_organization_descendants(self, user_id, org_id):
++        teams = Team.objects.filter(organization_id=org_id).values_list('id', flat=True)
++        for team_id in teams:
++            self.invalidate_user_resource(user_id, 'team', team_id)
++
++    def _invalidate_team_descendants(self, user_id, team_id):
++        projects = Project.objects.filter(team_id=team_id).values_list('id', flat=True)
++        for project_id in projects:
++            self.invalidate_user_resource(user_id, 'project', project_id)
++
++    def _invalidate_project_descendants(self, user_id, project_id):
++        tasks = Task.objects.filter(project_id=project_id).values_list('id', flat=True)
++        for task_id in tasks:
++            self.invalidate_user_resource(user_id, 'task', task_id)
++
++    def _invalidate_user_organization(self, user_id, org_id):
++        self.invalidate_user_resource(user_id, 'organization', org_id)
++        self._invalidate_organization_descendants(user_id, org_id)
++
++
++cache_invalidation_service = CacheInvalidationService()
+diff --git repository_before/permissions/services/permission_checker.py repository_after/permissions/services/permission_checker.py
+index a31bb71..0e17949 100644
+--- repository_before/permissions/services/permission_checker.py
++++ repository_after/permissions/services/permission_checker.py
+@@ -1,11 +1,15 @@
+ from accounts.models import (
+     Organization, Team, Project, Task,
+     OrganizationMember, TeamMember, ProjectMember,
+-    CustomRole, PermissionOverride
++    PermissionOverride
+ )
++from audit.services import audit_service
++from django.core.cache import caches
++import logging
+ 
++logger = logging.getLogger(__name__)
+ 
+-ROLE_PERMISSIONS = {
++PREDEFINED_ROLES = {
+     'owner': ['create', 'read', 'update', 'delete', 'manage_members', 'manage_roles'],
+     'admin': ['create', 'read', 'update', 'delete', 'manage_members'],
+     'member': ['create', 'read', 'update'],
+@@ -15,49 +19,283 @@ ROLE_PERMISSIONS = {
+ 
+ class PermissionChecker:
+ 
++    def __init__(self, cache=None, audit_svc=None):
++        self.cache = cache or caches['default']
++        self.audit_service = audit_svc or audit_service
++
+     def check_permission(self, user, resource_type, resource_id, permission):
+-        if resource_type == 'organization':
+-            return self._check_organization_permission(user, resource_id, permission)
+-        elif resource_type == 'team':
+-            return self._check_team_permission(user, resource_id, permission)
+-        elif resource_type == 'project':
+-            return self._check_project_permission(user, resource_id, permission)
+-        elif resource_type == 'task':
+-            return self._check_task_permission(user, resource_id, permission)
+-        return False
++        cache_key = self._get_cache_key(user.id, resource_type, resource_id, permission)
++        
++        try:
++            cached_result = self.cache.get(cache_key)
++            if cached_result is not None:
++                self.audit_service.log_permission_check(
++                    user, resource_type, resource_id, permission, cached_result, cached=True
++                )
++                return cached_result
++        except Exception as e:
++            logger.warning(f"Cache read failed: {e}")
++
++        result = self._compute_permission(user, resource_type, resource_id, permission)
++        
++        try:
++            self.cache.set(cache_key, result, 300)
++        except Exception as e:
++            logger.warning(f"Cache write failed: {e}")
++
++        self.audit_service.log_permission_check(
++            user, resource_type, resource_id, permission, result, cached=False
++        )
++        
++        return result
++
++    def bulk_check_permissions(self, user, resource_type, resource_ids, permission):
++        cache_keys = {rid: self._get_cache_key(user.id, resource_type, rid, permission) for rid in resource_ids}
++        results = {}
++        uncached_ids = []
++
++        try:
++            cached_results = self.cache.get_many(cache_keys.values())
++            key_to_id = {v: k for k, v in cache_keys.items()}
++            
++            for cache_key, result in cached_results.items():
++                rid = key_to_id[cache_key]
++                results[rid] = result
++            
++            uncached_ids = [rid for rid in resource_ids if rid not in results]
++        except Exception as e:
++            logger.warning(f"Bulk cache read failed: {e}")
++            uncached_ids = resource_ids
++
++        if uncached_ids:
++            # Bulk compute permissions for all uncached resources
++            bulk_results = self._bulk_compute_permissions(user, resource_type, uncached_ids, permission)
++            results.update(bulk_results)
++
++            try:
++                cache_data = {cache_keys[rid]: results[rid] for rid in uncached_ids}
++                self.cache.set_many(cache_data, 300)
++            except Exception as e:
++                logger.warning(f"Bulk cache write failed: {e}")
++
++        audit_entries = [
++            {
++                'user': user,
++                'resource_type': resource_type,
++                'resource_id': rid,
++                'permission': permission,
++                'result': results[rid],
++                'cached': rid not in uncached_ids
++            }
++            for rid in resource_ids
++        ]
++        self.audit_service.bulk_log_permission_checks(audit_entries)
++
++        return results
++
++    def _bulk_compute_permissions(self, user, resource_type, resource_ids, permission):
++        """Compute permissions for multiple resources efficiently"""
++        results = {}
++        
++        if not user.current_organization:
++            return {rid: False for rid in resource_ids}
++
++        try:
++            # Bulk validate tenant isolation
++            valid_ids = self._bulk_validate_tenant_isolation(user, resource_type, resource_ids)
++            
++            # Initialize all as False
++            for rid in resource_ids:
++                results[rid] = False
++            
++            # Check overrides in bulk
++            overrides = PermissionOverride.objects.filter(
++                user=user,
++                resource_type=resource_type,
++                resource_id__in=valid_ids,
++                permission=permission
++            ).values_list('resource_id', 'is_granted')
++            override_map = dict(overrides)
++            
++            # Get org membership once for inherited permissions
++            org_member = OrganizationMember.objects.filter(
++                organization=user.current_organization,
++                user=user
++            ).select_related('custom_role').first()
++            
++            org_permissions = org_member.get_permissions() if org_member else []
++            
++            # Get explicit memberships in bulk
++            if resource_type == 'organization':
++                memberships = OrganizationMember.objects.filter(
++                    organization_id__in=valid_ids,
++                    user=user
++                ).select_related('custom_role')
++                membership_map = {m.organization_id: m for m in memberships}
++            elif resource_type == 'team':
++                memberships = TeamMember.objects.filter(
++                    team_id__in=valid_ids,
++                    user=user
++                ).select_related('custom_role')
++                membership_map = {m.team_id: m for m in memberships}
++            elif resource_type == 'project':
++                memberships = ProjectMember.objects.filter(
++                    project_id__in=valid_ids,
++                    user=user
++                ).select_related('custom_role')
++                membership_map = {m.project_id: m for m in memberships}
++            else:
++                membership_map = {}
++            
++            # Compute results
++            for rid in valid_ids:
++                # Check override first
++                if rid in override_map:
++                    results[rid] = override_map[rid]
++                    continue
++                
++                # Check explicit membership
++                if rid in membership_map:
++                    membership = membership_map[rid]
++                    results[rid] = permission in membership.get_permissions()
++                    continue
++                
++                # For resources without explicit membership, use org permissions
++                if resource_type in ['team', 'project', 'task']:
++                    results[rid] = permission in org_permissions
++            
++            return results
++            
++        except Exception as e:
++            logger.error(f"Bulk permission check failed: {e}")
++            return {rid: False for rid in resource_ids}
++
++    def _bulk_validate_tenant_isolation(self, user, resource_type, resource_ids):
++        """Validate tenant isolation for multiple resources in a single query"""
++        if not user.current_organization:
++            return set()
++
++        try:
++            if resource_type == 'organization':
++                valid = Organization.objects.filter(id__in=resource_ids).values_list('id', flat=True)
++            elif resource_type == 'team':
++                valid = Team.objects.filter(
++                    id__in=resource_ids,
++                    organization=user.current_organization
++                ).values_list('id', flat=True)
++            elif resource_type == 'project':
++                valid = Project.objects.filter(
++                    id__in=resource_ids,
++                    team__organization=user.current_organization
++                ).values_list('id', flat=True)
++            elif resource_type == 'task':
++                valid = Task.objects.filter(
++                    id__in=resource_ids,
++                    project__team__organization=user.current_organization
++                ).values_list('id', flat=True)
++            else:
++                return set()
++            
++            return set(valid)
++        except Exception:
++            return set()
++
++    def _compute_permission(self, user, resource_type, resource_id, permission):
++        try:
++            if not self._validate_tenant_isolation(user, resource_type, resource_id):
++                return False
++
++            override_result = self._check_override(user, resource_type, resource_id, permission)
++            if override_result is not None:
++                return override_result
++
++            explicit_result = self._check_explicit_membership(user, resource_type, resource_id, permission)
++            if explicit_result is not None:
++                return explicit_result
++
++            return self._check_inherited_permission(user, resource_type, resource_id, permission)
++        except Exception as e:
++            logger.error(f"Permission check failed: {e}")
++            return False
++
++    def _validate_tenant_isolation(self, user, resource_type, resource_id):
++        if not user.current_organization:
++            return False
+ 
+-    def _check_organization_permission(self, user, org_id, permission):
+         try:
+-            membership = OrganizationMember.objects.get(organization_id=org_id, user=user)
+-            role_permissions = ROLE_PERMISSIONS.get(membership.role, [])
+-            return permission in role_permissions
+-        except OrganizationMember.DoesNotExist:
++            if resource_type == 'organization':
++                return Organization.objects.filter(id=resource_id).exists()
++            elif resource_type == 'team':
++                return Team.objects.filter(id=resource_id, organization=user.current_organization).exists()
++            elif resource_type == 'project':
++                return Project.objects.filter(id=resource_id, team__organization=user.current_organization).exists()
++            elif resource_type == 'task':
++                return Task.objects.filter(id=resource_id, project__team__organization=user.current_organization).exists()
++        except Exception:
+             return False
++        
++        return False
+ 
+-    def _check_team_permission(self, user, team_id, permission):
++    def _check_override(self, user, resource_type, resource_id, permission):
+         try:
+-            team = Team.objects.get(id=team_id)
+-            membership = TeamMember.objects.get(team_id=team_id, user=user)
+-            role_permissions = ROLE_PERMISSIONS.get(membership.role, [])
+-            return permission in role_permissions
+-        except (Team.DoesNotExist, TeamMember.DoesNotExist):
+-            return self._check_organization_permission(user, team.organization_id, permission)
++            override = PermissionOverride.objects.get(
++                user=user,
++                resource_type=resource_type,
++                resource_id=resource_id,
++                permission=permission
++            )
++            return override.is_granted
++        except PermissionOverride.DoesNotExist:
++            return None
+ 
+-    def _check_project_permission(self, user, project_id, permission):
++    def _check_explicit_membership(self, user, resource_type, resource_id, permission):
+         try:
+-            project = Project.objects.get(id=project_id)
+-            membership = ProjectMember.objects.get(project_id=project_id, user=user)
+-            role_permissions = ROLE_PERMISSIONS.get(membership.role, [])
+-            return permission in role_permissions
+-        except (Project.DoesNotExist, ProjectMember.DoesNotExist):
+-            return self._check_team_permission(user, project.team_id, permission)
++            if resource_type == 'organization':
++                membership = OrganizationMember.objects.get(organization_id=resource_id, user=user)
++                return permission in membership.get_permissions()
++            elif resource_type == 'team':
++                membership = TeamMember.objects.get(team_id=resource_id, user=user)
++                return permission in membership.get_permissions()
++            elif resource_type == 'project':
++                membership = ProjectMember.objects.get(project_id=resource_id, user=user)
++                return permission in membership.get_permissions()
++        except (OrganizationMember.DoesNotExist, TeamMember.DoesNotExist, ProjectMember.DoesNotExist):
++            return None
+ 
+-    def _check_task_permission(self, user, task_id, permission):
++        return None
++
++    def _check_inherited_permission(self, user, resource_type, resource_id, permission):
+         try:
+-            task = Task.objects.get(id=task_id)
+-        except Task.DoesNotExist:
++            if resource_type == 'task':
++                task = Task.objects.select_related('project__team__organization').get(id=resource_id)
++                explicit = self._check_explicit_membership(user, 'project', task.project_id, permission)
++                if explicit is not None:
++                    return explicit
++                return self._check_inherited_permission(user, 'project', task.project_id, permission)
++            
++            elif resource_type == 'project':
++                project = Project.objects.select_related('team__organization').get(id=resource_id)
++                explicit = self._check_explicit_membership(user, 'team', project.team_id, permission)
++                if explicit is not None:
++                    return explicit
++                return self._check_inherited_permission(user, 'team', project.team_id, permission)
++            
++            elif resource_type == 'team':
++                team = Team.objects.select_related('organization').get(id=resource_id)
++                explicit = self._check_explicit_membership(user, 'organization', team.organization_id, permission)
++                if explicit is not None:
++                    return explicit
++                return False
++            
++            elif resource_type == 'organization':
++                return False
++        except (Task.DoesNotExist, Project.DoesNotExist, Team.DoesNotExist):
+             return False
+-        return self._check_project_permission(user, task.project_id, permission)
++
++        return False
++
++    def _get_cache_key(self, user_id, resource_type, resource_id, permission):
++        return f"perm:{user_id}:{resource_type}:{resource_id}:{permission}"
+ 
+ 
+ permission_checker = PermissionChecker()
+diff --git repository_after/permissions/signals.py repository_after/permissions/signals.py
+new file mode 100644
+index 0000000..1c9ca9f
+--- /dev/null
++++ repository_after/permissions/signals.py
+@@ -0,0 +1,42 @@
++from permissions.services.cache_invalidation import cache_invalidation_service
++from accounts.models import OrganizationMember, TeamMember, ProjectMember
++import logging
++
++logger = logging.getLogger(__name__)
++
++
++def invalidate_membership_cache(sender, instance, **kwargs):
++    try:
++        if isinstance(instance, OrganizationMember):
++            resource_type = 'organization'
++            resource_id = instance.organization_id
++        elif isinstance(instance, TeamMember):
++            resource_type = 'team'
++            resource_id = instance.team_id
++        elif isinstance(instance, ProjectMember):
++            resource_type = 'project'
++            resource_id = instance.project_id
++        else:
++            return
++        
++        cache_invalidation_service.invalidate_user_resource(
++            instance.user_id, resource_type, resource_id
++        )
++    except Exception as e:
++        logger.error(f"Failed to invalidate membership cache: {e}")
++
++
++def invalidate_override_cache(sender, instance, **kwargs):
++    try:
++        cache_invalidation_service.invalidate_user_resource(
++            instance.user_id, instance.resource_type, instance.resource_id
++        )
++    except Exception as e:
++        logger.error(f"Failed to invalidate override cache: {e}")
++
++
++def invalidate_custom_role_cache(sender, instance, **kwargs):
++    try:
++        cache_invalidation_service.invalidate_role_users(instance)
++    except Exception as e:
++        logger.error(f"Failed to invalidate custom role cache: {e}")
+diff --git repository_before/projects/__pycache__/__init__.cpython-311.pyc repository_after/projects/__pycache__/__init__.cpython-311.pyc
+index 2f7a7b1..3d423ba 100644
+Binary files repository_before/projects/__pycache__/__init__.cpython-311.pyc and repository_after/projects/__pycache__/__init__.cpython-311.pyc differ
+diff --git repository_before/projects/__pycache__/apps.cpython-311.pyc repository_after/projects/__pycache__/apps.cpython-311.pyc
+index c26b42f..aa52b87 100644
+Binary files repository_before/projects/__pycache__/apps.cpython-311.pyc and repository_after/projects/__pycache__/apps.cpython-311.pyc differ
+diff --git repository_before/projects/__pycache__/views.cpython-311.pyc repository_after/projects/__pycache__/views.cpython-311.pyc
+index 02a3040..311e3f1 100644
+Binary files repository_before/projects/__pycache__/views.cpython-311.pyc and repository_after/projects/__pycache__/views.cpython-311.pyc differ
+diff --git repository_before/projects/views.py repository_after/projects/views.py
+index 66fe508..0aa0d04 100644
+--- repository_before/projects/views.py
++++ repository_after/projects/views.py
+@@ -8,20 +8,29 @@ from permissions.services.permission_checker import permission_checker
+ class ProjectViewSet(viewsets.ViewSet):
+     permission_classes = [IsAuthenticated]
+ 
+-    def list(self, request):
+-        team_id = request.query_params.get('team_id')
+-
+-        if team_id:
+-            projects = Project.objects.filter(team_id=team_id)
+-        else:
+-            projects = Project.objects.all()
++    def get_queryset(self, request):
++        if not hasattr(request.user, 'current_organization') or not request.user.current_organization:
++            return Project.objects.none()
++        
++        return Project.objects.filter(
++            team__organization=request.user.current_organization
++        ).select_related('team', 'team__organization')
+ 
+-        accessible_projects = []
+-        for project in projects:
+-            if permission_checker.check_permission(request.user, 'project', project.id, 'read'):
+-                accessible_projects.append(project)
+-
+-        data = [{'id': p.id, 'name': p.name, 'slug': p.slug} for p in accessible_projects]
++    def list(self, request):
++        queryset = self.get_queryset(request)
++        project_ids = list(queryset.values_list('id', flat=True))
++        
++        if not project_ids:
++            return Response([])
++        
++        permissions = permission_checker.bulk_check_permissions(
++            request.user, 'project', project_ids, 'read'
++        )
++        
++        allowed_ids = [pid for pid, allowed in permissions.items() if allowed]
++        queryset = queryset.filter(id__in=allowed_ids)
++        
++        data = [{'id': p.id, 'name': p.name, 'slug': p.slug} for p in queryset]
+         return Response(data)
+ 
+     def create(self, request):
+@@ -33,7 +42,7 @@ class ProjectViewSet(viewsets.ViewSet):
+             return Response({'error': 'Missing required fields'}, status=status.HTTP_400_BAD_REQUEST)
+ 
+         try:
+-            team = Team.objects.get(id=team_id)
++            team = Team.objects.get(id=team_id, organization=request.user.current_organization)
+         except Team.DoesNotExist:
+             return Response({'error': 'Team not found'}, status=status.HTTP_404_NOT_FOUND)
+ 
+@@ -41,11 +50,13 @@ class ProjectViewSet(viewsets.ViewSet):
+             return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+ 
+         project = Project.objects.create(team=team, name=name, slug=slug)
+-        return Response({'id': project.id}, status=status.HTTP_201_CREATED)
++        return Response({'id': project.id, 'name': project.name, 'slug': project.slug}, status=status.HTTP_201_CREATED)
+ 
+     def retrieve(self, request, pk=None):
+         try:
+-            project = Project.objects.get(pk=pk)
++            project = Project.objects.select_related('team__organization').get(
++                pk=pk, team__organization=request.user.current_organization
++            )
+         except Project.DoesNotExist:
+             return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+ 
+@@ -56,7 +67,9 @@ class ProjectViewSet(viewsets.ViewSet):
+ 
+     def update(self, request, pk=None):
+         try:
+-            project = Project.objects.get(pk=pk)
++            project = Project.objects.select_related('team__organization').get(
++                pk=pk, team__organization=request.user.current_organization
++            )
+         except Project.DoesNotExist:
+             return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+ 
+@@ -71,7 +84,9 @@ class ProjectViewSet(viewsets.ViewSet):
+ 
+     def destroy(self, request, pk=None):
+         try:
+-            project = Project.objects.get(pk=pk)
++            project = Project.objects.select_related('team__organization').get(
++                pk=pk, team__organization=request.user.current_organization
++            )
+         except Project.DoesNotExist:
+             return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+ 
+diff --git repository_before/requirements.txt repository_after/requirements.txt
+index 71fb6c9..b3f2bba 100644
+--- repository_before/requirements.txt
++++ repository_after/requirements.txt
+@@ -3,3 +3,5 @@ djangorestframework==3.14.0
+ psycopg2-binary==2.9.9
+ django-redis==5.4.0
+ redis==5.0.1
++pytest==7.4.3
++pytest-django==4.7.0
+\ No newline at end of file
+diff --git repository_before/saas_platform/__pycache__/__init__.cpython-311.pyc repository_after/saas_platform/__pycache__/__init__.cpython-311.pyc
+index ff64319..9512cfe 100644
+Binary files repository_before/saas_platform/__pycache__/__init__.cpython-311.pyc and repository_after/saas_platform/__pycache__/__init__.cpython-311.pyc differ
+diff --git repository_before/saas_platform/__pycache__/settings.cpython-311.pyc repository_after/saas_platform/__pycache__/settings.cpython-311.pyc
+index 328978c..7853664 100644
+Binary files repository_before/saas_platform/__pycache__/settings.cpython-311.pyc and repository_after/saas_platform/__pycache__/settings.cpython-311.pyc differ
+diff --git repository_before/saas_platform/settings.py repository_after/saas_platform/settings.py
+index f71aba5..714e26c 100644
+--- repository_before/saas_platform/settings.py
++++ repository_after/saas_platform/settings.py
+@@ -64,12 +64,20 @@ DATABASES = {
+     }
+ }
+ 
+-# BUG: No Redis cache configured - using local memory cache
+-# This doesn't scale across multiple server instances
++# Redis cache configuration
+ CACHES = {
+     'default': {
+-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+-        'LOCATION': 'unique-snowflake',
++        'BACKEND': 'django_redis.cache.RedisCache',
++        'LOCATION': f"redis://{os.environ.get('REDIS_HOST', 'localhost')}:{os.environ.get('REDIS_PORT', '6379')}/1",
++        'OPTIONS': {
++            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
++            'SOCKET_CONNECT_TIMEOUT': 5,
++            'SOCKET_TIMEOUT': 5,
++            'RETRY_ON_TIMEOUT': True,
++            'MAX_CONNECTIONS': 50,
++        },
++        'KEY_PREFIX': 'saas_platform',
++        'TIMEOUT': 300,
+     }
+ }
+ 
