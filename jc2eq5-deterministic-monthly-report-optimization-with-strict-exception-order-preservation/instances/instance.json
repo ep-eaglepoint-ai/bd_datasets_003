@@ -1,0 +1,13 @@
+{
+            "instance_id": "JC2EQ5",
+            "problem_statement": "The task is to optimize a legacy Python function that generates a deterministic monthly transaction report while preserving exact legacy behavior. The original implementation is correct but inefficient due to repeated timestamp parsing, repeated normalization, repeated currency conversion, and rescanning all transactions for each month.
+
+The optimization must eliminate redundant work without changing: output structure, month ordering, rounding behavior, category/merchant normalization, merchant tie-breaking, or exception behavior. In particular, the optimized solution must preserve when and in what order exceptions are raised, relative to iterating through expected_months. The public API, inputs, and outputs must remain unchanged.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/jc2eq5-deterministic-monthly-report-optimization-with-strict-exception-order-preservation",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
