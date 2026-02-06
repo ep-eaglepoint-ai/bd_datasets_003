@@ -1,0 +1,25 @@
+services:
+  test-before:
+    build: .
+    environment:
+      - REPO_PATH=/app/repository_before
+    command: sh -c "npx jest --testPathPattern=tests/ || exit 0"
+    volumes:
+      - .:/app
+      - /app/node_modules
+
+  test-after:
+    build: .
+    environment:
+      - REPO_PATH=/app/repository_after
+    command: npx jest --testPathPattern=tests/
+    volumes:
+      - .:/app
+      - /app/node_modules
+
+  evaluation:
+    build: .
+    command: node evaluation/evaluation.js
+    volumes:
+      - .:/app
+      - /app/node_modules
