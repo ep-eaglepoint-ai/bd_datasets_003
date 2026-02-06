@@ -1,0 +1,13 @@
+{
+            "instance_id": "VTUXF6",
+            "problem_statement": "A fitness startup built a TypeScript Express API for their workout tracking application. The API manages users, workout plans, exercise logs, and achievement badges using a JSON file for data persistence. Before the mobile app launch, the team needs comprehensive tests to validate the workout logging flow, streak calculations, and the gamification system that awards badges based on user activity.
+
+Beta testing revealed issues: completing a workout does not always update the user's streak correctly when crossing midnight, badge criteria evaluation fails for edge cases like exactly meeting thresholds, and the workout recommendation endpoint returns exercises the user cannot perform due to equipment restrictions.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/vtuxf6-fitness-api-testing",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
