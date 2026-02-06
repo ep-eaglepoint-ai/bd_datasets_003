@@ -1,7 +1,17 @@
-# Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
+FROM node:20-alpine
 
-FROM python:3.11-slim
 WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+# Copy the specific package.json to install dependencies first (caching)
+COPY repository_after/package*.json ./repository_after/
+WORKDIR /app/repository_after
+RUN npm install
+
+# Go back to root and copy everything
+WORKDIR /app
+COPY . .
+
+# Set the working directory to where the package.json scripts are
+WORKDIR /app/repository_after
+
+CMD ["npm", "run", "dev"]

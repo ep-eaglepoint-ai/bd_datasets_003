@@ -1,0 +1,92 @@
+{
+  "movies": [
+    {
+      "id": "mov_001",
+      "title": "The Matrix",
+      "director": "Wachowski Sisters",
+      "year": 1999,
+      "genre": [
+        "Action",
+        "Sci-Fi"
+      ],
+      "rating": 8.7,
+      "available": true
+    },
+    {
+      "id": "mov_002",
+      "title": "Inception",
+      "director": "Christopher Nolan",
+      "year": 2010,
+      "genre": [
+        "Action",
+        "Sci-Fi",
+        "Thriller"
+      ],
+      "rating": 8.8,
+      "available": true
+    },
+    {
+      "id": "mov_003",
+      "title": "The Shawshank Redemption",
+      "director": "Frank Darabont",
+      "year": 1994,
+      "genre": [
+        "Drama"
+      ],
+      "rating": 9.3,
+      "available": true
+    },
+    {
+      "id": "mov_004",
+      "title": "Pulp Fiction",
+      "director": "Quentin Tarantino",
+      "year": 1994,
+      "genre": [
+        "Crime",
+        "Drama"
+      ],
+      "rating": 8.9,
+      "available": false
+    },
+    {
+      "id": "mov_005",
+      "title": "The Dark Knight",
+      "director": "Christopher Nolan",
+      "year": 2008,
+      "genre": [
+        "Action",
+        "Crime",
+        "Drama"
+      ],
+      "rating": 9,
+      "available": true
+    }
+  ],
+  "customers": [
+    {
+      "id": "cust_001",
+      "name": "John Doe",
+      "email": "john@example.com",
+      "rentalHistory": [
+        "mov_001",
+        "mov_003"
+      ]
+    },
+    {
+      "id": "cust_002",
+      "name": "Jane Smith",
+      "email": "jane@example.com",
+      "rentalHistory": []
+    }
+  ],
+  "rentals": [
+    {
+      "id": "rent_001",
+      "movieId": "mov_004",
+      "customerId": "cust_001",
+      "rentedAt": "2026-02-01T10:00:00.000Z",
+      "dueDate": "2026-12-31T10:00:00.000Z",
+      "returnedAt": null
+    }
+  ]
+}
