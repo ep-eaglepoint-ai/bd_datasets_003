@@ -1,0 +1,30 @@
+{
+  "name": "8n35bn-offline-first-iot-telemetry-sync-with-hmac-and-store-and-forward",
+  "version": "1.0.0",
+  "description": "Offline-First IoT Telemetry Sync with HMAC and Store-and-Forward",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "test": "jest --testTimeout=30000 --forceExit",
+    "test:coverage": "jest --coverage --testTimeout=30000 --forceExit"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "sqlite3": "^5.1.7",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": ["**/tests/**/*.test.js"],
+    "verbose": true,
+    "collectCoverageFrom": [
+      "repository_after/src/**/*.js",
+      "!repository_after/src/**/index.js"
+    ],
+    "coverageDirectory": "coverage",
+    "coverageReporters": ["text", "lcov"]
+  }
+}

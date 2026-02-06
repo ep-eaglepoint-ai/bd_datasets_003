@@ -1,0 +1,11 @@
+services:
+  app:
+    build: .
+    command: sh -c "mkdir -p /app/temp_test_data && npm test"
+    working_dir: /app
+    environment:
+      - CLIENT_DB_PATH=/app/temp_test_data/client.db
+      - SERVER_DB_PATH=/app/temp_test_data/server.db
+    volumes:
+      - ./temp_test_data:/app/temp_test_data
+      - ./evaluation/reports:/app/evaluation/reports

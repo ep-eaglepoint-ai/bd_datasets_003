@@ -1,0 +1,19 @@
+{
+  "name": "offline-first-telemetry-after",
+  "version": "1.0.0",
+  "description": "AquaSmart station controller and cloud ingestion API (after implementation).",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start:server": "node src/server/index.js",
+    "start:client": "node src/client/index.js",
+    "test": "jest --testTimeout=30000 --forceExit"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "sqlite3": "^5.1.7",
+    "uuid": "^9.0.1"
+  }
+}
+
+

@@ -1,0 +1,13 @@
+# Task Specific
+reports/
+
+# Test Data
+**/temp_test_data/
+*.db
+
+# Node
+node_modules/
+
+# OS
+.DS_Store
+evaluation/*.json
