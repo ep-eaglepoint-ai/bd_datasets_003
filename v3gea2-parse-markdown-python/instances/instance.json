@@ -1,0 +1,11 @@
+{
+            "instance_id": "V3GEA2",
+            "problem_statement": "Building a documentation site generator that needs to convert Markdown files to HTML for rendering. The existing solution uses a third-party markdown library that is 500KB bundled and includes many features not needed for the project. The team wants a lightweight custom parser that handles only the subset of Markdown syntax actually used in the documentation: headings, paragraphs, bold, italic, links, code blocks, and lists. The system needs to parse markdown text and output valid HTML, handle nested formatting like bold text inside a link, and avoid XSS vulnerabilities from user-provided content. Security review of the current library found that it did not escape HTML entities properly in certain edge cases, special characters in code blocks could escape the block context, and deeply nested formatting caused stack overflow errors.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/v3gea2-parse-markdown-python",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
