@@ -61,7 +61,7 @@ function reportJsonPath() {
 }
 
 function runDockerCompose(args) {
-  const res = spawnSync("docker", ["compose", "-f", "repository_after/docker-compose.yml", ...args], {
+  const res = spawnSync("docker", ["compose", ...args], {
     cwd: projectRoot(),
     encoding: "utf8",
     maxBuffer: 10 * 1024 * 1024,
