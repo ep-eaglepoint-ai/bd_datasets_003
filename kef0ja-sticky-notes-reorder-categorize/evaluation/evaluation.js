@@ -14,9 +14,7 @@ function die_oom() {
   try {
     process.stderr.write('evaluation: out of memory\n');
   } catch {
-    // ignore
   }
-  // Use a non-zero code so CI can detect OOM specifically.
   process.exit(137);
 }
 
@@ -33,12 +31,6 @@ function runTests(repoPath) {
   return new Promise((resolve) => {
     console.log(`Running tests for: ${repoPath}`);
 
-    // IMPORTANT:
-    // Tests for this dataset live at the workspace root (`/tests`) and are
-    // executed via the root Jest harness (see root package.json scripts).
-    // Running `npm test` inside repository_before/after requires installing
-    // their separate dependencies (react-scripts, etc.), which CI typically
-    // does not do and can cause CodeBuild to fail before assessment.
     const npmCmd = process.platform === 'win32' ? 'cmd.exe' : 'npm';
     const script = repoPath === 'repository_before' ? 'test:before' : 'test:after';
 
@@ -58,7 +50,6 @@ function runTests(repoPath) {
     let stdout = '';
     let stderr = '';
 
-    // Avoid flooding CI logs when baseline tests fail.
     const MAX_STREAM_LOG_CHARS = 8000;
     let streamedChars = 0;
 
@@ -141,18 +132,15 @@ async function runEvaluation() {
   console.log(`Start Time: ${startTime.toISOString()}`);
   console.log(`Environment: ${JSON.stringify(getEnvironmentInfo(), null, 2)}`);
 
-  // 1. Run tests against repository_before (baseline)
   console.log('\n--- Running Baseline Tests (repository_before) ---');
   const beforeResult = await runTests('repository_before');
 
-  // 2. Run tests against repository_after (implementation)
   console.log('\n--- Running Implementation Tests (repository_after) ---');
   const afterResult = await runTests('repository_after');
 
   const endTime = new Date();
   const durationSeconds = ((endTime - startTime) / 1000).toFixed(2);
 
-  // 3. Generate comparison summary
   let improvementSummary = 'No improvement detected.';
   let passedGate = false;
 
@@ -167,7 +155,6 @@ async function runEvaluation() {
     passedGate = false;
   }
 
-  // 4. final report
   const report = {
     evaluation_id: runId,
     task_id: 'KEF0JA',
@@ -214,15 +201,21 @@ async function runEvaluation() {
     success: passedGate,
     error: null
   };
-  // 5. Writing report
+
   const reportPath = path.join(REPORTS_DIR, 'report.json');
+  const reportPathTopLevel = path.join(ROOT, 'evaluation', 'report.json');
   fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
+  try {
+    fs.writeFileSync(reportPathTopLevel, JSON.stringify(report, null, 2));
+  } catch {
+  }
 
   console.log('\n=== Evaluation Complete ===');
   console.log(`Duration: ${durationSeconds} seconds`);
   console.log(`Result: ${passedGate ? 'PASS' : 'FAIL'}`);
   console.log(`Summary: ${improvementSummary}`);
   console.log(`Report written to: ${reportPath}`);
+  console.log(`Report copy written to: ${reportPathTopLevel}`);
   console.log(`\n=== Evaluation Finished ===`);
   process.exit(passedGate ? 0 : 1);
 }
@@ -237,7 +230,6 @@ process.on("unhandledRejection", (e) => {
   try {
     process.stderr.write(`evaluation: unhandled rejection: ${msg}\n`);
   } catch {
-    // ignore
   }
   process.exit(0);
 });
@@ -248,7 +240,6 @@ process.on('uncaughtException', (e) => {
   try {
     process.stderr.write(`evaluation: uncaught exception: ${msg}\n`);
   } catch {
-    // ignore
   }
   process.exit(0);
 });
@@ -260,7 +251,7 @@ try {
   try {
     process.stderr.write(`evaluation: fatal error: ${msg}\n`);
   } catch {
-    // ignore
+
   }
   process.exit(0);
 }

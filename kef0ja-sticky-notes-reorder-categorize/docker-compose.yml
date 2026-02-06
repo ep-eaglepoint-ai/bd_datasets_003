@@ -4,4 +4,4 @@ services:
     environment:
       - REPO_PATH=repository_after
     volumes:
-      - ./evaluation/reports:/app/evaluation/reports
+      - ./evaluation:/app/evaluation
