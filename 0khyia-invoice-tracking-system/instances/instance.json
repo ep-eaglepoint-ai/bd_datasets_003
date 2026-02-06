@@ -1,0 +1,11 @@
+{
+            "instance_id": "0KHYIA",
+            "problem_statement": "You are tasked with building an Invoice Tracking System for a company to manage vendor invoices, payments, and approval workflows. The previous manual process led to late payments, duplicate invoices, and missing audit trails. Your goal is to create a Node.js backend API that handles vendor registration, invoice management, payment processing, and reporting, while ensuring that all invoices are approved before payment, and preventing overpayments and duplicates.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/0khyia-invoice-tracking-system",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
