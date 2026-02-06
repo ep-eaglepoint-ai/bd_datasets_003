@@ -1,0 +1,66 @@
+services:
+  # Backend API
+  api:
+    build:
+      context: ./repository_after/backend
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - DATABASE_URL=postgresql://postgres:password@db:5432/countdown_db
+      - UNSPLASH_ACCESS_KEY=${UNSPLASH_ACCESS_KEY}
+      - SESSION_SECRET=your-session-secret-change-in-production
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3001/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"" ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Frontend
+  frontend:
+    build:
+      context: ./repository_after/frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+  # Database
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=countdown_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d countdown_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+  # Test Runner (for evaluation)
+  test-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    depends_on:
+      api:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    environment:
+      API_URL: http://api:3001
+      DATABASE_URL: postgresql://postgres:password@db:5432/countdown_db
+    volumes:
+      - ./evaluation:/app/evaluation
+
+volumes:
+  postgres_data:
