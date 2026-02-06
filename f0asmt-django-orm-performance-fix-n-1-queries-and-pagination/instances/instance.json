@@ -1,0 +1,11 @@
+{
+            "instance_id": "F0ASMT",
+            "problem_statement": "The Django e-commerce application's API endpoints are experiencing severe performance degradation. The product listing page executes separate database queries for each product's category, brand, images, tags, and reviews, causing slow response times. The order history endpoint fetches all orders and paginates using Python list slicing, which becomes unusable with large order volumes. The admin dashboard computes revenue and statistics using Python loops over querysets instead of database aggregation. Text search uses LIKE patterns that cannot utilize indexes. Core performance logic is in shop/models.py, shop/views/products.py, shop/views/orders.py, and shop/views/admin_dashboard.py.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/f0asmt-django-orm-performance-fix-n-1-queries-and-pagination",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        

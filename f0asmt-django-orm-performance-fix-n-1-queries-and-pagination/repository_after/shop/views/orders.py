@@ -1,0 +1,213 @@
+from django.shortcuts import render, get_object_or_404
+from django.http import JsonResponse
+from django.contrib.auth.decorators import login_required
+import base64
+from django.db.models import Q, Prefetch
+from django.utils.dateparse import parse_datetime
+from django.core.cache import cache
+from shop.models import Order, OrderItem, ProductImage
+from shop.signals import get_order_list_version_key
+
+
+
+
+@login_required
+def order_list(request):
+    # Cache key generation
+    version_key = get_order_list_version_key(request.user.id)
+    version = cache.get(version_key, 1)
+    query_string = request.GET.urlencode()
+    cache_key = f"order_list_{request.user.id}_v{version}_{query_string}"
+
+    cached_response = cache.get(cache_key)
+    if cached_response:
+        return cached_response
+
+    # Optimize query: filter by user and defer large fields
+    # Prefetch items and deep nested product images
+    # We use 'items' (related_name for OrderItem) -> product -> images
+    orders = Order.objects.filter(user=request.user).defer(
+        'shipping_address', 'billing_address', 'metadata'
+    ).prefetch_related(
+        'items__product__images'
+    )
+
+    status = request.GET.get('status')
+    if status:
+        orders = orders.filter(status=status)
+
+    date_from = request.GET.get('date_from')
+    if date_from:
+        orders = orders.filter(created_at__date__gte=date_from)
+
+    date_to = request.GET.get('date_to')
+    if date_to:
+        orders = orders.filter(created_at__date__lte=date_to)
+
+    # Base ordering
+    orders = orders.order_by('-created_at', '-id')
+
+    # Cursor Pagination Logic
+    cursor = request.GET.get('cursor')
+    last_created_at = None
+    last_id = None
+    
+    if cursor:
+        try:
+            decoded_cursor = base64.b64decode(cursor).decode('utf-8')
+            parts = decoded_cursor.split('|')
+            if len(parts) == 2:
+                last_created_at_str, last_id = parts
+                last_created_at = parse_datetime(last_created_at_str)
+                
+                if last_created_at:
+                    orders = orders.filter(
+                        Q(created_at__lt=last_created_at) |
+                        Q(created_at=last_created_at, id__lt=last_id)
+                    )
+        except (ValueError, TypeError, UnicodeDecodeError):
+            pass
+
+    per_page = 10
+    orders_list = list(orders[:per_page + 1])
+    
+    has_next = len(orders_list) > per_page
+    next_cursor = None
+    
+    if has_next:
+        orders_list = orders_list[:-1] # Drop the +1 item
+        next_item = orders_list[-1]
+        cursor_data = f"{next_item.created_at.isoformat()}|{next_item.id}"
+        next_cursor = base64.b64encode(cursor_data.encode('utf-8')).decode('utf-8')
+
+    # Get total count for backward compatibility
+    # We need to recount based on the filtered queryset (before cursor filter)
+    # Re-create the base filtered queryset for counting
+    count_orders = Order.objects.filter(user=request.user)
+    if status:
+        count_orders = count_orders.filter(status=status)
+    if date_from:
+        count_orders = count_orders.filter(created_at__date__gte=date_from)
+    if date_to:
+        count_orders = count_orders.filter(created_at__date__lte=date_to)
+    
+    total_count = count_orders.count()
+    total_pages = (total_count + per_page - 1) // per_page if total_count > 0 else 1
+    
+    # For current_page with cursor pagination:
+    # Clients expect an integer. If cursor is used, we don't know the exact page number easily.
+    # We will return 1 as a placeholder to satisfy type constraints, or handle strict page logic if needed.
+    # Given the constraint to not break clients expecting numeric `current_page`, 1 is safer than None.
+    current_page = 1 
+    has_previous = cursor is not None  # If cursor exists, we're past the first page
+    
+    order_data = []
+    for order in orders_list:
+        # items are already prefetched
+        items = order.items.all()
+        item_data = []
+        for item in items:
+            product = item.product # prefetched
+            # images prefetched
+            all_images = list(product.images.all())
+            image = next((img for img in all_images if img.is_primary), None)
+            
+            item_data.append({
+                'id': item.id,
+                'product_name': item.product_name,
+                'product_sku': item.product_sku,
+                'quantity': item.quantity,
+                'unit_price': str(item.unit_price),
+                'total_price': str(item.total_price),
+                'product_image': image.image.url if image else None,
+            })
+
+        order_data.append({
+            'id': order.id,
+            'order_number': order.order_number,
+            'status': order.status,
+            'subtotal': str(order.subtotal),
+            'tax': str(order.tax),
+            'shipping_cost': str(order.shipping_cost),
+            'discount': str(order.discount),
+            'total': str(order.total),
+            'items': item_data,
+            'item_count': len(item_data),
+            'created_at': order.created_at.isoformat(),
+        })
+
+    response = JsonResponse({
+        'orders': order_data,
+        'pagination': {
+            'current_page': current_page,
+            'total_pages': total_pages,
+            'total_count': total_count,
+            'has_next': has_next,
+            'has_previous': has_previous,
+            'next_cursor': next_cursor,
+        }
+    })
+    
+    # Cache for 15 minutes or until invalidated
+    cache.set(cache_key, response, 60 * 15)
+    return response
+
+
+@login_required
+def order_detail(request, order_number):
+    # Cache key for order detail
+    cache_key = f"order_detail_{order_number}"
+    cached_response = cache.get(cache_key)
+    if cached_response:
+        return cached_response
+
+    # Optimize query:
+    # 1. select_related('user') as requested (though usually request.user is enough).
+    # 2. defer('metadata') (unused in response, large).
+    # 3. Prefetch items with their products joined (select_related) AND product images prefetched.
+    queryset = Order.objects.filter(user=request.user).select_related('user').defer('metadata').prefetch_related(
+        Prefetch('items', queryset=OrderItem.objects.select_related('product').prefetch_related('product__images'))
+    )
+
+    order = get_object_or_404(queryset, order_number=order_number)
+
+    items = order.items.all()
+    item_data = []
+    for item in items:
+        product = item.product
+        # Use prefetched images list
+        all_images = list(product.images.all())
+        image = next((img for img in all_images if img.is_primary), None)
+        
+        item_data.append({
+            'id': item.id,
+            'product_id': product.id,
+            'product_name': item.product_name,
+            'product_sku': item.product_sku,
+            'product_slug': product.slug,
+            'quantity': item.quantity,
+            'unit_price': str(item.unit_price),
+            'total_price': str(item.total_price),
+            'product_image': image.image.url if image else None,
+        })
+
+    response = JsonResponse({
+        'id': order.id,
+        'order_number': order.order_number,
+        'status': order.status,
+        'subtotal': str(order.subtotal),
+        'tax': str(order.tax),
+        'shipping_cost': str(order.shipping_cost),
+        'discount': str(order.discount),
+        'total': str(order.total),
+        'shipping_address': order.shipping_address,
+        'billing_address': order.billing_address,
+        'notes': order.notes,
+        'items': item_data,
+        'created_at': order.created_at.isoformat(),
+        'updated_at': order.updated_at.isoformat(),
+    })
+    
+    # Cache for 15 minutes
+    cache.set(cache_key, response, 60 * 15)
+    return response

@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: mac
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: ecommerce
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U mac -d ecommerce" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  test:
+    build: .
+    command: >
+      sh -c "cd repository_after && python3 -m pytest ../tests/ -v --tb=short --json-report --json-report-file=/app/test_results_after.json"
+    volumes:
+      - .:/app
+    working_dir: /app
+    environment:
+      - PYTHONPATH=/app/repository_after
+      - DJANGO_SETTINGS_MODULE=ecommerce.settings_test
+      - DB_HOST=db
+      - DB_PASSWORD=password
+    depends_on:
+      db:
+        condition: service_healthy
+
+  test-before:
+    build: .
+    command: >
+      sh -c "cd repository_before && python3 -m pytest ../tests/ -v --tb=short --json-report --json-report-file=/app/test_results_before.json; exit 0"
+    volumes:
+      - .:/app
+    working_dir: /app
+    environment:
+      - PYTHONPATH=/app/repository_before
+      - DJANGO_SETTINGS_MODULE=ecommerce.settings_test
+      - DB_HOST=db
+      - DB_PASSWORD=password
+      - EXPECT_FAILURES=1
+    depends_on:
+      db:
+        condition: service_healthy
+
+  evaluate:
+    build: .
+    command: python3 /app/evaluation/evaluation.py
+    volumes:
+      - .:/app
+    working_dir: /app
+    environment:
+      - PYTHONPATH=/app
+      - DB_HOST=db
+      - DB_PASSWORD=password
+    depends_on:
+      - test
+      - test-before
+      - db
