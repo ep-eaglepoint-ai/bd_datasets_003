@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  test-after:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    volumes:
+      - ./repository_after:/app/repository_after
+      - ./repository_before:/app/repository_before
+      - ./tests:/app/tests
+      - ./evaluation:/app/evaluation
+    working_dir: /app
+    command: >
+      sh -c "
+        echo 'Compiling tests...' &&
+        g++ -std=c++11 -pthread -Wall -Wextra -o /app/build/test_shared_ptr tests/main.cpp &&
+        echo 'Running after tests...' &&
+        /app/build/test_shared_ptr
+      "
+
+  evaluate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    volumes:
+      - ./repository_after:/app/repository_after
+      - ./repository_before:/app/repository_before
+      - ./tests:/app/tests
+      - ./evaluation:/app/evaluation
+    working_dir: /app
+    command: >
+      sh -c "
+        echo 'Compiling evaluation script...' &&
+        g++ -std=c++11 -pthread -Wall -Wextra -o /app/build/test_shared_ptr tests/main.cpp &&
+        g++ -std=c++11 -o /app/build/evaluation evaluation/evaluation.cpp &&
+        echo 'Running evaluation...' &&
+        /app/build/evaluation
+      "
+    depends_on:
+      - test-after
