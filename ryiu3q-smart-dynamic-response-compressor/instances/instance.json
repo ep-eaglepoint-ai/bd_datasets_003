@@ -1,0 +1,11 @@
+{
+            "instance_id": "RYIU3Q",
+            "problem_statement": "The objective is to implement a dynamic middleware utility for a Python-based API Gateway that optimizes payload compression in real-time. The system must balance server-side CPU availability against client-side network latency to select the most efficient compression algorithm (Brotli vs. Gzip) and compression level, ensuring optimal throughput and reduced data costs without overwhelming the host infrastructure.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ryiu3q-smart-dynamic-response-compressor",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
