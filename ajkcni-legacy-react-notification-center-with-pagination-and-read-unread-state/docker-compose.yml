@@ -1,9 +1,18 @@
-
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
-  app:
+services:
+  test-after:
     build: .
-    command: pytest -q tests
+    working_dir: /app/repository_after
+    command: sh -c "npm install && npx jest --roots ../tests"
     volumes:
       - .:/app
+    environment:
+      - NODE_ENV=test
+
+  evaluation:
+    build: .
+    working_dir: /app
+    command: sh -c "cd repository_after && npm install && cd .. && node evaluation/evaluation.js"
+    volumes:
+      - .:/app
+    environment:
+      - NODE_ENV=test
