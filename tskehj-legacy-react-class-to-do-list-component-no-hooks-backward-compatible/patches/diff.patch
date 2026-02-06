@@ -31,139 +31,263 @@ index 0000000..2a4f06e
 \ No newline at end of file
 diff --git a/repository_after/src/TaskManager.js b/repository_after/src/TaskManager.js
 new file mode 100644
-index 0000000..3b4e0b4
+index 0000000..b022671
 --- /dev/null
 +++ b/repository_after/src/TaskManager.js
-@@ -0,0 +1,242 @@
+@@ -0,0 +1,305 @@
 +import React from 'react';
 +
 +/**
-+ * Legacy React Class Component for To-Do List Management
-+ * Strict Requirements: No Hooks, No Functional Components, No Arrow Functions
-+ * Backward-Compatible with pre-16.8 React codebases
++ * Style constants defined outside render to prevent object churn.
++ * Shared across all instances without recreation.
++ */
++var STYLES = {
++  container: {
++    maxWidth: '600px',
++    margin: '20px auto',
++    padding: '20px',
++    fontFamily: 'Arial, sans-serif'
++  },
++  heading: {
++    textAlign: 'center',
++    color: '#333'
++  },
++  inputContainer: {
++    display: 'flex',
++    marginBottom: '20px',
++    gap: '10px'
++  },
++  input: {
++    flex: '1',
++    padding: '10px',
++    fontSize: '16px',
++    border: '1px solid #ddd',
++    borderRadius: '4px'
++  },
++  addButton: {
++    padding: '10px 20px',
++    fontSize: '16px',
++    backgroundColor: '#4CAF50',
++    color: 'white',
++    border: 'none',
++    borderRadius: '4px',
++    cursor: 'pointer'
++  },
++  taskList: {
++    listStyle: 'none',
++    padding: '0'
++  },
++  taskItem: {
++    display: 'flex',
++    justifyContent: 'space-between',
++    alignItems: 'center',
++    padding: '10px',
++    marginBottom: '8px',
++    backgroundColor: '#f9f9f9',
++    border: '1px solid #ddd',
++    borderRadius: '4px'
++  },
++  taskText: {
++    flex: '1',
++    fontSize: '16px'
++  },
++  removeButton: {
++    padding: '5px 15px',
++    fontSize: '14px',
++    backgroundColor: '#f44336',
++    color: 'white',
++    border: 'none',
++    borderRadius: '4px',
++    cursor: 'pointer'
++  },
++  footer: {
++    marginTop: '20px',
++    textAlign: 'center',
++    color: '#666',
++    fontSize: '14px'
++  }
++};
++
++/**
++ * TaskItem - Individual task display component (class-based).
++ *
++ * Owns its own remove handler bound once in the constructor.
++ * Implements shouldComponentUpdate to prevent unnecessary re-renders
++ * when sibling tasks change but this task's props remain the same.
++ *
++ * Props:
++ *   task   {Object}   – { id: number, text: string }
++ *   onRemove {Function} – stable callback from parent, called with task id
++ */
++class TaskItem extends React.Component {
++  constructor(props) {
++    super(props);
++    // Bind once in constructor – no per-render allocation
++    this.handleRemove = this.handleRemove.bind(this);
++  }
++
++  /**
++   * Prevent re-render unless this specific task changed.
++   * onRemove is a stable reference (bound in TaskManager constructor),
++   * so we only need to compare the task data.
++   */
++  shouldComponentUpdate(nextProps) {
++    if (this.props.task.id !== nextProps.task.id) {
++      return true;
++    }
++    if (this.props.task.text !== nextProps.task.text) {
++      return true;
++    }
++    return false;
++  }
++
++  /**
++   * Delegates to parent handler with this task's id.
++   * Bound once in constructor – same function reference across renders.
++   */
++  handleRemove() {
++    this.props.onRemove(this.props.task.id);
++  }
++
++  render() {
++    return React.createElement(
++      'li',
++      {
++        className: 'task-item',
++        'data-testid': 'task-item',
++        style: STYLES.taskItem
++      },
++      React.createElement(
++        'span',
++        {
++          className: 'task-text',
++          style: STYLES.taskText
++        },
++        this.props.task.text
++      ),
++      React.createElement(
++        'button',
++        {
++          onClick: this.handleRemove,
++          className: 'remove-button',
++          'data-testid': 'remove-button',
++          style: STYLES.removeButton
++        },
++        'Remove'
++      )
++    );
++  }
++}
++
++/**
++ * TaskManager – Main to-do list component (class-based, no hooks).
++ *
++ * State:
++ *   tasks      {Array}  – list of { id: number, text: string }
++ *   inputValue {string} – controlled input value
++ *
++ * All handlers are bound once in the constructor.
++ * handleRemoveTask is passed by stable reference to every TaskItem;
++ * each TaskItem calls it with its own id via its own constructor-bound
++ * handler, so zero functions are created inside render().
 + */
 +class TaskManager extends React.Component {
 +  constructor(props) {
 +    super(props);
-+    
-+    // Initialize state in constructor (legacy pattern)
++
++    // Simple incrementing counter for unique task IDs
++    this._nextId = 0;
++
 +    this.state = {
 +      tasks: [],
 +      inputValue: ''
 +    };
-+    
-+    // Bind all event handlers in constructor to avoid context loss
-+    // This is the recommended legacy pattern for performance
++
++    // Bind every handler exactly once
 +    this.handleInputChange = this.handleInputChange.bind(this);
-+    this.handleAddTask = this.handleAddTask.bind(this);
-+    this.handleKeyPress = this.handleKeyPress.bind(this);
++    this.handleAddTask     = this.handleAddTask.bind(this);
++    this.handleKeyPress    = this.handleKeyPress.bind(this);
++    this.handleRemoveTask  = this.handleRemoveTask.bind(this);
 +  }
-+  
++
 +  /**
-+   * Handle input field changes
-+   * @param {Event} event - DOM input event
++   * Controlled input handler.
++   * @param {Event} event
 +   */
 +  handleInputChange(event) {
-+    this.setState({
-+      inputValue: event.target.value
-+    });
++    this.setState({ inputValue: event.target.value });
 +  }
-+  
++
 +  /**
-+   * Handle Enter key press in input field
-+   * @param {KeyboardEvent} event - DOM keyboard event
++   * Submit on Enter key.
++   * @param {KeyboardEvent} event
 +   */
 +  handleKeyPress(event) {
 +    if (event.key === 'Enter') {
 +      this.handleAddTask();
 +    }
 +  }
-+  
++
 +  /**
-+   * Add new task to the list
-+   * Uses functional setState to avoid race conditions
++   * Append a new task. Uses functional setState to prevent
++   * stale-state bugs under batched updates.
 +   */
 +  handleAddTask() {
 +    var trimmedValue = this.state.inputValue.trim();
-+    
-+    // Ignore empty inputs gracefully
++
 +    if (trimmedValue === '') {
 +      return;
 +    }
-+    
-+    // Create new task object with unique ID
-+    // Using timestamp + random for uniqueness without external libraries
++
++    this._nextId = this._nextId + 1;
++
 +    var newTask = {
-+      id: Date.now() + Math.random(),
++      id: this._nextId,
 +      text: trimmedValue
 +    };
-+    
-+    // Update state immutably using functional setState
-+    // This pattern prevents direct mutation and race conditions
-+    this.setState(function(prevState) {
++
++    this.setState(function (prevState) {
 +      return {
 +        tasks: prevState.tasks.concat([newTask]),
 +        inputValue: ''
 +      };
 +    });
 +  }
-+  
++
 +  /**
-+   * Create a remove handler for a specific task
-+   * Returns a function to maintain correct this context
-+   * @param {number} taskId - Unique task identifier
-+   * @returns {function} Handler function for onClick
++   * Remove a task by id. Stable reference (bound in constructor).
++   * Passed as a prop to TaskItem – same reference every render.
++   * @param {number} taskId
 +   */
 +  handleRemoveTask(taskId) {
-+    var self = this;
-+    return function() {
-+      self.setState(function(prevState) {
-+        return {
-+          tasks: prevState.tasks.filter(function(task) {
-+            return task.id !== taskId;
-+          })
-+        };
-+      });
-+    };
++    this.setState(function (prevState) {
++      return {
++        tasks: prevState.tasks.filter(function (task) {
++          return task.id !== taskId;
++        })
++      };
++    });
 +  }
-+  
-+  /**
-+   * Render method using React.createElement (no JSX dependencies)
-+   * This ensures maximum backward compatibility
-+   */
++
 +  render() {
 +    var self = this;
-+    
++
 +    return React.createElement(
 +      'div',
-+      { 
++      {
 +        className: 'task-manager',
-+        style: {
-+          maxWidth: '600px',
-+          margin: '20px auto',
-+          padding: '20px',
-+          fontFamily: 'Arial, sans-serif'
-+        }
++        style: STYLES.container
 +      },
-+      React.createElement(
-+        'h1', 
-+        { 
-+          style: {
-+            textAlign: 'center',
-+            color: '#333'
-+          }
-+        }, 
-+        'To-Do List'
-+      ),
++
++      // Heading
++      React.createElement('h1', { style: STYLES.heading }, 'To-Do List'),
++
++      // Input row
 +      React.createElement(
 +        'div',
-+        { 
++        {
 +          className: 'input-container',
-+          style: {
-+            display: 'flex',
-+            marginBottom: '20px',
-+            gap: '10px'
-+          }
++          style: STYLES.inputContainer
 +        },
 +        React.createElement('input', {
 +          type: 'text',
@@ -173,13 +297,7 @@ index 0000000..3b4e0b4
 +          placeholder: 'Enter a task...',
 +          className: 'task-input',
 +          'data-testid': 'task-input',
-+          style: {
-+            flex: '1',
-+            padding: '10px',
-+            fontSize: '16px',
-+            border: '1px solid #ddd',
-+            borderRadius: '4px'
-+          }
++          style: STYLES.input
 +        }),
 +        React.createElement(
 +          'button',
@@ -187,95 +305,40 @@ index 0000000..3b4e0b4
 +            onClick: this.handleAddTask,
 +            className: 'add-button',
 +            'data-testid': 'add-button',
-+            style: {
-+              padding: '10px 20px',
-+              fontSize: '16px',
-+              backgroundColor: '#4CAF50',
-+              color: 'white',
-+              border: 'none',
-+              borderRadius: '4px',
-+              cursor: 'pointer'
-+            }
++            style: STYLES.addButton
 +          },
 +          'Add'
 +        )
 +      ),
++
++      // Task list – each TaskItem receives a stable onRemove reference
 +      React.createElement(
 +        'ul',
-+        { 
++        {
 +          className: 'task-list',
 +          'data-testid': 'task-list',
-+          style: {
-+            listStyle: 'none',
-+            padding: '0'
-+          }
++          style: STYLES.taskList
 +        },
-+        this.state.tasks.map(function(task) {
-+          return React.createElement(
-+            'li',
-+            { 
-+              key: task.id,
-+              className: 'task-item',
-+              'data-testid': 'task-item',
-+              style: {
-+                display: 'flex',
-+                justifyContent: 'space-between',
-+                alignItems: 'center',
-+                padding: '10px',
-+                marginBottom: '8px',
-+                backgroundColor: '#f9f9f9',
-+                border: '1px solid #ddd',
-+                borderRadius: '4px'
-+              }
-+            },
-+            React.createElement(
-+              'span', 
-+              { 
-+                className: 'task-text',
-+                style: {
-+                  flex: '1',
-+                  fontSize: '16px'
-+                }
-+              }, 
-+              task.text
-+            ),
-+            React.createElement(
-+              'button',
-+              {
-+                onClick: self.handleRemoveTask(task.id),
-+                className: 'remove-button',
-+                'data-testid': 'remove-button',
-+                style: {
-+                  padding: '5px 15px',
-+                  fontSize: '14px',
-+                  backgroundColor: '#f44336',
-+                  color: 'white',
-+                  border: 'none',
-+                  borderRadius: '4px',
-+                  cursor: 'pointer'
-+                }
-+              },
-+              'Remove'
-+            )
-+          );
++        this.state.tasks.map(function (task) {
++          return React.createElement(TaskItem, {
++            key: task.id,
++            task: task,
++            onRemove: self.handleRemoveTask
++          });
 +        })
 +      ),
++
++      // Footer
 +      React.createElement(
 +        'div',
-+        {
-+          style: {
-+            marginTop: '20px',
-+            textAlign: 'center',
-+            color: '#666',
-+            fontSize: '14px'
-+          }
-+        },
++        { style: STYLES.footer },
 +        'Total tasks: ' + this.state.tasks.length
 +      )
 +    );
 +  }
 +}
 +
++export { TaskItem };
 +export default TaskManager;
 \ No newline at end of file
 diff --git a/repository_after/src/index.js b/repository_after/src/index.js

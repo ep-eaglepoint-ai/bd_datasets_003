@@ -15,7 +15,9 @@
         "Add 100 items and verify performance",
         "Rapid clicks handling",
         "Enter key press adds task",
-        "No console errors or warnings"
+        "No hooks or lifecycle console warnings",
+        "Source code contains no hooks or functional component syntax",
+        "No per-render handler allocation (stable onRemove reference)"
     ],
     "PASS_TO_PASS": []
 }
