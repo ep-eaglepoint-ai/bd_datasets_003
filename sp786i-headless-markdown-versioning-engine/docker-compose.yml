@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: strong_user
+      POSTGRES_PASSWORD: 5I!X!XbOC{4vs{Un
+      POSTGRES_DB: markdown_db
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U strong_user -d markdown_db" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://strong_user:5I!X!XbOC{4vs{Un@db:5432/markdown_db
+      PYTHONPATH: /app
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    command: uvicorn repository_after.main:app --host 0.0.0.0 --port 8000

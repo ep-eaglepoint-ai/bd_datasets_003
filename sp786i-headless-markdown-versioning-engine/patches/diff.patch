@@ -1,0 +1,559 @@
+diff --git a/repository_after/__init__.py b/repository_after/__init__.py
+new file mode 100644
+index 0000000..e846ee4
+--- /dev/null
++++ b/repository_after/__init__.py
+@@ -0,0 +1 @@
++# Headless Markdown Versioning Engine
+diff --git a/repository_after/api/__init__.py b/repository_after/api/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/repository_after/api/endpoints.py b/repository_after/api/endpoints.py
+new file mode 100644
+index 0000000..637d63b
+--- /dev/null
++++ b/repository_after/api/endpoints.py
+@@ -0,0 +1,103 @@
++from fastapi import APIRouter, Depends, HTTPException, Query
++from sqlalchemy.orm import Session
++from typing import List
++from .. import crud, schemas, models
++from ..database import get_db
++from ..services.markdown_service import MarkdownService
++from ..services.diff_service import DiffService
++
++router = APIRouter()
++
++@router.post("/documents", response_model=schemas.RevisionMetadata)
++def create_document(doc: schemas.DocumentCreate, db: Session = Depends(get_db)):
++    revision = crud.create_document(db, doc)
++    return revision
++
++@router.get("/documents", response_model=List[schemas.DocumentResponse])
++def get_documents(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
++    docs = crud.get_all_documents(db, skip=skip, limit=limit)
++    for doc in docs:
++        latest = crud.get_latest_revision(db, doc.id)
++        doc.latest_revision = latest
++        doc.latest_content = latest.content if latest else None
++    return docs
++
++@router.get("/documents/{document_id}", response_model=schemas.DocumentResponse)
++def get_document(document_id: int, db: Session = Depends(get_db)):
++    db_doc = crud.get_document(db, document_id)
++    if not db_doc:
++        raise HTTPException(status_code=404, detail="Document not found")
++    latest = crud.get_latest_revision(db, db_doc.id)
++    db_doc.latest_revision = latest
++    db_doc.latest_content = latest.content if latest else None
++    return db_doc
++
++@router.put("/documents/{document_id}", response_model=schemas.RevisionMetadata)
++def update_document(document_id: int, update: schemas.DocumentUpdate, db: Session = Depends(get_db)):
++    revision = crud.update_document(db, document_id, update)
++    if not revision:
++        raise HTTPException(status_code=404, detail="Document not found")
++    return revision
++
++@router.get("/documents/{document_id}/history", response_model=List[schemas.RevisionMetadata])
++def get_document_history(
++    document_id: int, 
++    skip: int = Query(0, ge=0), 
++    limit: int = Query(100, ge=1, le=1000), 
++    db: Session = Depends(get_db)
++):
++    history = crud.get_document_history(db, document_id, skip=skip, limit=limit)
++    if history is None: # None means document not found in my updated crud
++        raise HTTPException(status_code=404, detail="Document not found")
++    return history
++
++@router.get("/revisions/{revision_id}", response_model=schemas.RevisionFull)
++def get_snapshot(revision_id: int, include_html: bool = False, db: Session = Depends(get_db)):
++    revision = crud.get_revision(db, revision_id)
++    if not revision:
++        raise HTTPException(status_code=404, detail="Revision not found")
++    
++    result = schemas.RevisionFull.model_validate(revision)
++    if include_html:
++        result.html_content = MarkdownService.render_to_html(revision.content)
++    return result
++
++@router.post("/documents/{document_id}/rollback", response_model=schemas.RevisionMetadata)
++def rollback_document(document_id: int, target_revision_id: int, author_id: str, db: Session = Depends(get_db)):
++    revision = crud.rollback_document(db, document_id, target_revision_id, author_id)
++    if not revision:
++        raise HTTPException(status_code=404, detail="Document or Revision not found")
++    return revision
++
++@router.get("/documents/{document_id}/versions/{version_number}", response_model=schemas.RevisionFull)
++def get_version(document_id: int, version_number: int, include_html: bool = False, db: Session = Depends(get_db)):
++    revision = crud.get_revision_by_version(db, document_id, version_number)
++    if not revision:
++        raise HTTPException(status_code=404, detail="Version not found for this document")
++    
++    result = schemas.RevisionFull.model_validate(revision)
++    if include_html:
++        result.html_content = MarkdownService.render_to_html(revision.content)
++    return result
++
++@router.get("/diff", response_model=schemas.DiffResponse)
++def get_diff(old_revision_id: int, new_revision_id: int, db: Session = Depends(get_db)):
++    old_rev = crud.get_revision(db, old_revision_id)
++    new_rev = crud.get_revision(db, new_revision_id)
++    if not old_rev or not new_rev:
++        raise HTTPException(status_code=404, detail="One or both revisions not found")
++    
++    diff_data = DiffService.get_structured_diff(old_rev.content, new_rev.content)
++    patch_data = DiffService.get_unified_diff(
++        old_rev.content, 
++        new_rev.content,
++        from_file=f"v{old_rev.version_number}",
++        to_file=f"v{new_rev.version_number}"
++    )
++    
++    return schemas.DiffResponse(
++        old_version_id=old_revision_id,
++        new_version_id=new_revision_id,
++        diff=diff_data,
++        patch=patch_data
++    )
+diff --git a/repository_after/crud.py b/repository_after/crud.py
+new file mode 100644
+index 0000000..e26ef1f
+--- /dev/null
++++ b/repository_after/crud.py
+@@ -0,0 +1,146 @@
++from sqlalchemy.orm import Session
++from . import models, schemas
++from .services.markdown_service import MarkdownService
++from datetime import datetime
++from typing import List, Optional
++import time
++from sqlalchemy import func
++from sqlalchemy.exc import IntegrityError
++
++def create_document(db: Session, doc: schemas.DocumentCreate) -> schemas.RevisionMetadata:
++    """
++    Creates a new document and its initial revision within a transaction.
++    """
++    try:
++        # 1. Create the base document
++        db_document = models.Document(title=doc.title)
++        db.add(db_document)
++        db.flush() # Get the ID
++
++        # 2. Create the first revision (v1)
++        db_revision = models.Revision(
++            document_id=db_document.id,
++            version_number=1,
++            content=MarkdownService.sanitize_markdown(doc.content),
++            author_id=doc.author_id
++        )
++        db.add(db_revision)
++        db.flush()
++
++        # 3. Update the document with the latest revision ID
++        db_document.latest_revision_id = db_revision.id
++        db.commit()
++        db.refresh(db_revision)
++        return db_revision
++    except Exception:
++        db.rollback()
++        raise
++
++def update_document(db: Session, document_id: int, update_data: schemas.DocumentUpdate):
++    """
++    Creates a new revision for an existing document.
++    Uses an optimized query to fetch only the required metadata for versioning.
++    """
++    for attempt in range(5):
++        try:
++            # Lock the document to prevent concurrent creation issues if possible
++            db_document = db.query(models.Document).filter(models.Document.id == document_id).with_for_update().first()
++            if not db_document:
++                return None
++
++            # Optimization: Query ONLY the max version number, not the full revision content
++            max_version = db.query(func.max(models.Revision.version_number)).filter(
++                models.Revision.document_id == document_id
++            ).scalar()
++            
++            next_version = (max_version + 1) if max_version is not None else 1
++
++            # Create new revision (immutable)
++            db_revision = models.Revision(
++                document_id=document_id,
++                version_number=next_version,
++                content=MarkdownService.sanitize_markdown(update_data.content),
++                author_id=update_data.author_id
++            )
++            db.add(db_revision)
++            db.flush()
++
++            # Update latest revision ID on the document
++            db_document.latest_revision_id = db_revision.id
++            db.commit()
++            db.refresh(db_revision)
++            return db_revision
++        except IntegrityError:
++            db.rollback()
++            if attempt == 4:
++                raise
++            time.sleep(0.05 * (attempt + 1))
++        except Exception:
++            db.rollback()
++            raise
++    return None
++
++def get_document_history(db: Session, document_id: int, skip: int = 0, limit: int = 100):
++    """
++    Retrieves metadata only for document revisions with pagination support.
++    """
++    # Verify document exists first
++    doc_exists = db.query(models.Document.id).filter(models.Document.id == document_id).scalar()
++    if not doc_exists:
++        return None
++
++    return db.query(
++        models.Revision.id,
++        models.Revision.document_id,
++        models.Revision.version_number,
++        models.Revision.author_id,
++        models.Revision.timestamp
++    ).filter(models.Revision.document_id == document_id)\
++     .order_by(models.Revision.version_number.desc())\
++     .offset(skip)\
++     .limit(limit)\
++     .all()
++
++def get_document(db: Session, document_id: int):
++    return db.query(models.Document).filter(models.Document.id == document_id).first()
++
++def get_revision(db: Session, revision_id: int):
++    return db.query(models.Revision).filter(models.Revision.id == revision_id).first()
++
++def get_revision_by_version(db: Session, document_id: int, version_number: int):
++    return db.query(models.Revision).filter(
++        models.Revision.document_id == document_id,
++        models.Revision.version_number == version_number
++    ).first()
++
++def get_latest_revision(db: Session, document_id: int):
++    # Optimized lookup using the latest_revision_id in the Document table
++    doc = db.query(models.Document).filter(models.Document.id == document_id).first()
++    if doc and doc.latest_revision_id:
++        return db.query(models.Revision).filter(models.Revision.id == doc.latest_revision_id).first()
++    return None
++
++def rollback_document(db: Session, document_id: int, target_revision_id: int, author_id: str):
++    """
++    Rolls back a document by copying a historical revision into a new revision.
++    Ensures the target revision belongs to the specified document.
++    """
++    # 1. Fetch the historical revision with strict document ownership check
++    # Also optimized to only fetch content if needed, but we need it for the copy.
++    target_revision = db.query(models.Revision).filter(
++        models.Revision.id == target_revision_id,
++        models.Revision.document_id == document_id
++    ).first()
++    
++    if not target_revision:
++        return None
++
++    # 2. Perform a standard update but with historical content
++    return update_document(db, document_id, schemas.DocumentUpdate(
++        content=target_revision.content,
++        author_id=author_id
++    ))
++
++def get_all_documents(db: Session, skip: int = 0, limit: int = 100):
++    return db.query(models.Document).offset(skip).limit(limit).all()
++
+diff --git a/repository_after/database.py b/repository_after/database.py
+new file mode 100644
+index 0000000..4bd624f
+--- /dev/null
++++ b/repository_after/database.py
+@@ -0,0 +1,18 @@
++import os
++from sqlalchemy import create_engine
++from sqlalchemy.orm import declarative_base, sessionmaker
++
++# Strict PostgreSQL requirement
++SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@db:5432/markdown_db")
++
++engine = create_engine(SQLALCHEMY_DATABASE_URL)
++SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
++
++Base = declarative_base()
++
++def get_db():
++    db = SessionLocal()
++    try:
++        yield db
++    finally:
++        db.close()
+diff --git a/repository_after/main.py b/repository_after/main.py
+new file mode 100644
+index 0000000..bc4d78f
+--- /dev/null
++++ b/repository_after/main.py
+@@ -0,0 +1,25 @@
++from fastapi import FastAPI
++from . import models
++from .database import engine
++from .api.endpoints import router as api_router
++
++from contextlib import asynccontextmanager
++
++@asynccontextmanager
++async def lifespan(app: FastAPI):
++    # Create the database tables on startup
++    models.Base.metadata.create_all(bind=engine)
++    yield
++
++app = FastAPI(
++    title="Headless Markdown Versioning Engine",
++    description="A backend-only service to manage document lifecycles with strict versioning.",
++    version="1.0.0",
++    lifespan=lifespan
++)
++
++app.include_router(api_router, prefix="/api")
++
++@app.get("/")
++def read_root():
++    return {"message": "Welcome to the Headless Markdown Versioning Engine API"}
+diff --git a/repository_after/models.py b/repository_after/models.py
+new file mode 100644
+index 0000000..3a058a6
+--- /dev/null
++++ b/repository_after/models.py
+@@ -0,0 +1,37 @@
++from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Index
++from sqlalchemy.orm import relationship
++from datetime import datetime, timezone
++from .database import Base
++
++class Document(Base):
++    __tablename__ = "documents"
++
++    id = Column(Integer, primary_key=True, index=True)
++    title = Column(String, nullable=False)
++    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
++    
++    # Store the latest revision ID for O(1) lookup
++    latest_revision_id = Column(Integer, index=True, nullable=True)
++
++    revisions = relationship("Revision", back_populates="document", cascade="all, delete-orphan")
++
++class Revision(Base):
++    __tablename__ = "revisions"
++
++    id = Column(Integer, primary_key=True, index=True)
++    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False, index=True)
++    version_number = Column(Integer, nullable=False)
++    content = Column(Text, nullable=False)
++    author_id = Column(String, nullable=False)
++    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
++
++    document = relationship("Document", back_populates="revisions")
++
++    @property
++    def title(self):
++        return self.document.title if self.document else "Unknown"
++
++    # Composite index for faster history retrieval by document
++    __table_args__ = (
++        Index("ix_revision_document_version", "document_id", "version_number", unique=True),
++    )
+diff --git a/repository_after/schemas.py b/repository_after/schemas.py
+new file mode 100644
+index 0000000..ecf49b3
+--- /dev/null
++++ b/repository_after/schemas.py
+@@ -0,0 +1,51 @@
++from pydantic import BaseModel, ConfigDict, Field
++from datetime import datetime
++from typing import Optional, List
++
++class RevisionBase(BaseModel):
++    content: str = Field(..., min_length=1, description="Markdown content of the revision")
++    author_id: str = Field(..., min_length=3, max_length=50, description="Identifier of the author")
++
++class RevisionCreate(RevisionBase):
++    pass
++
++class RevisionMetadata(BaseModel):
++    id: int
++    document_id: int
++    version_number: int
++    author_id: str
++    timestamp: datetime
++
++    model_config = ConfigDict(from_attributes=True)
++
++class DocumentBase(BaseModel):
++    title: str = Field(..., min_length=1, max_length=255, description="Title of the document")
++
++class DocumentCreate(DocumentBase):
++    content: str = Field(..., min_length=1)
++    author_id: str = Field(..., min_length=3, max_length=50)
++
++class DocumentUpdate(BaseModel):
++    content: str = Field(..., min_length=1)
++    author_id: str = Field(..., min_length=3, max_length=50)
++
++class DocumentResponse(DocumentBase):
++    id: int
++    created_at: datetime
++    latest_revision: Optional[RevisionMetadata] = None
++    latest_content: Optional[str] = None
++
++    model_config = ConfigDict(from_attributes=True)
++
++class RevisionFull(RevisionMetadata):
++    title: str # Included for document context in snapshots
++    content: str
++    html_content: Optional[str] = None
++
++    model_config = ConfigDict(from_attributes=True)
++
++class DiffResponse(BaseModel):
++    old_version_id: int
++    new_version_id: int
++    diff: List[dict] # Structured representation of changes
++    patch: str # Standard Unified Diff patch
+diff --git a/repository_after/services/__init__.py b/repository_after/services/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/repository_after/services/diff_service.py b/repository_after/services/diff_service.py
+new file mode 100644
+index 0000000..330c7b0
+--- /dev/null
++++ b/repository_after/services/diff_service.py
+@@ -0,0 +1,70 @@
++from diff_match_patch import diff_match_patch
++import re
++import difflib
++
++class DiffService:
++    @staticmethod
++    def get_structured_diff(old_content: str, new_content: str):
++        """
++        Computes a word-based diff between two markdown contents.
++        Encodes words as characters to use the DMP algorithm at a word level.
++        """
++        dmp = diff_match_patch()
++        
++        # 1. Tokenize into words (keeping whitespace/punctuation as separate tokens)
++        def tokenize(text):
++            return re.findall(r"[\w']+|[^\w\s]|\s+", text)
++
++        old_words = tokenize(old_content)
++        new_words = tokenize(new_content)
++
++        # 2. Map words to characters for the DMP algorithm
++        word_to_char = {}
++        char_to_word = []
++        
++        def words_to_chars(words):
++            chars = []
++            for word in words:
++                if word not in word_to_char:
++                    word_to_char[word] = chr(len(char_to_word))
++                    char_to_word.append(word)
++                chars.append(word_to_char[word])
++            return "".join(chars)
++
++        old_chars = words_to_chars(old_words)
++        new_chars = words_to_chars(new_words)
++
++        # 3. Perform the diff on characters
++        diffs = dmp.diff_main(old_chars, new_chars)
++        dmp.diff_cleanupSemantic(diffs)
++
++        # 4. Map characters back to words
++        result = []
++        for op, text in diffs:
++            # Convert the sequence of characters back to the sequence of words
++            word_text = "".join(char_to_word[ord(c)] for c in text)
++            
++            if op == -1:
++                result.append({"type": "delete", "text": word_text})
++            elif op == 1:
++                result.append({"type": "insert", "text": word_text})
++            else:
++                result.append({"type": "equal", "text": word_text})
++        
++        return result
++
++    @staticmethod
++    def get_unified_diff(old_content: str, new_content: str, from_file: str = "old_version", to_file: str = "new_version") -> str:
++        """
++        Generates a standard Unified Diff patch.
++        """
++        old_lines = old_content.splitlines(keepends=True)
++        new_lines = new_content.splitlines(keepends=True)
++        
++        diff = difflib.unified_diff(
++            old_lines, 
++            new_lines, 
++            fromfile=from_file, 
++            tofile=to_file
++        )
++        return "".join(diff)
+diff --git a/repository_after/services/markdown_service.py b/repository_after/services/markdown_service.py
+new file mode 100644
+index 0000000..58a9207
+--- /dev/null
++++ b/repository_after/services/markdown_service.py
+@@ -0,0 +1,48 @@
++import markdown
++import bleach
++
++class MarkdownService:
++    # Allowed tags and attributes for sanitization
++    ALLOWED_TAGS = [
++        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
++        'p', 'br', 'strong', 'em', 'u', 's', 'ol', 'ul', 'li',
++        'blockquote', 'code', 'pre', 'hr', 'a', 'img', 'table',
++        'thead', 'tbody', 'tr', 'th', 'td'
++    ]
++    
++    ALLOWED_ATTRIBUTES = {
++        'a': ['href', 'title'],
++        'img': ['src', 'alt', 'title']
++    }
++
++    @staticmethod
++    def render_to_html(content: str) -> str:
++        """
++        Renders markdown to HTML and sanitizes the output.
++        """
++        # Convert Markdown to HTML
++        # Using common extensions for better output
++        html = markdown.markdown(content, extensions=['extra', 'codehilite'])
++        
++        # Sanitize HTML
++        sanitized_html = bleach.clean(
++            html,
++            tags=MarkdownService.ALLOWED_TAGS,
++            attributes=MarkdownService.ALLOWED_ATTRIBUTES
++        )
++        
++        return sanitized_html
++
++    @staticmethod
++    def sanitize_markdown(content: str) -> str:
++        """
++        Sanitizes raw markdown content to ensure no malicious tags are stored.
++        """
++        # We sanitize the raw content to remove any embedded HTML scripts/styles
++        # while keeping the markdown syntax intact.
++        return bleach.clean(
++            content,
++            tags=MarkdownService.ALLOWED_TAGS,
++            attributes=MarkdownService.ALLOWED_ATTRIBUTES,
++            strip=True
++        )

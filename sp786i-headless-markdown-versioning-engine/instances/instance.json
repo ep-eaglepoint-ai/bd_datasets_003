@@ -1,0 +1,11 @@
+{
+            "instance_id": "SP786I",
+            "problem_statement": "We are initiating the development of a core Headless Document Engine that provides industrial-grade version control for Markdown content. This service must act as the source of truth for all documentation, maintaining an immutable audit trail of every change and providing advanced API-driven features like content diffing, historical snapshots, and atomic rollbacks without any frontend dependencies.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/sp786i-headless-markdown-versioning-engine",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
