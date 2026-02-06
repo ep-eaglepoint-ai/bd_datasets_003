@@ -1,11 +1,10 @@
 import { CircuitBreaker, CircuitState, CircuitOpenError } from '../repository_after/src';
 
 /**
- * Tests addressing reviewer comments for CircuitBreaker implementation.
- * Each describe block maps directly to a reviewer comment.
+ * Tests addressing for CircuitBreaker implementation.
  */
 
-describe('Reviewer Comment 1: Success threshold behavior', () => {
+describe('Success threshold behavior', () => {
   describe('successThreshold > 1 behavior', () => {
     let breaker: CircuitBreaker;
 
@@ -120,7 +119,7 @@ describe('Reviewer Comment 1: Success threshold behavior', () => {
   });
 });
 
-describe('Reviewer Comment 2: HTTP-specific async usage', () => {
+describe('HTTP-specific async usage', () => {
   // Using native fetch (available in Node 18+)
   const mockServer = {
     port: 0,
@@ -308,7 +307,7 @@ describe('Reviewer Comment 2: HTTP-specific async usage', () => {
   });
 });
 
-describe('Reviewer Comment 3: State-transition race conditions', () => {
+describe('State-transition race conditions', () => {
   describe('concurrent requests during OPEN → HALF_OPEN transition', () => {
     test('high concurrency during transition - only one probe executes', async () => {
       const breaker = new CircuitBreaker({
@@ -469,7 +468,7 @@ describe('Reviewer Comment 3: State-transition race conditions', () => {
   });
 });
 
-describe('Reviewer Comment 4: Open-state call blocking verification', () => {
+describe('Open-state call blocking verification', () => {
   describe('calls blocked after circuit opens due to failures', () => {
     test('all calls rejected immediately after failure-triggered open', async () => {
       const breaker = new CircuitBreaker({
@@ -601,7 +600,7 @@ describe('Reviewer Comment 4: Open-state call blocking verification', () => {
   });
 });
 
-describe('Reviewer Comment 5: Load/stress behavior validation', () => {
+describe('Load/stress behavior validation', () => {
   describe('sustained load with high request counts', () => {
     test('stable state transitions under high load', async () => {
       const breaker = new CircuitBreaker({
@@ -830,7 +829,7 @@ describe('Reviewer Comment 5: Load/stress behavior validation', () => {
   });
 });
 
-describe('Reviewer Comment 6: Error message validation', () => {
+describe('Error message validation', () => {
   describe('OPEN-state rejection error messages', () => {
     test('CircuitOpenError message for OPEN state rejection', async () => {
       const breaker = new CircuitBreaker({
