@@ -1,0 +1,11 @@
+{
+            "instance_id": "L2ZX7J",
+            "problem_statement": "Implement a pure data-processing function that takes an array of objects, removes invalid entries, and conditionally normalizes valid ones. Objects marked with active: false must be excluded from the result. For remaining objects, the name field must be trimmed if it is a string. The function must guarantee zero mutation of the input data and preserve reference identity wherever no transformation is required. New objects may only be created when a transformation actually occurs, and unchanged objects must remain referentially equal to their input counterparts. The result must strictly reflect these rules without introducing additional behavior, assumptions, or side effects.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/l2zx7j-identity-preserving-object-transformation-with-conditional-filtering",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
