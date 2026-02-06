@@ -7,13 +7,9 @@ module.exports = {
     throwOnModuleCollision: false,
   },
   
-  // Enable fake timers globally
   fakeTimers: {
     enableGlobally: true,
   },
-  
-  // Remove setupFilesAfterEnv or point to correct path
-  // setupFilesAfterEnv: ['<rootDir>/tests/setup.js'],
   
   testMatch: [
     '<rootDir>/tests/**/*.test.js',
