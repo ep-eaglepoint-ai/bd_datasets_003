@@ -49,6 +49,14 @@ func (s *Store) Get(key string) (string, bool) {
 	return value, ok
 }
 
+// Exists checks if a key exists in the store
+func (s *Store) Exists(key string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	_, ok := s.data[key]
+	return ok
+}
+
 // Set stores a key-value pair
 func (s *Store) Set(key, value string) {
 	s.mu.Lock()
@@ -68,7 +76,7 @@ func (s *Store) GetSnapshot() map[string]string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	snapshot := make(map[string]string)
+	snapshot := make(map[string]string, len(s.data))
 	for k, v := range s.data {
 		snapshot[k] = v
 	}
@@ -80,7 +88,7 @@ func (s *Store) RestoreSnapshot(data map[string]string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.data = make(map[string]string)
+	s.data = make(map[string]string, len(data))
 	for k, v := range data {
 		s.data[k] = v
 	}
@@ -98,4 +106,16 @@ func (s *Store) Clear() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.data = make(map[string]string)
+}
+
+// Keys returns all keys in the store
+func (s *Store) Keys() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	keys := make([]string, 0, len(s.data))
+	for k := range s.data {
+		keys = append(keys, k)
+	}
+	return keys
 }

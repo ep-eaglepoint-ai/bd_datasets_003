@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -42,12 +43,18 @@ func TestSnapshotCreation(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// Verify data is still accessible via linearizable read
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	for _, node := range cluster.Nodes {
 		if node.IsLeader() {
-			_, err := node.Read(nil, "snapshot-key")
+			value, err := node.Read(ctx, "snapshot-key")
 			if err != nil && err != raft.ErrNotLeader {
 				t.Logf("Read error: %v", err)
+			} else {
+				t.Logf("Read value after snapshot: %s", value)
 			}
+			break
 		}
 	}
 
@@ -151,4 +158,47 @@ func TestLogCompaction(t *testing.T) {
 	}
 
 	t.Log("✓ Log compaction successful")
+}
+
+func TestSnapshotReplication(t *testing.T) {
+	cluster, err := testutil.NewTestCluster(3)
+	if err != nil {
+		t.Fatalf("Failed to create cluster: %v", err)
+	}
+	defer cluster.Cleanup()
+
+	if err := cluster.Start(); err != nil {
+		t.Fatalf("Failed to start cluster: %v", err)
+	}
+
+	leader, err := cluster.WaitForStableLeader(30 * time.Second)
+	if err != nil {
+		t.Fatalf("Failed to elect stable leader: %v", err)
+	}
+
+	// Write data
+	for i := 0; i < 20; i++ {
+		cmd := raft.Command{
+			Type:  raft.CommandSet,
+			Key:   "replicate-key",
+			Value: string(rune('0' + i%10)),
+		}
+		cluster.SubmitCommand(cmd, 5*time.Second)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	// Create snapshot on leader
+	leader.CreateSnapshot(leader.GetCommitIndex())
+
+	time.Sleep(500 * time.Millisecond)
+
+	// Verify all nodes have the data
+	for i, store := range cluster.Stores {
+		if _, ok := store.Get("replicate-key"); !ok {
+			t.Errorf("Store %d: replicate-key not found", i)
+		}
+	}
+
+	t.Log("✓ Snapshot replication test passed")
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/vzdtic/distributed-consensus-raft-kv-store/repository_after/pkg/kv"
@@ -13,24 +14,28 @@ import (
 type HTTPHandler struct {
 	node  *raft.Node
 	store *kv.Store
+	mux   *http.ServeMux
 }
 
 func NewHTTPHandler(node *raft.Node, store *kv.Store) *HTTPHandler {
-	return &HTTPHandler{
+	h := &HTTPHandler{
 		node:  node,
 		store: store,
+		mux:   http.NewServeMux(),
 	}
+
+	h.mux.HandleFunc("/kv/", h.handleKV)
+	h.mux.HandleFunc("/status", h.handleStatus)
+
+	return h
 }
 
 func (h *HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/kv/", h.handleKV)
-	mux.HandleFunc("/status", h.handleStatus)
-	mux.ServeHTTP(w, r)
+	h.mux.ServeHTTP(w, r)
 }
 
 func (h *HTTPHandler) handleKV(w http.ResponseWriter, r *http.Request) {
-	key := r.URL.Path[len("/kv/"):]
+	key := strings.TrimPrefix(r.URL.Path, "/kv/")
 	if key == "" {
 		http.Error(w, "key required", http.StatusBadRequest)
 		return
@@ -38,9 +43,14 @@ func (h *HTTPHandler) handleKV(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		// Use linearizable read through Raft
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
+
+		// First check if we're the leader
+		if !h.node.IsLeader() {
+			h.respondNotLeader(w)
+			return
+		}
 
 		value, err := h.node.Read(ctx, key)
 		if err != nil {
@@ -48,16 +58,19 @@ func (h *HTTPHandler) handleKV(w http.ResponseWriter, r *http.Request) {
 				h.respondNotLeader(w)
 				return
 			}
+			if err == raft.ErrTimeout || err == context.DeadlineExceeded {
+				http.Error(w, "request timeout", http.StatusGatewayTimeout)
+				return
+			}
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		if value == "" {
-			// Check if key exists
-			if _, ok := h.store.Get(key); !ok {
-				http.Error(w, "key not found", http.StatusNotFound)
-				return
-			}
+		// Check if key exists (value could be empty string)
+		exists := h.store.Exists(key)
+		if !exists {
+			http.Error(w, "key not found", http.StatusNotFound)
+			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -68,7 +81,7 @@ func (h *HTTPHandler) handleKV(w http.ResponseWriter, r *http.Request) {
 			Value string `json:"value"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			http.Error(w, "invalid request body: "+err.Error(), http.StatusBadRequest)
 			return
 		}
 
@@ -85,6 +98,10 @@ func (h *HTTPHandler) handleKV(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			if err == raft.ErrNotLeader {
 				h.respondNotLeader(w)
+				return
+			}
+			if err == context.DeadlineExceeded {
+				http.Error(w, "request timeout", http.StatusGatewayTimeout)
 				return
 			}
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -110,6 +127,10 @@ func (h *HTTPHandler) handleKV(w http.ResponseWriter, r *http.Request) {
 				h.respondNotLeader(w)
 				return
 			}
+			if err == context.DeadlineExceeded {
+				http.Error(w, "request timeout", http.StatusGatewayTimeout)
+				return
+			}
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -123,7 +144,6 @@ func (h *HTTPHandler) handleKV(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// respondNotLeader returns a redirect response with leader info
 func (h *HTTPHandler) respondNotLeader(w http.ResponseWriter) {
 	leaderID := h.node.GetLeaderID()
 	w.Header().Set("Content-Type", "application/json")

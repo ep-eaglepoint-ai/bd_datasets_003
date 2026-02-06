@@ -32,18 +32,38 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Parse peer addresses with proper splitting
+	// Parse and validate peer addresses
 	peerAddrs := make(map[string]string)
 	peerIDs := make([]string, 0)
+	seenPeers := make(map[string]bool)
+
 	if *peers != "" {
 		for _, peer := range strings.Split(*peers, ",") {
 			peer = strings.TrimSpace(peer)
-			parts := strings.SplitN(peer, "=", 2) // Use SplitN to handle values with "="
-			if len(parts) == 2 {
-				peerAddrs[parts[0]] = parts[1]
-				if parts[0] != *nodeID {
-					peerIDs = append(peerIDs, parts[0])
-				}
+			if peer == "" {
+				continue
+			}
+
+			parts := strings.SplitN(peer, "=", 2)
+			if len(parts) != 2 {
+				log.Fatalf("Invalid peer format: %s (expected id=addr)", peer)
+			}
+
+			peerID := strings.TrimSpace(parts[0])
+			peerAddr := strings.TrimSpace(parts[1])
+
+			if peerID == "" || peerAddr == "" {
+				log.Fatalf("Invalid peer: empty id or address in '%s'", peer)
+			}
+
+			if seenPeers[peerID] {
+				log.Fatalf("Duplicate peer ID: %s", peerID)
+			}
+			seenPeers[peerID] = true
+
+			peerAddrs[peerID] = peerAddr
+			if peerID != *nodeID {
+				peerIDs = append(peerIDs, peerID)
 			}
 		}
 	}
@@ -67,7 +87,6 @@ func main() {
 
 	store := kv.NewStore()
 
-	// Create transport and set node BEFORE starting
 	transport := grpctransport.NewGRPCTransport(*addr, peerAddrs)
 
 	config := raft.NodeConfig{
@@ -94,8 +113,10 @@ func main() {
 	}
 
 	apiServer := &http.Server{
-		Addr:    *httpAddr,
-		Handler: api.NewHTTPHandler(node, store),
+		Addr:         *httpAddr,
+		Handler:      api.NewHTTPHandler(node, store),
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
 	}
 
 	go func() {
@@ -115,9 +136,8 @@ func main() {
 	defer cancel()
 
 	apiServer.Shutdown(ctx)
-	transport.Stop()
 	node.Stop()
-	walInstance.Close()
+	transport.Stop()
 
 	log.Println("Shutdown complete")
 }
