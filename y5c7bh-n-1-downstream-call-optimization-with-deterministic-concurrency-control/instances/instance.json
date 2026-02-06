@@ -1,0 +1,11 @@
+{
+            "instance_id": "Y5C7BH",
+            "problem_statement": "The task is to optimize an in-memory JavaScript function that builds customer overviews by fetching related data (owners, tags, orders, invoices). The legacy implementation suffers from an N+1 request pattern, redundant downstream calls, and sequential execution, leading to poor performance at scale. The optimized solution must reduce redundant fetches, introduce explicit concurrency control, and improve throughput while preserving the exact output structure, ordering, and failure fallback behavior of the original implementation. Input data must not be mutated, caching must be scoped to a single function call, and execution must remain deterministic regardless of concurrency.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/y5c7bh-n-1-downstream-call-optimization-with-deterministic-concurrency-control",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
