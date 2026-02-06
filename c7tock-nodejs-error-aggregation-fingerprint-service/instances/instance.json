@@ -1,0 +1,11 @@
+{
+            "instance_id": "C7TOCK",
+            "problem_statement": "The project requires the development of a high-throughput backend service called SentinelProcessor that ingests raw application crash reports and aggregates them into logical issues. In production systems, a single bug can trigger thousands of near-identical crash logs per second, leading to a phenomenon known as Issue Explosion. The core challenge is to implement a deterministic fingerprinting algorithm that extracts a stable signature from messy, unstructured stack traces. This signature must remain identical even when volatile data such as timestamps, specific memory addresses, varying file paths, or ephemeral session IDs differs between individual report instances. The service must efficiently group these reports in-memory and provide a mechanism to trigger notifications only when a truly new bug is detected or when a recurring bug exceeds a specific frequency threshold.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/c7tock-nodejs-error-aggregation-fingerprint-service",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
