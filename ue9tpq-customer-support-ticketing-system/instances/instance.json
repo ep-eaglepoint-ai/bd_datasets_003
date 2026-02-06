@@ -1,0 +1,11 @@
+{
+            "instance_id": "UE9TPQ",
+            "problem_statement": "You are tasked with building a Customer Support Ticketing System for a mid-size company to manage customer inquiries, track issue resolution, and measure support performance. The previous system led to lost tickets, delayed responses, and poor reporting. Your goal is to create a Node.js backend API that allows customers to submit tickets, agents to manage them, and the company to track SLA compliance, agent performance, and ticket status—all while preventing lost or unresolved tickets.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ue9tpq-customer-support-ticketing-system",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
