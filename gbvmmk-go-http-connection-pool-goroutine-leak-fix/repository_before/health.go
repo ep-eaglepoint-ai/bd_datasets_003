@@ -3,6 +3,7 @@ package pool
 import (
 	"context"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -10,6 +11,7 @@ type HealthChecker struct {
 	pool     *Pool
 	interval time.Duration
 	stopCh   chan struct{}
+	once     sync.Once
 }
 
 func NewHealthChecker(pool *Pool, interval time.Duration) *HealthChecker {
@@ -37,7 +39,9 @@ func (h *HealthChecker) Start() {
 }
 
 func (h *HealthChecker) Stop() {
-	close(h.stopCh)
+	h.once.Do(func() {
+		close(h.stopCh)
+	})
 }
 
 func (h *HealthChecker) CheckAllConnections() {

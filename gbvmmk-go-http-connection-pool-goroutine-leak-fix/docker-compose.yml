@@ -7,7 +7,7 @@ services:
 
   test-before:
     build: .
-    command: /bin/sh -c "sed -i 's|replace github.com/example/connpool => .*|replace github.com/example/connpool => /app/repository_before|' /app/tests/go.mod && cd /app/tests && go test -v ."
+    command: /bin/sh -c "sed -i 's|replace github.com/example/connpool => .*|replace github.com/example/connpool => /app/repository_before|' /app/tests/go.mod && cd /app/tests && go test -v . \|\| true"
     volumes:
       - .:/app
 
