@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: irrigation_db
+      POSTGRES_USER: irrigation_user
+      POSTGRES_PASSWORD: irrigation_pass
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U irrigation_user -d irrigation_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  repository-after:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: >
+      bash -c "
+        echo 'Waiting for database...' &&
+        sleep 5 &&
+        cd /app/repository_after &&
+        python manage.py migrate --noinput &&
+        echo 'Running tests...' &&
+        python -m pytest /app/tests/ -v --tb=short
+      "
+    environment:
+      - DATABASE_URL=postgres://irrigation_user:irrigation_pass@db:5432/irrigation_db
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - DJANGO_SETTINGS_MODULE=irrigation_control.settings
+      - PYTHONPATH=/app/repository_after
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./repository_after:/app/repository_after
+      - ./tests:/app/tests
+
+  evaluation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: >
+      bash -c "
+        echo 'Waiting for database...' &&
+        sleep 5 &&
+        cd /app/repository_after &&
+        python manage.py migrate --noinput &&
+        python /app/evaluation/evaluation.py
+      "
+    environment:
+      - DATABASE_URL=postgres://irrigation_user:irrigation_pass@db:5432/irrigation_db
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - DJANGO_SETTINGS_MODULE=irrigation_control.settings
+      - PYTHONPATH=/app/repository_after
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./repository_after:/app/repository_after
+      - ./tests:/app/tests
+      - ./evaluation:/app/evaluation
+
+volumes:
+  postgres_data:

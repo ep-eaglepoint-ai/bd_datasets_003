@@ -1,0 +1,20 @@
+{
+  "instance_id": "H4WN4G",
+  "problem_statement": "The fundamental engineering challenge involves managing the friction between stateless web requests and stateful physical hardware. Naive implementations typically treat the \"Check-Decide-Act\" loop as a simple conditional statement (if moisture < 10: run_pump()). In a high-concurrency environment with noisy sensors, this creates a \"Thundering Herd\" effect where overlapping requests trigger the pump multiple times efficiently bypassing software checks due to race conditions, leading to physical flooding or hardware destruction. The solution requires utilizing the database as a synchronization primitive using row locks to ensure that only one process can inspect and update the pump's state at a time.",
+  "base_commit": "repository_before/",
+  "test_patch": "tests/",
+  "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/h4wn4g-iot-irrigation-control-with-pessimistic-locking-and-sql-aggregation",
+  "environment_setup": "Dockerfile",
+  "FAIL_TO_PASS": [
+    "pessimistic_locking",
+    "cooldown_enforcement",
+    "max_runtime_enforcement",
+    "sql_aggregation",
+    "celery_background_tasks",
+    "single_activation_under_concurrency",
+    "database_indexes",
+    "atomic_status_and_task_commit",
+    "timezone_aware_timestamps"
+  ],
+  "PASS_TO_PASS": []
+}
