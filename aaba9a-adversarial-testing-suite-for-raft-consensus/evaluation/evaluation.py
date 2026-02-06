@@ -109,7 +109,12 @@ def run_pytest_tests(tests_dir, label, target_repo):
     
     # Run tests
     # We run the META tests, which will inspect the target repo
-    cmd = ["pytest", str(tests_dir)]
+    # If tests_dir is a list, pass multiple args
+    cmd = ["pytest"]
+    if isinstance(tests_dir, list):
+        cmd.extend([str(p) for p in tests_dir])
+    else:
+        cmd.append(str(tests_dir))
     
     try:
         result = subprocess.run(
@@ -125,7 +130,43 @@ def run_pytest_tests(tests_dir, label, target_repo):
         
         passed, failed, skipped, total = parse_pytest_output(stdout)
         
+        # Parse custom metrics from STDOUT
+        # Format: METRIC: Name=Value
+        metrics = {}
+        for line in stdout.splitlines():
+            if "METRIC:" in line:
+                try:
+                    parts = line.split("METRIC:")[1].strip().split("=")
+                    key = parts[0].strip()
+                    val_str = parts[1].strip()
+                    # Try to parse as float/int
+                    if "s" in val_str and val_str.endswith("s"):
+                        val = float(val_str.replace("s", ""))
+                    elif "." in val_str:
+                        val = float(val_str)
+                    else:
+                        val = int(val_str)
+                    
+                    # Store
+                    if key not in metrics:
+                         metrics[key] = []
+                    metrics[key].append(val)
+                except:
+                    pass
+        
+        # Summarize metrics (e.g. max recovery latency, total violations)
+        final_metrics = {}
+        for k, vals in metrics.items():
+            if k == "SafetyViolations":
+                 final_metrics["total_safety_violations"] = sum(vals)
+            elif k == "RecoveryLatency":
+                 final_metrics["max_recovery_latency_s"] = max(vals) if vals else 0
+                 final_metrics["avg_recovery_latency_s"] = sum(vals) / len(vals) if vals else 0
+        
         print(f"\nResults: {passed} passed, {failed} failed, {skipped} skipped (total: {total})")
+        if final_metrics:
+            print(f"Metrics: {final_metrics}")
+
         print(stdout)
         if stderr:
             print("STDERR:")
@@ -141,6 +182,7 @@ def run_pytest_tests(tests_dir, label, target_repo):
                 "skipped": skipped,
                 "errors": 0,
             },
+            "metrics": final_metrics,
             "stdout": stdout[-3000:] if len(stdout) > 3000 else stdout,
             "stderr": stderr[-1000:] if len(stderr) > 1000 else stderr,
         }
@@ -200,14 +242,10 @@ def run_evaluation():
     print(f"{'=' * 60}")
     
     after_results = run_pytest_tests(
-        tests_dir,
+        [tests_dir, "/app/repository_after"],
         "after (repository_after)",
         "repository_after"
     )
-    
-    # Also run the Primary Tests directly if possible regarding the plan?
-    # The requirement says "run meta-tests against both". 
-    # Our meta-tests check check for primary tests existence and discoverability.
     
     # Build comparison
     comparison = {

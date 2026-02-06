@@ -22,11 +22,29 @@ class MockRaftNode(RaftNodeProxy):
         self.partitioned_peers: Set[str] = set()
         self.is_isolated = False
         self.current_term = 1
+        self.latency = 0.0
+        self.packet_loss_prob = 0.0
         
+    async def _simulate_network(self) -> bool:
+        """Simulates network effects. Returns False if packet lost."""
+        if self.is_isolated:
+            return False
+        
+        if self.latency > 0:
+            await asyncio.sleep(self.latency)
+        else:
+            # Base network delay
+            await asyncio.sleep(random.uniform(0.01, 0.05))
+            
+        if self.packet_loss_prob > 0:
+            if random.random() < self.packet_loss_prob:
+                return False
+        return True
+
     async def set_val(self, key: str, val: str) -> bool:
-        # Simulate Network Delay
-        await asyncio.sleep(random.uniform(0.01, 0.05))
-        
+        if not await self._simulate_network():
+            return False
+            
         if self.is_isolated:
             return False
             
@@ -43,7 +61,10 @@ class MockRaftNode(RaftNodeProxy):
                 active_peers += 1
                 continue
             if peer_id not in self.partitioned_peers:
-                 active_peers += 1
+                 # Check probability of packet loss to peer? 
+                 # For simplicity, assume if node has packet loss, it affects all comms
+                 if random.random() >= self.packet_loss_prob:
+                    active_peers += 1
         
         if active_peers <= total_nodes // 2:
             return False # No Quorum
@@ -53,8 +74,8 @@ class MockRaftNode(RaftNodeProxy):
         return True
 
     async def get_val(self, key: str) -> str:
-        # Simulate Network Delay
-        await asyncio.sleep(random.uniform(0.01, 0.05))
+        if not await self._simulate_network():
+             raise ConnectionError("Packet lost")
         
         if self.is_isolated:
              raise ConnectionError("Node is isolated")
@@ -69,7 +90,8 @@ class MockRaftNode(RaftNodeProxy):
                 active_peers += 1
                 continue
             if peer_id not in self.partitioned_peers:
-                 active_peers += 1
+                 if random.random() >= self.packet_loss_prob:
+                     active_peers += 1
                  
         if active_peers <= total_nodes // 2:
              raise ConnectionError("Partitioned from majority")
@@ -77,6 +99,11 @@ class MockRaftNode(RaftNodeProxy):
         return self.shared_storage.get(key, "")
 
     async def get_term(self) -> int:
+        if not await self._simulate_network():
+             # If packet loss on term check, maybe just return last known or raise?
+             # Raising might break the test loop assertions.
+             # Let's say get_term is a local operation not subject to network (except latency to querying client)
+             pass
         return self.current_term
 
     async def isolate(self):
@@ -88,6 +115,14 @@ class MockRaftNode(RaftNodeProxy):
     async def heal(self):
         self.is_isolated = False
         self.partitioned_peers.clear()
+        self.latency = 0.0
+        self.packet_loss_prob = 0.0
+
+    async def set_latency(self, delay: float):
+        self.latency = delay
+
+    async def set_packet_loss(self, probability: float):
+        self.packet_loss_prob = probability
 
 # --- Fixtures ---
 
@@ -154,16 +189,21 @@ async def heal_all(nodes: List[MockRaftNode]):
 # --- Main Test ---
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("fault_type", ["random_partition", "bridge", "cyclic", "packet_loss"])
-async def test_raft_system_under_chaos(cluster, orchestrator, fault_type):
+@pytest.mark.parametrize("fault_type, packet_loss_prob, partition_size", [
+    ("random_partition", 0.0, "random"),
+    ("bridge", 0.0, "2v3"),
+    ("cyclic", 0.0, "cyclic"),
+    ("packet_loss", 0.3, "none"),
+    ("packet_loss", 0.1, "none"), # Varying packet loss severity
+])
+async def test_raft_system_under_chaos(cluster, orchestrator, fault_type, packet_loss_prob, partition_size):
     """
     REQ 1, 2, 3, 4, 5, 6, 7, 8
     """
-    duration = 10 # Shortened for this run, would be longer in real life
+    duration = 10 
     start_time = time.time()
     
     # Requirement 2: Concurrent Client Simulation
-    # We will spawn a background task that sends requests
     
     async def client_worker(worker_id):
         while time.time() - start_time < duration:
@@ -171,9 +211,10 @@ async def test_raft_system_under_chaos(cluster, orchestrator, fault_type):
             val = f"val_{worker_id}_{random.randint(0, 1000)}"
             node = random.choice(cluster)
             
-            # Req 7: Interleave ops with faults (happens via parallel execution here)
             op_start = time.time()
             try:
+                # REQ 8: Packet Loss Interleaving (implicit in node behavior if set)
+                # But here we just assume the node handles it.
                 if random.random() > 0.5:
                     success = await node.set_val(key, val)
                     op_end = time.time()
@@ -184,40 +225,31 @@ async def test_raft_system_under_chaos(cluster, orchestrator, fault_type):
                     op_end = time.time()
                     orchestrator.history.append(("GET", key, res, op_start, op_end, node.node_id))
             except Exception:
-                # Expected during partitions
                 pass
             
             await asyncio.sleep(random.uniform(0.1, 0.3))
 
     workers = [asyncio.create_task(client_worker(i)) for i in range(5)]
     
+    # REQ 5: Track previous terms for monotonicity
+    previous_terms = {n.node_id: 0 for n in cluster}
+
     # Chaos Loop
     iteration = 0
     while time.time() - start_time < duration:
         iteration += 1
         
         # Req 5: Term Monotonicity Polling
-        terms = []
         for n in cluster:
             t = await n.get_term()
-            terms.append(t)
-            # Check monotonicity relative to previous check (simplified here to just be valid)
-            assert t >= 1
+            assert t >= previous_terms[n.node_id], f"Term Regression! Node {n.node_id} regressed from {previous_terms[n.node_id]} to {t}"
+            previous_terms[n.node_id] = t
             
         # Inject Fault
         if fault_type == "random_partition":
             orchestrator.inject_random_partition()
-            # For the mock, we need to apply this to the nodes
-            # The orchestrator in this mock setup just returns the sets, 
-            # effectively we need to implement the side effects if orchestrator didn't.
-            # But wait, orchestrator.inject_random_partition() in my implementation returns ids but doesn't call partition_from
-            # Let's fix that usage or do it here.
-            # My Orchestrator implementation printed but didn't call. 
-            # I will manually call here to be safe, or just rely on 'create_bridge_partition' logic style.
-            # Let's just do a simple split here for the mock.
-            ids_a, ids_b = orchestrator.inject_random_partition() # It returns tuple
+            ids_a, ids_b = orchestrator.inject_random_partition()
             if ids_a:
-                # Apply partition
                  nodes_a = [n for n in cluster if n.node_id in ids_a]
                  nodes_b = [n for n in cluster if n.node_id in ids_b]
                  for n in nodes_a:
@@ -230,18 +262,51 @@ async def test_raft_system_under_chaos(cluster, orchestrator, fault_type):
         elif fault_type == "cyclic":
             await create_cyclic_partition(cluster)
         
+        elif fault_type == "packet_loss":
+            # REQ 8: Packet Loss Injection
+            orchestrator.inject_packet_loss(packet_loss_prob)
+            for n in cluster:
+                await n.set_packet_loss(packet_loss_prob)
+
+        # REQ 7: Latency interleaving (randomly introduce latency spikes)
+        if random.random() < 0.3:
+            latency = random.uniform(0.1, 0.5)
+            orchestrator.inject_latency(latency)
+            for n in cluster:
+                await n.set_latency(latency)
+        
         await asyncio.sleep(1) # Let chaos simmer
         
         # Heal
         await heal_all(cluster)
+        # Clear packet loss/latency
+        for n in cluster:
+            await n.set_packet_loss(0.0)
+            await n.set_latency(0.0)
+
         await asyncio.sleep(1) # Let system recover
         
-        # Req 4: Liveness Assertion
-        # Assert that we can write after healing
+        # Req 4: Liveness Assertion (Time bounded recovery)
+        async def liveness_check():
+             current_attempt = 0
+             while True:
+                 try:
+                    res = await cluster[0].set_val(f"liveness_{iteration}", "ok")
+                    if res: return True
+                 except:
+                    pass
+                 current_attempt += 1
+                 if current_attempt > 10: return False # avoid infinite loop inside wait_for context if logic is stuck
+                 await asyncio.sleep(0.5)
+
         try:
-             # Try writing to a random node
-             res = await cluster[0].set_val("liveness_check", "ok")
-             assert res is True, "Cluster failed to recover liveness after healing"
+             # Wait max 5 seconds for recovery
+             start_recovery = time.time()
+             await asyncio.wait_for(liveness_check(), timeout=5.0)
+             recovery_time = time.time() - start_recovery
+             print(f"METRIC: RecoveryLatency={recovery_time:.4f}s")
+        except asyncio.TimeoutError:
+             pytest.fail("Cluster Liveness check failed: Did not recover within 5 seconds")
         except Exception as e:
              pytest.fail(f"Cluster Liveness check failed: {e}")
 
@@ -254,10 +319,9 @@ async def test_raft_system_under_chaos(cluster, orchestrator, fault_type):
     assert is_linearizable, "History verification failed. Possible Split Brain or Stale Read."
     
     # Req 6: Post-Chaos Consistency Check
-    # Verify all nodes see the same value for a specific key
     test_key = "consistency_check"
     await cluster[0].set_val(test_key, "final_val")
-    await asyncio.sleep(0.5) # Propagate
+    await asyncio.sleep(0.5)
     
     seen_values = set()
     for n in cluster:
@@ -265,8 +329,7 @@ async def test_raft_system_under_chaos(cluster, orchestrator, fault_type):
             val = await n.get_val(test_key)
             seen_values.add(val)
         except:
-            pass # Ignore nodes that might still be transiently down (unlikely with heal_all)
+            pass
             
     assert len(seen_values) == 1, f"Eventual consistency failed. Nodes see different values: {seen_values}"
     assert "final_val" in seen_values
-
