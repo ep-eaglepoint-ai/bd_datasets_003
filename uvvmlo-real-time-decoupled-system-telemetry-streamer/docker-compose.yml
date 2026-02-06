@@ -1,0 +1,16 @@
+services:
+  test-after:
+    build: .
+    working_dir: /app
+    command: sh -c "cd /app/tests && go test -v ./..."
+    environment:
+      - CGO_ENABLED=0
+
+  evaluation:
+    build: .
+    working_dir: /app
+    volumes:
+      - ./evaluation/reports:/app/evaluation/reports
+    command: sh -c "go run /app/evaluation/evaluation.go"
+    environment:
+      - CGO_ENABLED=0
