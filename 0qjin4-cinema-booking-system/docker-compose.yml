@@ -1,0 +1,10 @@
+# Docker Compose file for running tests.
+
+services:
+  app:
+    build: .
+    command: bash -c "cd tests && make clean && make REPO_DIR=${REPO_DIR:-repository_after} && make test"
+    volumes:
+      - .:/app
+    environment:
+      - REPO_DIR=${REPO_DIR:-repository_after}
