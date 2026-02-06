@@ -1,0 +1,31 @@
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: app
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  app:
+    build: .
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./coverage:/app/coverage
+      - ./evaluation/reports:/app/evaluation/reports
+    environment:
+      DATABASE_URL: postgres://app:app@postgres:5432/app
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: local-secret
+      PORT: 3000
+      USE_MOCKS: "1"
+      REPO_PATH: repository_after
