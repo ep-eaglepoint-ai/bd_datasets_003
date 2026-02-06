@@ -226,18 +226,13 @@ function normalizeActor(rawActor: any): AuditActor {
       type = parts[0].toUpperCase() as ActorType;
       id = parts[1];
     } else {
-      // Treat specific fallback logic or fail
-      // If just ID provided, we can't infer type reliably unless we have rules.
-      // Requirement says: "If actor cannot be resolved into a valid actorId and actorType... reject"
-      // Exception: maybe inferred from context? No, keep it strict string format "TYPE:ID" or reject?
-      // Prompt says "Handle ... colon-delimited strings, raw IDs".
-      // If raw ID "123" is passed, we probably can't guess type.
-      // Let's assume raw string without colon is INVALID unless we want to default roughly.
-      // But let's look at "raw IDs". If inputs are inconsistent, maybe we assume "USER" if it looks like email?
-      // Let's stick to: Must parse type.
-      // IF rawActor is just "admin", maybe it's USER:admin?
-      // Let's try to be helpful but strict on requirement 3.
-      throw new Error('Actor string format must be "TYPE:ID".');
+      // Valid raw ID (no colon) -> treat as USER
+      if (rawActor.indexOf(":") === -1) {
+        type = "USER";
+        id = rawActor;
+      } else {
+        throw new Error('Actor string format must be "TYPE:ID".');
+      }
     }
   } else if (typeof rawActor === "object") {
     id = rawActor.id || rawActor.actorId || rawActor.userId || "";

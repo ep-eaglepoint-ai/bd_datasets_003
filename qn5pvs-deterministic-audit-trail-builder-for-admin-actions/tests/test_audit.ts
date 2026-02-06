@@ -107,15 +107,19 @@ function runTests() {
     const input = [
       { actionType: "LOGIN", occurredAt: new Date(), actor: "USER:123" },
       { actionType: "LOGIN", occurredAt: new Date(), actor: "service:svc-1" },
+      { actionType: "LOGIN", occurredAt: new Date(), actor: "just-id" }, // Raw ID
     ];
     const result = buildAuditTrail(input);
-    assert.strictEqual(result.valid.length, 2);
+    assert.strictEqual(result.valid.length, 3);
     assert.strictEqual(result.valid[0].actor.actorType, "USER");
     assert.strictEqual(result.valid[0].actor.actorId, "123");
     assert.strictEqual(result.valid[0].actor.displayName, "123"); // Fallback
 
     assert.strictEqual(result.valid[1].actor.actorType, "SERVICE");
     assert.strictEqual(result.valid[1].actor.actorId, "svc-1");
+
+    assert.strictEqual(result.valid[2].actor.actorType, "USER");
+    assert.strictEqual(result.valid[2].actor.actorId, "just-id");
   });
 
   test("Requirement 3: Actor Normalization (Object Format)", () => {
@@ -133,11 +137,10 @@ function runTests() {
 
   test("Requirement 3: Invalid Actor", () => {
     const input = [
-      { actionType: "LOGIN", occurredAt: new Date(), actor: "just-id" }, // Missing type
       { actionType: "LOGIN", occurredAt: new Date(), actor: {} }, // Empty object
     ];
     const result = buildAuditTrail(input);
-    assert.strictEqual(result.invalid.length, 2);
+    assert.strictEqual(result.invalid.length, 1);
     // Expect strict errors
   });
 
