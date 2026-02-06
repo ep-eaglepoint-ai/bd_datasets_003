@@ -1,0 +1,11 @@
+{
+            "instance_id": "SSPJD4",
+            "problem_statement": "The unique visitor calculation in our dashboard is currently O(n^2), causing 500ms+ freezes on the Node.js event loop when processing 100k+ logs. We need to refactor this into an O(n) operation that handles high cardinality (unique users) with a fixed memory overhead on a 250MB VPS.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/sspjd4-high-performance-cardinality-aggregator",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        

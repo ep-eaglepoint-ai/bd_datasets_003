@@ -1,0 +1,17 @@
+version: "3.8"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      # Mount only the relevant project subdirectories so that
+      # the image-level /app (including its package.json) remains intact.
+      - ./repository_after:/app/repository_after
+      - ./repository_before:/app/repository_before
+      - ./tests:/app/tests
+      - ./evaluation:/app/evaluation
+      - /app/repository_after/node_modules
+      - /app/repository_before/node_modules
+    working_dir: /app/repository_after
