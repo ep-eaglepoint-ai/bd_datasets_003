@@ -1,0 +1,11 @@
+{
+            "instance_id": "FYWCE1",
+            "problem_statement": "The blog platform API built with Laravel is triggering hundreds of database queries on the posts listing endpoint, with each post causing separate lazy-load queries for author, category, tags, and comments through the resource layer. The read_time model accessor loads all comments per post just to count words, the comments_count cached column is stale and never updated, and the comments endpoint returns unbounded result sets causing memory exhaustion on popular posts. Filters for tag, category, and search each re-query from scratch instead of chaining on one query builder, the ?include= parameter is completely ignored, and category tree retrieval recurses one query per child node. Core logic is in PostController.php, CommentController.php, CategoryController.php, the Eloquent models, and the API resource classes.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/fywce1-blog-api-n-1-query-elimination-and-cursor-pagination-fix",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
