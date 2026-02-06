@@ -94,16 +94,19 @@ type ShrinkResult struct {
 func CheckExpectFailure(t *testing.T, prop func(*T)) ShrinkResult {
 	t.Helper()
 	rt := &T{rnd: rand.New(rand.NewSource(time.Now().UnixNano())), tb: t}
-	msg, failed := runProperty(rt, prop, nil)
-	if !failed {
-		t.Fatalf("expected property failure but it passed")
+	for i := 0; i < defaultRuns; i++ {
+		_, failed := runProperty(rt, prop, nil)
+		if !failed {
+			continue
+		}
+		shrunk := shrinkFailure(rt, prop)
+		return ShrinkResult{Values: shrunk, JSON: formatValues(shrunk)}
 	}
-	_ = msg
-	shrunk := shrinkFailure(rt, prop)
-	return ShrinkResult{Values: shrunk, JSON: formatValues(shrunk)}
+	t.Fatalf("expected property failure but it passed after %d runs", defaultRuns)
+	return ShrinkResult{}
 }
 
-func runProperty(t *T, prop func(*T), replay []any) (string, bool) {
+func runProperty(t *T, prop func(*T), replay []any) (msg string, failed bool) {
 	if replay != nil {
 		t.replaying = true
 		t.replay = replay
@@ -113,8 +116,6 @@ func runProperty(t *T, prop func(*T), replay []any) (string, bool) {
 		t.draws = nil
 		t.drawIndex = 0
 	}
-	var msg string
-	var failed bool
 	defer func() {
 		if r := recover(); r != nil {
 			switch v := r.(type) {
