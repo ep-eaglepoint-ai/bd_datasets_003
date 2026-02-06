@@ -1,0 +1,11 @@
+{
+            "instance_id": "I484P1",
+            "problem_statement": "The previous system had issues with inconsistent review quality, difficulty in tracking flagged reviews, and concerns over review authenticity. Your task is to create a Node.js backend API to manage products, customer reviews, ratings, and moderation to ensure high-quality reviews that help other customers make informed decisions.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/i484p1-product-review-system",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
