@@ -5708,14 +5708,16 @@ index 0000000..4263d3b
 +}
 diff --git a/repository_after/client/src/App.tsx b/repository_after/client/src/App.tsx
 new file mode 100644
-index 0000000..2b14265
+index 0000000..d944fb1
 --- /dev/null
 +++ b/repository_after/client/src/App.tsx
-@@ -0,0 +1,27 @@
+@@ -0,0 +1,34 @@
 +import React from "react";
 +import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 +import { BrowserRouter, Route, Routes } from "react-router-dom";
 +import { JoinPage } from "./JoinPage";
++import { OrganizationsPage } from "./OrganizationsPage";
++import { DashboardPage } from "./DashboardPage";
 +
 +const queryClient = new QueryClient({
 +  defaultOptions: {
@@ -5733,6 +5735,11 @@ index 0000000..2b14265
 +    <QueryClientProvider client={queryClient}>
 +      <BrowserRouter>
 +        <Routes>
++          <Route path="/" element={<OrganizationsPage />} />
++          <Route
++            path="/organizations/:organizationSlug/dashboard"
++            element={<DashboardPage />}
++          />
 +          <Route path="/join/:token" element={<JoinPage />} />
 +        </Routes>
 +      </BrowserRouter>
@@ -5741,10 +5748,10 @@ index 0000000..2b14265
 +}
 diff --git a/repository_after/client/src/Dashboard.tsx b/repository_after/client/src/Dashboard.tsx
 new file mode 100644
-index 0000000..0ed75e8
+index 0000000..9d1b09c
 --- /dev/null
 +++ b/repository_after/client/src/Dashboard.tsx
-@@ -0,0 +1,132 @@
+@@ -0,0 +1,140 @@
 +import React from "react";
 +import { useQuery } from "@tanstack/react-query";
 +import { apiFetchJson } from "./api";
@@ -5765,20 +5772,20 @@ index 0000000..0ed75e8
 +  return Intl.DateTimeFormat().resolvedOptions().timeZone;
 +}
 +
-+function formatLocalDate(iso: string) {
-+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
++function formatLocalDate(iso: string, tz?: string) {
++  const tzToUse = tz || Intl.DateTimeFormat().resolvedOptions().timeZone;
 +  return new Intl.DateTimeFormat(undefined, {
-+    timeZone: tz,
++    timeZone: tzToUse,
 +    year: "numeric",
 +    month: "short",
 +    day: "2-digit",
 +  }).format(new Date(iso));
 +}
 +
-+function formatLocalDateTime(iso: string) {
-+  const tz = getUserTimeZone();
++function formatLocalDateTime(iso: string, tz?: string) {
++  const tzToUse = tz || getUserTimeZone();
 +  return new Intl.DateTimeFormat(undefined, {
-+    timeZone: tz,
++    timeZone: tzToUse,
 +    year: "numeric",
 +    month: "short",
 +    day: "2-digit",
@@ -5795,7 +5802,13 @@ index 0000000..0ed75e8
 +  );
 +}
 +
-+export function Dashboard({ organizationSlug }: { organizationSlug: string }) {
++export function Dashboard({
++  organizationSlug,
++  timeZone,
++}: {
++  organizationSlug: string;
++  timeZone?: string;
++}) {
 +  const query = useQuery({
 +    queryKey: ["dashboard", organizationSlug],
 +    queryFn: () => fetchDashboard(organizationSlug),
@@ -5850,7 +5863,9 @@ index 0000000..0ed75e8
 +      {data.latest_project_created_at ? (
 +        <p>
 +          Latest project created:{" "}
-+          <strong>{formatLocalDateTime(data.latest_project_created_at)}</strong>
++          <strong>
++            {formatLocalDateTime(data.latest_project_created_at, timeZone)}
++          </strong>
 +        </p>
 +      ) : (
 +        <p>No projects yet</p>
@@ -5870,22 +5885,47 @@ index 0000000..0ed75e8
 +      <ul>
 +        {data.activity_trends.map((p) => (
 +          <li key={p.day}>
-+            {formatLocalDate(p.day)}: {p.count}
++            {formatLocalDate(p.day, timeZone)}: {p.count}
 +          </li>
 +        ))}
 +      </ul>
 +    </div>
 +  );
 +}
+diff --git a/repository_after/client/src/DashboardPage.tsx b/repository_after/client/src/DashboardPage.tsx
+new file mode 100644
+index 0000000..940c63a
+--- /dev/null
++++ b/repository_after/client/src/DashboardPage.tsx
+@@ -0,0 +1,17 @@
++import React from "react";
++import { useParams } from "react-router-dom";
++import { Dashboard } from "./Dashboard";
++import { useProfile } from "./useProfile";
++
++export function DashboardPage() {
++  const { organizationSlug } = useParams<{ organizationSlug: string }>();
++  const profileQuery = useProfile();
++
++  const tz = profileQuery.data?.timezone;
++
++  if (!organizationSlug) {
++    return <div role="alert">Missing organization</div>;
++  }
++
++  return <Dashboard organizationSlug={organizationSlug} timeZone={tz} />;
++}
 diff --git a/repository_after/client/src/InviteUserModal.tsx b/repository_after/client/src/InviteUserModal.tsx
 new file mode 100644
-index 0000000..d1e4950
+index 0000000..421bce3
 --- /dev/null
 +++ b/repository_after/client/src/InviteUserModal.tsx
-@@ -0,0 +1,65 @@
+@@ -0,0 +1,77 @@
 +import React, { useState } from "react";
 +import { useMutation } from "@tanstack/react-query";
 +import { apiFetchJson } from "./api";
++import { useMemberships } from "./useMemberships";
++import { useProfile } from "./useProfile";
 +
 +type Props = {
 +  organizationSlug: string;
@@ -5908,6 +5948,16 @@ index 0000000..d1e4950
 +export function InviteUserModal({ organizationSlug, onInvited }: Props) {
 +  const [email, setEmail] = useState("");
 +  const [role, setRole] = useState<InvitePayload["role"]>("member");
++
++  const profileQuery = useProfile();
++  const membershipsQuery = useMemberships(organizationSlug);
++  const myRole = (() => {
++    const me = profileQuery.data?.user_id;
++    if (!me) return null;
++    const m = membershipsQuery.data?.find((row) => row.user_id === me);
++    return m?.role || null;
++  })();
++  const canInviteOwner = myRole === "owner";
 +
 +  const mutation = useMutation({
 +    mutationFn: (payload: InvitePayload) => invite(organizationSlug, payload),
@@ -5938,7 +5988,7 @@ index 0000000..d1e4950
 +          <option value="viewer">Viewer</option>
 +          <option value="member">Member</option>
 +          <option value="admin">Admin</option>
-+          <option value="owner">Owner</option>
++          {canInviteOwner ? <option value="owner">Owner</option> : null}
 +        </select>
 +      </label>
 +      <button type="submit" disabled={mutation.isPending}>
@@ -6026,6 +6076,102 @@ index 0000000..8b5e01c
 +        <div role="alert">{(mutation.error as Error).message}</div>
 +      ) : null}
 +      {mutation.isSuccess ? <div>Joined successfully</div> : null}
++    </div>
++  );
++}
+diff --git a/repository_after/client/src/OrganizationsPage.tsx b/repository_after/client/src/OrganizationsPage.tsx
+new file mode 100644
+index 0000000..10017ed
+--- /dev/null
++++ b/repository_after/client/src/OrganizationsPage.tsx
+@@ -0,0 +1,90 @@
++import React, { useMemo, useState } from "react";
++import { useMutation, useQueryClient } from "@tanstack/react-query";
++import { Link } from "react-router-dom";
++import { apiFetchJson } from "./api";
++import { InviteUserModal } from "./InviteUserModal";
++import { useOrganizations } from "./useOrganizations";
++
++async function createOrganization(name: string) {
++  return apiFetchJson("/api/organizations/", {
++    method: "POST",
++    headers: { "Content-Type": "application/json" },
++    body: JSON.stringify({ name }),
++  });
++}
++
++export function OrganizationsPage() {
++  const qc = useQueryClient();
++  const orgsQuery = useOrganizations();
++
++  const [name, setName] = useState("");
++  const [inviteOrg, setInviteOrg] = useState<string | null>(null);
++
++  const createMutation = useMutation({
++    mutationFn: () => createOrganization(name),
++    onSuccess: async () => {
++      setName("");
++      await qc.invalidateQueries({ queryKey: ["organizations"] });
++    },
++  });
++
++  const organizations = useMemo(() => orgsQuery.data ?? [], [orgsQuery.data]);
++
++  return (
++    <div>
++      <h1>Organizations</h1>
++
++      <form
++        onSubmit={(e) => {
++          e.preventDefault();
++          if (!name.trim()) return;
++          createMutation.mutate();
++        }}
++      >
++        <label>
++          New organization name
++          <input value={name} onChange={(e) => setName(e.target.value)} />
++        </label>
++        <button type="submit" disabled={createMutation.isPending}>
++          Create
++        </button>
++        {createMutation.isError ? (
++          <div role="alert">Failed to create organization</div>
++        ) : null}
++      </form>
++
++      {orgsQuery.isLoading ? <div>Loading…</div> : null}
++      {orgsQuery.isError ? (
++        <div role="alert">Failed to load organizations</div>
++      ) : null}
++
++      <ul>
++        {organizations.map((o) => (
++          <li key={o.slug}>
++            <strong>{o.name}</strong> ({o.slug}){" "}
++            <Link to={`/organizations/${o.slug}/dashboard`}>
++              Open dashboard
++            </Link>{" "}
++            <button type="button" onClick={() => setInviteOrg(o.slug)}>
++              Invite
++            </button>
++          </li>
++        ))}
++      </ul>
++
++      {inviteOrg ? (
++        <div>
++          <InviteUserModal
++            organizationSlug={inviteOrg}
++            onInvited={() => {
++              setInviteOrg(null);
++            }}
++          />
++          <button type="button" onClick={() => setInviteOrg(null)}>
++            Close
++          </button>
++        </div>
++      ) : null}
 +    </div>
 +  );
 +}
@@ -6139,6 +6285,40 @@ index 0000000..a7c7425
 +afterAll(() => {
 +  console.warn = originalConsoleWarn;
 +});
+diff --git a/repository_after/client/src/useMemberships.ts b/repository_after/client/src/useMemberships.ts
+new file mode 100644
+index 0000000..728ea1c
+--- /dev/null
++++ b/repository_after/client/src/useMemberships.ts
+@@ -0,0 +1,28 @@
++import { useQuery } from "@tanstack/react-query";
++import { apiFetchJson } from "./api";
++
++export type Membership = {
++  id: number;
++  organization_slug: string;
++  user_id: number;
++  role: "owner" | "admin" | "member" | "viewer";
++  is_active: boolean;
++  created_at: string;
++};
++
++async function fetchMemberships(
++  organizationSlug: string
++): Promise<Membership[]> {
++  return apiFetchJson(`/api/organizations/${organizationSlug}/memberships/`);
++}
++
++export function useMemberships(organizationSlug: string) {
++  return useQuery({
++    queryKey: ["memberships", organizationSlug],
++    queryFn: () => fetchMemberships(organizationSlug),
++    enabled: !!organizationSlug,
++    staleTime: 60 * 1000,
++    networkMode: "offlineFirst",
++    refetchOnWindowFocus: false,
++  });
++}
 diff --git a/repository_after/client/src/useOrganizations.ts b/repository_after/client/src/useOrganizations.ts
 new file mode 100644
 index 0000000..01438be
@@ -6163,6 +6343,39 @@ index 0000000..01438be
 +  return useQuery({
 +    queryKey: ["organizations"],
 +    queryFn: fetchOrganizations,
++    staleTime: 5 * 60 * 1000,
++    networkMode: "offlineFirst",
++    refetchOnWindowFocus: false,
++  });
++}
+diff --git a/repository_after/client/src/useProfile.ts b/repository_after/client/src/useProfile.ts
+new file mode 100644
+index 0000000..0353e72
+--- /dev/null
++++ b/repository_after/client/src/useProfile.ts
+@@ -0,0 +1,27 @@
++import { useQuery } from "@tanstack/react-query";
++import { apiFetchJson } from "./api";
++
++export type Profile = {
++  name: string;
++  user_id: number;
++  username: string;
++  email: string;
++  avatar_url: string;
++  timezone: string;
++  primary_organization: { id: number; name: string; slug: string } | null;
++  updated_at: string;
++};
++
++async function fetchProfile(): Promise<Profile> {
++  return apiFetchJson("/api/profile/");
++}
++
++export function useProfile() {
++  return useQuery({
++    queryKey: ["profile"],
++    queryFn: fetchProfile,
 +    staleTime: 5 * 60 * 1000,
 +    networkMode: "offlineFirst",
 +    refetchOnWindowFocus: false,
@@ -6315,11 +6528,11 @@ index 0000000..357e127
 Binary files /dev/null and b/repository_after/server/organizations/__pycache__/models.cpython-311.pyc differ
 diff --git a/repository_after/server/organizations/__pycache__/permissions.cpython-311.pyc b/repository_after/server/organizations/__pycache__/permissions.cpython-311.pyc
 new file mode 100644
-index 0000000..d188142
+index 0000000..0de48eb
 Binary files /dev/null and b/repository_after/server/organizations/__pycache__/permissions.cpython-311.pyc differ
 diff --git a/repository_after/server/organizations/__pycache__/serializers.cpython-311.pyc b/repository_after/server/organizations/__pycache__/serializers.cpython-311.pyc
 new file mode 100644
-index 0000000..8d10e26
+index 0000000..8095715
 Binary files /dev/null and b/repository_after/server/organizations/__pycache__/serializers.cpython-311.pyc differ
 diff --git a/repository_after/server/organizations/__pycache__/throttling.cpython-311.pyc b/repository_after/server/organizations/__pycache__/throttling.cpython-311.pyc
 new file mode 100644
@@ -6331,7 +6544,7 @@ index 0000000..bd2b5a7
 Binary files /dev/null and b/repository_after/server/organizations/__pycache__/urls.cpython-311.pyc differ
 diff --git a/repository_after/server/organizations/__pycache__/views.cpython-311.pyc b/repository_after/server/organizations/__pycache__/views.cpython-311.pyc
 new file mode 100644
-index 0000000..2ab2f78
+index 0000000..80105e5
 Binary files /dev/null and b/repository_after/server/organizations/__pycache__/views.cpython-311.pyc differ
 diff --git a/repository_after/server/organizations/apps.py b/repository_after/server/organizations/apps.py
 new file mode 100644
@@ -7105,10 +7318,10 @@ index 0000000..4754c47
 +        return _SCOPE_LEVEL.get(str(scope), 0) >= _SCOPE_LEVEL.get(str(required), 2)
 diff --git a/repository_after/server/organizations/serializers.py b/repository_after/server/organizations/serializers.py
 new file mode 100644
-index 0000000..c054d87
+index 0000000..fa5d8d3
 --- /dev/null
 +++ b/repository_after/server/organizations/serializers.py
-@@ -0,0 +1,180 @@
+@@ -0,0 +1,207 @@
 +from __future__ import annotations
 +
 +from django.core.exceptions import ValidationError as DjangoValidationError
@@ -7198,6 +7411,24 @@ index 0000000..c054d87
 +            "email_sent_at",
 +        ]
 +
++    def validate_role(self, value: str) -> str:
++        if value != OrganizationMembership.Role.OWNER:
++            return value
++
++        request = self.context.get("request")
++        organization = self.context.get("organization")
++        if not request or not getattr(request, "user", None) or not request.user.is_authenticated or not organization:
++            raise serializers.ValidationError("Only owners can assign owner role")
++
++        membership = OrganizationMembership.objects.filter(
++            organization=organization,
++            user=request.user,
++            is_active=True,
++        ).first()
++        if membership is None or not membership.has_permission(OrganizationMembership.Role.OWNER):
++            raise serializers.ValidationError("Only owners can assign owner role")
++        return value
++
 +
 +class InvitationAcceptSerializer(serializers.Serializer):
 +    token = serializers.CharField()
@@ -7212,6 +7443,7 @@ index 0000000..c054d87
 +
 +class UserProfileSerializer(serializers.ModelSerializer):
 +    name = serializers.SerializerMethodField()
++    user_id = serializers.IntegerField(source="user.id", read_only=True)
 +    username = serializers.CharField(source="user.username", read_only=True)
 +    email = serializers.EmailField(source="user.email", read_only=True)
 +    primary_organization_slug = serializers.SlugField(write_only=True, required=False, allow_null=True)
@@ -7221,6 +7453,7 @@ index 0000000..c054d87
 +        model = UserProfile
 +        fields = [
 +            "name",
++            "user_id",
 +            "username",
 +            "email",
 +            "avatar_url",
@@ -7229,7 +7462,14 @@ index 0000000..c054d87
 +            "primary_organization_slug",
 +            "updated_at",
 +        ]
-+        read_only_fields = ["name", "username", "email", "primary_organization", "updated_at"]
++        read_only_fields = [
++            "name",
++            "user_id",
++            "username",
++            "email",
++            "primary_organization",
++            "updated_at",
++        ]
 +
 +    def get_name(self, obj) -> str:
 +        user = getattr(obj, "user", None)
@@ -7412,10 +7652,10 @@ index 0000000..f92572d
 +]
 diff --git a/repository_after/server/organizations/views.py b/repository_after/server/organizations/views.py
 new file mode 100644
-index 0000000..ced99bf
+index 0000000..5520134
 --- /dev/null
 +++ b/repository_after/server/organizations/views.py
-@@ -0,0 +1,291 @@
+@@ -0,0 +1,300 @@
 +from __future__ import annotations
 +
 +from datetime import timedelta
@@ -7450,6 +7690,8 @@ index 0000000..ced99bf
 +    permission_classes = [IsAuthenticated, APIKeyScopeEnforcer]
 +    api_key_admin_actions = {"destroy"}
 +
++    lookup_field = "slug"
++
 +    def get_queryset(self):
 +        return Organization.objects.filter(memberships__user=self.request.user, memberships__is_active=True).distinct()
 +
@@ -7465,7 +7707,7 @@ index 0000000..ced99bf
 +            user=request.user,
 +            is_active=True,
 +        ).first()
-+        if membership is None or not membership.has_permission(OrganizationMembership.Role.ADMIN):
++        if membership is None or not membership.has_permission(OrganizationMembership.Role.OWNER):
 +            return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 +        return super().destroy(request, *args, **kwargs)
 +
@@ -7521,6 +7763,11 @@ index 0000000..ced99bf
 +class InvitationViewSet(OrganizationScopedMixin, viewsets.ModelViewSet):
 +    serializer_class = InvitationSerializer
 +    api_key_required_scope = "admin"
++
++    def get_serializer_context(self):
++        ctx = super().get_serializer_context()
++        ctx["organization"] = self.get_organization()
++        return ctx
 +
 +    def get_queryset(self):
 +        org = self.get_organization()
@@ -7623,7 +7870,9 @@ index 0000000..ced99bf
 +    @action(detail=False, methods=["get"], url_path=r"(?P<token>[^/.]+)")
 +    def validate(self, request, token=None):
 +        invitation = self._get_invitation(token)
-+        if not invitation.is_valid():
++        if invitation.accepted_at is not None:
++            return Response({"detail": "Invitation already used"}, status=status.HTTP_400_BAD_REQUEST)
++        if invitation.expires_at <= timezone.now():
 +            return Response({"detail": "Invitation expired"}, status=status.HTTP_400_BAD_REQUEST)
 +        return Response(
 +            {
@@ -7714,13 +7963,17 @@ diff --git a/repository_after/server/saas_dashboard/__pycache__/__init__.cpython
 new file mode 100644
 index 0000000..e9c18c4
 Binary files /dev/null and b/repository_after/server/saas_dashboard/__pycache__/__init__.cpython-311.pyc differ
+diff --git a/repository_after/server/saas_dashboard/__pycache__/perf_views.cpython-311.pyc b/repository_after/server/saas_dashboard/__pycache__/perf_views.cpython-311.pyc
+new file mode 100644
+index 0000000..60643b7
+Binary files /dev/null and b/repository_after/server/saas_dashboard/__pycache__/perf_views.cpython-311.pyc differ
 diff --git a/repository_after/server/saas_dashboard/__pycache__/settings.cpython-311.pyc b/repository_after/server/saas_dashboard/__pycache__/settings.cpython-311.pyc
 new file mode 100644
-index 0000000..eb8d5dd
+index 0000000..0d8bea3
 Binary files /dev/null and b/repository_after/server/saas_dashboard/__pycache__/settings.cpython-311.pyc differ
 diff --git a/repository_after/server/saas_dashboard/__pycache__/urls.cpython-311.pyc b/repository_after/server/saas_dashboard/__pycache__/urls.cpython-311.pyc
 new file mode 100644
-index 0000000..18cbee2
+index 0000000..0e52b43
 Binary files /dev/null and b/repository_after/server/saas_dashboard/__pycache__/urls.cpython-311.pyc differ
 diff --git a/repository_after/server/saas_dashboard/__pycache__/wsgi.cpython-311.pyc b/repository_after/server/saas_dashboard/__pycache__/wsgi.cpython-311.pyc
 new file mode 100644
