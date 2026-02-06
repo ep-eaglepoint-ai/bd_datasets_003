@@ -377,14 +377,14 @@ describe("localStorage Behavior During Undo Window", () => {
     expect(storedFavorites[1].quote).toBe("Quote 2");
   });
 
-  test("after undo timeout expires, localStorage must be updated without removed item", async () => {
+  test(
+    "after undo timeout expires, localStorage must be updated without removed item",
+    async () => {
     if (!componentAvailable()) {
       throw new Error(
         "Quote component not available - favorites functionality not implemented",
       );
     }
-
-    jest.useFakeTimers();
 
     const testFavorites = [
       { quote: "Quote A", author: "Author A" },
@@ -410,8 +410,8 @@ describe("localStorage Behavior During Undo Window", () => {
     let storedFavorites = JSON.parse(storedData);
     expect(storedFavorites.length).toBe(2);
 
-    // Fast-forward 5 seconds to expire undo
-    jest.advanceTimersByTime(5000);
+    // Wait for 5 seconds to expire undo
+    await new Promise((resolve) => setTimeout(resolve, 5100));
 
     // Wait for timeout callback to execute
     await waitFor(() => {
@@ -424,7 +424,7 @@ describe("localStorage Behavior During Undo Window", () => {
     storedFavorites = JSON.parse(storedData);
     expect(storedFavorites.length).toBe(1);
     expect(storedFavorites[0].quote).toBe("Quote B");
-
-    jest.useRealTimers();
-  });
+    },
+    10000,
+  );
 });
