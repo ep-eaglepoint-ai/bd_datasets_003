@@ -1,8 +1,8 @@
 package com.example.eventsourcing.config;
 
 import com.example.eventsourcing.domain.order.OrderAggregate;
-import com.example.eventsourcing.infrastructure.AggregateRepository;
 import com.example.eventsourcing.infrastructure.EventStore;
+import com.example.eventsourcing.infrastructure.OrderAggregateRepository;
 import com.example.eventsourcing.infrastructure.persistence.SnapshotRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.context.ApplicationEventPublisher;
@@ -26,11 +26,11 @@ public class AggregateConfig {
     }
     
     /**
-     * Configure the AggregateRepository for OrderAggregate.
-     * This is an alternative way to configure the repository if needed.
+     * Configure the OrderAggregateRepository for OrderAggregate.
+     * Uses the specialized repository that properly restores state from snapshots.
      */
     @Bean
-    public AggregateRepository<OrderAggregate, com.example.eventsourcing.domain.DomainEvent> orderAggregateRepository(
+    public OrderAggregateRepository orderAggregateRepository(
             EventStore eventStore,
             SnapshotRepository snapshotRepository,
             ObjectMapper objectMapper,
@@ -38,7 +38,7 @@ public class AggregateConfig {
             EventSourcingProperties properties,
             java.util.function.Supplier<OrderAggregate> orderAggregateSupplier) {
         
-        return new AggregateRepository<>(
+        return new OrderAggregateRepository(
                 eventStore,
                 snapshotRepository,
                 objectMapper,

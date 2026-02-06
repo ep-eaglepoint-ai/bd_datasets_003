@@ -73,4 +73,11 @@ public interface EventRepository extends JpaRepository<EventEntity, String> {
      */
     @Query("SELECT COALESCE(MAX(e.version), 0) FROM EventEntity e WHERE e.aggregateId = :aggregateId")
     Long getCurrentVersion(@Param("aggregateId") String aggregateId);
+    
+    /**
+     * Find all distinct aggregate IDs in the event store.
+     * Used for per-aggregate projection rebuilds.
+     */
+    @Query("SELECT DISTINCT e.aggregateId FROM EventEntity e ORDER BY e.aggregateId")
+    List<String> findDistinctAggregateIds();
 }

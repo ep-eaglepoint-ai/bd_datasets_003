@@ -7,7 +7,10 @@ import com.example.eventsourcing.exception.AggregateNotFoundException;
 import com.example.eventsourcing.infrastructure.persistence.SnapshotEntity;
 import com.example.eventsourcing.infrastructure.persistence.SnapshotRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -34,18 +37,33 @@ public class AggregateRepository<T extends Aggregate<E>, E extends DomainEvent> 
     
     private final EventStore eventStore;
     private final SnapshotRepository snapshotRepository;
+    /** ObjectMapper used for event serialization (polymorphic, configured in JacksonConfig). */
     private final ObjectMapper objectMapper;
+
+    /**
+     * Dedicated ObjectMapper for snapshot serialization/deserialization.
+     * This mapper does NOT use default typing to keep snapshot JSON simple and
+     * avoid polymorphic/proxy-related issues when restoring aggregate state.
+     */
+    private final ObjectMapper snapshotMapper;
     private final ApplicationEventPublisher eventPublisher;
     private final EventSourcingProperties properties;
     private final Supplier<T> aggregateFactory;
     
-    public AggregateRepository(EventStore eventStore, SnapshotRepository snapshotRepository,
-                               ObjectMapper objectMapper, ApplicationEventPublisher eventPublisher,
+    public AggregateRepository(EventStore eventStore,
+                               SnapshotRepository snapshotRepository,
+                               ObjectMapper objectMapper,
+                               ApplicationEventPublisher eventPublisher,
                                EventSourcingProperties properties,
                                Supplier<T> aggregateFactory) {
         this.eventStore = eventStore;
         this.snapshotRepository = snapshotRepository;
         this.objectMapper = objectMapper;
+        // Configure a separate mapper for snapshots, without default typing
+        this.snapshotMapper = new ObjectMapper();
+        this.snapshotMapper.registerModule(new JavaTimeModule());
+        this.snapshotMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        this.snapshotMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         this.eventPublisher = eventPublisher;
         this.properties = properties;
         this.aggregateFactory = aggregateFactory;
@@ -169,12 +187,14 @@ public class AggregateRepository<T extends Aggregate<E>, E extends DomainEvent> 
     /**
      * Check if a snapshot should be created and create it if needed.
      * This method is called after save() to potentially trigger async snapshot creation.
+     * Snapshots are created at threshold, 2*threshold, 3*threshold, etc. (not at version 0).
      */
     private void checkAndCreateSnapshot(T aggregate) {
         int snapshotThreshold = properties.getSnapshot().getThreshold();
         
         // Check if we've reached the snapshot threshold
-        if (snapshotThreshold > 0 && aggregate.getVersion() > 0
+        // Only create snapshots at threshold, 2*threshold, 3*threshold, etc. (not at version 0)
+        if (snapshotThreshold > 0 && aggregate.getVersion() >= snapshotThreshold
                 && aggregate.getVersion() % snapshotThreshold == 0) {
             // Create snapshot in a separate transaction (async, non-blocking)
             createSnapshotAsync(aggregate);
@@ -209,7 +229,8 @@ public class AggregateRepository<T extends Aggregate<E>, E extends DomainEvent> 
         logger.debug("Creating snapshot for aggregate {} at version {}", aggregateId, aggregate.getVersion());
         
         try {
-            String state = objectMapper.writeValueAsString(aggregate);
+            // Use the dedicated snapshot mapper (no default typing) to serialize the aggregate state
+            String state = snapshotMapper.writeValueAsString(aggregate);
             SnapshotEntity snapshot = new SnapshotEntity(
                     aggregateId,
                     aggregate.getVersion(),
@@ -227,11 +248,19 @@ public class AggregateRepository<T extends Aggregate<E>, E extends DomainEvent> 
     
     /**
      * Restore aggregate state from a snapshot.
+     *
+     * We explicitly deserialize into the concrete aggregate type produced by the
+     * {@code aggregateFactory}. This avoids any surprises with proxy classes or
+     * generic {@code Object} deserialization and keeps the snapshot JSON format
+     * aligned with the aggregate implementation.
      */
     @SuppressWarnings("unchecked")
     private void restoreFromSnapshot(T aggregate, SnapshotEntity snapshot) {
         try {
-            T snapshotAggregate = objectMapper.readValue(snapshot.getState(), (Class<T>) aggregate.getClass());
+            // Determine the concrete aggregate class from the factory
+            Class<?> aggregateClass = aggregateFactory.get().getClass();
+            T snapshotAggregate = (T) snapshotMapper.readValue(snapshot.getState(), aggregateClass);
+
             // Copy relevant state from snapshot to current aggregate
             aggregate.setAggregateId(snapshotAggregate.getAggregateId());
             aggregate.setVersion(snapshotAggregate.getVersion());

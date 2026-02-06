@@ -7,10 +7,15 @@ import java.time.Instant;
  * JPA Entity representing a persisted domain event.
  */
 @Entity
-@Table(name = "domain_events", indexes = {
-    @Index(name = "idx_aggregate_id", columnList = "aggregate_id"),
-    @Index(name = "idx_aggregate_version", columnList = "aggregate_id, version")
-})
+@Table(name = "domain_events", 
+    indexes = {
+        @Index(name = "idx_aggregate_id", columnList = "aggregate_id"),
+        @Index(name = "idx_aggregate_version", columnList = "aggregate_id, version")
+    },
+    uniqueConstraints = {
+        @UniqueConstraint(name = "uk_aggregate_version", columnNames = {"aggregate_id", "version"})
+    }
+)
 public class EventEntity {
     
     @Id

@@ -1,5 +1,8 @@
 package com.example.eventsourcing.domain.order;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.math.BigDecimal;
 import java.util.Objects;
 
@@ -7,41 +10,50 @@ import java.util.Objects;
  * Represents an item in an order.
  */
 public class OrderItem {
-    
+
     private final String productId;
     private final String productName;
     private final int quantity;
     private final BigDecimal unitPrice;
     private final BigDecimal totalPrice;
-    
-    public OrderItem(String productId, String productName, int quantity, BigDecimal unitPrice) {
+
+    /**
+     * Jackson-aware constructor so OrderItem can be deserialized from snapshots.
+     * Using @JsonCreator/@JsonProperty avoids the need for a default constructor
+     * or mutable fields while keeping the value object immutable.
+     */
+    @JsonCreator
+    public OrderItem(@JsonProperty("productId") String productId,
+                     @JsonProperty("productName") String productName,
+                     @JsonProperty("quantity") int quantity,
+                     @JsonProperty("unitPrice") BigDecimal unitPrice) {
         this.productId = Objects.requireNonNull(productId, "Product ID cannot be null");
         this.productName = Objects.requireNonNull(productName, "Product name cannot be null");
         this.quantity = quantity;
         this.unitPrice = Objects.requireNonNull(unitPrice, "Unit price cannot be null");
         this.totalPrice = unitPrice.multiply(BigDecimal.valueOf(quantity));
     }
-    
+
     public String getProductId() {
         return productId;
     }
-    
+
     public String getProductName() {
         return productName;
     }
-    
+
     public int getQuantity() {
         return quantity;
     }
-    
+
     public BigDecimal getUnitPrice() {
         return unitPrice;
     }
-    
+
     public BigDecimal getTotalPrice() {
         return totalPrice;
     }
-    
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -53,12 +65,12 @@ public class OrderItem {
                Objects.equals(unitPrice, orderItem.unitPrice) &&
                Objects.equals(totalPrice, orderItem.totalPrice);
     }
-    
+
     @Override
     public int hashCode() {
         return Objects.hash(productId, productName, quantity, unitPrice, totalPrice);
     }
-    
+
     @Override
     public String toString() {
         return "OrderItem{" +

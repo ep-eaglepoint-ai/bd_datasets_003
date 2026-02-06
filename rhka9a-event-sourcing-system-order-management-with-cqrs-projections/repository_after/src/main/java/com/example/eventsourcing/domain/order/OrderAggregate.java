@@ -239,6 +239,34 @@ public class OrderAggregate extends Aggregate<DomainEvent> {
         this.submittedAt = submittedAt;
     }
     
+    /**
+     * Set the items map (for internal use during state reconstruction from snapshots).
+     */
+    protected void setItems(Map<String, OrderItem> items) {
+        this.items = items != null ? new HashMap<>(items) : new HashMap<>();
+    }
+    
+    /**
+     * Restore state from a snapshot aggregate.
+     * This method is called by OrderAggregateRepository to restore all state fields
+     * from a snapshot. It's public to allow access from the infrastructure package.
+     * 
+     * @param snapshotAggregate The aggregate loaded from snapshot
+     */
+    public void restoreFromSnapshot(OrderAggregate snapshotAggregate) {
+        if (snapshotAggregate == null) {
+            return;
+        }
+        
+        // Copy all state fields from snapshot
+        setCustomerId(snapshotAggregate.getCustomerId());
+        setStatus(snapshotAggregate.getStatus());
+        setTotalAmount(snapshotAggregate.getTotalAmount());
+        setItems(snapshotAggregate.getItems());
+        setCreatedAt(snapshotAggregate.getCreatedAt());
+        setSubmittedAt(snapshotAggregate.getSubmittedAt());
+    }
+    
     // Validation methods
     private void validateDraftStatus() {
         if (status != OrderStatus.DRAFT) {

@@ -1,5 +1,7 @@
 package com.example.eventsourcing.domain;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -59,7 +61,12 @@ public abstract class Aggregate<T extends DomainEvent> {
     
     /**
      * Get the list of uncommitted events (read-only view).
+     * Marked with @JsonIgnore so that snapshots of aggregates do not attempt
+     * to serialize/deserialize the internal uncommitted events list, which is
+     * an implementation detail and may contain polymorphic event types that
+     * are not needed for snapshot restoration.
      */
+    @JsonIgnore
     public final List<T> getUncommittedEvents() {
         return Collections.unmodifiableList(uncommittedEvents);
     }
@@ -115,6 +122,9 @@ public abstract class Aggregate<T extends DomainEvent> {
      * Get the next version number for a new event.
      * Accounts for uncommitted events to ensure sequential versioning when multiple
      * events are created before saving.
+     * 
+     * If version is 5 and there are 0 uncommitted events, returns 6.
+     * If version is 5 and there is 1 uncommitted event (version 6), returns 7.
      */
     protected final Long getNextVersion() {
         return version + uncommittedEvents.size() + 1;

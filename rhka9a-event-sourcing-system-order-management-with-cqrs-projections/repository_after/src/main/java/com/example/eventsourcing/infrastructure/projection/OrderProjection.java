@@ -21,6 +21,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -37,9 +38,15 @@ public class OrderProjection {
     private final EventRepository eventRepository;
     private final ObjectMapper objectMapper;
     
-    // In-memory cache of processed event IDs for fast idempotency within a JVM,
-    // complemented by the persisted lastProcessedEventId in the projection entity.
-    private final Map<String, Instant> processedEventIds = new ConcurrentHashMap<>();
+    // In-memory cache of processed event IDs per order for fast idempotency within a JVM.
+    // Key: aggregateId (orderId), Value: Set of processed event IDs for that order.
+    // This is complemented by the persisted lastProcessedEventId in the projection entity.
+    // Using per-order cache ensures idempotency is tracked per aggregate, not globally.
+    private final Map<String, Set<String>> processedEventIdsByOrder = new ConcurrentHashMap<>();
+    
+    // Maximum size for the per-order cache to prevent unbounded memory growth during rebuilds.
+    // When limit is reached, oldest entries are removed (simple FIFO eviction).
+    private static final int MAX_CACHE_SIZE = 10000;
     
     @Autowired
     public OrderProjection(OrderProjectionRepository projectionRepository,
@@ -195,32 +202,43 @@ public class OrderProjection {
         // Clear the projection
         projectionRepository.deleteAll();
         // Clear in-memory idempotency cache so that all events are eligible for replay
-        processedEventIds.clear();
+        processedEventIdsByOrder.clear();
         
         // Get total count for logging
         long totalEvents = eventRepository.count();
         logger.info("Replaying {} events for projection rebuild", totalEvents);
         
-        // Load events in batches using pagination to keep memory bounded
-        int pageSize = 100;
-        int pageNumber = 0;
-        Page<EventEntity> page;
+        // Load events per-aggregate to process all events for each aggregate together.
+        // This is more efficient and ensures correct ordering per aggregate.
+        // First, get all unique aggregate IDs
+        List<String> aggregateIds = eventRepository.findDistinctAggregateIds();
+        logger.info("Rebuilding projections for {} aggregates", aggregateIds.size());
         
-        do {
-            page = eventRepository.findAll(PageRequest.of(pageNumber, pageSize, Sort.by(Sort.Direction.ASC, "timestamp", "version")));
+        int processedAggregates = 0;
+        for (String aggregateId : aggregateIds) {
+            // Load all events for this aggregate in order
+            List<EventEntity> events = eventRepository.findByAggregateIdOrderByVersionAsc(aggregateId);
             
-            for (EventEntity entity : page.getContent()) {
-                // Reconstruct the event
+            // Process events for this aggregate
+            for (EventEntity entity : events) {
                 DomainEvent event = reconstructEvent(entity);
                 if (event != null) {
                     handleDomainEventForRebuild(event);
                 }
             }
             
-            pageNumber++;
-            logger.debug("Processed page {} of {} ({} events so far)", pageNumber, page.getTotalPages(), (pageNumber * pageSize));
+            processedAggregates++;
             
-        } while (page.hasNext());
+            // Periodically clear cache to prevent unbounded memory growth during large rebuilds
+            if (processedAggregates % 100 == 0) {
+                clearOldCacheEntries();
+                logger.debug("Processed {} aggregates, cleared old cache entries", processedAggregates);
+            }
+            
+            if (processedAggregates % 10 == 0) {
+                logger.debug("Processed {} of {} aggregates", processedAggregates, aggregateIds.size());
+            }
+        }
         
         logger.info("Completed full projection rebuild");
     }
@@ -307,30 +325,69 @@ public class OrderProjection {
     
     /**
      * Check if an event has already been processed for its aggregate.
-     * Uses an in-memory cache for fast idempotency within the current JVM and
+     * Uses a per-order in-memory cache for fast idempotency within the current JVM and
      * falls back to the persisted lastProcessedEventId for resilience across restarts.
      */
     private boolean isEventProcessed(DomainEvent event) {
+        String aggregateId = event.getAggregateId();
         String eventId = event.getEventId();
-        if (processedEventIds.containsKey(eventId)) {
+        
+        // Check per-order in-memory cache
+        Set<String> processedEvents = processedEventIdsByOrder.get(aggregateId);
+        if (processedEvents != null && processedEvents.contains(eventId)) {
             return true;
         }
         
-        boolean persisted = projectionRepository.existsByOrderIdAndLastProcessedEventId(
-                event.getAggregateId(), eventId);
+        // Check persisted lastProcessedEventId
+        boolean persisted = projectionRepository.existsByOrderIdAndLastProcessedEventId(aggregateId, eventId);
         if (persisted) {
-            processedEventIds.put(eventId, Instant.now());
+            // Add to per-order cache
+            processedEventIdsByOrder.computeIfAbsent(aggregateId, k -> ConcurrentHashMap.newKeySet()).add(eventId);
         }
         return persisted;
     }
     
     /**
-     * Mark an event as processed for its aggregate by updating the in-memory cache.
+     * Mark an event as processed for its aggregate by updating the per-order in-memory cache.
      * The projection handlers themselves are responsible for persisting lastProcessedEventId
      * on the entity before saving, so we avoid an extra save() call here.
      */
     private void markEventAsProcessed(DomainEvent event) {
-        processedEventIds.put(event.getEventId(), Instant.now());
+        String aggregateId = event.getAggregateId();
+        String eventId = event.getEventId();
+        
+        // Add to per-order cache
+        processedEventIdsByOrder.computeIfAbsent(aggregateId, k -> ConcurrentHashMap.newKeySet()).add(eventId);
+        
+        // Prevent unbounded memory growth by clearing old entries if cache gets too large
+        if (processedEventIdsByOrder.size() > MAX_CACHE_SIZE) {
+            clearOldCacheEntries();
+        }
+    }
+    
+    /**
+     * Clear old cache entries to prevent unbounded memory growth.
+     * Removes entries for aggregates that are no longer being actively processed.
+     * Uses simple FIFO eviction: removes oldest 20% of entries.
+     */
+    private void clearOldCacheEntries() {
+        if (processedEventIdsByOrder.size() <= MAX_CACHE_SIZE) {
+            return;
+        }
+        
+        int entriesToRemove = processedEventIdsByOrder.size() / 5; // Remove 20%
+        int removed = 0;
+        
+        // Remove entries (simple approach: remove first entries encountered)
+        for (String aggregateId : processedEventIdsByOrder.keySet()) {
+            if (removed >= entriesToRemove) {
+                break;
+            }
+            processedEventIdsByOrder.remove(aggregateId);
+            removed++;
+        }
+        
+        logger.debug("Cleared {} old cache entries, {} remaining", removed, processedEventIdsByOrder.size());
     }
     
     /**
