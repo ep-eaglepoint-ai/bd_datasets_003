@@ -1,0 +1,11 @@
+{
+            "instance_id": "0AS36H",
+            "problem_statement": "The problem is naive blockchain indexers assume the chain is an immutable append-only list. In reality, blockchains utilize probabilistic finality (e.g., Nakamoto Consensus or Gasper), meaning the "Tip" of the chain can change, orphaning previously accepted blocks. An indexer that simply loops for i in range(current, latest) will permanently corrupt its database when a reorg occurs, storing events from a "Ghost Chain." The engineering solution requires a "Zipper" approach: checking the parentHash of the incoming block against the stored tip. If they do not link, the system must perform a "Reorg Rollback" (undoing recent DB writes) to realign with the new canonical chain.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/0as36h-evm-log-indexer-with-chain-reorg-handling",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
