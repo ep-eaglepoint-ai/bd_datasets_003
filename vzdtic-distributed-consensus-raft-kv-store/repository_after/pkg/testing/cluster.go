@@ -20,6 +20,7 @@ type TestCluster struct {
 	Transport *rpc.LocalTransport
 	WALs      []*wal.WAL
 	walDirs   []string
+	History   *History
 }
 
 // NewTestCluster creates a new test cluster
@@ -39,6 +40,7 @@ func NewTestCluster(size int) (*TestCluster, error) {
 		Transport: transport,
 		WALs:      make([]*wal.WAL, size),
 		walDirs:   make([]string, size),
+		History:   NewHistory(),
 	}
 
 	for i := 0; i < size; i++ {
@@ -63,7 +65,6 @@ func NewTestCluster(size int) (*TestCluster, error) {
 		store := kv.NewStore()
 		cluster.Stores[i] = store
 
-		// Fast heartbeats, long election timeout for stability
 		config := raft.NodeConfig{
 			ID:                 nodeIDs[i],
 			Peers:              peers,
@@ -131,7 +132,6 @@ func (c *TestCluster) WaitForStableLeader(timeout time.Duration) (*raft.Node, er
 	for time.Now().Before(deadline) {
 		for _, node := range c.Nodes {
 			if node.IsLeader() && node.GetCommitIndex() > 0 {
-				// Found a leader that has committed - wait a bit to ensure stability
 				time.Sleep(200 * time.Millisecond)
 				if node.IsLeader() {
 					return node, nil
@@ -182,8 +182,11 @@ func (c *TestCluster) SubmitCommand(cmd raft.Command, timeout time.Duration) err
 	return c.SubmitCommandExcluding(cmd, timeout, "")
 }
 
-// SubmitCommandExcluding submits a command, excluding a specific node from being used as leader
+// SubmitCommandExcluding submits a command, excluding a specific node
 func (c *TestCluster) SubmitCommandExcluding(cmd raft.Command, timeout time.Duration, excludeID string) error {
+	startTime := time.Now().UnixNano()
+	opID := c.History.RecordInvoke("write", cmd.Key, cmd.Value, startTime)
+
 	deadline := time.Now().Add(timeout)
 
 	for time.Now().Before(deadline) {
@@ -204,12 +207,14 @@ func (c *TestCluster) SubmitCommandExcluding(cmd raft.Command, timeout time.Dura
 		cancel()
 
 		if err == nil {
+			c.History.RecordOk(opID, cmd.Value, time.Now().UnixNano())
 			return nil
 		}
 
 		time.Sleep(100 * time.Millisecond)
 	}
 
+	c.History.RecordFail(opID, time.Now().UnixNano())
 	return fmt.Errorf("timeout submitting command")
 }
 
@@ -228,7 +233,6 @@ func (c *TestCluster) WaitForNewLeader(excludeID string, timeout time.Duration) 
 	for time.Now().Before(deadline) {
 		for _, node := range c.Nodes {
 			if node.GetID() != excludeID && node.IsLeader() {
-				// Wait a bit to ensure it's stable
 				time.Sleep(300 * time.Millisecond)
 				if node.IsLeader() {
 					return node, nil
@@ -238,4 +242,10 @@ func (c *TestCluster) WaitForNewLeader(excludeID string, timeout time.Duration) 
 		time.Sleep(50 * time.Millisecond)
 	}
 	return nil, fmt.Errorf("no new leader elected within timeout")
+}
+
+// CheckLinearizability verifies the operation history is linearizable
+func (c *TestCluster) CheckLinearizability() (bool, error) {
+	checker := NewLinearizabilityChecker(c.History)
+	return checker.Check()
 }

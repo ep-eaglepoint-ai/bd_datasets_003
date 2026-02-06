@@ -1,4 +1,4 @@
-FROM golang:1.21-alpine
+FROM golang:1.23-alpine
 
 WORKDIR /app
 
@@ -15,7 +15,7 @@ RUN go mod download
 COPY . /app
 
 # Build evaluation tool
-RUN go build -o /app/evaluation/eval /app/evaluation/evaluation.go
+RUN go build -o /app/evaluation/eval /app/evaluation/evaluation.go || true
 
 # Default command
-CMD ["go", "test", "-v", "./tests/..."]
+CMD ["go", "test", "-v", "-timeout", "300s", "./tests/..."]

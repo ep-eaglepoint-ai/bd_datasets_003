@@ -26,7 +26,6 @@ func TestNetworkPartitionRecovery(t *testing.T) {
 	}
 	t.Logf("Initial leader: %s", leader.GetID())
 
-	// Write before partition
 	cmd := raft.Command{
 		Type:  raft.CommandSet,
 		Key:   "before-partition",
@@ -41,7 +40,6 @@ func TestNetworkPartitionRecovery(t *testing.T) {
 
 	time.Sleep(1 * time.Second)
 
-	// Get and partition the leader
 	leader = cluster.GetLeader()
 	if leader == nil {
 		t.Fatal("No leader found before partition")
@@ -50,7 +48,6 @@ func TestNetworkPartitionRecovery(t *testing.T) {
 	t.Logf("Partitioning leader: %s", oldLeaderID)
 	cluster.Transport.Partition(oldLeaderID)
 
-	// Wait for new leader in majority partition
 	t.Log("Waiting for new leader election in majority partition...")
 	newLeader, err := cluster.WaitForNewLeader(oldLeaderID, 15*time.Second)
 	if err != nil {
@@ -58,7 +55,6 @@ func TestNetworkPartitionRecovery(t *testing.T) {
 	}
 	t.Logf("New leader elected: %s", newLeader.GetID())
 
-	// Write during partition - submit directly to new leader, excluding old leader
 	cmd = raft.Command{
 		Type:  raft.CommandSet,
 		Key:   "during-partition",
@@ -71,13 +67,11 @@ func TestNetworkPartitionRecovery(t *testing.T) {
 	}
 	t.Log("✓ Successfully wrote during partition")
 
-	// Heal partition
 	t.Log("Healing partition...")
 	cluster.HealPartition()
 
 	time.Sleep(3 * time.Second)
 
-	// Verify data on majority of nodes
 	beforeCount := 0
 	duringCount := 0
 	for i, store := range cluster.Stores {
@@ -129,7 +123,6 @@ func TestMinorityPartitionCannotProgress(t *testing.T) {
 		}
 	}
 
-	// Isolate leader and one follower (minority of 2)
 	for _, node := range cluster.Nodes {
 		nodeID := node.GetID()
 		if nodeID != leaderID && nodeID != minorityNodeID {

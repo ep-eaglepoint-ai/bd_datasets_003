@@ -10,7 +10,6 @@ import (
 	"github.com/vzdtic/distributed-consensus-raft-kv-store/repository_after/pkg/raft"
 )
 
-// WAL implements a write-ahead log for Raft persistence
 type WAL struct {
 	mu           sync.Mutex
 	dir          string
@@ -19,7 +18,6 @@ type WAL struct {
 	closed       bool
 }
 
-// NewWAL creates a new WAL instance
 func NewWAL(dir string) (*WAL, error) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create WAL directory: %w", err)
@@ -33,7 +31,6 @@ func NewWAL(dir string) (*WAL, error) {
 	}, nil
 }
 
-// ensureDir ensures the WAL directory exists
 func (w *WAL) ensureDir() error {
 	if _, err := os.Stat(w.dir); os.IsNotExist(err) {
 		return os.MkdirAll(w.dir, 0755)
@@ -41,7 +38,6 @@ func (w *WAL) ensureDir() error {
 	return nil
 }
 
-// Save persists the current Raft state
 func (w *WAL) Save(state *raft.PersistentState) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -50,7 +46,6 @@ func (w *WAL) Save(state *raft.PersistentState) error {
 		return nil
 	}
 
-	// Ensure directory exists
 	if err := w.ensureDir(); err != nil {
 		return fmt.Errorf("failed to ensure WAL directory: %w", err)
 	}
@@ -60,13 +55,11 @@ func (w *WAL) Save(state *raft.PersistentState) error {
 		return fmt.Errorf("failed to marshal state: %w", err)
 	}
 
-	// Write to temporary file first
 	tmpFile := w.stateFile + ".tmp"
 	if err := os.WriteFile(tmpFile, data, 0644); err != nil {
 		return fmt.Errorf("failed to write state file: %w", err)
 	}
 
-	// Atomic rename
 	if err := os.Rename(tmpFile, w.stateFile); err != nil {
 		return fmt.Errorf("failed to rename state file: %w", err)
 	}
@@ -74,7 +67,6 @@ func (w *WAL) Save(state *raft.PersistentState) error {
 	return nil
 }
 
-// Load restores the Raft state from disk
 func (w *WAL) Load() (*raft.PersistentState, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -95,7 +87,6 @@ func (w *WAL) Load() (*raft.PersistentState, error) {
 	return &state, nil
 }
 
-// SaveSnapshot persists a snapshot
 func (w *WAL) SaveSnapshot(snapshot *raft.Snapshot) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -104,7 +95,6 @@ func (w *WAL) SaveSnapshot(snapshot *raft.Snapshot) error {
 		return nil
 	}
 
-	// Ensure directory exists
 	if err := w.ensureDir(); err != nil {
 		return fmt.Errorf("failed to ensure WAL directory: %w", err)
 	}
@@ -126,7 +116,6 @@ func (w *WAL) SaveSnapshot(snapshot *raft.Snapshot) error {
 	return nil
 }
 
-// LoadSnapshot restores a snapshot from disk
 func (w *WAL) LoadSnapshot() (*raft.Snapshot, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -147,7 +136,25 @@ func (w *WAL) LoadSnapshot() (*raft.Snapshot, error) {
 	return &snapshot, nil
 }
 
-// Close closes the WAL
+func (w *WAL) Size() (int64, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	var totalSize int64
+
+	info, err := os.Stat(w.stateFile)
+	if err == nil {
+		totalSize += info.Size()
+	}
+
+	info, err = os.Stat(w.snapshotFile)
+	if err == nil {
+		totalSize += info.Size()
+	}
+
+	return totalSize, nil
+}
+
 func (w *WAL) Close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -155,7 +162,6 @@ func (w *WAL) Close() error {
 	return nil
 }
 
-// Clear removes all WAL files (for testing)
 func (w *WAL) Clear() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
