@@ -1,0 +1,11 @@
+{
+            "instance_id": "RU5IXL",
+            "problem_statement": "Performance issues have been observed when the system processes order data for a large number of active users. Response times increase significantly as the user base grows, despite individual order queries remaining fast. Profiling shows repeated database access patterns that scale poorly under load. These issues are most visible when requesting the latest orders for all active users at once.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ru5ixl-optimizing-an-existing-java-service",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
