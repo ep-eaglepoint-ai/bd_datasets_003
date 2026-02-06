@@ -1,0 +1,16 @@
+{
+    "instance_id": "E6BOS4",
+    "problem_statement": "Build a Distributed Task Priority Dashboard for managing long-running background tasks with priority-based queuing using FastAPI, Celery, Redis, PostgreSQL, and React.",
+    "base_commit": "repository_before/",
+    "test_patch": "tests/",
+    "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/e6bos4-clelery-task-priority-dashboard",
+    "environment_setup": "Dockerfile",
+    "FAIL_TO_PASS": [
+        "tests/test_priority_queue.py::TestPriorityEnumExists::test_priority_enum_defined",
+        "tests/test_priority_queue.py::TestCeleryAppConfiguration::test_three_queues_configured",
+        "tests/test_priority_integration_real.py::TestRealPriorityIntegration::test_priority_ordering_real_redis",
+        "tests/test_static_checks.py::TestFrontendTestsExist::test_react_test_file_exists",
+        "tests/test_failure_display.py::TestErrorFieldInModel::test_error_field_exists"
+    ],
+    "PASS_TO_PASS": []
+}

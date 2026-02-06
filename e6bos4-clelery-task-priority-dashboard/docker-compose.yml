@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports: [ "6379:6379" ]
+    volumes: [ redis_data:/data ]
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: taskdb
+    ports: [ "5432:5432" ]
+    volumes: [ postgres_data:/var/lib/postgresql/data ]
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  # --- Application Services (Profile: app) ---
+  backend:
+    build: ./repository_after/backend
+    image: app-backend
+    ports: [ "8000:8000" ]
+    environment: &app_env
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/taskdb
+      DATABASE_URL_SYNC: postgresql://postgres:postgres@postgres:5432/taskdb
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: db+postgresql://postgres:postgres@postgres:5432/taskdb
+      REDIS_URL: redis://redis:6379/0
+    depends_on: &app_deps
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    profiles: [ app ]
+
+  worker:
+    image: app-backend # Reuses the same image built by 'backend'
+    command: celery -A app.celery_app worker --loglevel=info -Q high,medium,low -c 1 --prefetch-multiplier=1
+    environment: *app_env
+    depends_on: *app_deps
+    profiles: [ app ]
+
+  frontend:
+    build: ./repository_after/frontend
+    ports: [ "3000:80" ]
+    depends_on: [ backend ]
+    profiles: [ app ]
+
+  # --- Verification & Evaluation Services ---
+  after_test:
+    build: .
+    image: task-evaluator # Shared image for testing and evaluation
+    command: python -m pytest tests -v
+    volumes:
+      - .:/app
+    environment: &test_env
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: db+postgresql://postgres:postgres@postgres:5432/taskdb
+      PYTHONPATH: /app/repository_after/backend
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  evaluation:
+    image: task-evaluator # Reuses the same image built by 'after_test'
+    volumes:
+      - ./evaluation/reports:/app/evaluation/reports
+    environment: *test_env
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  redis_data:
+  postgres_data:
