@@ -1,0 +1,11 @@
+{
+            "instance_id": "NDRTUI",
+            "problem_statement": "A multi-tenant fintech platform operates an internal ledger that processes high-frequency asset transfers between accounts using TypeORM. While the existing implementation supports transactions, locking, and audit logging, subtle architectural flaws risk violating core financial invariants under concurrency, such as deterministic auditability, strict atomicity, and tenant isolation. The system must be hardened to guarantee that every balance mutation is cryptographically verifiable, that no double-spending or deadlocks occur during concurrent transfers, and that audit trails accurately reflect committed state without relying on non-deterministic inputs or unsafe lifecycle side effects. A senior engineer is required to redesign the synchronization boundaries, transaction flow, and verification mechanisms so the ledger behaves correctly under production-grade load and regulatory scrutiny.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ndrtui-atomic-ledger-transfer-integrity",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
