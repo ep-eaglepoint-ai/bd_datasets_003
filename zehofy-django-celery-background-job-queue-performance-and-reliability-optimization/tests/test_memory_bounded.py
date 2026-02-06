@@ -152,6 +152,46 @@ class TestBulkDatabaseOperations:
         # The task should exist and be callable
         assert import_large_dataset is not None
         assert callable(import_large_dataset)
+    
+    def test_bulk_update_prices_uses_sql_update(self):
+        """Test that bulk_update_prices uses efficient SQL UPDATE (Req 6)."""
+        # This test must use the django_setup fixture
+        from apps.tasks.import_tasks import bulk_update_prices
+        from unittest.mock import patch, MagicMock
+        from django.db import connection
+        
+        # Mock the database cursor to verify SQL UPDATE is used
+        with patch.object(connection, 'cursor') as mock_cursor:
+            mock_cursor_obj = MagicMock()
+            mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor_obj)
+            mock_cursor.return_value.__exit__ = MagicMock(return_value=False)
+            mock_cursor_obj.rowcount = 5
+            
+            # Mock Product.objects.count() to return a count
+            with patch('apps.tasks.import_tasks.Product.objects.filter') as mock_filter:
+                mock_filter.return_value.count.return_value = 5
+                
+                # Mock ProgressTracker
+                with patch('apps.tasks.import_tasks.ProgressTracker') as mock_progress:
+                    mock_progress_instance = MagicMock()
+                    mock_progress.return_value = mock_progress_instance
+                    
+                    # Call the task
+                    result = bulk_update_prices(category_id=1, percentage_change=10.0)
+                    
+                    # Verify cursor.execute was called with SQL UPDATE statement
+                    mock_cursor_obj.execute.assert_called_once()
+                    
+                    # Get the SQL statement that was executed
+                    sql_call = mock_cursor_obj.execute.call_args
+                    sql_statement = sql_call[0][0] if sql_call[0] else sql_call[1].get('sql', '')
+                    
+                    # Verify it's an UPDATE statement, not per-object saves
+                    assert 'UPDATE' in sql_statement.upper(), "bulk_update_prices should use SQL UPDATE"
+                    assert 'SET price' in sql_statement.lower() or 'price =' in sql_statement.lower()
+                    
+                    # Verify the result contains updated count
+                    assert result['updated'] == 5
 
 
 class TestBatchProcessing:

@@ -27,6 +27,13 @@ def django_setup():
     django.setup()
 
 
+@pytest.fixture(scope='session')
+def django_setup():
+    """Setup Django for testing."""
+    import django
+    django.setup()
+
+
 @pytest.fixture
 def mock_redis():
     """Create a mock Redis client."""

@@ -445,37 +445,21 @@ def bulk_update_prices(self, category_id: int, percentage_change: float, job_id:
         progress.complete({'updated': 0})
         return {'updated': 0}
     
-    # Use bulk_update for efficiency
-    products = list(Product.objects.filter(category_id=category_id))
-    
-    # Update in memory
-    for product in products:
-        product.price = ExpressionWrapper(
-            F('price') * (1 + percentage_change / 100),
-            output_field=FloatField()
+    # Use database-level UPDATE for maximum efficiency (Req 6)
+    # Single SQL statement updates all products without fetching to Python
+    from django.db import connection
+    multiplier = 1 + percentage_change / 100
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "UPDATE reports_product SET price = price * %s WHERE category_id = %s",
+            [multiplier, category_id]
         )
-        # We'll save after to ensure proper decimal handling
-    
-    # Use bulk_update (most efficient)
-    with transaction.atomic():
-        # Update each product
-        for product in products:
-            new_price = product.price * (1 + percentage_change / 100)
-            product.price = new_price
-            product.save(update_fields=['price'])
-        
-        # Alternative: Use raw SQL for maximum efficiency
-        # from django.db import connection
-        # with connection.cursor() as cursor:
-        #     cursor.execute(
-        #         "UPDATE reports_product SET price = price * %s WHERE category_id = %s",
-        #         [1 + percentage_change / 100, category_id]
-        #     )
+        updated_count = cursor.rowcount
     
     # Update progress
-    progress.complete({'updated': product_count})
+    progress.complete({'updated': updated_count})
     
-    return {'updated': product_count}
+    return {'updated': updated_count}
 
 
 # Import timezone for job completion
