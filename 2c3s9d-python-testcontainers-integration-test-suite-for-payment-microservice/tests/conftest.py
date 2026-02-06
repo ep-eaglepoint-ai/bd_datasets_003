@@ -39,6 +39,13 @@ REPO_PATH = os.environ.get("PYTHONPATH", "/app/repository_after")
 REPO_NAME = os.path.basename(REPO_PATH)
 IS_REPO_BEFORE = REPO_NAME == "repository_before"
 
+# Docker registry mirror to avoid rate limiting (set via environment variable)
+# Common mirrors:
+# - mirror.gcr.io (Google Container Registry mirror)
+# - docker.mirrors.ustc.edu.cn (USTC mirror)
+# - registry.docker-cn.com (Docker China mirror)
+DOCKER_REGISTRY_MIRROR = os.environ.get("DOCKER_REGISTRY_MIRROR", "").strip()
+
 
 def pytest_collection_modifyitems(session, config, items):
     """Modify test items to skip/xfail tests when testing repository_before."""
@@ -48,6 +55,7 @@ def pytest_collection_modifyitems(session, config, items):
         if IS_REPO_BEFORE:
             # Skip all tests for repository_before to return exit code 0
             item.add_marker(pytest.mark.skip(reason="repository_before"))
+
 
 # Add repository to path for imports
 sys.path.insert(0, REPO_PATH)
@@ -99,9 +107,16 @@ def postgres_container(docker_client) -> Generator[PostgresContainer, None, None
     Requirement 1: Provides session-scoped fixture that starts a PostgreSQL
     container and waits for connection readiness using a health check loop
     before running tests.
+    
+    Uses Docker registry mirror if DOCKER_REGISTRY_MIRROR is set to avoid rate limits.
     """
+    # Use registry mirror if configured (e.g., "mirror.gcr.io" for Google mirror)
+    image_name = "postgres:15-alpine"
+    if DOCKER_REGISTRY_MIRROR:
+        image_name = f"{DOCKER_REGISTRY_MIRROR}/{image_name}"
+    
     postgres = PostgresContainer(
-        image="postgres:15-alpine",
+        image=image_name,
         username="postgres",
         password="postgres",
         dbname="postgres",
@@ -145,8 +160,15 @@ def redis_container(docker_client) -> Generator[RedisContainer, None, None]:
     
     Requirement 2: Provides session-scoped fixture that starts a Redis
     container and verifies it accepts connections before tests execute.
+    
+    Uses Docker registry mirror if DOCKER_REGISTRY_MIRROR is set to avoid rate limits.
     """
-    redis = RedisContainer(image="redis:7-alpine", port=6379)
+    # Use registry mirror if configured
+    image_name = "redis:7-alpine"
+    if DOCKER_REGISTRY_MIRROR:
+        image_name = f"{DOCKER_REGISTRY_MIRROR}/{image_name}"
+    
+    redis = RedisContainer(image=image_name, port=6379)
     with redis as container:
         # Health check: wait for Redis to be ready
         host = container.get_container_host_ip()
@@ -182,9 +204,16 @@ def rabbitmq_container(docker_client) -> Generator[RabbitMqContainer, None, None
     
     Requirement 3: Provides session-scoped fixture that starts a RabbitMQ
     container and confirms the AMQP connection is available before tests run.
+    
+    Uses Docker registry mirror if DOCKER_REGISTRY_MIRROR is set to avoid rate limits.
     """
+    # Use registry mirror if configured
+    image_name = "rabbitmq:3-management-alpine"
+    if DOCKER_REGISTRY_MIRROR:
+        image_name = f"{DOCKER_REGISTRY_MIRROR}/{image_name}"
+    
     rabbitmq = RabbitMqContainer(
-        image="rabbitmq:3-management-alpine",
+        image=image_name,
         username="guest",
         password="guest"
     )
