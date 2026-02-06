@@ -1,11 +1,17 @@
-# VV4FWV - Accessible, High-Performance Command Palette for React Dashboard Navigation
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Docker Commands
 
-    ## After Test Docker Command
-    <docker after command here>
+### Build Docker Image
+```bash
+docker compose up --build --exit-code-from tests
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+### Run Tests
+```bash
+docker compose up --build --exit-code-from tests
+```
+
+### Run Evaluation Report
+```bash
+docker compose up --build evaluator
+```
