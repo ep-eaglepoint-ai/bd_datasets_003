@@ -63,3 +63,4 @@ docker-compose.override.yml
 
 # Evaluation
 evaluation/reports/report.json
+evaluation/reports/evaluation-report.json
