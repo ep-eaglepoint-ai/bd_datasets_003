@@ -1,0 +1,29 @@
+# LRU Cache Test Suite
+
+## Commands
+
+### 1. Setup
+```bash
+docker compose build
+```
+
+### 2. Run Tests on repository_before
+```bash
+docker compose run --rm app bash -c 'cd repository_before && python -m pytest || true'
+```
+
+### 3. Run Tests on repository_after
+```bash
+docker compose run --rm app bash -c 'cd repository_after && python -m pytest lrucache/test_lru.py -q --tb=no --no-header -r no'
+```
+
+### 4. Run Meta Tests
+```bash
+docker compose run --rm app python -m pytest tests/test_meta.py -v -s
+```
+
+### 5. Run Evaluation
+```bash
+docker compose run --rm app python evaluation/evaluation.py
+```
+
