@@ -14,35 +14,33 @@ import (
 )
 
 const (
-	maxAuditScanSize = 64 * 1024 // Only SCAN first 64KB, but forward ALL bytes
+	maxAuditScanSize = 64 * 1024
 	regexTimeoutMs   = 100
 	maxLineLength    = 10 * 1024
-	auditWorkerCount = 4    // Worker pool size
-	auditQueueSize   = 1000 // Buffered channel size
+	auditWorkerCount = 4
+	auditQueueSize   = 1000
+	chunkSize        = 16 * 1024 // Scan in 16KB chunks
 )
 
-// AuditJob represents a job for the audit worker pool
 type AuditJob struct {
 	ContainerID string
 	StreamType  StreamType
 	Payload     []byte
 }
 
-// LogAuditor performs real-time audit of Docker logs
 type LogAuditor struct {
 	Config      *Config
 	AuditLogger *AuditLogger
 
-	// Worker pool
 	auditQueue   chan AuditJob
 	wg           sync.WaitGroup
+	auditWg      sync.WaitGroup // NEW: Track in-flight audits
 	started      bool
 	stopped      bool
 	mu           sync.Mutex
-	droppedCount int64 // Atomic counter for dropped audits
+	droppedCount int64
 }
 
-// StartWorkers initializes the audit worker pool
 func (a *LogAuditor) StartWorkers() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -54,14 +52,12 @@ func (a *LogAuditor) StartWorkers() {
 	a.auditQueue = make(chan AuditJob, auditQueueSize)
 	a.started = true
 
-	// Start fixed number of workers
 	for i := 0; i < auditWorkerCount; i++ {
 		a.wg.Add(1)
 		go a.auditWorker()
 	}
 }
 
-// StopWorkers gracefully stops the worker pool
 func (a *LogAuditor) StopWorkers() {
 	a.mu.Lock()
 	if !a.started || a.stopped {
@@ -72,16 +68,16 @@ func (a *LogAuditor) StopWorkers() {
 	a.mu.Unlock()
 
 	close(a.auditQueue)
-	a.wg.Wait()
+	a.wg.Wait() // Wait for workers to finish
 
-	// Log summary of dropped audits
+	a.auditWg.Wait() // NEW: Wait for all in-flight audits
+
 	dropped := atomic.LoadInt64(&a.droppedCount)
 	if dropped > 0 {
 		log.Printf("Audit summary: %d audits dropped due to queue full", dropped)
 	}
 }
 
-// auditWorker processes audit jobs from the queue
 func (a *LogAuditor) auditWorker() {
 	defer a.wg.Done()
 
@@ -90,7 +86,6 @@ func (a *LogAuditor) auditWorker() {
 	}
 }
 
-// StreamType represents the type of stream
 type StreamType byte
 
 const (
@@ -112,9 +107,7 @@ func (s StreamType) String() string {
 	}
 }
 
-// AuditMultiplexedStream parses Docker's binary multiplexed stream
 func (a *LogAuditor) AuditMultiplexedStream(ctx context.Context, reader io.Reader, writer io.Writer, containerID string, flusher http.Flusher) error {
-	// Ensure workers are started
 	a.StartWorkers()
 
 	header := make([]byte, 8)
@@ -138,29 +131,24 @@ func (a *LogAuditor) AuditMultiplexedStream(ctx context.Context, reader io.Reade
 		payloadSize := binary.BigEndian.Uint32(header[4:8])
 
 		if payloadSize == 0 {
-			// Write empty header anyway to preserve stream
 			if _, err := writer.Write(header); err != nil {
 				return err
 			}
 			continue
 		}
 
-		// Read FULL payload - DO NOT TRUNCATE
 		payload := make([]byte, payloadSize)
 		_, err = io.ReadFull(reader, payload)
 		if err != nil {
 			return fmt.Errorf("failed to read payload: %v", err)
 		}
 
-		// Queue audit job - only scan first N bytes but don't modify payload
 		a.queueAuditJob(containerID, streamType, payload)
 
-		// Write FULL header to client (preserves stream integrity)
 		if _, err := writer.Write(header); err != nil {
 			return err
 		}
 
-		// Write FULL payload to client (preserves stream integrity)
 		if _, err := writer.Write(payload); err != nil {
 			return err
 		}
@@ -171,7 +159,6 @@ func (a *LogAuditor) AuditMultiplexedStream(ctx context.Context, reader io.Reade
 	}
 }
 
-// queueAuditJob adds an audit job to the worker queue with backpressure
 func (a *LogAuditor) queueAuditJob(containerID string, streamType StreamType, payload []byte) {
 	a.mu.Lock()
 	if a.stopped || a.auditQueue == nil {
@@ -180,13 +167,11 @@ func (a *LogAuditor) queueAuditJob(containerID string, streamType StreamType, pa
 	}
 	a.mu.Unlock()
 
-	// Only copy what we need to audit
 	auditSize := len(payload)
 	if auditSize > maxAuditScanSize {
 		auditSize = maxAuditScanSize
 	}
 
-	// Make a copy for the worker (original payload is forwarded to client)
 	auditPayload := make([]byte, auditSize)
 	copy(auditPayload, payload[:auditSize])
 
@@ -196,17 +181,13 @@ func (a *LogAuditor) queueAuditJob(containerID string, streamType StreamType, pa
 		Payload:     auditPayload,
 	}
 
-	// Non-blocking send with drop policy
 	select {
 	case a.auditQueue <- job:
-		// Successfully queued
 	default:
-		// Queue full - drop this audit (backpressure) - just count, don't log each one
 		atomic.AddInt64(&a.droppedCount, 1)
 	}
 }
 
-// AuditPlainStream audits non-multiplexed streams
 func (a *LogAuditor) AuditPlainStream(ctx context.Context, reader io.Reader, writer io.Writer, containerID string) error {
 	a.StartWorkers()
 
@@ -223,7 +204,6 @@ func (a *LogAuditor) AuditPlainStream(ctx context.Context, reader io.Reader, wri
 
 		line := scanner.Bytes()
 
-		// Copy for audit (limited size)
 		auditSize := len(line)
 		if auditSize > maxAuditScanSize {
 			auditSize = maxAuditScanSize
@@ -233,7 +213,6 @@ func (a *LogAuditor) AuditPlainStream(ctx context.Context, reader io.Reader, wri
 
 		a.queueAuditJob(containerID, StreamStdout, lineCopy)
 
-		// Write FULL line to client
 		if _, err := writer.Write(line); err != nil {
 			return err
 		}
@@ -245,53 +224,64 @@ func (a *LogAuditor) AuditPlainStream(ctx context.Context, reader io.Reader, wri
 	return scanner.Err()
 }
 
-// auditPayloadWithTimeout runs audit with proper timeout
 func (a *LogAuditor) auditPayloadWithTimeout(containerID string, streamType StreamType, payload []byte) {
+	a.auditWg.Add(1) // NEW: Track this audit
+	defer a.auditWg.Done()
+
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("Panic in audit: %v", r)
 		}
 	}()
 
-	// Create context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), regexTimeoutMs*time.Millisecond)
 	defer cancel()
 
-	// Run audit in separate goroutine
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		a.auditPayload(containerID, streamType, payload)
+		a.auditPayloadChunked(containerID, streamType, payload) // NEW: Use chunked scanning
 	}()
 
 	select {
 	case <-done:
 		// Completed successfully
 	case <-ctx.Done():
-		// Timeout - goroutine may still be running but we move on
-		// Don't log each timeout to reduce noise
+		// Timeout - goroutine may still run but we move on
+		// The spawned goroutine will complete eventually
 	}
 }
 
-// auditPayload performs the actual regex matching
-func (a *LogAuditor) auditPayload(containerID string, streamType StreamType, payload []byte) {
-	// Check if logger is still available
+// NEW: Chunked scanning to avoid expensive single-pass scans
+func (a *LogAuditor) auditPayloadChunked(containerID string, streamType StreamType, payload []byte) {
 	if a.AuditLogger == nil {
 		return
 	}
 
-	payloadStr := string(payload)
+	// Scan in chunks to limit regex execution time per iteration
+	for offset := 0; offset < len(payload); offset += chunkSize {
+		end := offset + chunkSize
+		if end > len(payload) {
+			end = len(payload)
+		}
+
+		chunk := payload[offset:end]
+		a.auditChunk(containerID, streamType, chunk)
+	}
+}
+
+func (a *LogAuditor) auditChunk(containerID string, streamType StreamType, chunk []byte) {
+	chunkStr := string(chunk)
 
 	for _, pattern := range a.Config.SensitivePatterns {
-		// Find all match indices
-		indices := pattern.Regex.FindAllStringIndex(payloadStr, -1)
+		indices := pattern.Regex.FindAllStringIndex(chunkStr, -1)
 
 		for _, idx := range indices {
 			if len(idx) < 2 {
 				continue
 			}
 
-			match := payloadStr[idx[0]:idx[1]]
+			match := chunkStr[idx[0]:idx[1]]
 			redacted := redactString(match)
 
 			event := AuditEvent{
@@ -300,10 +290,9 @@ func (a *LogAuditor) auditPayload(containerID string, streamType StreamType, pay
 				StreamType:  streamType.String(),
 				Pattern:     pattern.Name,
 				Redacted:    redacted,
-				Severity:    "HIGH",
+				Severity:    pattern.Severity, // NEW: Use pattern severity
 			}
 
-			// Ignore errors silently to avoid log noise during shutdown
 			a.AuditLogger.Log(event)
 		}
 	}

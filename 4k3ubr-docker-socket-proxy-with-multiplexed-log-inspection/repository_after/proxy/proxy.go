@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -59,7 +60,31 @@ func (p *DockerProxy) Close() {
 	}
 }
 
+// GetMetrics returns observability metrics
+func (p *DockerProxy) GetMetrics() map[string]interface{} {
+	metrics := make(map[string]interface{})
+	
+	if p.auditor != nil {
+		dropped := atomic.LoadInt64(&p.auditor.droppedCount)
+		metrics["dropped_audits"] = dropped
+		
+		if p.auditor.AuditLogger != nil {
+			logSize, logFile := p.auditor.AuditLogger.GetMetrics()
+			metrics["audit_log_size_bytes"] = logSize
+			metrics["audit_log_file"] = logFile
+		}
+	}
+	
+	return metrics
+}
+
 func (p *DockerProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Handle metrics endpoint
+	if r.URL.Path == "/metrics" || r.URL.Path == "/_proxy/metrics" {
+		p.handleMetrics(w, r)
+		return
+	}
+
 	if isLogsRequest(r) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "Only GET method allowed for logs endpoint", http.StatusMethodNotAllowed)
@@ -70,6 +95,24 @@ func (p *DockerProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	p.handleStandardProxy(w, r)
+}
+
+func (p *DockerProxy) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	metrics := p.GetMetrics()
+	
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	
+	// Simple text format (Prometheus-style)
+	fmt.Fprintf(w, "# HELP docker_proxy_dropped_audits_total Total number of dropped audit events\n")
+	fmt.Fprintf(w, "# TYPE docker_proxy_dropped_audits_total counter\n")
+	fmt.Fprintf(w, "docker_proxy_dropped_audits_total %d\n", metrics["dropped_audits"])
+	
+	if size, ok := metrics["audit_log_size_bytes"].(int64); ok {
+		fmt.Fprintf(w, "# HELP docker_proxy_audit_log_size_bytes Current size of audit log file\n")
+		fmt.Fprintf(w, "# TYPE docker_proxy_audit_log_size_bytes gauge\n")
+		fmt.Fprintf(w, "docker_proxy_audit_log_size_bytes %d\n", size)
+	}
 }
 
 func isLogsRequest(r *http.Request) bool {

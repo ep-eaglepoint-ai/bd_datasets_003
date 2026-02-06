@@ -19,6 +19,9 @@
         "TestStdoutStderrDistinction/stdin",
         "TestStdoutStderrDistinction/stdout",
         "TestStdoutStderrDistinction/stderr",
+        "TestRealDockerProxyImplementation",
+        "TestUnixSocketDialVerification",
+        "TestAuditSideEffectVerification",
         "TestCompleteProxyIntegration",
         "TestCompleteProxyIntegration/MultiplexedStreamProcessing",
         "TestCompleteProxyIntegration/RegexMatching",
@@ -40,7 +43,14 @@
         "TestRedaction/AKIAIOSFODNN7EXAMPLE",
         "TestRedaction/short",
         "TestRedaction/user@example.com",
-        "TestRedaction/verylongsecretkey12345"
+        "TestRedaction/verylongsecretkey12345",
+        "TestRequirement1_NonMultiplexedLogsAreAudited",
+        "TestRequirement2_CoreImplementationTested",
+        "TestRequirement3_UnixSocketDialingValidated",
+        "TestGracefulShutdown",
+        "TestRequirement4_AuditSideEffectVerified",
+        "TestRequirement5_RegexPerformanceSafeguards",
+        "TestRequirement6_HTTP"
     ],
     "PASS_TO_PASS": []
 }
