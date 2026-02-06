@@ -2,7 +2,7 @@ services:
   test-before:
     build: .
     image: report-generator-env
-    command: mvn test -f repository_before/pom.xml
+    command: mvn test -f repository_before/pom.xml -Dmaven.test.failure.ignore=true
     volumes:
       - .:/app
       - maven_data:/root/.m2

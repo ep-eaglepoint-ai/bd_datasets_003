@@ -1,11 +1,15 @@
 {
-            "instance_id": "Q87U71",
-            "problem_statement": "A financial services company generates daily transaction reports for their clients. The report generation system in ReportGenerator.java creates formatted text reports containing thousands of transaction records. Users are complaining that report generation takes over 30 seconds for reports with 10,000 transactions, and the system becomes completely unresponsive when generating end-of-month reports with 100,000+ transactions. The operations team needs reports generated in under 5 seconds to meet their SLA requirements.Performance profiling shows that most time is spent in the formatTransactions method, which builds the report string by concatenating transaction details in a loop. Memory usage spikes dramatically during report generation, sometimes causing OutOfMemoryError on large reports. The current implementation must be optimized without changing the output format that downstream systems depend on.",
-            "base_commit": "repository_before/",
-            "test_patch": "tests/",
-            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/q87u71-report-generator-optimization",
-            "environment_setup": "Dockerfile",
-            "FAIL_TO_PASS": [],
-            "PASS_TO_PASS": []
-        }
-        
+  "instance_id": "Q87U71",
+  "problem_statement": "A financial services company generates daily transaction reports for their clients. The report generation system in ReportGenerator.java creates formatted text reports containing thousands of transaction records. Users are complaining that report generation takes over 30 seconds for reports with 10,000 transactions, and the system becomes completely unresponsive when generating end-of-month reports with 100,000+ transactions. The operations team needs reports generated in under 5 seconds to meet their SLA requirements.Performance profiling shows that most time is spent in the formatTransactions method, which builds the report string by concatenating transaction details in a loop. Memory usage spikes dramatically during report generation, sometimes causing OutOfMemoryError on large reports. The current implementation must be optimized without changing the output format that downstream systems depend on.",
+  "base_commit": "repository_before/",
+  "test_patch": "tests/",
+  "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/q87u71-report-generator-optimization",
+  "environment_setup": "Dockerfile",
+  "FAIL_TO_PASS": ["ReportGeneratorTest#testNullValues"],
+  "PASS_TO_PASS": [
+    "ReportGeneratorTest#testStandardReport",
+    "ReportGeneratorTest#testEmptyReport",
+    "ReportGeneratorTest#testLargeReportPerformance",
+    "ReportGeneratorTest#testLongDescription"
+  ]
+}
