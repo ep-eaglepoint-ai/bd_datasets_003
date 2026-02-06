@@ -1,0 +1,26 @@
+{
+  "name": "react-random-dog-picture-generator-test-suite",
+  "version": "1.0.0",
+  "description": "Test suite for React Random Dog Picture Generator",
+  "scripts": {
+    "test:before": "jest --config jest.config.cjs --testMatch='<rootDir>/repository_after/*.test.jsx' --detectOpenHandles --forceExit",
+    "test:after": "jest --config jest.config.cjs --testMatch='<rootDir>/tests/*.test.js' --detectOpenHandles --forceExit"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.23.0",
+    "@babel/preset-env": "^7.22.20",
+    "@babel/preset-react": "^7.22.15",
+    "@jest/globals": "^29.7.0",
+    "@testing-library/jest-dom": "^6.1.4",
+    "@testing-library/react": "^14.0.0",
+    "@testing-library/user-event": "^14.5.1",
+    "babel-jest": "^29.7.0",
+    "identity-obj-proxy": "^3.0.0",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0"
+  }
+}

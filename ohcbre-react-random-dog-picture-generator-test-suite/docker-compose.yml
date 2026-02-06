@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  repository-before:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /app
+    volumes:
+      - ./repository_before/src:/app/src:ro
+      - ./repository_before/public:/app/public:ro
+      - ./repository_after:/app/repository_after:ro
+      - ./package.json:/app/package.json:ro
+      - ./jest.config.cjs:/app/jest.config.cjs:ro
+      - ./babel.config.cjs:/app/babel.config.cjs:ro
+      - ./setupTests.js:/app/setupTests.js:ro
+      - ./repository_after/mocks:/app/mocks:ro
+      - test-results:/tmp/test-results
+    environment:
+      - NODE_ENV=test
+    command: >
+      sh -c "
+        echo 'Setting up component test environment...' &&
+        echo 'Installing dependencies...' &&
+        npm install --legacy-peer-deps --silent &&
+        echo 'Running component tests (repository_before + test suite)...' &&
+        npm run test:before -- --json --outputFile=/tmp/test-results/before-results.json 2>&1 || true &&
+        echo 'Component tests completed' &&
+        exit 0
+      "
+
+  repository-after:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /app
+    volumes:
+      - ./repository_before/src:/app/src:ro
+      - ./repository_before/public:/app/public:ro
+      - ./repository_after:/app/repository_after:ro
+      - ./tests:/app/tests:ro
+      - ./package.json:/app/package.json:ro
+      - ./jest.config.cjs:/app/jest.config.cjs:ro
+      - ./babel.config.cjs:/app/babel.config.cjs:ro
+      - ./setupTests.js:/app/setupTests.js:ro
+      - ./tests/mocks:/app/mocks:ro
+      - test-results:/tmp/test-results
+    environment:
+      - NODE_ENV=test
+    command: >
+      sh -c "
+        echo 'Setting up meta test environment...' &&
+        echo 'Installing dependencies...' &&
+        npm install --legacy-peer-deps --silent &&
+        echo 'Running meta tests (validating test suite structure)...' &&
+        npm run test:after -- --json --outputFile=/tmp/test-results/after-results.json 2>&1 || true &&
+        echo 'Meta tests completed' &&
+        exit 0
+      "
+
+  evaluation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /app
+    volumes:
+      - ./evaluation:/app/evaluation:ro
+      - ./evaluation/reports:/app/reports
+      - test-results:/tmp/test-results:ro
+    command: node /app/evaluation/evaluation.js
+
+volumes:
+  test-results:
