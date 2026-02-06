@@ -122,6 +122,9 @@ def run_evaluation():
     run_id = str(uuid.uuid4())
     start = datetime.utcnow()
     
+    # Evaluate repository_before (baseline)
+    before = evaluate("repository_before")
+    
     # Evaluate repository_after (optimized)
     after = evaluate("repository_after")
     
@@ -138,6 +141,7 @@ def run_evaluation():
         "finished_at": end.isoformat() + "Z",
         "duration_seconds": (end - start).total_seconds(),
         "environment": environment_info(),
+        "before": before,
         "after": after,
         "comparison": comparison,
         "success": comparison["passed_gate"],
@@ -146,6 +150,7 @@ def run_evaluation():
 
 def print_report(report, report_path):
     """Print evaluation report."""
+    b_p, b_f, b_cov, b_tot, b_perf = parse_maven_output(report["before"]["tests"]["output"])
     a_p, a_f, a_cov, a_tot, a_perf = parse_maven_output(report["after"]["tests"]["output"])
     
     print("=" * 60)
@@ -155,21 +160,43 @@ def print_report(report, report_path):
     print(f"Run ID: {report['run_id']}")
     print(f"Duration: {report['duration_seconds']:.2f} seconds")
     print()
-    print("RESULTS (repository_after):")
+    
+    print("BEFORE (repository_before):")
+    print(f"  Tests passed: {report['before']['tests']['passed']}")
+    print(f"  Passed: {b_p} | Failed: {b_f}")
+    print(f"  Requirements covered: {b_cov}/{b_tot}")
+    
+    if b_perf:
+        print()
+        print("  PERFORMANCE:")
+        print(f"    Transaction Count: {b_perf['transaction_count']:,}")
+        print(f"    Generation Time: {b_perf['duration_ms']:,}ms ({b_perf['duration_seconds']:.2f}s)")
+        if b_perf['duration_seconds'] >= 5.0:
+            print(f"    ❌ FAILED: Exceeded 5 second requirement")
+        else:
+            print(f"    ✅ PASSED: < 5 second requirement")
+    
+    print()
+    print("AFTER (repository_after):")
     print(f"  Tests passed: {report['after']['tests']['passed']}")
     print(f"  Passed: {a_p} | Failed: {a_f}")
     print(f"  Requirements covered: {a_cov}/{a_tot}")
     
     if a_perf:
         print()
-        print("PERFORMANCE:")
-        print(f"  Transaction Count: {a_perf['transaction_count']:,}")
-        print(f"  Generation Time: {a_perf['duration_ms']:,}ms ({a_perf['duration_seconds']:.2f}s)")
+        print("  PERFORMANCE:")
+        print(f"    Transaction Count: {a_perf['transaction_count']:,}")
+        print(f"    Generation Time: {a_perf['duration_ms']:,}ms ({a_perf['duration_seconds']:.2f}s)")
         
         if a_perf['duration_seconds'] < 5.0:
-            print(f"  ✅ PASSED: < 5 second requirement")
+            print(f"    ✅ PASSED: < 5 second requirement")
         else:
-            print(f"  ❌ FAILED: Exceeded 5 second requirement")
+            print(f"    ❌ FAILED: Exceeded 5 second requirement")
+        
+        # Show improvement if both have performance data
+        if b_perf and b_perf['duration_ms'] > 0:
+            speedup = b_perf['duration_ms'] / a_perf['duration_ms']
+            print(f"    🚀 SPEEDUP: {speedup:.1f}x faster than baseline")
     
     print()
     print("COMPARISON:")

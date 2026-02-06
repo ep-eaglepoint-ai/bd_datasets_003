@@ -5,6 +5,7 @@ services:
     command: mvn test -f repository_before/pom.xml
     volumes:
       - .:/app
+      - maven_data:/root/.m2
     working_dir: /app
 
   test-after:
@@ -12,6 +13,7 @@ services:
     command: mvn test -f repository_after/pom.xml
     volumes:
       - .:/app
+      - maven_data:/root/.m2
     working_dir: /app
 
   evaluation:
@@ -20,3 +22,6 @@ services:
     volumes:
       - .:/app
     working_dir: /app
+
+volumes:
+  maven_data:
