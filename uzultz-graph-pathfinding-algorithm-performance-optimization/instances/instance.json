@@ -1,0 +1,11 @@
+{
+            "instance_id": "UZULTZ",
+            "problem_statement": "The current Dijkstra-based pathfinding implementation results in slow query times, high memory usage, and poor scalability when dealing with large graphs. The task is to optimize the pathfinding system to reduce query latency, minimize memory usage, and efficiently handle large graphs with millions of nodes, while ensuring high throughput for real-time route planning.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/uzultz-graph-pathfinding-algorithm-performance-optimization",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
