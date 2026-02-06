@@ -1,11 +1,16 @@
-# VF9C1B - Test-A-Star-Pathfinding-Integrity
+# VF9C1B - A-Star Pathfinding Test Suite
 
-    ## Before Test Docker Command
-    <docker before command here>
+### Run Pathfinder Tests (repository_after)
+```bash
+docker-compose run repo-before
+```
 
-    ## After Test Docker Command
-    <docker after command here>
+### Run Meta Tests (tests/)
+```bash
+docker-compose run repo-after
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+### Run Evaluation (both + report)
+```bash
+docker-compose run evaluation
+```
