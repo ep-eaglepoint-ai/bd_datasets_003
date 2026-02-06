@@ -1,0 +1,25 @@
+{
+  "run_id": "789f5c55-2a1a-4dfc-87ce-449d6cc8e947",
+  "started_at": "2026-02-04T13:18:36.842Z",
+  "finished_at": "2026-02-04T13:18:38.146Z",
+  "duration_seconds": 1.304,
+  "environment": {
+    "node_version": "v20.20.0",
+    "platform": "linux",
+    "arch": "x64",
+    "cpus": 8
+  },
+  "repository": {
+    "path": "repository_after",
+    "type": "fixed"
+  },
+  "tests": {
+    "passed": true,
+    "return_code": 0,
+    "tests_passed": 31,
+    "tests_failed": 0,
+    "total_tests": 31,
+    "output": "✓ Constructor accepts valid concurrency limit\n✓ Constructor validates minimum concurrency\n✓ Constructor validates integer concurrency\n✓ Execute returns Promise that resolves with results\n✓ Results maintain input order\n✓ Maintains exact concurrency limit\n✓ Starts new task immediately when one completes\n✓ Failed tasks do not stop other tasks\n✓ Error objects contain task information\n✓ onProgress called after each task\n✓ onProgress indicates failures\n✓ onTaskComplete receives results immediately\n✓ onTaskComplete receives errors\n✓ AbortSignal stops starting new tasks\n✓ Already aborted signal rejects immediately\n✓ Static map processes items with mapper\n✓ Static map maintains order and limits concurrency\n✓ Static map passes index to mapper\n✓ Static map validates inputs\n✓ Tracks completed tasks\n✓ Tracks failed tasks\n✓ Tracks running count\n✓ Empty array resolves immediately\n✓ Concurrency greater than task count\n✓ Synchronous task resolution\n✓ Mixed sync and async tasks\n✓ Handles large batches\n✓ Integration: Real-world API simulation\n✓ Integration: Progress tracking\n✓ Integration: Callback error handling\n✓ Stress: High concurrency with many tasks\n\n============================================================\nTest Results: 31 passed, 0 failed\n============================================================\n\n\nSTDERR:\nonTaskComplete callback error: Error: Another callback error\n    at onTaskComplete (file:///app/test/PromisePool.test.js:601:15)\n    at file:///app/PromisePool.js:116:17\n    at runNextTicks (node:internal/process/task_queues:60:5)\n    at listOnTimeout (node:internal/timers:545:9)\n    at process.processTimers (node:internal/timers:519:7)\nonProgress callback error: Error: Callback error\n    at onProgress (file:///app/test/PromisePool.test.js:598:15)\n    at file:///app/PromisePool.js:126:17\n    at runNextTicks (node:internal/process/task_queues:60:5)\n    at listOnTimeout (node:internal/timers:545:9)\n    at process.processTimers (node:internal/timers:519:7)\nonTaskComplete callback error: Error: Another callback error\n    at onTaskComplete (file:///app/test/PromisePool.test.js:601:15)\n    at file:///app/PromisePool.js:116:17\nonProgress callback error: Error: Callback error\n    at onProgress (file:///app/test/PromisePool.test.js:598:15)\n    at file:///app/PromisePool.js:126:17\n"
+  },
+  "success": true
+}
