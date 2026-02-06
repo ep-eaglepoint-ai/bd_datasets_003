@@ -1,0 +1,9 @@
+# Task Specific
+reports/
+
+# Node
+node_modules/
+
+# OS
+.DS_Store
+evaluation/*.json

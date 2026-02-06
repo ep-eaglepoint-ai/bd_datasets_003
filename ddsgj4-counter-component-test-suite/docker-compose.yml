@@ -1,0 +1,16 @@
+# Docker Compose file for running JavaScript/Jest tests
+
+services:
+  test:
+    build: .
+    command: sh -c "cd repository_after && node ../node_modules/.bin/jest --watchAll=false"
+
+  meta-test:
+    build: .
+    command: node node_modules/.bin/jest --config jest.meta.config.js --watchAll=false
+
+  evaluation:
+    build: .
+    command: node evaluation/evaluation.js
+    volumes:
+      - ./evaluation/reports:/app/evaluation/reports
