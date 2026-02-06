@@ -1,2 +1,235 @@
 # Trajectory
 
+## Phase 1: Understanding the Problem
+
+When I first approached the task of building a stateful Intrusion Detection System (IDS), I realized immediately that this wasn't just about matching strings in network packets. The core challenge lay in the unreliable nature of network transmission itself and how attackers exploit it to evade detection.
+
+### The "Stateless" Pitfall
+My initial thought might have been to simply look at every packet as it arrives and check if its payload contains a malicious signature like `DROP TABLE`. However, I recognized that this "stateless" approach is fundamentally flawed. In the real world, a large application-layer message (like an HTTP request or a SQL query) is often broken down into multiple smaller TCP segments. An attacker can deliberately split their payload across two packets:
+- **Packet A**: Contains "DROP "
+- **Packet B**: Contains "TABLE"
+
+If I analyzed these packets individually, neither would trigger the alert. To detect the threat, I needed to see "DROP TABLE" as a contiguous stream, which meant I had to reassemble the application-layer data before scanning it.
+
+### The "Reassembly Trap" and Out-of-Order Delivery
+This led me to the concept of **TCP Stream Reassembly**. I couldn't just concatenate packets in the order they arrived because IP networks do not guarantee in-order delivery. Packet B (Seq 110) might arrive *before* Packet A (Seq 100). If I simply appended B then A, I would get "TABLEDROP ", which is gibberish to my detection engine.
+
+To solve this, I understood I needed to:
+1.  **Track State**: Maintain a session table (or "flow table") keyed by the 5-tuple: `(Source IP, Source Port, Dest IP, Dest Port, Protocol)`. This allows me to group disparate packets into coherent conversations.
+2.  **Manage Sequence Numbers**: For each flow, I had to track where the data stream currently ended (the "next expected sequence number").
+3.  **Buffer Out-of-Order Data**: If a packet arrived with a sequence number higher than expected (a "future" packet), I couldn't process it yet. I had to store it in a buffer and wait for the missing gap to be filled.
+
+### The Low-Level Parsing Constraint
+Another significant constraint was the prohibition of high-level libraries like `scapy`. I had to work with raw binary data. This meant using Python's `struct` module to manually unpack bytes according to the RFC specifications for IPv4 and TCP. I had to manually calculate header lengths (using IHL and Data Offset fields) to locate the actual payload. This "bare metal" approach forced me to intimately understand the structure of network headers.
+
+### The Clean-Up Problem
+Finally, I considered resource management using "virtual time." In a real network, keeping state for every connection indefinitely would exhaust memory. I needed a mechanism to track the "last seen" timestamp of every flow and periodically purge those that had gone silent (in this case, for more than 300 seconds).
+
+### A Concrete Example of the Challenge
+
+To visualize the problem, imagine I am defending against a simplified attack signature: `ATTACK`.
+
+#### Scenario: The Out-of-Order split
+An attacker sends the payload across two packets, but due to network congestion, they arrive in reverse order:
+
+1.  **Packet 1 Arrives (T=0ms)**: `Seq=103`, `Len=3`, Payload=`"ACK"`
+2.  **Packet 2 Arrives (T=10ms)**: `Seq=100`, `Len=3`, Payload=`"ATT"`
+
+#### How I approached this (Stateless vs. Stateful):
+
+-   **If I were Stateless**:
+    -   At T=0ms, I see `"ACK"`. No match for `"ATTACK"`.
+    -   At T=10ms, I see `"ATT"`. No match for `"ATTACK"`.
+    -   **Result**: The attack successfully bypasses the IDS.
+
+-   **As a Stateful Engine**:
+    -   At T=0ms, I receive `"ACK"` (Seq 103). I create a flow entry and see that I'm missing the data starting from the initial sequence (e.g., Seq 100). I **buffer** `"ACK"` in a dictionary: `{103: b"ACK"}`.
+    -   At T=10ms, I receive `"ATT"` (Seq 100). I add it to the buffer: `{100: b"ATT", 103: b"ACK"}`.
+    -   **The Reassembly Trigger**: Now, I see that I have a contiguous block. I start at Seq 100, add its 3 bytes, which takes me exactly to Seq 103. I then append the 3 bytes from Seq 103.
+    -   **The Detection**: I reconstruct the stream `"ATTACK"`. My regex engine scans this combined string and triggers an alert.
+    -   **Result**: The attack is successfully blocked, even though it was fragmented and scrambled by the network.
+
+### Real-World Scenario: SQL Injection Evasion
+
+In a production environment, this challenge becomes much more critical. Consider a SQL Injection attack signature: `DROP TABLE`.
+
+#### The Evasive Maneuver
+An attacker might intentionally configure their TCP stack or use a specialized tool to fragment the "DROP TABLE" command into tiny segments to bypass simple firewall rules:
+
+-   **Packet 1**: `...payload="DR"...`
+-   **Packet 2**: `...payload="OP "...`
+-   **Packet 3**: `...payload="TAB"...`
+-   **Packet 4**: `...payload="LE"...`
+
+#### The Engineering Solution
+My implementation handles this by treating the entire flow as a single contiguous buffer. By the time Packet 4 arrives, I have stitched together `"DR"` + `"OP "` + `"TAB"` + `"LE"`. 
+
+The Regex engine, which I configured to scan the *entire* reassembled block, will successfully find the match `DROP TABLE`. Without this stateful reassembly, each packet alone would look like harmless, fragmented noise to a security sensor.
+
+In summary, the problem wasn't just detection; it was about reconstructing a reliable data stream from an unreliable network layer, all while managing memory and parsing raw bits manually.
+
+## Phase 2: Planning and Architectural Design
+
+After defining the problem, I moved into the architectural phase. I needed a design that was both efficient for high-speed packet processing and robust enough to handle the "reassembly traps."
+
+### System Architecture
+I designed the system around three primary decoupled components:
+1.  **Parsing Layer**: Responsible for the extraction of metadata from raw binary buffers. It doesn't care about state; it only cares if the input is a valid TCP/IP packet.
+2.  **Flow Management Layer**: This is the "brain" of the stateful IDS. It maintains the session table and decides which packets belong to which conversation.
+3.  **Reassembly & Detection Layer**: This layer buffers out-of-order data and, once a contiguous block is found, hands it off to the Regex engine.
+
+### Data Structures
+I chose the following structures for their efficiency:
+-   **`namedtuple` (`FlowKey`)**: For the 5-tuple. Using a named tuple makes the code much more readable than a raw index.
+-   **`dict` (`flow.buffer`)**: Using a dictionary where keys are sequence numbers (`seq -> payload`) allows for O(1) insertion of packets, which is crucial when they arrive out of order.
+
+### Reassembly Algorithm: Opportunistic Stitching
+Instead of a complex window-sliding algorithm, I implemented "Opportunistic Stitching." Every time a packet arrives:
+1.  Add it to the buffer.
+2.  Sort all sequence numbers in the buffer.
+3.  Iterate through them and stitch bytes as long as there are no gaps.
+4.  If a gap is found, stop reassembly and wait for the next packet.
+
+This strategy is highly resistant to "Reassembly Traps" because it never assumes the order of arrival.
+
+---
+
+## Phase 3: Setup and Detailed Implementation
+
+With the architecture ready, I set up the environment using **Docker** to ensure the system runs consistently across any OS. I chose a pure Python approach with the `struct` module to meet the strict requirement of avoiding high-level libraries.
+
+Below is a detailed breakdown of my implementation in `main.py` and how it maps to every requirement.
+
+### 1. Manual Header Parsing (Req 1, 2, 3)
+
+The first step was to crack open the raw binary frame.
+
+```python
+# Extract Ethernet header (14 bytes)
+eth_header_len = 14
+ip_packet = raw_bytes[eth_header_len:]
+
+# --- IPv4 Parsing ---
+ver_ihl = ip_packet[0]
+version = ver_ihl >> 4
+ihl = ver_ihl & 0xF
+ip_header_len = ihl * 4  # Requirement 3: Dynamic IHL calculation
+```
+
+**How I met the requirements:**
+-   **Requirement 1**: I used `struct.unpack` (later in the code) to extract the IP fields safely.
+-   **Requirement 2**: I explicitly verified the protocol:
+    ```python
+    protocol = ip_packet[9]
+    if protocol != 6: # TCP is 6
+        return []
+    ```
+-   **Requirement 3**: I calculated the dynamic header length by masking the first byte (`& 0xF`) to get the IHL and multiplying by 4. This is critical because IPv4 headers can have optional fields, making them longer than the standard 20 bytes.
+
+### 2. The "Reassembly Trap" & Buffering (Req 4, 8)
+
+This is where I solved the core engineering challenge. If Packet 2 arrives before Packet 1, my engine doesn't panic.
+
+```python
+# Requirement 4: Logic (The Trap) - Buffer out-of-order packets
+if payload:
+    flow.buffer[seq_num] = payload
+    
+    # Reassemble: Reconstruct stream from sorted segments
+    sorted_seqs = sorted(flow.buffer.keys())
+    full_stream = b""
+    expected_seq = sorted_seqs[0]
+```
+
+**Example of handling overlaps (Requirement 8):**
+If I receive a retransmitted packet that overlaps existing data (e.g., I have Seq 100-110, and receive Seq 105-115), I handle it here:
+```python
+if s < expected_seq:
+    # Requirement 8: Handling Overlapping Segments
+    offset = expected_seq - s
+    if offset < length:
+        new_data = data[offset:] # Only take the new, non-duplicate bytes
+        full_stream += new_data
+        expected_seq += len(new_data)
+```
+I calculate the `offset` (how many bytes I already have) and only slice the `new_data` from the payload. This prevents corrupted reconstructed streams.
+
+### 3. Detection Engine (Req 5, 6)
+
+I ensured that the Regex engine never looks at a single packet in isolation.
+
+```python
+# Requirement 5: Trigger alerts on reconstructed stream only
+# Requirement 6: Detection across packet boundaries
+for rule in self.rules:
+    matches = rule.findall(full_stream)
+    if matches:
+        if signature not in flow.triggered_methods:
+             new_alerts.append(f"Alert: {signature} detected...")
+```
+
+**Example**: If the signature is `"ATTACK"`, and the stream is reconstructed as `"ATTACK"`, it triggers. Since I scan the `full_stream` (the result of stitching all contiguous segments), it doesn't matter if `"ATT"` was in one packet and `"ACK"` was in another.
+
+### 4. Memory Management (Req 7)
+
+To prevent the system from crashing under heavy load, I implemented a scavenger:
+
+```python
+# Requirement 7: Memory: Timeout/cleanup mechanism
+def _cleanup_flows(self, current_time):
+    expired = []
+    for k, v in self.flows.items():
+        if current_time - v.last_seen > 300: # 300s threshold
+            expired.append(k)
+    for k in expired:
+        del self.flows[k]
+```
+
+I call this method every time a new packet arrives. By comparing the `packet timestamp` (virtual time) with the `last_seen` timestamp of the flow, I can safely purge inactive sessions.
+
+---
+
+## Phase 4: Testing and Verification
+
+To prove the robustness of my IDS, I developed a comprehensive test suite in `tests/test_ids.py`. I didn't just want to see "green" tests; I wanted to simulate the exact adversarial conditions described in the requirements.
+
+### The Foundation: `create_packet`
+Since I built the IDS to parse raw binary, I needed a way to *generate* raw binary. I wrote a helper method `create_packet` that uses `struct.pack` to craft valid Ethernet/IPv4/TCP frames from scratch. This was essential for verifying **Requirement 1, 2, and 3** (manual parsing) because it allowed me to control every bit of the header.
+
+### Verifying the Reassembly Logic (Req 9, 10, 11)
+
+I mapped my test cases directly to the user's requirements:
+
+1.  **Split Attack (Requirement 9)**: 
+    I sent `"ATT"` in one packet and `"ACK"` in the next. I verified that the alert for `"ATTACK"` only triggered *after* the second packet arrived.
+    ```python
+    p1 = self.create_packet(100, b"ATT")
+    p2 = self.create_packet(103, b"ACK")
+    # Verified: alerts2 contains "ATTACK"
+    ```
+
+2.  **Out-of-Order Test (Requirement 10)**: 
+    This was the "Trap." I sent the second packet (`Seq 103`) *before* the first (`Seq 100`). I monitored the internal state and confirmed that the system buffered the second packet and only performed reassembly when the first packet arrived to fill the gap.
+
+3.  **Noise Test (Requirement 11)**: 
+    I simulated a busy network by injecting "GARBAGE" packets from a different Source Port between the phases of an attack. I verified that my 5-tuple tracking correctly isolated the two flows, ensuring the noise didn't corrupt the reassembly of the target attack.
+
+### Verifying Lifecycle & Correctness (Req 8, 12)
+
+1.  **Overlapping Segments (Requirement 8)**: 
+    I simulated a retransmission where the second packet contained some bytes already sent in the first. I verified that my engine sliced off the duplicates, stitching the stream correctly without duplicating characters.
+
+2.  **Cleanup Test (Requirement 12)**: 
+    I sent a packet at `T=1000` and then an unrelated "trigger" packet at `T=1301`. I verified that the original flow was automatically purged from memory before the new packet was processed, satisfying the 300s security requirement.
+
+---
+
+## Conclusion
+
+Building this Stateful IDS was a deep dive into the fundamental layers of network security. By moving away from high-level abstractions and handling the raw binary bytes myself, I was able to implement a system that is resilient to common evasion tactics like TCP segmentation and out-of-order delivery.
+
+I successfully met all 12 requirements, from the surgical precision of `struct` parsing to the complex state management of the "Reassembly Trap." The result is an engine that doesn't just "see" packets—it "understands" the conversations they represent. This journey reinforced a core engineering truth: in security, context is everything.
+
+
+
+
