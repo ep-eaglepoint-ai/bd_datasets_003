@@ -1,0 +1,11 @@
+{
+            "instance_id": "YKXH33",
+            "problem_statement": "A laboratory measurement system requires sub-microsecond precision for analyzing high-frequency square waves (up to 500kHz) on a resource-constrained MCU. The current polling-based approach introduces unacceptable jitter and misses transitions during processing. An interrupt-driven solution using hardware timers and input capture is needed, with a lock-free ring buffer for non-blocking data transfer to the main loop for real-time FFT/variance analysis. The system must maintain precision during long captures and recover from faults without data loss.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ykxh33-interrupt-driven-pulse-width-analyzer-with-lock-free-ring-buffer-and-fixed-point-math",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
