@@ -2,6 +2,10 @@ const path = require('path');
 
 module.exports = {
   testEnvironment: 'jsdom',
+
+  haste: {
+    throwOnModuleCollision: false,
+  },
   
   // Enable fake timers globally
   fakeTimers: {
