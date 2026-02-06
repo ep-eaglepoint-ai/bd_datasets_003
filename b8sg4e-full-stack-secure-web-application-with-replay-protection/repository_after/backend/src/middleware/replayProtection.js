@@ -14,7 +14,7 @@ const verifySignature = (payload, signature, secret) => {
 
 const replayProtection = async (req, res, next) => {
     const startTime = Date.now();
-    const { 'x-nonce': nonce, 'x-timestamp': timestamp, 'x-signature': signature } = req.headers;
+    const { 'x-nonce': nonce, 'x-timestamp': timestamp, 'x-expiry': expiry, 'x-signature': signature } = req.headers;
     const clientIp = req.ip || req.connection.remoteAddress;
     const userId = req.user?.id || null;
 
@@ -40,18 +40,19 @@ const replayProtection = async (req, res, next) => {
         }
     };
 
-    if (!nonce || !timestamp || !signature) {
+    if (!nonce || !timestamp || !expiry || !signature) {
         logger.warn('Missing replay protection headers', { endpoint: req.originalUrl, clientIp });
         await logAttempt(true, 'MISSING_HEADERS', false);
         return res.status(400).json({
             success: false,
             error: 'REPLAY_PROTECTION_ERROR',
-            message: 'Missing required security headers: x-nonce, x-timestamp, x-signature',
+            message: 'Missing required security headers: x-nonce, x-timestamp, x-expiry, x-signature',
             code: 'MISSING_SECURITY_HEADERS',
         });
     }
 
     const requestTimestamp = parseInt(timestamp, 10);
+    const requestExpiry = parseInt(expiry, 10);
     const currentTime = Date.now();
     const timeDifference = Math.abs(currentTime - requestTimestamp);
 
@@ -71,9 +72,54 @@ const replayProtection = async (req, res, next) => {
         });
     }
 
+    if (isNaN(requestExpiry)) {
+        logger.warn('Invalid expiry format', { endpoint: req.originalUrl, clientIp, expiry });
+        await logAttempt(true, 'INVALID_EXPIRY', false);
+        return res.status(400).json({
+            success: false,
+            error: 'INVALID_EXPIRY',
+            message: 'Expiry timestamp is malformed',
+            code: 'INVALID_EXPIRY_FORMAT',
+        });
+    }
+
+    const maxAllowedExpiry = requestTimestamp + (config.requestValidityWindow * 2);
+    if (requestExpiry > maxAllowedExpiry) {
+        logger.warn('Expiry too far in the future', {
+            endpoint: req.originalUrl,
+            clientIp,
+            requestExpiry,
+            maxAllowedExpiry,
+        });
+        await logAttempt(true, 'EXPIRY_TOO_FAR', false);
+        return res.status(400).json({
+            success: false,
+            error: 'INVALID_EXPIRY',
+            message: 'Expiry timestamp is too far in the future',
+            code: 'EXPIRY_TOO_FAR',
+        });
+    }
+
+    if (currentTime > requestExpiry) {
+        logger.warn('Request has expired (client expiry)', {
+            endpoint: req.originalUrl,
+            clientIp,
+            currentTime,
+            requestExpiry,
+        });
+        await logAttempt(true, 'CLIENT_EXPIRY_PASSED', false);
+        return res.status(401).json({
+            success: false,
+            error: 'REQUEST_EXPIRED',
+            message: 'Request has expired based on client-provided expiry',
+            code: 'CLIENT_EXPIRY_EXCEEDED',
+        });
+    }
+
     const payloadToVerify = {
         nonce,
         timestamp: requestTimestamp,
+        expiry: requestExpiry,
         method: req.method,
         path: req.originalUrl.split('?')[0],
         body: req.body || {},

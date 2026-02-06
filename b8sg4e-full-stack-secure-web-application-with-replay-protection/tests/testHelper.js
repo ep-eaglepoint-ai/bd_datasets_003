@@ -89,10 +89,10 @@ const verifySignature = (payload, signature, secret) => {
 };
 
 const replayProtection = async (req, res, next) => {
-    const { 'x-nonce': nonce, 'x-timestamp': timestamp, 'x-signature': signature } = req.headers;
+    const { 'x-nonce': nonce, 'x-timestamp': timestamp, 'x-expiry': expiry, 'x-signature': signature } = req.headers;
     const userId = req.user?.id || null;
 
-    if (!nonce || !timestamp || !signature) {
+    if (!nonce || !timestamp || !expiry || !signature) {
         await AuditLog.create({
             userId, action: 'API_REQUEST', endpoint: req.originalUrl, method: req.method,
             isReplayAttempt: true, replayReason: 'MISSING_HEADERS', nonce, success: false,
@@ -104,7 +104,9 @@ const replayProtection = async (req, res, next) => {
     }
 
     const requestTimestamp = parseInt(timestamp, 10);
-    const timeDifference = Math.abs(Date.now() - requestTimestamp);
+    const requestExpiry = parseInt(expiry, 10);
+    const currentTime = Date.now();
+    const timeDifference = Math.abs(currentTime - requestTimestamp);
 
     if (isNaN(requestTimestamp) || timeDifference > config.requestValidityWindow) {
         await AuditLog.create({
@@ -117,8 +119,19 @@ const replayProtection = async (req, res, next) => {
         });
     }
 
+    if (isNaN(requestExpiry) || currentTime > requestExpiry) {
+        await AuditLog.create({
+            userId, action: 'API_REQUEST', endpoint: req.originalUrl, method: req.method,
+            isReplayAttempt: true, replayReason: 'CLIENT_EXPIRY_PASSED', nonce, success: false,
+        });
+        return res.status(401).json({
+            success: false, error: 'REQUEST_EXPIRED',
+            message: 'Request has expired based on client-provided expiry', code: 'CLIENT_EXPIRY_EXCEEDED',
+        });
+    }
+
     const payloadToVerify = {
-        nonce, timestamp: requestTimestamp, method: req.method,
+        nonce, timestamp: requestTimestamp, expiry: requestExpiry, method: req.method,
         path: req.originalUrl.split('?')[0], body: req.body || {},
     };
 

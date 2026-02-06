@@ -12,23 +12,26 @@ let useRealMongo = false;
 const createSecurityHeaders = (method, path, body = {}) => {
     const nonce = uuidv4();
     const timestamp = Date.now();
-    const payload = { nonce, timestamp, method, path, body };
+    const expiry = timestamp + config.requestValidityWindow;
+    const payload = { nonce, timestamp, expiry, method, path, body };
     const signature = CryptoJS.HmacSHA256(JSON.stringify(payload), config.hmac.secret).toString();
-    return { 'x-nonce': nonce, 'x-timestamp': timestamp.toString(), 'x-signature': signature };
+    return { 'x-nonce': nonce, 'x-timestamp': timestamp.toString(), 'x-expiry': expiry.toString(), 'x-signature': signature };
 };
 
 const createExpiredHeaders = (method, path, body = {}) => {
     const nonce = uuidv4();
     const timestamp = Date.now() - 600000;
-    const payload = { nonce, timestamp, method, path, body };
+    const expiry = timestamp + config.requestValidityWindow;
+    const payload = { nonce, timestamp, expiry, method, path, body };
     const signature = CryptoJS.HmacSHA256(JSON.stringify(payload), config.hmac.secret).toString();
-    return { 'x-nonce': nonce, 'x-timestamp': timestamp.toString(), 'x-signature': signature };
+    return { 'x-nonce': nonce, 'x-timestamp': timestamp.toString(), 'x-expiry': expiry.toString(), 'x-signature': signature };
 };
 
 const createInvalidSignatureHeaders = (method, path, body = {}) => {
     const nonce = uuidv4();
     const timestamp = Date.now();
-    return { 'x-nonce': nonce, 'x-timestamp': timestamp.toString(), 'x-signature': 'invalid-signature' };
+    const expiry = timestamp + config.requestValidityWindow;
+    return { 'x-nonce': nonce, 'x-timestamp': timestamp.toString(), 'x-expiry': expiry.toString(), 'x-signature': 'invalid-signature' };
 };
 
 beforeAll(async () => {
@@ -67,12 +70,16 @@ describe('Nonce Generation and Replay Protection', () => {
         expect(nonce1).not.toBe(nonce2);
     });
 
-    test('should include timestamp expiry in security headers', () => {
+    test('should include timestamp and expiry in security headers', () => {
         const headers = createSecurityHeaders('POST', '/api/auth/register', {});
         expect(headers['x-timestamp']).toBeDefined();
+        expect(headers['x-expiry']).toBeDefined();
         const timestamp = parseInt(headers['x-timestamp']);
+        const expiry = parseInt(headers['x-expiry']);
         expect(timestamp).toBeLessThanOrEqual(Date.now());
         expect(timestamp).toBeGreaterThan(Date.now() - 5000);
+        expect(expiry).toBe(timestamp + config.requestValidityWindow);
+        expect(expiry).toBeGreaterThan(Date.now());
     });
 
     test('should reject requests with missing security headers', async () => {
@@ -110,8 +117,11 @@ describe('Nonce Generation and Replay Protection', () => {
 
         const userData2 = { email: 'test2@example.com', password: 'Password123', firstName: 'Test2', lastName: 'User2' };
         const headers2 = { ...headers };
-        headers2['x-timestamp'] = Date.now().toString();
-        const payload = { nonce: headers['x-nonce'], timestamp: parseInt(headers2['x-timestamp']), method: 'POST', path: '/api/auth/register', body: userData2 };
+        const newTimestamp = Date.now();
+        const newExpiry = newTimestamp + config.requestValidityWindow;
+        headers2['x-timestamp'] = newTimestamp.toString();
+        headers2['x-expiry'] = newExpiry.toString();
+        const payload = { nonce: headers['x-nonce'], timestamp: newTimestamp, expiry: newExpiry, method: 'POST', path: '/api/auth/register', body: userData2 };
         headers2['x-signature'] = CryptoJS.HmacSHA256(JSON.stringify(payload), config.hmac.secret).toString();
 
         const response2 = await request(app)
@@ -141,7 +151,9 @@ describe('Nonce Generation and Replay Protection', () => {
 
 describe('HMAC-SHA256 Signature Verification', () => {
     test('should sign requests using HMAC-SHA256', () => {
-        const payload = { nonce: 'test-nonce', timestamp: Date.now(), method: 'POST', path: '/api/test', body: {} };
+        const timestamp = Date.now();
+        const expiry = timestamp + config.requestValidityWindow;
+        const payload = { nonce: 'test-nonce', timestamp, expiry, method: 'POST', path: '/api/test', body: {} };
         const signature = CryptoJS.HmacSHA256(JSON.stringify(payload), config.hmac.secret).toString();
         expect(signature).toHaveLength(64);
         expect(signature).toMatch(/^[a-f0-9]+$/);
@@ -343,9 +355,12 @@ describe('HTTP Status Codes and Error Handling', () => {
         await request(app).post('/api/auth/register').set(headers).send(userData);
 
         const userData2 = { email: 'test2@example.com', password: 'Password123', firstName: 'Test2', lastName: 'User2' };
+        const timestamp = Date.now();
+        const expiry = timestamp + config.requestValidityWindow;
         const payload = {
             nonce: headers['x-nonce'],
-            timestamp: Date.now(),
+            timestamp,
+            expiry,
             method: 'POST',
             path: '/api/auth/register',
             body: userData2
@@ -356,7 +371,8 @@ describe('HTTP Status Codes and Error Handling', () => {
             .post('/api/auth/register')
             .set({
                 'x-nonce': headers['x-nonce'],
-                'x-timestamp': payload.timestamp.toString(),
+                'x-timestamp': timestamp.toString(),
+                'x-expiry': expiry.toString(),
                 'x-signature': newSignature
             })
             .send(userData2);
@@ -385,9 +401,12 @@ describe('API Request Logging', () => {
 
         await request(app).post('/api/auth/register').set(headers).send(userData);
 
+        const timestamp = Date.now();
+        const expiry = timestamp + config.requestValidityWindow;
         const payload = {
             nonce: headers['x-nonce'],
-            timestamp: Date.now(),
+            timestamp,
+            expiry,
             method: 'POST',
             path: '/api/auth/register',
             body: { email: 'test2@example.com', password: 'Password123', firstName: 'Test2', lastName: 'User2' }
@@ -398,7 +417,8 @@ describe('API Request Logging', () => {
             .post('/api/auth/register')
             .set({
                 'x-nonce': headers['x-nonce'],
-                'x-timestamp': payload.timestamp.toString(),
+                'x-timestamp': timestamp.toString(),
+                'x-expiry': expiry.toString(),
                 'x-signature': newSignature
             })
             .send(payload.body);

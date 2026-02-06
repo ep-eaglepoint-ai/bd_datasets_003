@@ -2,10 +2,12 @@ import CryptoJS from 'crypto-js';
 import { v4 as uuidv4 } from 'uuid';
 
 const HMAC_SECRET = process.env.NEXT_PUBLIC_HMAC_SECRET || 'default-hmac-secret';
+const REQUEST_VALIDITY_WINDOW = parseInt(process.env.NEXT_PUBLIC_REQUEST_VALIDITY_WINDOW || '300000', 10);
 
 export interface SecurityPayload {
     nonce: string;
     timestamp: number;
+    expiry: number;
     method: string;
     path: string;
     body: object;
@@ -17,6 +19,10 @@ export const generateNonce = (): string => {
 
 export const generateTimestamp = (): number => {
     return Date.now();
+};
+
+export const generateExpiry = (timestamp: number): number => {
+    return timestamp + REQUEST_VALIDITY_WINDOW;
 };
 
 export const generateSignature = (payload: SecurityPayload): string => {
@@ -34,10 +40,12 @@ export const createSecurityHeaders = (
 ): Record<string, string> => {
     const nonce = generateNonce();
     const timestamp = generateTimestamp();
+    const expiry = generateExpiry(timestamp);
 
     const payload: SecurityPayload = {
         nonce,
         timestamp,
+        expiry,
         method: method.toUpperCase(),
         path,
         body,
@@ -48,6 +56,7 @@ export const createSecurityHeaders = (
     const headers: Record<string, string> = {
         'x-nonce': nonce,
         'x-timestamp': timestamp.toString(),
+        'x-expiry': expiry.toString(),
         'x-signature': signature,
     };
 
