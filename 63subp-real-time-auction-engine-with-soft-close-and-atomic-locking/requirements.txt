@@ -1,1 +1,3 @@
 # Add your Python dependencies here if the project is Python-based. If it is not Python-based, you can remove this file and configure the requirements accordingly.
+Node.js, express, socket.io, sqlite3, body-parser, jest, supertest, socket.io-client
+Node.js, react, react-dom, axios, socket.io-client, vite, vitest, jsdom, @testing-library/react, @testing-library/jest-dom

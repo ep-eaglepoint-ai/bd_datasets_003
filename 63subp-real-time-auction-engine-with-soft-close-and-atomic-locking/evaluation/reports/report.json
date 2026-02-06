@@ -1,0 +1,17 @@
+{
+  "status": "passed",
+  "timestamp": "2026-02-06T05:09:28.006Z",
+  "duration_ms": 8882,
+  "results": {
+    "backend": {
+      "passed": true,
+      "exit_code": 0,
+      "details": "Success"
+    },
+    "frontend": {
+      "passed": true,
+      "exit_code": 0,
+      "details": "Success"
+    }
+  }
+}

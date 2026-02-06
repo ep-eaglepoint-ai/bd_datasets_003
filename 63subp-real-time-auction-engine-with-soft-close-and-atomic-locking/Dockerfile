@@ -1,8 +1,33 @@
+FROM node:20
 
-        # Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
-
-        FROM python:3.11-slim
 WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+
+COPY repository_after/backend/package*.json ./backend/
+COPY repository_after/frontend/package*.json ./frontend/
+
+
+WORKDIR /app/backend
+RUN npm install
+
+
+WORKDIR /app/frontend
+RUN npm install
+
+
+WORKDIR /app
+
+COPY repository_after/backend ./backend
+COPY repository_after/frontend ./frontend
+
+COPY tests /app/test
+
+COPY evaluation /app/evaluation
+
+RUN chmod +x /app/backend/node_modules/.bin/jest
+RUN chmod +x /app/frontend/node_modules/.bin/vitest
+
+EXPOSE 4000 5173
+
+CMD ["sh", "-c", "node /app/backend/server.js & cd /app/frontend && npm run dev"]
+

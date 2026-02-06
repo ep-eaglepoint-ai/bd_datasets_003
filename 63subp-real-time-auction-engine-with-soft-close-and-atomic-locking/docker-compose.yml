@@ -1,9 +1,22 @@
+version: "3.8"
 
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
+services:
   app:
+    container_name: apps
     build: .
-    command: pytest -q tests
+    ports:
+      - "4000:4000"  
+      - "5173:5173"  
     volumes:
-      - .:/app
+      - ./repository_after/backend:/app/backend:cached     
+      - ./repository_after/frontend:/app/frontend:cached   
+      - ./repository_after/data:/app/backend/data
+      - ./evaluation:/app/evaluation
+      - node_backend_modules:/app/backend/node_modules     
+      - node_frontend_modules:/app/frontend/node_modules
+    environment:
+      - NODE_ENV=development
+
+volumes:
+  node_backend_modules:
+  node_frontend_modules:
