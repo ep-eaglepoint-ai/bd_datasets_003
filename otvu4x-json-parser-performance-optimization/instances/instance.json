@@ -1,0 +1,11 @@
+{
+            "instance_id": "OTVU4X",
+            "problem_statement": "optimizing a JSON parser that processes millions of API responses daily. The current implementation causes slow parsing for large files, high memory usage (multiple times the file size), and poor scalability. The goal is to optimize the JSON parser to significantly reduce parsing time, minimize memory allocations, and handle large files efficiently.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/otvu4x-json-parser-performance-optimization",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
