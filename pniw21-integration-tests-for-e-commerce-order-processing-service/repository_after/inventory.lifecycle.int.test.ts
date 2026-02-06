@@ -167,8 +167,23 @@ describe("Inventory lifecycle", () => {
 
   test("reservation key with short TTL expires (real wait; Redis TTL is server-side)", async () => {
     jest.useRealTimers();
-    await ctx.redis.setex("reservation:p_short_ttl", 2, "1");
+
+    // Service TTL is hardcoded to 15 minutes; we can't configure it shorter without changing the SUT.
+    // To still validate service behavior end-to-end, we:
+    // 1) create the reservation via InventoryService.reserve()
+    // 2) shorten the TTL on the created key via Redis EXPIRE
+    await seedInventory(ctx.txPool, [
+      { productId: "p_short_ttl", quantity: 2 },
+    ]);
+    const ok = await ctx.inventoryService.reserve("p_short_ttl", 1);
+    expect(ok).toBe(true);
+
     expect(await getReservation(ctx.redis, "p_short_ttl")).toBe(1);
+
+    const key = "reservation:p_short_ttl";
+    await ctx.redis.expire(key, 2);
+    const initialTtl = await ctx.redis.ttl(key);
+    expect(initialTtl).toBeGreaterThan(0);
 
     await new Promise((r) => setTimeout(r, 2200));
 

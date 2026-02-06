@@ -109,3 +109,22 @@ test("concurrent orders test passes 10 consecutive runs", () => {
     expect(run.status).toBe(0);
   }
 });
+
+test("integration suite passes 10 consecutive runs (no coverage, randomized)", () => {
+  const configPath = path.resolve(
+    __dirname,
+    "..",
+    "repository_after",
+    "jest.config.ts"
+  );
+
+  for (let i = 1; i <= 10; i += 1) {
+    const run = runJestWithConfig(configPath, [
+      "--no-coverage",
+      "--randomize",
+      "--seed",
+      String(100 + i),
+    ]);
+    expect(run.status).toBe(0);
+  }
+});
