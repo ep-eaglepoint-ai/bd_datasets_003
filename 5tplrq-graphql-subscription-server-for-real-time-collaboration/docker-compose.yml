@@ -1,8 +1,60 @@
-# Docker Compose file for running tests. You should customize this as needed.
-
 services:
   app:
-    build: .
-    command: pytest -q tests
+    build: 
+      context: ./${REPO_PATH:-repository_after}
+      dockerfile: ../Dockerfile
+    ports:
+      - "${APP_PORT:-4000}:4000"
+    environment:
+      - DATABASE_URL=postgresql://user:pass@db:5432/collab_db
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=test_secret
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: sh -c "npx prisma db push --accept-data-loss && npm start"
+
+  db:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=pass
+      - POSTGRES_DB=collab_db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d collab_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  tests:
+    build:
+      context: ./${REPO_PATH:-repository_after}
+      dockerfile: ../Dockerfile
+    command: sh -c "sleep 15 && npm test"
     volumes:
-      - .:/app
+      - ./tests:/app/tests
+    environment:
+      - DATABASE_URL=postgresql://user:pass@db:5432/collab_db
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=test_secret
+      - GRAPHQL_URL=http://app:4000/graphql
+      - WS_URL=ws://app:4000/graphql
+    depends_on:
+      app:
+        condition: service_started
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy

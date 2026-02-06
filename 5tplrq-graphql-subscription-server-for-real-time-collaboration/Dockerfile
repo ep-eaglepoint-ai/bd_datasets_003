@@ -1,7 +1,23 @@
-# Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
+FROM node:20-slim
 
-FROM python:3.11-slim
 WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+# Install system dependencies for Prisma
+RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+
+# Copy package files and install dependencies
+COPY package*.json ./
+RUN npm install
+
+# Copy project files
+COPY . .
+
+# Generate Prisma client
+RUN npx prisma generate
+
+# Build TypeScript source
+RUN npm run build
+
+EXPOSE 4000
+
+CMD ["npm", "start"]
