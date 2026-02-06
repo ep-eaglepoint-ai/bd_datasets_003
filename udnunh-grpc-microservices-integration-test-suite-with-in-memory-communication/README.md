@@ -1,11 +1,19 @@
-# UDNUNH - gRPC Microservices Integration Test Suite with In-Memory Communication
+# gRPC Microservices Integration Test Suite with In-Memory Communication
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Running Primary Tests
 
-    ## After Test Docker Command
-    <docker after command here>
+```bash
+docker compose run --rm app run-tests
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## Running Meta-Tests
+
+```bash
+docker compose run --rm app run-metatests
+```
+
+## Running Evaluation
+
+```bash
+docker compose run --rm app evaluate
+```
