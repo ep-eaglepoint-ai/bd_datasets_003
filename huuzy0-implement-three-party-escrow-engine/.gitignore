@@ -10,6 +10,5 @@ node_modules/
 # OS
 .DS_Store
 
-# Evaluation artifacts (do not commit)
 evaluation/report.json
 evaluation/generate_report_json.py
