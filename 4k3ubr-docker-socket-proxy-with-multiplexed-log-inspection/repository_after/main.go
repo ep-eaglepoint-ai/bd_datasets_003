@@ -3,12 +3,13 @@ package main
 import (
 	"context"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"docker-socket-proxy/repository_after/proxy"
 )
 
 const (
@@ -17,32 +18,27 @@ const (
 )
 
 func main() {
-	// Initialize audit logger
-	auditLogger, err := NewAuditLogger("audit.log")
+	auditLogger, err := proxy.NewAuditLogger("audit.log")
 	if err != nil {
 		log.Fatalf("Failed to initialize audit logger: %v", err)
 	}
 	defer auditLogger.Close()
 
-	// Load configuration
-	config := LoadConfig()
-
-	// Create proxy handler
-	proxy := &DockerProxy{
-		auditor: &LogAuditor{
-			config:      config,
-			auditLogger: auditLogger,
-		},
-		socketPath: dockerSocket,
+	config, err := proxy.LoadConfig()
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	// Create HTTP server
+	proxyHandler, err := proxy.NewDockerProxy(dockerSocket, config, auditLogger)
+	if err != nil {
+		log.Fatalf("Failed to create proxy: %v", err)
+	}
+
 	server := &http.Server{
 		Addr:    proxyAddr,
-		Handler: proxy,
+		Handler: proxyHandler,
 	}
 
-	// Graceful shutdown
 	go func() {
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -56,37 +52,9 @@ func main() {
 
 	log.Printf("Docker Socket Proxy listening on %s", proxyAddr)
 	log.Printf("Proxying to %s", dockerSocket)
+	log.Printf("Loaded %d sensitive patterns", len(config.SensitivePatterns))
 
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("Server error: %v", err)
 	}
-}
-
-// DockerProxy handles proxying requests to Docker socket
-type DockerProxy struct {
-	auditor    *LogAuditor
-	socketPath string
-}
-
-func (p *DockerProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Create transport for Unix socket
-	transport := &http.Transport{
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return net.Dial("unix", p.socketPath)
-		},
-	}
-
-	// Create client
-	client := &http.Client{
-		Transport: transport,
-	}
-
-	// Check if this is a logs request
-	if isLogsRequest(r) {
-		p.handleLogsRequest(w, r, client)
-		return
-	}
-
-	// Standard proxy for other requests
-	p.handleStandardProxy(w, r, client)
 }

@@ -1,4 +1,4 @@
-package main
+package proxy
 
 import (
 	"encoding/json"
@@ -7,13 +7,12 @@ import (
 	"time"
 )
 
-// AuditLogger handles writing audit events to a file
 type AuditLogger struct {
-	file  *os.File
-	mutex sync.Mutex
+	file   *os.File
+	mutex  sync.Mutex
+	closed bool
 }
 
-// AuditEvent represents a security audit event
 type AuditEvent struct {
 	Timestamp   time.Time `json:"timestamp"`
 	ContainerID string    `json:"container_id"`
@@ -23,22 +22,22 @@ type AuditEvent struct {
 	Severity    string    `json:"severity"`
 }
 
-// NewAuditLogger creates a new audit logger
 func NewAuditLogger(filename string) (*AuditLogger, error) {
 	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return nil, err
 	}
 
-	return &AuditLogger{
-		file: file,
-	}, nil
+	return &AuditLogger{file: file}, nil
 }
 
-// Log writes an audit event to the log file
 func (l *AuditLogger) Log(event AuditEvent) error {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
+
+	if l.closed {
+		return nil // Silently ignore writes after close
+	}
 
 	data, err := json.Marshal(event)
 	if err != nil {
@@ -49,7 +48,14 @@ func (l *AuditLogger) Log(event AuditEvent) error {
 	return err
 }
 
-// Close closes the audit log file
 func (l *AuditLogger) Close() error {
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+
+	if l.closed {
+		return nil
+	}
+
+	l.closed = true
 	return l.file.Close()
 }
