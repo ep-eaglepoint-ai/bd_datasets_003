@@ -1,0 +1,11 @@
+{
+            "instance_id": "0V9VCN",
+            "problem_statement": "The system simulates a data processing pipeline that includes fetching data from a database, transforming and filtering datasets, performing computations, error handling, and visualizing the data. Your goal is to create a test file (test_data_processing_system.py) to validate the functionality and ensure correctness of the pipeline operations. You will be testing key functions including data fetching, transformation, computation, error handling, and recursive processing.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/0v9vcn-data-processing-system-test-case-generation",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
