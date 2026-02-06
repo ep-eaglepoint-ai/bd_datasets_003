@@ -1,0 +1,11 @@
+{
+            "instance_id": "Y7UNAI",
+            "problem_statement": "Raw OCR output is typically a "Bag of Words" with coordinates. A naive approach to reconstructing the text is to simply sort all words by their Y-coordinate (Top -> Bottom) and then X-coordinate (Left -> Right). In multi-column documents, this approach fails catastrophically, as it merges the first line of Column A with the first line of Column B (e.g., "The quick brown... scientific study shows..."). The engineering solution requires analyzing the whitespace gaps. The Recursive X-Y Cut algorithm projects the bounding boxes onto the axes to find significant gaps (separators), recursively splitting the page into blocks (Columns/Paragraphs) before ordering the text within those blocks.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/y7unai-ocr-reading-order-reconstruction-multi-column",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
