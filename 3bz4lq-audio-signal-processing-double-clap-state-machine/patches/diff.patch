@@ -1,0 +1,165 @@
+diff --git a/repository_before/.gitkeep b/repository_before/.gitkeep
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/repository_after/ClapSwitch.cpp b/repository_after/ClapSwitch.cpp
+new file mode 100644
+index 0000000..07294bb
+--- /dev/null
++++ b/repository_after/ClapSwitch.cpp
+@@ -0,0 +1,112 @@
++#include "ClapSwitch.h"
++#include <cmath>
++#include <algorithm>
++
++// Constants
++static constexpr int SAMPLE_RATE = 44100;
++// Thresholds
++static constexpr int16_t THRESHOLD_TRIGGER = 10000;
++static constexpr int16_t THRESHOLD_RESET = 2000;
++// Timing in samples
++static constexpr int MAX_ATTACK_SAMPLES = 441;   // 10ms
++static constexpr int MAX_DECAY_SAMPLES = 4410;   // 100ms
++static constexpr int WINDOW_START = 11025;       // 250ms
++static constexpr int WINDOW_END = 35280;         // 800ms
++
++AudioProcessor::ClapDetector::ClapDetector() 
++    : state(IDLE), samplesProcessed(0), peakAmplitude(0), peakPosition(0) 
++{}
++
++bool AudioProcessor::ClapDetector::process(int16_t sample) {
++    int16_t absSample = std::abs(sample);
++    bool isClap = false;
++    
++    switch (state) {
++        case IDLE:
++            if (absSample > THRESHOLD_TRIGGER) {
++                state = ATTACK;
++                samplesProcessed = 0;
++                peakAmplitude = absSample;
++                peakPosition = 0;
++            }
++            break;
++            
++        case ATTACK:
++            samplesProcessed++;
++            if (absSample > peakAmplitude) {
++                peakAmplitude = absSample;
++                peakPosition = samplesProcessed;
++            }
++            
++            // If attack time exceeded 10ms
++            if (samplesProcessed >= MAX_ATTACK_SAMPLES) {
++                if (peakPosition <= MAX_ATTACK_SAMPLES) {
++                    state = DECAY;
++                } else {
++                    state = IDLE; 
++                }
++            }
++            // Early drop check 
++            if (peakAmplitude > 0 && absSample < peakAmplitude * 0.8) {
++                if (peakPosition < MAX_ATTACK_SAMPLES) {
++                     state = DECAY;
++                }
++            }
++            break;
++
++        case DECAY:
++            samplesProcessed++;
++            if (samplesProcessed > MAX_DECAY_SAMPLES) {
++                state = IDLE;
++            } else if (absSample < THRESHOLD_RESET) {
++                isClap = true;
++                state = IDLE;
++            }
++            break;
++    }
++    return isClap;
++}
++
++void AudioProcessor::ClapDetector::reset() {
++    state = IDLE;
++    samplesProcessed = 0; 
++    peakAmplitude = 0; 
++    peakPosition = 0;
++}
++
++AudioProcessor::AudioProcessor() 
++    : mainState(MachineState::IDLE), lightState(false), timerSamples(0) 
++{}
++
++bool AudioProcessor::getLightState() const {
++    return lightState;
++}
++
++void AudioProcessor::processBuffer(const std::vector<int16_t>& samples) {
++    for (int16_t sample : samples) {
++        bool clapFound = detector.process(sample);
++
++        if (mainState == MachineState::IDLE) {
++            if (clapFound) {
++                mainState = MachineState::WAIT_FOR_SECOND_CLAP;
++                timerSamples = 0;
++            }
++        } 
++        else if (mainState == MachineState::WAIT_FOR_SECOND_CLAP) {
++            timerSamples++;
++            
++            if (clapFound) {
++                if (timerSamples >= WINDOW_START && timerSamples <= WINDOW_END) {
++                    lightState = !lightState;
++                    mainState = MachineState::IDLE;
++                } else {
++                    mainState = MachineState::IDLE;
++                }
++            }
++            
++            if (timerSamples > WINDOW_END) {
++                mainState = MachineState::IDLE;
++            }
++        }
++    }
++}
+diff --git a/repository_after/ClapSwitch.h b/repository_after/ClapSwitch.h
+new file mode 100644
+index 0000000..fd74dfb
+--- /dev/null
++++ b/repository_after/ClapSwitch.h
+@@ -0,0 +1,38 @@
++#ifndef CLAP_SWITCH_H
++#define CLAP_SWITCH_H
++
++#include <vector>
++#include <cstdint>
++
++class AudioProcessor {
++public:
++    AudioProcessor();
++    bool getLightState() const;
++    void processBuffer(const std::vector<int16_t>& samples);
++
++private:
++    struct ClapDetector {
++        enum State { IDLE, ATTACK, DECAY };
++        State state;
++        int32_t samplesProcessed;
++        int32_t peakAmplitude;
++        int32_t peakPosition;
++        
++        ClapDetector();
++        bool process(int16_t sample);
++        void reset();
++    };
++
++    enum class MachineState {
++        IDLE,
++        WAIT_FOR_SECOND_CLAP
++    };
++
++    MachineState mainState;
++    bool lightState;
++    int32_t timerSamples;
++    
++    ClapDetector detector;
++};
++
++#endif // CLAP_SWITCH_H

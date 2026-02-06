@@ -1,0 +1,12 @@
+{
+            "instance_id": "3BZ4LQ",
+            "problem_statement": "Detecting a specific sound event in raw audio data is complex due to false positives. A naive implementation simply checks if (sample > threshold). This fails in real-world environments because loud music, shouting, or dropping a book produces high-amplitude spikes. The engineering solution requires Envelope Detection (calculating the energy curve of the sound) combined with a Finite State Machine that enforces timing constraints. The "Double Clap" logic acts as a password: the first clap arms the system, a mandatory "quiet" interval must follow (debouncing), and the second clap must occur within a precise window. If the logic fails to handle the buffer boundaries (e.g., a clap starts in Buffer A and ends in Buffer B), the detection will be unreliable.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/3bz4lq-audio-signal-processing-double-clap-state-machine",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
