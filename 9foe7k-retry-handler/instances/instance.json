@@ -1,12 +1,22 @@
 {
-            "instance_id": "9FOE7K",
-            "problem_statement": "A microservices team is building a resilient HTTP client that automatically retries failed requests to downstream services. Simple retry loops with fixed delays either retry too aggressively causing thundering herd problems during outages, or wait too long between retries slowing recovery when transient errors resolve quickly. They need exponential backoff with jitter to spread out retry attempts and avoid synchronized retry waves from multiple clients.
-The existing implementation had bugs where the maximum retry count was off by one, the delay calculation overflowed for large retry counts, and the jitter implementation sometimes produced negative delays. The team wants a clean, well-tested implementation that handles these edge cases correctly and provides hooks for custom retry policies and error classification.",
-            "base_commit": "repository_before/",
-            "test_patch": "tests/",
-            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/9foe7k-retry-handler",
-            "environment_setup": "Dockerfile",
-            "FAIL_TO_PASS": [],
-            "PASS_TO_PASS": []
-        }
-        
+    "instance_id": "9FOE7K",
+    "problem_statement": "A microservices team is building a resilient HTTP client that automatically retries failed requests to downstream services. Simple retry loops with fixed delays either retry too aggressively causing thundering herd problems during outages, or wait too long between retries slowing recovery when transient errors resolve quickly. They need exponential backoff with jitter to spread out retry attempts and avoid synchronized retry waves from multiple clients. The existing implementation had bugs where the maximum retry count was off by one, the delay calculation overflowed for large retry counts, and the jitter implementation sometimes produced negative delays. The team wants a clean, well-tested implementation that handles these edge cases correctly and provides hooks for custom retry policies and error classification.",
+    "base_commit": "repository_before/",
+    "test_patch": "tests/",
+    "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/9foe7k-retry-handler",
+    "environment_setup": "Dockerfile",
+    "FAIL_TO_PASS": [],
+    "PASS_TO_PASS": [
+        "com.example.retry.RetryHandlerTest::testSuccessfulExecution",
+        "com.example.retry.RetryHandlerTest::testRetryLogic",
+        "com.example.retry.RetryHandlerTest::testRetryExhausted",
+        "com.example.retry.RetryHandlerTest::testNonRetryableException",
+        "com.example.retry.RetryHandlerTest::testBackoffAndJitter",
+        "com.example.retry.RetryHandlerTest::testMaxDelayCap",
+        "com.example.retry.RetryHandlerTest::testOverflowProtection",
+        "com.example.retry.RetryHandlerTest::testRunnableExecute",
+        "com.example.retry.RetryHandlerTest::testInterruption",
+        "com.example.retry.RetryHandlerTest::testHighRetryCounts",
+        "com.example.retry.RetryHandlerTest::testValidation"
+    ]
+}
