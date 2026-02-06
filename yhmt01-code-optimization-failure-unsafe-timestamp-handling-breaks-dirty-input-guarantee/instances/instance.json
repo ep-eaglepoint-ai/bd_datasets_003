@@ -1,0 +1,14 @@
+{
+            "instance_id": "YHMT01",
+            "problem_statement": "The task required optimizing a legacy sorting function by reducing redundant computations while preserving exact behavior, determinism, and safe handling of dirty input data.
+ Although the optimized solution correctly applied a decorate–sort–undecorate pattern and preserved most sorting semantics, it introduced a critical regression: the optimized code converts parsed datetime values to POSIX timestamps using .timestamp(). When invalid or missing dates are encountered, the implementation intentionally maps them to datetime.min, but calling .timestamp() on this value can raise a runtime exception on many platforms.
+As a result, the function can throw errors for valid dirty inputs that were explicitly required to be handled safely, violating core requirements around robustness and determinism.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/yhmt01-code-optimization-failure-unsafe-timestamp-handling-breaks-dirty-input-guarantee",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
