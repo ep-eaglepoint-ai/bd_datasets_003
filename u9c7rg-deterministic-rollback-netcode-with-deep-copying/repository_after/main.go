@@ -47,7 +47,7 @@ func (s *Simulation) GetCurrentFrame() int {
 }
 
 func (s *Simulation) GetState(frame int) GameState {
-	if frame < 0 || frame >= BufferSize {
+	if frame < 0 {
 		return GameState{}
 	}
 	return s.buffer[frame%BufferSize]
@@ -138,35 +138,42 @@ func (s *Simulation) ProcessInput(frame int, input PlayerInput) {
 	}
 
 	// Rollback scenario: frame < currentFrame
-	// Restore state from frame-1, apply input at frame, then re-simulate up to currentFrame
+	// "Input for frame N" means setting velocity at the end of frame N-1
+	// (which becomes the starting velocity for frame N)
 	targetFrame := s.currentFrame
 
-	// Restore state from frame - 1
-	var restoredState GameState
 	if frame == 0 {
-		restoredState = GameState{
-			Frame:    0,
-			Entities: []Entity{},
+		// Special case: input at frame 0 modifies initial state
+		state := s.deepCopy(s.buffer[0])
+		state.Frame = 0
+		s.applyInput(&state, input)
+		s.saveState(state)
+
+		// Re-simulate from frame 0 onward
+		for f := 0; f < targetFrame; f++ {
+			prevState := s.deepCopy(s.buffer[f == 0 ? 0 : (f-1)%BufferSize])
+			prevState.Frame = f
+			s.stepPhysics(&prevState)
+			s.saveState(prevState)
 		}
 	} else {
-		restoredState = s.deepCopy(s.buffer[(frame-1)%BufferSize])
-		restoredState.Frame = frame
+		// Load frame-1's state and apply input (sets velocity for frame)
+		state := s.deepCopy(s.buffer[(frame-1)%BufferSize])
+		// Keep Frame as frame-1
+		s.applyInput(&state, input)
+		// Don't apply physics, just set the velocity
+		s.saveState(state) // Saves to buffer[frame-1]
+
+		// Re-simulate from frame onward WITH physics
+		for f := frame; f < targetFrame; f++ {
+			prevState := s.deepCopy(s.buffer[(f-1)%BufferSize])
+			prevState.Frame = f
+			s.stepPhysics(&prevState)
+			s.saveState(prevState)
+		}
 	}
 
-	// Apply the input
-	s.applyInput(&restoredState, input)
-	s.stepPhysics(&restoredState)
-	s.saveState(restoredState)
-
-	// Re-simulate from frame+1 to targetFrame
-	for f := frame + 1; f < targetFrame; f++ {
-		prevState := s.deepCopy(s.buffer[(f-1)%BufferSize])
-		prevState.Frame = f
-		s.stepPhysics(&prevState)
-		s.saveState(prevState)
-	}
-
-	// Update current frame (stays the same)
+	// currentFrame remains unchanged
 }
 
 func (s *Simulation) AddEntity(e Entity) {
