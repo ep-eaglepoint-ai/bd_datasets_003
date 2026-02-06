@@ -1,0 +1,58 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: orders
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    dns:
+      - 8.8.8.8
+
+  test-before:
+    build: .
+    image: order-system-test
+    depends_on:
+      postgres:
+        condition: service_healthy
+    dns:
+      - 8.8.8.8
+    environment:
+      - _JAVA_OPTIONS=-Djava.net.preferIPv4Stack=true
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    command: /bin/sh -c "mvn -q -f repository_before/pom.xml test || exit 0"
+
+  test-after:
+    image: order-system-test
+    depends_on:
+      postgres:
+        condition: service_healthy
+    dns:
+      - 8.8.8.8
+    environment:
+      - _JAVA_OPTIONS=-Djava.net.preferIPv4Stack=true
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    command: mvn -f repository_after/pom.xml clean test
+
+  evaluation:
+    image: order-system-test
+    depends_on:
+      postgres:
+        condition: service_healthy
+    dns:
+      - 8.8.8.8
+    environment:
+      - _JAVA_OPTIONS=-Djava.net.preferIPv4Stack=true
+    volumes:
+      - .:/workspace
+    working_dir: /workspace/evaluation
+    # Install python3 in the container purely for the evaluation script
+    command: /bin/sh -c "apk add -q --no-cache python3 && python3 evaluation.py"
