@@ -1,0 +1,41 @@
+{
+  "screens": [
+    {"number": 1, "rows": 8, "seatsPerRow": 10},
+    {"number": 2, "rows": 12, "seatsPerRow": 15}
+  ],
+  "movies": [
+    {
+      "id": "MOV001",
+      "title": "The Matrix",
+      "durationMinutes": 136,
+      "screenNumber": 1,
+      "showtime": "2026-02-06 19:00"
+    },
+    {
+      "id": "MOV002",
+      "title": "Inception",
+      "durationMinutes": 148,
+      "screenNumber": 2,
+      "showtime": "2026-02-06 20:30"
+    },
+    {
+      "id": "MOV003",
+      "title": "Interstellar",
+      "durationMinutes": 169,
+      "screenNumber": 1,
+      "showtime": "2026-02-06 22:00"
+    }
+  ],
+  "bookings": [
+    {
+      "confirmationNumber": "CNF001",
+      "movieId": "MOV001",
+      "screenNumber": 1,
+      "showtime": "2026-02-06 19:00",
+      "seats": [
+        {"row": "A", "seatNumber": 1},
+        {"row": "A", "seatNumber": 2}
+      ]
+    }
+  ]
+}
