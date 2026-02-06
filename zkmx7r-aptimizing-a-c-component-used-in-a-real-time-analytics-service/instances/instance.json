@@ -1,0 +1,11 @@
+{
+            "instance_id": "ZKMX7R",
+            "problem_statement": "The analytics service experiences significant slowdowns when processing large datasets, causing delays in downstream reporting. Execution time increases rapidly as the number of input elements grows, even though memory usage remains within acceptable limits. Profiling indicates that the computation repeatedly performs expensive operations over the same data. These issues make the component unsuitable for real-time or near-real-time workloads.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/zkmx7r-aptimizing-a-c-component-used-in-a-real-time-analytics-service",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
