@@ -246,6 +246,38 @@ void test_unicode_correctness_and_surrogates(const fs::path& tmp_path) {
     assert_true(found_rep, "Lone surrogate U+FFFD replacement not found");
 }
 
+void test_configurable_depth(const fs::path& tmp_path) {
+    // Generate json with 20 levels
+    int depth = 20;
+    std::string json;
+    for(int i=0; i<depth; ++i) json += "{\"a\":";
+    json += "1";
+    for(int i=0; i<depth; ++i) json += "}";
+    
+    std::string f = create_temp_json(tmp_path, json, "depth.json");
+    
+    std::string repo_path = getEnvironmentVar("TARGET_REPO", "repository_after");
+    fs::path exec_path = fs::path(repo_path) / "build" / "json_parser_demo";
+    if (!fs::exists(exec_path)) exec_path = fs::path(repo_path) / "json_parser_demo";
+    
+    // 1. Run with depth 30 (should pass)
+    {
+        int ret = 0;
+        std::string cmd = exec_path.string() + " " + f + " --depth 30";
+        std::string out = exec(cmd, ret);
+        assert_true(ret == 0, "Depth Check: 20 < 30 should pass");
+    }
+    
+    // 2. Run with depth 10 (should fail)
+    {
+        int ret = 0;
+        std::string cmd = exec_path.string() + " " + f + " --depth 10";
+        std::string out = exec(cmd, ret);
+        assert_true(ret != 0, "Depth Check: 20 > 10 should fail");
+        assert_contains(out, "Maximum nesting depth exceeded", "Error msg mismatch");
+    }
+}
+
 void test_large_array_performance(const fs::path& tmp_path) {
     // 50KB test
     std::string item = "\"12345678\""; // 10 chars -> 12 with quotes. + comma. 
@@ -309,6 +341,18 @@ void test_memory_usage_and_large_file_500mb(const fs::path& tmp_path) {
     fs::path exec_path = fs::path(repo_path) / "build" / "json_parser_demo";
     if (!fs::exists(exec_path)) exec_path = fs::path(repo_path) / "json_parser_demo";
     
+    // 1. Run actual 500MB file parsing
+    std::cout << "Parsing 500MB file... " << std::flush;
+    int ret_large = 0;
+    // Just run it, don't capture full output to avoid memory issues in test runner if it dumps
+    std::string cmd_large = exec_path.string() + " " + f_path.string() + " > /dev/null";
+    exec(cmd_large, ret_large);
+    if (ret_large == 0) std::cout << "Verified (No crash)" << std::endl;
+    else {
+        std::cout << "FAILED (Crash/Error)" << std::endl;
+        throw std::runtime_error("500MB file caused crash or error");
+    }
+    
     // Mem Check using a smaller 50MB file to be consistent with py test
     {
         fs::path f_mem = tmp_path / "mem_test.json";
@@ -342,7 +386,7 @@ void test_memory_usage_and_large_file_500mb(const fs::path& tmp_path) {
             long max_rss_bytes = max_rss_kb * 1024;
             double ratio = (double)max_rss_bytes / file_size_mem;
             std::cout << "Memory Usage: " << ratio << "x " << std::endl;
-            assert_true(ratio <= 2.2, "Memory usage > 2.2x");
+            assert_true(ratio <= 2.0, "Memory usage > 2.0x");
         } else {
             std::cout << "WARNING: Could not parse memory usage" << std::endl;
         }
@@ -365,6 +409,7 @@ int main() {
     run_test("test_error_locations", test_error_locations, tmp_base / "err_loc");
     run_test("test_invalid_numbers", test_invalid_numbers, tmp_base / "inv_num");
     run_test("test_unicode_correctness_and_surrogates", test_unicode_correctness_and_surrogates, tmp_base / "uni_corr");
+    run_test("test_configurable_depth", test_configurable_depth, tmp_base / "depth");
     run_test("test_large_array_performance", test_large_array_performance, tmp_base / "perf");
     run_test("test_memory_usage_and_large_file_500mb", test_memory_usage_and_large_file_500mb, tmp_base / "mem");
 

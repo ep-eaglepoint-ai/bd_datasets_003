@@ -6,18 +6,45 @@
 #include <string>
 
 int main(int argc, char* argv[]) {
-    if (argc < 2) {
-        std::cerr << "Usage: " << argv[0] << " <json_file>" << std::endl;
+    // Parse args
+    std::string filename;
+    bool dump = false;
+    size_t max_depth = 1000;
+    
+    // Simple arg parser
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--dump") {
+            dump = true;
+        } else if (arg == "--depth") {
+            if (i + 1 < argc) {
+                try {
+                    max_depth = std::stoul(argv[++i]);
+                } catch (...) {
+                    std::cerr << "Error: Invalid depth value" << std::endl;
+                    return 1;
+                }
+            } else {
+                std::cerr << "Error: --depth requires an argument" << std::endl;
+                return 1;
+            }
+        } else {
+            filename = arg;
+        }
+    }
+    
+    if (filename.empty()) {
+        std::cerr << "Usage: " << argv[0] << " <json_file> [--dump] [--depth <N>]" << std::endl;
         return 1;
     }
     
-    std::ifstream file(argv[1]);
+    std::ifstream file(filename);
     if (!file.is_open()) {
-        std::cerr << "Error: Could not open file " << argv[1] << std::endl;
+        std::cerr << "Error: Could not open file " << filename << std::endl;
         return 1;
     }
     
-    // Optimized file reading to avoid double allocation (stringstream + string)
+    // Optimized file reading to avoid double allocation
     file.seekg(0, std::ios::end);
     size_t size = file.tellg();
     std::string content(size, ' ');
@@ -26,6 +53,7 @@ int main(int argc, char* argv[]) {
     
     try {
         json::JsonParser parser;
+        parser.setMaxDepth(max_depth);
         
         auto start = std::chrono::high_resolution_clock::now();
         json::JsonValue value = parser.parse(content);
@@ -33,8 +61,7 @@ int main(int argc, char* argv[]) {
         std::chrono::duration<double, std::milli> elapsed = end - start;
         std::cout << "Parse time: " << elapsed.count() << " ms" << std::endl;
         
-        // Output dump if requested for verification
-        if (argc > 2 && std::string(argv[2]) == "--dump") {
+        if (dump) {
              value.print(std::cout);
              std::cout << std::endl;
              return 0;
