@@ -1,0 +1,11 @@
+{
+            "instance_id": "ZCE09G",
+            "problem_statement": "You are building a Subscription Plan Management System for a SaaS platform to manage customer subscriptions, payment cycles, and plan upgrades or downgrades. The previous system had limitations that caused billing errors, missed payments, and improper plan transitions. Your task is to create a Node.js backend API to handle subscriptions, payments, and plan changes, ensuring proper billing and transitions according to the rules of each subscription plan.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/zce09g-subscription-plan-management-system",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
