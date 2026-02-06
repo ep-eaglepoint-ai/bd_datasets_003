@@ -21,7 +21,7 @@ Commands to run tests on repository_after (optimized - all tests should pass)
 ### Evaluation
 
 ```bash
-docker compose run --rm app python evaluation/evaluate.py || true
+docker compose run --rm app python evaluation/evaluate.py
 ```
 
 Commands to run evaluation/evaluate.py and generate reports

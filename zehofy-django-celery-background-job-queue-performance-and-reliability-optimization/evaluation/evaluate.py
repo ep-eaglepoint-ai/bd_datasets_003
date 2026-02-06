@@ -108,12 +108,21 @@ def run_pytest(test_file: str, description: str) -> tuple[bool, float, str]:
     
     start_time = time.time()
     
+    # Set PYTHONPATH to include repository_after
+    env = os.environ.copy()
+    python_path = env.get('PYTHONPATH', '')
+    if python_path:
+        env['PYTHONPATH'] = f"{REPO_AFTER}:{python_path}"
+    else:
+        env['PYTHONPATH'] = REPO_AFTER
+    
     try:
         result = subprocess.run(
             [sys.executable, '-m', 'pytest', test_path, '-v', '--tb=short'],
             capture_output=True,
             text=True,
-            timeout=120
+            timeout=120,
+            env=env
         )
         
         execution_time = time.time() - start_time
@@ -189,7 +198,13 @@ def evaluate_celery_settings(report: EvaluationReport):
         
         # Check priority queue
         if hasattr(settings, 'CELERY_TASK_QUEUES'):
-            queue_names = [q.name for q in settings.CELERY_TASK_QUEUES]
+            # Handle both list of Queue objects and list of dicts
+            try:
+                queue_names = [q.name for q in settings.CELERY_TASK_QUEUES]
+            except AttributeError:
+                # Queue is a dict, use 'name' key
+                queue_names = [q['name'] for q in settings.CELERY_TASK_QUEUES]
+            
             if 'priority' in queue_names:
                 priority_checks.append(("Priority queue exists", True))
             else:
@@ -199,6 +214,9 @@ def evaluate_celery_settings(report: EvaluationReport):
                 priority_checks.append(("Bulk queue exists", True))
             else:
                 priority_checks.append(("Bulk queue exists", False))
+        else:
+            priority_checks.append(("Priority queue exists", False))
+            priority_checks.append(("Bulk queue exists", False))
         
         # Check acks_late
         if hasattr(settings, 'CELERY_TASK_ACKS_LATE'):
@@ -248,6 +266,9 @@ def evaluate_task_implementations(report: EvaluationReport):
     try:
         sys.path.insert(0, REPO_AFTER)
         
+        # Import utilities first
+        from apps.tasks import utils
+        
         # Import task modules
         from apps.tasks import email_tasks, import_tasks, notification_tasks, report_tasks
         
@@ -257,20 +278,25 @@ def evaluate_task_implementations(report: EvaluationReport):
         else:
             task_checks.append(("Email task retry config", False))
         
-        # Check notification tasks have rate limiting
-        if hasattr(notification_tasks, 'PUSH_NOTIFICATION_LIMITER'):
+        # Check notification tasks have rate limiting (check in utils since it's imported there)
+        if hasattr(utils, 'PUSH_NOTIFICATION_LIMITER'):
             task_checks.append(("Notification rate limiting", True))
         else:
             task_checks.append(("Notification rate limiting", False))
         
-        # Check import tasks have bulk operations
-        if hasattr(import_tasks, 'bulk_create'):
-            task_checks.append(("Import bulk operations", True))
+        # Check import tasks have bulk operations (check for bulk_create method usage)
+        if hasattr(import_tasks, 'import_products_from_csv'):
+            # Check if bulk_create is used in the function source
+            import inspect
+            source = inspect.getsource(import_tasks.import_products_from_csv)
+            if 'bulk_create' in source:
+                task_checks.append(("Import bulk operations", True))
+            else:
+                task_checks.append(("Import bulk operations", False))
         else:
             task_checks.append(("Import bulk operations", False))
         
         # Check utilities exist
-        from apps.tasks import utils
         if hasattr(utils, 'generate_idempotency_key'):
             task_checks.append(("Idempotency utilities", True))
         else:
