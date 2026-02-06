@@ -1,0 +1,12 @@
+{
+            "instance_id": "OU64FL",
+            "problem_statement": "Need to implement a C++ utility that processes a stream of in-memory records and produces a structured summary suitable for offline reporting. The utility will be used as a standalone component in a larger system and must operate deterministically using only the C++ standard library. The goal is to transform raw records into a summarized textual report while enforcing strict formatting and validation rules.
+The system must handle moderately sized inputs efficiently, maintain predictable runtime and memory behavior, and produce output that can be validated exactly by automated test suites. No existing implementation is provided; the task is to design and implement the required functionality from scratch based on the specifications below.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ou64fl-cpp-collection-implementation",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
