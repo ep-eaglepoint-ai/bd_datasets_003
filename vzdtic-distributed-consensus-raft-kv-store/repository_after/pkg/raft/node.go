@@ -58,6 +58,10 @@ type Node struct {
 
 	// Shutdown state
 	stopped int32
+
+	// Membership change state
+	membershipChangePending bool
+	membershipChangeIndex   uint64
 }
 
 // WALInterface defines the interface for write-ahead log
@@ -527,6 +531,12 @@ func (n *Node) tryAdvanceCommitIndex() {
 			n.commitIndex = newCommitIndex
 			log.Printf("Node %s: Committed index %d (was %d)", n.id, newCommitIndex, oldCommit)
 
+			// Check if membership change was committed
+			if n.membershipChangePending && n.membershipChangeIndex <= newCommitIndex {
+				n.membershipChangePending = false
+				log.Printf("Node %s: Membership change at index %d committed", n.id, n.membershipChangeIndex)
+			}
+
 			select {
 			case n.commitCh <- struct{}{}:
 			default:
@@ -628,6 +638,13 @@ func (n *Node) HandleAppendEntries(args *AppendEntriesArgs) *AppendEntriesReply 
 			}
 		} else {
 			n.log = append(n.log, entry)
+		}
+
+		// Apply membership changes from replicated entries
+		if entry.Command.Type == CommandAddNode {
+			n.cluster.AddNode(entry.Command.Key)
+		} else if entry.Command.Type == CommandRemoveNode {
+			n.cluster.RemoveNode(entry.Command.Key)
 		}
 	}
 
@@ -901,14 +918,171 @@ func (n *Node) confirmLeadership(term uint64, timeout time.Duration) bool {
 	}
 }
 
-// AddNode is disabled - joint consensus not fully implemented
+// AddNode adds a new node to the cluster (single-server membership change)
 func (n *Node) AddNode(nodeID string) error {
-	return ErrMembershipChangeDisabled
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	if n.state != Leader {
+		return ErrNotLeader
+	}
+
+	// Check if there's already a pending membership change
+	if n.membershipChangePending {
+		return ErrMembershipChangePending
+	}
+
+	// Check if node already exists
+	if n.cluster.HasNode(nodeID) {
+		return ErrNodeAlreadyExists
+	}
+
+	// Create membership change command
+	cmd := Command{
+		Type: CommandAddNode,
+		Key:  nodeID,
+	}
+
+	entry := LogEntry{
+		Index:   n.getLastLogIndex() + 1,
+		Term:    n.currentTerm,
+		Command: cmd,
+	}
+
+	n.log = append(n.log, entry)
+	n.membershipChangePending = true
+	n.membershipChangeIndex = entry.Index
+
+	// Add node to cluster immediately (leader uses new config right away)
+	n.cluster.AddNode(nodeID)
+	n.nextIndex[nodeID] = entry.Index + 1
+	n.matchIndex[nodeID] = 0
+
+	n.persist()
+
+	log.Printf("Node %s: Adding node %s at index %d", n.id, nodeID, entry.Index)
+
+	return nil
 }
 
-// RemoveNode is disabled - joint consensus not fully implemented
+// RemoveNode removes a node from the cluster (single-server membership change)
 func (n *Node) RemoveNode(nodeID string) error {
-	return ErrMembershipChangeDisabled
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	if n.state != Leader {
+		return ErrNotLeader
+	}
+
+	// Check if there's already a pending membership change
+	if n.membershipChangePending {
+		return ErrMembershipChangePending
+	}
+
+	// Check if node exists
+	if !n.cluster.HasNode(nodeID) {
+		return ErrNodeNotFound
+	}
+
+	// Cannot remove self if only node
+	if nodeID == n.id && n.cluster.Size() == 1 {
+		return ErrCannotRemoveLastNode
+	}
+
+	// Create membership change command
+	cmd := Command{
+		Type: CommandRemoveNode,
+		Key:  nodeID,
+	}
+
+	entry := LogEntry{
+		Index:   n.getLastLogIndex() + 1,
+		Term:    n.currentTerm,
+		Command: cmd,
+	}
+
+	n.log = append(n.log, entry)
+	n.membershipChangePending = true
+	n.membershipChangeIndex = entry.Index
+
+	// Remove node from cluster immediately (leader uses new config right away)
+	n.cluster.RemoveNode(nodeID)
+	delete(n.nextIndex, nodeID)
+	delete(n.matchIndex, nodeID)
+
+	n.persist()
+
+	log.Printf("Node %s: Removing node %s at index %d", n.id, nodeID, entry.Index)
+
+	// If removing self, step down after committing
+	if nodeID == n.id {
+		go func() {
+			time.Sleep(100 * time.Millisecond)
+			n.mu.Lock()
+			if n.commitIndex >= entry.Index {
+				n.becomeFollower(n.currentTerm)
+			}
+			n.mu.Unlock()
+		}()
+	}
+
+	return nil
+}
+
+// AddNodeWithContext adds a node and waits for commitment
+func (n *Node) AddNodeWithContext(ctx context.Context, nodeID string) error {
+	err := n.AddNode(nodeID)
+	if err != nil {
+		return err
+	}
+
+	// Wait for the membership change to be committed
+	n.mu.RLock()
+	changeIndex := n.membershipChangeIndex
+	n.mu.RUnlock()
+
+	return n.waitForCommit(ctx, changeIndex)
+}
+
+// RemoveNodeWithContext removes a node and waits for commitment
+func (n *Node) RemoveNodeWithContext(ctx context.Context, nodeID string) error {
+	err := n.RemoveNode(nodeID)
+	if err != nil {
+		return err
+	}
+
+	// Wait for the membership change to be committed
+	n.mu.RLock()
+	changeIndex := n.membershipChangeIndex
+	n.mu.RUnlock()
+
+	return n.waitForCommit(ctx, changeIndex)
+}
+
+func (n *Node) waitForCommit(ctx context.Context, index uint64) error {
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-n.stopCh:
+			return ErrNodeStopped
+		case <-ticker.C:
+			n.mu.RLock()
+			committed := n.commitIndex >= index
+			isLeader := n.state == Leader
+			n.mu.RUnlock()
+
+			if committed {
+				return nil
+			}
+			if !isLeader {
+				return ErrNotLeader
+			}
+		}
+	}
 }
 
 func (n *Node) applyLoop() {
@@ -946,7 +1120,14 @@ func (n *Node) applyCommitted() {
 		entry := n.log[arrIdx]
 		n.mu.RUnlock()
 
-		result := n.stateMachine.Apply(entry.Command)
+		var result string
+		// Apply membership changes
+		if entry.Command.Type == CommandAddNode || entry.Command.Type == CommandRemoveNode {
+			// Membership changes are applied during replication
+			result = ""
+		} else {
+			result = n.stateMachine.Apply(entry.Command)
+		}
 
 		select {
 		case n.applyCh <- ApplyMsg{
@@ -1252,4 +1433,15 @@ func (n *Node) GetApplyChan() <-chan ApplyMsg {
 
 func (n *Node) GetClusterSize() int {
 	return n.cluster.Size()
+}
+
+func (n *Node) GetClusterNodes() []string {
+	return n.cluster.GetNodes()
+}
+
+// IsMembershipChangePending returns true if there's a pending membership change
+func (n *Node) IsMembershipChangePending() bool {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	return n.membershipChangePending
 }

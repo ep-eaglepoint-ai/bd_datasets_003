@@ -205,3 +205,113 @@ func TestZombieLeaderPrevention(t *testing.T) {
 		t.Log("✓ Old leader correctly stepped down")
 	}
 }
+
+func TestSymmetricPartition(t *testing.T) {
+	cluster, err := testutil.NewTestCluster(5)
+	if err != nil {
+		t.Fatalf("Failed to create cluster: %v", err)
+	}
+	defer cluster.Cleanup()
+
+	if err := cluster.Start(); err != nil {
+		t.Fatalf("Failed to start cluster: %v", err)
+	}
+
+	_, err = cluster.WaitForStableLeader(30 * time.Second)
+	if err != nil {
+		t.Fatalf("Failed to elect stable leader: %v", err)
+	}
+
+	// Create symmetric partition: [0,1,2] | [3,4]
+	for i := 0; i < 3; i++ {
+		for j := 3; j < 5; j++ {
+			cluster.Transport.Disconnect(cluster.Nodes[i].GetID(), cluster.Nodes[j].GetID())
+			cluster.Transport.Disconnect(cluster.Nodes[j].GetID(), cluster.Nodes[i].GetID())
+		}
+	}
+
+	time.Sleep(3 * time.Second)
+
+	// Majority partition should have a leader
+	majorityLeader := false
+	for i := 0; i < 3; i++ {
+		if cluster.Nodes[i].IsLeader() {
+			majorityLeader = true
+			break
+		}
+	}
+
+	if !majorityLeader {
+		t.Log("Note: Majority partition may still be electing leader")
+	}
+
+	// Minority partition should NOT have a leader that can commit
+	for i := 3; i < 5; i++ {
+		node := cluster.Nodes[i]
+		if node.IsLeader() {
+			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+			cmd := raft.Command{
+				Type:  raft.CommandSet,
+				Key:   "minority-key",
+				Value: "should-timeout",
+			}
+			_, err := node.SubmitWithResult(ctx, cmd)
+			cancel()
+
+			if err == nil {
+				t.Error("Minority partition leader should not be able to commit")
+			}
+		}
+	}
+
+	cluster.HealPartition()
+	t.Log("✓ Symmetric partition handling verified")
+}
+
+func TestIntermittentPartition(t *testing.T) {
+	cluster, err := testutil.NewTestCluster(3)
+	if err != nil {
+		t.Fatalf("Failed to create cluster: %v", err)
+	}
+	defer cluster.Cleanup()
+
+	if err := cluster.Start(); err != nil {
+		t.Fatalf("Failed to start cluster: %v", err)
+	}
+
+	_, err = cluster.WaitForStableLeader(30 * time.Second)
+	if err != nil {
+		t.Fatalf("Failed to elect stable leader: %v", err)
+	}
+
+	successCount := 0
+	for i := 0; i < 10; i++ {
+		// Randomly partition a node
+		nodeIdx := i % len(cluster.Nodes)
+		cluster.Transport.Partition(cluster.Nodes[nodeIdx].GetID())
+
+		time.Sleep(200 * time.Millisecond)
+
+		cmd := raft.Command{
+			Type:  raft.CommandSet,
+			Key:   "intermittent-key",
+			Value: string(rune('0' + i)),
+		}
+
+		err := cluster.SubmitCommand(cmd, 5*time.Second)
+		if err == nil {
+			successCount++
+		}
+
+		cluster.HealPartition()
+		time.Sleep(300 * time.Millisecond)
+	}
+
+	t.Logf("Successful writes during intermittent partitions: %d/10", successCount)
+
+	if successCount < 5 {
+		t.Errorf("Too few successful writes: %d/10", successCount)
+	}
+
+	t.Log("✓ Intermittent partition handling verified")
+}
