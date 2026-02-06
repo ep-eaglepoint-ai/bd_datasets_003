@@ -1,0 +1,11 @@
+{
+            "instance_id": "R7PT5G",
+            "problem_statement": "Design and implement a type-safe feature flag engine in TypeScript where correctness is enforced primarily at compile time. Flags must be declared once with string-literal keys and optional typed payloads. Accessing an undefined flag, using the wrong payload shape/type, or making unsafe assumptions must fail to compile. The design must prevent common TS pitfalls such as key widening to string, returning any/unknown payloads, and non-exhaustive handling when new flags are added. Output a single .ts file showing the engine plus valid/invalid usage (invalid marked to fail at compile time).",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/r7pt5g-type-safe-feature-flag-engine-generation",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
