@@ -1,7 +1,6 @@
 from accounts.models import (
-    Organization, Team, Project, Task,
-    OrganizationMember, TeamMember, ProjectMember,
-    CustomRole, PermissionOverride
+    Team, Project, Task,
+    OrganizationMember, TeamMember, ProjectMember
 )
 
 

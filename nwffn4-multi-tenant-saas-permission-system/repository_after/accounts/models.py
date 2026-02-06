@@ -72,6 +72,8 @@ class OrganizationMember(models.Model):
         ]
 
     def get_permissions(self):
+        # Import here to avoid circular dependency
+        # TODO: Consider moving PREDEFINED_ROLES to a constants module
         from permissions.services.permission_checker import PREDEFINED_ROLES
         if self.custom_role:
             return self.custom_role.permissions
@@ -93,6 +95,8 @@ class TeamMember(models.Model):
         ]
 
     def get_permissions(self):
+        # Import here to avoid circular dependency
+        # TODO: Consider moving PREDEFINED_ROLES to a constants module
         from permissions.services.permission_checker import PREDEFINED_ROLES
         if self.custom_role:
             return self.custom_role.permissions
@@ -114,6 +118,8 @@ class ProjectMember(models.Model):
         ]
 
     def get_permissions(self):
+        # Import here to avoid circular dependency
+        # TODO: Consider moving PREDEFINED_ROLES to a constants module
         from permissions.services.permission_checker import PREDEFINED_ROLES
         if self.custom_role:
             return self.custom_role.permissions

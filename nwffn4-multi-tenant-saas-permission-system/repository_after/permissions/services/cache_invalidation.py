@@ -1,5 +1,5 @@
 from django.core.cache import caches
-from accounts.models import Organization, Team, Project, Task, OrganizationMember, TeamMember, ProjectMember
+from accounts.models import Team, Project, Task, OrganizationMember, TeamMember, ProjectMember
 import logging
 
 logger = logging.getLogger(__name__)
@@ -47,19 +47,105 @@ class CacheInvalidationService:
             self._invalidate_project_descendants(user_id, resource_id)
 
     def _invalidate_organization_descendants(self, user_id, org_id):
-        teams = Team.objects.filter(organization_id=org_id).values_list('id', flat=True)
-        for team_id in teams:
-            self.invalidate_user_resource(user_id, 'team', team_id)
+        """
+        Bulk invalidate all descendant resources of an organization (teams, projects, tasks)
+        for the given user, avoiding recursive per-child cache invalidation.
+        """
+        permissions = ['create', 'read', 'update', 'delete', 'manage_members', 'manage_roles']
+        
+        # Collect all team IDs for this organization
+        team_ids = list(
+            Team.objects.filter(organization_id=org_id).values_list('id', flat=True)
+        )
+        
+        # Collect all project IDs for those teams
+        if team_ids:
+            project_ids = list(
+                Project.objects.filter(team_id__in=team_ids).values_list('id', flat=True)
+            )
+        else:
+            project_ids = []
+        
+        # Collect all task IDs for those projects
+        if project_ids:
+            task_ids = list(
+                Task.objects.filter(project_id__in=project_ids).values_list('id', flat=True)
+            )
+        else:
+            task_ids = []
+        
+        keys = []
+        # Build cache keys for teams
+        for team_id in team_ids:
+            for perm in permissions:
+                keys.append(f"perm:{user_id}:team:{team_id}:{perm}")
+        
+        # Build cache keys for projects
+        for project_id in project_ids:
+            for perm in permissions:
+                keys.append(f"perm:{user_id}:project:{project_id}:{perm}")
+        
+        # Build cache keys for tasks
+        for task_id in task_ids:
+            for perm in permissions:
+                keys.append(f"perm:{user_id}:task:{task_id}:{perm}")
+        
+        if keys:
+            self.cache.delete_many(keys)
 
     def _invalidate_team_descendants(self, user_id, team_id):
-        projects = Project.objects.filter(team_id=team_id).values_list('id', flat=True)
-        for project_id in projects:
-            self.invalidate_user_resource(user_id, 'project', project_id)
+        """
+        Bulk invalidate all descendant resources of a team (projects, tasks)
+        for the given user.
+        """
+        permissions = ['create', 'read', 'update', 'delete', 'manage_members', 'manage_roles']
+        
+        # Collect all project IDs for this team
+        project_ids = list(
+            Project.objects.filter(team_id=team_id).values_list('id', flat=True)
+        )
+        
+        # Collect all task IDs for those projects
+        if project_ids:
+            task_ids = list(
+                Task.objects.filter(project_id__in=project_ids).values_list('id', flat=True)
+            )
+        else:
+            task_ids = []
+        
+        keys = []
+        # Build cache keys for projects
+        for project_id in project_ids:
+            for perm in permissions:
+                keys.append(f"perm:{user_id}:project:{project_id}:{perm}")
+        
+        # Build cache keys for tasks
+        for task_id in task_ids:
+            for perm in permissions:
+                keys.append(f"perm:{user_id}:task:{task_id}:{perm}")
+        
+        if keys:
+            self.cache.delete_many(keys)
 
     def _invalidate_project_descendants(self, user_id, project_id):
-        tasks = Task.objects.filter(project_id=project_id).values_list('id', flat=True)
-        for task_id in tasks:
-            self.invalidate_user_resource(user_id, 'task', task_id)
+        """
+        Bulk invalidate all descendant resources of a project (tasks)
+        for the given user.
+        """
+        permissions = ['create', 'read', 'update', 'delete', 'manage_members', 'manage_roles']
+        
+        # Collect all task IDs for this project
+        task_ids = list(
+            Task.objects.filter(project_id=project_id).values_list('id', flat=True)
+        )
+        
+        keys = []
+        for task_id in task_ids:
+            for perm in permissions:
+                keys.append(f"perm:{user_id}:task:{task_id}:{perm}")
+        
+        if keys:
+            self.cache.delete_many(keys)
 
     def _invalidate_user_organization(self, user_id, org_id):
         self.invalidate_user_resource(user_id, 'organization', org_id)

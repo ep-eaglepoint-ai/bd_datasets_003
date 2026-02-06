@@ -129,7 +129,7 @@ class TestTenantIsolation:
         org1 = Organization.objects.create(name='Org 1', slug='org1')
         org2 = Organization.objects.create(name='Org 2', slug='org2')
         
-        team1 = Team.objects.create(organization=org1, name='Team 1', slug='team1')
+        Team.objects.create(organization=org1, name='Team 1', slug='team1')
         team2 = Team.objects.create(organization=org2, name='Team 2', slug='team2')
         
         user = User.objects.create_user(username='testuser', password='pass')
@@ -230,7 +230,7 @@ class TestBulkPermissionChecks:
         
         with CaptureQueriesContext(connection) as context:
             # This will FAIL in before (no bulk method) and PASS in after
-            results = permission_checker.bulk_check_permissions(user, 'project', project_ids, 'read')
+            permission_checker.bulk_check_permissions(user, 'project', project_ids, 'read')
         
         # This will FAIL in before (50+ queries) and PASS in after (<10 queries)
         assert len(context.captured_queries) < 10

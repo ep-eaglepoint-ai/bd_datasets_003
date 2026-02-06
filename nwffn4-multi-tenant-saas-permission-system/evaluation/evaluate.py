@@ -131,7 +131,7 @@ def run_metrics(repo_name):
         
         project_ids = [p.id for p in projects]
         start = time.perf_counter()
-        results = permission_checker.bulk_check_permissions(user, 'project', project_ids, 'read')
+        permission_checker.bulk_check_permissions(user, 'project', project_ids, 'read')
         end = time.perf_counter()
         bulk_time = (end - start) * 1000
         
