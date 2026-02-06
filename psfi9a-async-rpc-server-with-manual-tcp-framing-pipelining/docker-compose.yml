@@ -1,0 +1,17 @@
+services:
+  test:
+    build: .
+    command: python3 -m pytest tests/ -v --tb=short
+    volumes:
+      - .:/app
+    working_dir: /app
+
+  evaluate:
+    build: .
+    command: python3 evaluation/evaluation.py
+    volumes:
+      - .:/app
+      - ./evaluation:/app/evaluation
+    working_dir: /app
+    depends_on:
+      - test
