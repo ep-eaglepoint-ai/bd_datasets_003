@@ -1,0 +1,11 @@
+{
+            "instance_id": "A6JF9N",
+            "problem_statement": "The objective is to build a high-performance Java utility that clones incoming production HTTP traffic and replays it to a staging environment. This system must act as a transparent proxy that performs real-time data sanitization, specifically targeting the removal of Personally Identifiable Information (PII) and the synchronization of timestamps within request payloads to ensure compatibility with staging environment validation logic.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/a6jf9n-shadow-traffic-replicator",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
