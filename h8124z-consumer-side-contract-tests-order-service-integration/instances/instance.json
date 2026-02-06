@@ -1,0 +1,11 @@
+{
+            "instance_id": "H8124Z",
+            "problem_statement": "Recent production incidents occurred due to silent breaking changes in the Order Service API, causing the Billing Service to fail. The goal is to design consumer-side contract tests that validate the minimum required shape of producer responses, ensure backward compatibility (V1 → V2), tolerate optional fields, and detect breaking changes (missing/renamed/invalid type fields) before deployment. Tests must avoid hardcoding full responses and allow extra optional fields.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/h8124z-consumer-side-contract-tests-order-service-integration",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
