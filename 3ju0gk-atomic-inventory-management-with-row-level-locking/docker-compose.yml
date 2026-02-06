@@ -11,15 +11,13 @@ services:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres"]
-      interval: 3s
-      timeout: 3s
+      interval: 5s
+      timeout: 5s
       retries: 5
 
-  web:
+  backend:
     build: .
-    command: >
-      sh -c "python repository_after/manage.py migrate &&
-             python repository_after/manage.py runserver 0.0.0.0:8000"
+    command: python repository_after/manage.py runserver 0.0.0.0:8000
     volumes:
       - .:/app
     ports:
@@ -29,6 +27,19 @@ services:
         condition: service_healthy
     environment:
       - DATABASE_URL=postgres://postgres:postgres@db:5432/flashsale
+
+  frontend:
+    build: .
+    command: sh -c "cd frontend && npm run dev -- --host 0.0.0.0"
+    volumes:
+      - .:/app
+      - /app/frontend/node_modules   # avoid permission issues
+    ports:
+      - "5173:5173"                  # Vite default port
+    depends_on:
+      - backend
+    environment:
+      - VITE_API_URL=http://backend:8000/api
 
 volumes:
   pgdata:
