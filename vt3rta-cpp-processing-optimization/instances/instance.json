@@ -1,0 +1,13 @@
+{
+            "instance_id": "VT3RTA",
+            "problem_statement": "Noticed severe performance degradation and inconsistent runtime behavior while reviewing a C++ batch-processing application responsible for aggregating and analyzing in-memory records. The issue surfaced during inspection of the data processing and report generation flow, where the system loads records, performs string transformations, aggregates results into a report buffer, and executes a final analysis pass before writing output to standard output.
+
+The current implementation relies on redundant nested loops, inefficient string concatenation, repeated full scans of containers, and shared mutable state across components. These design choices result in quadratic and cubic time complexity in critical execution paths, excessive heap allocations, and unnecessary memory copying. As input size increases, runtime and memory usage grow unpredictably, making the system unsuitable for benchmarking, regression testing, or production use without refactoring.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/vt3rta-cpp-processing-optimization",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
