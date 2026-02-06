@@ -1,11 +1,7 @@
 # KW5TNW - Concurrent-Safe-Ring-Buffer-Test-Suite
 
-    ## Before Test Docker Command
-    <docker before command here>
+## After Test Docker Command
+docker-compose run --rm app go test -v ./tests
 
-    ## After Test Docker Command
-    <docker after command here>
-
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## Evaluation Docker Command
+docker-compose run --rm app go run evaluation/evaluation.go
