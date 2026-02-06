@@ -1,0 +1,11 @@
+{
+            "instance_id": "YTB49Z",
+            "problem_statement": "Testing concurrent order processing is critical in marketplaces to prevent overselling or inconsistent states. Weak test suites miss race conditions on shared inventory, fail to assert atomicity, lack coverage for edge cases like zero quantity or duplicate IDs, or use naive sequential tests that hide concurrency bugs. The correct suite must use goroutines with synchronization, race detector awareness, and thorough assertions on final inventory and order states across parallel executions.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ytb49z-comprehensive-concurrency-safe-testing-of-order-fulfillment-handler-in-go",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        

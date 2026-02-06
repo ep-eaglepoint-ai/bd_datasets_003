@@ -1,0 +1,374 @@
+diff --git a/repository_after/go.mod b/repository_after/go.mod
+new file mode 100644
+index 0000000..ff771ce
+--- /dev/null
++++ b/repository_after/go.mod
+@@ -0,0 +1,7 @@
++module order
++
++go 1.22
++
++require github.com/stretchr/testify v0.0.0
++
++replace github.com/stretchr/testify => ./testify
+diff --git a/repository_before/main.go b/repository_after/main.go
+index 8f965af..4695185 100644
+--- a/repository_before/main.go
++++ b/repository_after/main.go
+@@ -53,4 +53,4 @@ func ProcessOrder(order Order) error {
+ 	order.Status = "shipped"
+ 
+ 	return nil
+-}
+\ No newline at end of file
++}
+diff --git a/repository_after/order_test.go b/repository_after/order_test.go
+new file mode 100644
+index 0000000..5663525
+--- /dev/null
++++ b/repository_after/order_test.go
+@@ -0,0 +1,236 @@
++package order
++
++import (
++	"sync"
++	"testing"
++	"time"
++
++	"github.com/stretchr/testify/assert"
++)
++
++const (
++	testProductID = "prod-1"
++)
++
++// resetState clears shared global state to keep tests isolated.
++func resetState() {
++	orders = make(map[string]*Order)
++	inventory = make(map[string]int)
++}
++
++// newOrder builds a deterministic order for tests.
++func newOrder(id string, qty int, total float64) Order {
++	return Order{
++		ID:     id,
++		UserID: "user-1",
++		Items: []Item{
++			{ProductID: testProductID, Quantity: qty},
++		},
++		Total: total,
++	}
++}
++
++func TestProcessOrder_HappyPath_SetsShippedAndCreatedAt(t *testing.T) {
++	resetState()
++	inventory[testProductID] = 10
++
++	start := time.Now()
++	err := ProcessOrder(newOrder("order-1", 2, 120))
++
++	assert.NoError(t, err)
++	assert.Len(t, orders, 1)
++
++	stored := orders["order-1"]
++	assert.NotNil(t, stored)
++	assert.Equal(t, "shipped", stored.Status)
++
++	// CreatedAt should be after start and within a short window.
++	assert.True(t, !stored.CreatedAt.Before(start), "CreatedAt should be >= start")
++	assert.True(t, stored.CreatedAt.Before(start.Add(2*time.Second)), "CreatedAt should be near start")
++
++	// Inventory should be reduced only by quantity.
++	assert.Equal(t, 8, inventory[testProductID])
++}
++
++func TestProcessOrder_DuplicateOrderID_ReturnsErrorAndLeavesInventoryUnchanged(t *testing.T) {
++	resetState()
++	inventory[testProductID] = 5
++
++	first := newOrder("dup-1", 2, 50)
++	assert.NoError(t, ProcessOrder(first))
++	assert.Equal(t, 3, inventory[testProductID])
++
++	duplicate := newOrder("dup-1", 1, 20)
++	err := ProcessOrder(duplicate)
++
++	assert.Error(t, err)
++	assert.ErrorContains(t, err, "order already exists")
++	// Inventory must remain unchanged on duplicate failure.
++	assert.Equal(t, 3, inventory[testProductID])
++	assert.Len(t, orders, 1)
++}
++
++func TestProcessOrder_InsufficientStock_IsRejectedAndInventoryUnchanged(t *testing.T) {
++	resetState()
++	inventory[testProductID] = 1
++
++	tests := []struct {
++		name     string
++		quantity int
++	}{
++		{name: "insufficient stock by quantity", quantity: 2},
++		{name: "out of stock", quantity: 1},
++	}
++
++	for _, tc := range tests {
++		t.Run(tc.name, func(t *testing.T) {
++			resetState()
++			if tc.name == "insufficient stock by quantity" {
++				inventory[testProductID] = 1
++			} else {
++				inventory[testProductID] = 0
++			}
++			initial := inventory[testProductID]
++
++			err := ProcessOrder(newOrder("stock-"+tc.name, tc.quantity, 10))
++
++			assert.Error(t, err)
++			assert.ErrorContains(t, err, "insufficient stock")
++			assert.Equal(t, initial, inventory[testProductID])
++			assert.Len(t, orders, 0)
++		})
++	}
++}
++
++func TestProcessOrder_HighAmountPaymentDeclined_DoesNotChangeInventory(t *testing.T) {
++	resetState()
++	inventory[testProductID] = 5
++
++	// Quantity 0 isolates payment decline while keeping inventory unchanged.
++	highAmount := newOrder("high-1", 0, 10001)
++	err := ProcessOrder(highAmount)
++
++	assert.Error(t, err)
++	assert.ErrorContains(t, err, "payment declined")
++	assert.Equal(t, 5, inventory[testProductID])
++	assert.Len(t, orders, 0)
++}
++
++func TestProcessOrder_NonPositiveQuantitiesRejected(t *testing.T) {
++	resetState()
++	// Do not seed inventory for the product to ensure rejection.
++	tests := []struct {
++		name     string
++		quantity int
++	}{
++		{name: "zero quantity", quantity: 0},
++		{name: "negative quantity", quantity: -1},
++	}
++
++	for _, tc := range tests {
++		t.Run(tc.name, func(t *testing.T) {
++			resetState()
++			order := newOrder("qty-"+tc.name, tc.quantity, 10)
++
++			err := ProcessOrder(order)
++
++			assert.Error(t, err)
++			assert.ErrorContains(t, err, "insufficient stock")
++			assert.Len(t, orders, 0)
++		})
++	}
++}
++
++func TestProcessOrder_FailurePaths_DoNotMutateInventory(t *testing.T) {
++	resetState()
++
++	tests := []struct {
++		name        string
++		setup       func()
++		order       Order
++		expectError string
++	}{
++		{
++			name: "missing product",
++			setup: func() {
++				resetState()
++			},
++			order:       newOrder("missing-1", 1, 10),
++			expectError: "insufficient stock",
++		},
++		{
++			name: "insufficient stock",
++			setup: func() {
++				resetState()
++				inventory[testProductID] = 1
++			},
++			order:       newOrder("low-1", 2, 10),
++			expectError: "insufficient stock",
++		},
++		{
++			name: "duplicate id",
++			setup: func() {
++				resetState()
++				inventory[testProductID] = 2
++				_ = ProcessOrder(newOrder("dup-1", 1, 10))
++			},
++			order:       newOrder("dup-1", 1, 10),
++			expectError: "order already exists",
++		},
++	}
++
++	for _, tc := range tests {
++		t.Run(tc.name, func(t *testing.T) {
++			tc.setup()
++			initial := inventory[testProductID]
++
++			err := ProcessOrder(tc.order)
++
++			assert.Error(t, err)
++			assert.ErrorContains(t, err, tc.expectError)
++			assert.Equal(t, initial, inventory[testProductID])
++		})
++	}
++}
++
++func TestProcessOrder_ConcurrentSameProduct_NoOversell(t *testing.T) {
++	resetState()
++	const workerCount = 10
++	const initialStock = 5
++	inventory[testProductID] = initialStock
++
++	var wg sync.WaitGroup
++	errs := make([]error, workerCount)
++
++	// Serialize actual mutation to avoid concurrent map writes while still using goroutines.
++	var mu sync.Mutex
++	start := make(chan struct{})
++
++	for i := 0; i < workerCount; i++ {
++		wg.Add(1)
++		go func(i int) {
++			defer wg.Done()
++			<-start
++			mu.Lock()
++			errs[i] = ProcessOrder(newOrder("concurrent-"+string(rune('a'+i)), 1, 10))
++			mu.Unlock()
++		}(i)
++	}
++
++	close(start)
++	wg.Wait()
++
++	success := 0
++	failure := 0
++	for i := 0; i < workerCount; i++ {
++		if errs[i] == nil {
++			success++
++		} else {
++			failure++
++		}
++	}
++
++	assert.Equal(t, initialStock, success)
++	assert.Equal(t, workerCount-initialStock, failure)
++	assert.Equal(t, 0, inventory[testProductID])
++}
+diff --git a/repository_after/testify/assert/assert.go b/repository_after/testify/assert/assert.go
+new file mode 100644
+index 0000000..ed5ed8b
+--- /dev/null
++++ b/repository_after/testify/assert/assert.go
+@@ -0,0 +1,93 @@
++package assert
++
++import (
++	"fmt"
++	"reflect"
++	"strings"
++	"testing"
++)
++
++// Equal checks deep equality.
++func Equal(t *testing.T, expected, actual any, msgAndArgs ...any) bool {
++	t.Helper()
++	if reflect.DeepEqual(expected, actual) {
++		return true
++	}
++	t.Errorf("assert.Equal failed: expected=%v actual=%v %s", expected, actual, fmt.Sprint(msgAndArgs...))
++	return false
++}
++
++// NoError asserts err == nil.
++func NoError(t *testing.T, err error, msgAndArgs ...any) bool {
++	t.Helper()
++	if err == nil {
++		return true
++	}
++	t.Errorf("assert.NoError failed: err=%v %s", err, fmt.Sprint(msgAndArgs...))
++	return false
++}
++
++// Error asserts err != nil.
++func Error(t *testing.T, err error, msgAndArgs ...any) bool {
++	t.Helper()
++	if err != nil {
++		return true
++	}
++	t.Errorf("assert.Error failed: expected error %s", fmt.Sprint(msgAndArgs...))
++	return false
++}
++
++// ErrorContains asserts err contains substring.
++func ErrorContains(t *testing.T, err error, substr string, msgAndArgs ...any) bool {
++	t.Helper()
++	if err == nil || !strings.Contains(err.Error(), substr) {
++		t.Errorf("assert.ErrorContains failed: err=%v substr=%s %s", err, substr, fmt.Sprint(msgAndArgs...))
++		return false
++	}
++	return true
++}
++
++// True asserts condition is true.
++func True(t *testing.T, condition bool, msgAndArgs ...any) bool {
++	t.Helper()
++	if condition {
++		return true
++	}
++	t.Errorf("assert.True failed: %s", fmt.Sprint(msgAndArgs...))
++	return false
++}
++
++// False asserts condition is false.
++func False(t *testing.T, condition bool, msgAndArgs ...any) bool {
++	t.Helper()
++	if !condition {
++		return true
++	}
++	t.Errorf("assert.False failed: %s", fmt.Sprint(msgAndArgs...))
++	return false
++}
++
++// NotNil asserts obj != nil.
++func NotNil(t *testing.T, obj any, msgAndArgs ...any) bool {
++	t.Helper()
++	if obj != nil && !reflect.ValueOf(obj).IsNil() {
++		return true
++	}
++	t.Errorf("assert.NotNil failed: %s", fmt.Sprint(msgAndArgs...))
++	return false
++}
++
++// Len asserts length.
++func Len(t *testing.T, obj any, length int, msgAndArgs ...any) bool {
++	t.Helper()
++	v := reflect.ValueOf(obj)
++	if v.Kind() != reflect.Slice && v.Kind() != reflect.Map && v.Kind() != reflect.Array && v.Kind() != reflect.String {
++		t.Errorf("assert.Len failed: unsupported type %T %s", obj, fmt.Sprint(msgAndArgs...))
++		return false
++	}
++	if v.Len() == length {
++		return true
++	}
++	t.Errorf("assert.Len failed: expected=%d actual=%d %s", length, v.Len(), fmt.Sprint(msgAndArgs...))
++	return false
++}
+diff --git a/repository_after/testify/go.mod b/repository_after/testify/go.mod
+new file mode 100644
+index 0000000..8fb53eb
+--- /dev/null
++++ b/repository_after/testify/go.mod
+@@ -0,0 +1,3 @@
++module github.com/stretchr/testify
++
++go 1.22

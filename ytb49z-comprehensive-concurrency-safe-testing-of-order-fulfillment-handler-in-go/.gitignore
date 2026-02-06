@@ -1,0 +1,37 @@
+# Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+*.a
+*.o
+*.prof
+*.cover
+/build/
+bin/
+
+# Go workspace/cache
+.gopath/
+.gomodcache/
+.gocache/
+vendor/
+
+# IDE/editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Evaluation reports
+evaluation/reports/
+
+# Legacy folders
+__pycache__/
+*.pyc
+.venv/
+.env
+node_modules/

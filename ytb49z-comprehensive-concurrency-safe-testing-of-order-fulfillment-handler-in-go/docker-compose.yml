@@ -1,0 +1,57 @@
+services:
+  after-tests:
+    build: .
+    working_dir: /app
+    volumes:
+      - .:/app
+    environment:
+      - INSIDE_DOCKER=true
+      - GOFLAGS=-buildvcs=false
+      - GOMODCACHE=/app/.gomodcache
+      - GOCACHE=/app/.gocache
+    command: >
+      sh -c "
+      echo '==> Running repository_after tests' &&
+      cd /app/repository_after &&
+      go test -v -count=1 ./... ;
+      status=$$? ;
+      echo '==> repository_after exit code: '"$$status" ;
+      exit 0"
+
+  meta-tests:
+    build: .
+    working_dir: /app
+    volumes:
+      - .:/app
+    environment:
+      - INSIDE_DOCKER=true
+      - GOFLAGS=-buildvcs=false
+      - GOMODCACHE=/app/.gomodcache
+      - GOCACHE=/app/.gocache
+    command: >
+      sh -c "
+      echo '==> Running meta tests' &&
+      cd /app/tests &&
+      go test -v -count=1 ./... ;
+      status=$$? ;
+      echo '==> meta tests exit code: '"$$status" ;
+      exit 0"
+
+  evaluation:
+    build: .
+    working_dir: /app
+    volumes:
+      - .:/app
+    environment:
+      - INSIDE_DOCKER=true
+      - GOFLAGS=-buildvcs=false
+      - GOMODCACHE=/app/.gomodcache
+      - GOCACHE=/app/.gocache
+    command: >
+      sh -c "
+      echo '==> Running evaluation' &&
+      cd /app/evaluation &&
+      go run . ;
+      status=$$? ;
+      echo '==> evaluation exit code: '"$$status" ;
+      exit 0"
