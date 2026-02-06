@@ -1,0 +1,11 @@
+{
+            "instance_id": "2C3G9W",
+            "problem_statement": "A project management team needs a collaborative Kanban board where multiple users work on the same board simultaneously. The current workflow relies on manual page refreshes to see changes from other team members, cards lose their ordering when moved between columns, and there is no enforcement of work-in-progress limits leading to overloaded workflow stages. The application must support drag-and-drop reordering, persist card positions efficiently, sync changes across users in real-time, and gracefully handle server errors by reverting failed operations. The board must remain responsive with large numbers of cards across multiple columns.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/2c3g9w-real-time-collaborative-kanban-board",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
