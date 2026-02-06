@@ -102,7 +102,7 @@ EP Array → `get_subset_rank` (Permutation ranking) → Binary Table Lookup (Me
 - **REQ-12**: ✅ Strict optimality consistency (Negative proofs at $D-1$ for canonical 7 and 8 move HTM optimal scrambles).
 
 **Quality Metrics**:
-- **Test Coverage**: 39 core tests passed.
+- **Test Coverage**: 40 core tests passed.
 - **Robustness**: Validated against parity violations and invalid Singmaster inputs.
 
 ### 11. Phase 11: DOCUMENT THE DECISION (Capture Context for Future)

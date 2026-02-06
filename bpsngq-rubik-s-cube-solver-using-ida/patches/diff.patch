@@ -1,6 +1,17 @@
 diff --git a/repository_before/.gitkeep b/repository_before/.gitkeep
 deleted file mode 100644
-index e69de29..0000000
+index eb45c15..0000000
+--- a/repository_before/.gitkeep
++++ /dev/null
+@@ -1 +0,0 @@
+-# Required for git diff
+diff --git a/repository_after/__init__.py b/repository_after/__init__.py
+new file mode 100644
+index 0000000..4abcf7f
+--- /dev/null
++++ b/repository_after/__init__.py
+@@ -0,0 +1 @@
++# Package marker for repository_after
 diff --git a/repository_after/cube_state.py b/repository_after/cube_state.py
 new file mode 100644
 index 0000000..72a8c0b
@@ -131,10 +142,10 @@ index 0000000..0cd9d12
 +        return res
 diff --git a/repository_after/ida_star.py b/repository_after/ida_star.py
 new file mode 100644
-index 0000000..2aa1172
+index 0000000..a8948a0
 --- /dev/null
 +++ b/repository_after/ida_star.py
-@@ -0,0 +1,79 @@
+@@ -0,0 +1,78 @@
 +from .moves import apply_move, undo_move
 +
 +class IDAStar:
@@ -152,7 +163,6 @@ index 0000000..2aa1172
 +            f1 = m1[0]
 +            for m2 in self.moves:
 +                f2 = m2[0]
-+                # MATHEMATICAL JUSTIFICATION FOR PRUNING:
 +                # 1. Same-face Redundancy: m2 after m1 where face(m1) == face(m2) is equivalent 
 +                #    to a single rotation of that face (e.g., U then U' is identity, U then U is U2).
 +                #    In IDA*, these paths are suboptimal as they have higher 'g' for the same state.
@@ -162,7 +172,7 @@ index 0000000..2aa1172
 +                #    The sequence [U, D] results in the same state as [D, U].
 +                #    To prevent searching the same state multiple times, we enforce a canonical 
 +                #    order by only allowing [FaceA, FaceB] where index(FaceA) < index(FaceB).
-+                #    Enforcing (U < D, L < R, F < B) prunes the symmetric branch.
++                #    For the standard UDLRFB order, this means U follows D is blocked, L follows R is blocked, etc.
 +                if (f1 == 'D' and f2 == 'U') or \
 +                   (f1 == 'R' and f2 == 'L') or \
 +                   (f1 == 'B' and f2 == 'F'):

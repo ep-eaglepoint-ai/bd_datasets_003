@@ -15,7 +15,6 @@ class IDAStar:
             f1 = m1[0]
             for m2 in self.moves:
                 f2 = m2[0]
-                # MATHEMATICAL JUSTIFICATION FOR PRUNING:
                 # 1. Same-face Redundancy: m2 after m1 where face(m1) == face(m2) is equivalent 
                 #    to a single rotation of that face (e.g., U then U' is identity, U then U is U2).
                 #    In IDA*, these paths are suboptimal as they have higher 'g' for the same state.
@@ -25,7 +24,7 @@ class IDAStar:
                 #    The sequence [U, D] results in the same state as [D, U].
                 #    To prevent searching the same state multiple times, we enforce a canonical 
                 #    order by only allowing [FaceA, FaceB] where index(FaceA) < index(FaceB).
-                #    Enforcing (U < D, L < R, F < B) prunes the symmetric branch.
+                #    For the standard UDLRFB order, this means U follows D is blocked, L follows R is blocked, etc.
                 if (f1 == 'D' and f2 == 'U') or \
                    (f1 == 'R' and f2 == 'L') or \
                    (f1 == 'B' and f2 == 'F'):
