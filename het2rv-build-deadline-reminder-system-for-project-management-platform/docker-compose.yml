@@ -1,9 +1,27 @@
-
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
+services:
   app:
-    build: .
-    command: pytest -q tests
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - db
+    environment:
+      - DATABASE_URL=postgresql://postgres:password@db:5432/app
     volumes:
-      - .:/app
+      - ./repository_after:/app
+      - ./tests:/app/tests
+      - ./evaluation:/app/evaluation
+      - /app/node_modules
+    command: npm test
+
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: app
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5

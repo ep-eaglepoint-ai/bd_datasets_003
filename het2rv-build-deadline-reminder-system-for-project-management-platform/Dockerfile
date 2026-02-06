@@ -1,8 +1,12 @@
+FROM node:18-alpine
 
-        # Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
-
-        FROM python:3.11-slim
 WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+# Context is root, so copy from repository_after
+COPY repository_after/package*.json ./
+RUN npm install
+
+COPY repository_after/ .
+RUN npm run build
+
+CMD ["npm", "start"]
