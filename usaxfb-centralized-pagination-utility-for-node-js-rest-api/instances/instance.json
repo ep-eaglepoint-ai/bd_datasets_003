@@ -1,0 +1,11 @@
+{
+            "instance_id": "USAXFB",
+            "problem_statement": "The current system requires pagination and filtering logic to be implemented directly within each controller, resulting in code duplication, inconsistent behavior, and difficulty in maintaining query logic. The goal is to centralize and standardize this functionality across the application, making it reusable, consistent, and easy to extend. By creating a unified utility for pagination and filtering, we aim to improve code maintainability and prevent frequent bugs, especially when adding new endpoints.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/usaxfb-centralized-pagination-utility-for-node-js-rest-api",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
