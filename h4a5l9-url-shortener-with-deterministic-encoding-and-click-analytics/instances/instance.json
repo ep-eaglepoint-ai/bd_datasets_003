@@ -1,0 +1,11 @@
+{
+            "instance_id": "H4A5L9",
+            "problem_statement": "A link management platform needs URL shortening capabilities beyond basic CRUD operations. The current system stores links but lacks short code generation, expiry handling, click tracking, and duplicate prevention. Users need deterministic short codes derived from link IDs, optional custom codes with validation, normalized URL storage to prevent duplicates, configurable expiry with proper 410 responses, click analytics with deduplication, and rate limiting. The redirect endpoint must record clicks without adding latency. Core logic is in app.py and requirements.txt lists allowed dependencies",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/h4a5l9-url-shortener-with-deterministic-encoding-and-click-analytics",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
