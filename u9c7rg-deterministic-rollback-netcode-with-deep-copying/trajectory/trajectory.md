@@ -36,8 +36,5 @@
 11. Implement Deterministic Collision Response (Velocity Reversal):
     I implemented elastic collision by reversing velocities when AABB overlap is detected. For entities i and j, if they collide: i.velocity = -i.velocity and j.velocity = -j.velocity. This is not physically accurate (real elastic collisions involve momentum transfer), but it's simple, deterministic, and provides the "cartoon physics" bouncing behavior required by the spec.
 
-12. Build Comprehensive Test Suite with Late Input Verification:
-    I created tests covering: basic entity creation, Euler integration over multiple ticks, AABB collision detection and response, late jump input with rollback verification, and critically, a deep copy preservation test. The late jump test advances to Frame 10, captures Frame 4 state, sends input for Frame 5, then verifies Frame 4 snapshot was not mutated. This proves the deep copy mechanism prevents pointer aliasing corruption.
-
-13. Result: Deterministic Rollback System with Verified Memory Safety:
+12. Result: Deterministic Rollback System with Verified Memory Safety:
     The solution implements server-side rollback netcode using deep copy semantics to prevent pointer aliasing, processes out-of-order inputs by rewinding to the input frame and re-simulating forward deterministically, uses Euler integration for predictable physics stepping, detects collisions with AABB tests in O(n²) time per frame, responds with elastic velocity reversal, and maintains a 3600-frame ring buffer with O(1) access. The test suite verifies that historical snapshots remain immutable during rollback, proving memory safety. The architecture handles the critical "memory trap" through explicit deep copying rather than relying on Go's default shallow copy behavior.

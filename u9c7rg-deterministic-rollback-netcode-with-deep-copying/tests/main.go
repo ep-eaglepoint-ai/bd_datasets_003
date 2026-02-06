@@ -107,10 +107,9 @@ func (s *Simulation) checkAABBCollision(e1, e2 Entity) bool {
 func (s *Simulation) Tick(input *PlayerInput) {
 	var state GameState
 	if s.currentFrame == 0 {
-		state = GameState{
-			Frame:    0,
-			Entities: []Entity{},
-		}
+		// Copy existing entities from buffer[0] if any were added via AddEntity
+		state = s.deepCopy(s.buffer[0])
+		state.Frame = 0
 	} else {
 		state = s.deepCopy(s.buffer[(s.currentFrame-1)%BufferSize])
 		state.Frame = s.currentFrame
