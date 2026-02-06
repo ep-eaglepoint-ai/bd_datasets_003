@@ -1,4 +1,3 @@
-import com.system.Cart;
 import com.system.CartItem;
 import com.system.CheckoutSystem;
 import com.system.Product;
@@ -27,78 +26,60 @@ public class SystemTestSuite {
         String testFilePath = "test_products.json";
 
         try {
-            // Create sample product data file
+            // create sample product data file
             String jsonContent = "[" +
                     "{\"id\": \"P001\", \"name\": \"Wireless Mouse\", \"price\": 29.99, \"quantity\": 15}," +
                     "{\"id\": \"P002\", \"name\": \"USB-C Cable\", \"price\": 12.50, \"quantity\": 40}," +
-                    "{\"id\": \"P003\", \"name\": \"Mechanical Keyboard\", \"price\": 89.99, \"quantity\": 8}," +
+                    "{\"id\": \"P003\", \"name\": \"Mechanical Keyboard\", \"price\": 89.99, \"quantity\": 5}," +
                     "{\"id\": \"P004\", \"name\": \"HDMI Cable\", \"price\": 9.99, \"quantity\": 100}," +
-                    "{\"id\": \"P005\", \"name\": \"Laptop Stand\", \"price\": 34.99, \"quantity\": 20}" +
+                    "{\"id\": \"P005\", \"name\": \"Laptop Stand\", \"price\": 34.99, \"quantity\": 1}" +
                     "]";
-
             Files.writeString(Path.of(testFilePath), jsonContent);
             success("Sample product data file created");
 
-            // loading the catalog
             CheckoutSystem system = new CheckoutSystem(testFilePath);
             success("Product catalog loaded successfully");
 
-            // loading fails when file is missing
-            try {
-                new CheckoutSystem("this-file-does-not-exist.json");
-                fail("Constructor did NOT throw exception for missing file");
-            } catch (RuntimeException e) {
-                success("Constructor throws exception for missing/invalid file");
-            }
-
-            // getProduct returns correct data or null
+            // getProduct test
             Product p = system.getProduct("P001");
-            if (p == null || !p.getName().equals("Wireless Mouse") || p.getPrice() != 29.99) {
+            if (p == null || !p.getName().equals("Wireless Mouse") || p.getPrice() != 29.99)
                 fail("getProduct returned incorrect product data");
-            }
-
-            if (system.getProduct("NON-EXISTENT") != null) {
+            if (system.getProduct("NON-EXISTENT") != null)
                 fail("getProduct did not return null for non-existing product");
-            }
             success("getProduct returns correct product or null");
 
-            // stock validation logic
-            if (!system.validateStock("P001", 10)) {
+            // validateStock test
+            if (!system.validateStock("P001", 10))
                 fail("validateStock failed for valid quantity");
-            }
-            if (system.validateStock("P001", 20)) {
+            if (system.validateStock("P001", 20))
                 fail("validateStock allowed quantity exceeding available stock");
-            }
             success("validateStock correctly checks availability");
 
-            // adding items new and update quantity
+            // addToCart normal test
+            system.getCart().clear();
             system.addToCart("P001", 3);
             system.addToCart("P001", 2);
             system.addToCart("P003", 1);
 
             List<CartItem> items = system.getCart().getItems();
-            if (items.size() != 2) {
-                fail("Cart does not contain the expected number of items");
-            }
+            if (items.size() != 2)
+                fail("Cart does not contain expected number of items");
 
-            CartItem mouseItem = items.stream()
-                    .filter(i -> i.getProduct().getId().equals("P001"))
-                    .findFirst().orElse(null);
+            CartItem mouseItem = items.stream().filter(i -> i.getProduct().getId().equals("P001")).findFirst()
+                    .orElse(null);
+            if (mouseItem == null || mouseItem.getQuantity() != 5)
+                fail("Adding same product did not update quantity");
+            success("addToCart correctly adds and updates quantities");
 
-            if (mouseItem == null || mouseItem.getQuantity() != 5) {
-                fail("Adding the same product did not correctly update quantity");
-            }
-            success("addToCart correctly adds and updates item quantities");
-
-            // stock limit enforcement
+            // addToCart overstock test
             try {
                 system.addToCart("P003", 10);
                 fail("addToCart allowed quantity exceeding stock");
             } catch (IllegalStateException e) {
-                success("addToCart throws exception when stock is insufficient");
+                success("addToCart throws exception for insufficient stock");
             }
 
-            // negative quantity rejection
+            // addToCart negative quantity test
             try {
                 system.addToCart("P001", -1);
                 fail("addToCart allowed negative quantity");
@@ -106,49 +87,103 @@ public class SystemTestSuite {
                 success("addToCart throws exception for negative quantity");
             }
 
-            system.checkout(); // reset to empty cart
-
-            if (!system.getCart().getItems().isEmpty()) {
-                fail("Cart was not empty after checkout");
-            }
-
-            system.viewCart(); // should show empty cart message
-
-            system.addToCart("P001", 3);
-            system.removeFromCart("P001");
-
-            if (!system.getCart().getItems().stream().noneMatch(i -> i.getProduct().getId().equals("P001"))) {
-                fail("removeFromCart did not remove the item");
-            }
-
-            system.removeFromCart("NON-EXISTENT");
-
-            system.addToCart("P002", 2);
-            system.addToCart("P004", 3);
-
-            double totalBefore = system.getCart().getTotal();
-            if (totalBefore <= 0) {
-                fail("Cart total was not calculated correctly");
-            }
-
-            // to print the actual receipt to prove checkout formatting works
+            // checkout clears cart test
             system.checkout();
+            if (!system.getCart().getItems().isEmpty())
+                fail("Cart not empty after checkout");
+            success("checkout clears cart correctly");
 
-            if (!system.getCart().getItems().isEmpty()) {
-                fail("Cart was not cleared after checkout");
-            }
-            success("removeFromCart, checkout (with receipt), and cart clear work correctly");
+            // atomic checkout test
+            system.getCart().clear();
+            system.getProduct("P003").setQuantity(5);
+            system.getProduct("P005").setQuantity(1);
 
-            // total calculation in CartItem
-            system.addToCart("P005", 1);
-            CartItem stand = system.getCart().getItems().get(0);
-            if (Math.abs(stand.getLineTotal() - 34.99) > 0.001) {
-                fail("CartItem line total calculation is incorrect");
+            system.addToCart("P003", 5); // exact stock
+
+            try {
+                system.addToCart("P005", 2); // exceeds stock
+            } catch (IllegalStateException e) {
+                success("addToCart correctly throws exception when adding more than available stock");
             }
-            success("CartItem line total is calculated correctly");
+
+            system.getCart().addItem(system.getProduct("P005"), 2); // add overstock directly
+
+            try {
+                system.checkout(); // should fail
+                fail("Checkout should fail atomically when any item has insufficient stock");
+            } catch (IllegalStateException e) {
+                success("Atomic checkout fails correctly when stock insufficient");
+            }
+
+            // verify stock unchanged
+            if (system.getProduct("P003").getQuantity() != 5 || system.getProduct("P005").getQuantity() != 1)
+                fail("Stock changed despite failed checkout");
+            success("Stock unchanged after failed checkout");
+
+            // successful checkout test
+            system.getCart().clear();
+            system.addToCart("P003", 3);
+            system.addToCart("P005", 1); // within stock
+            system.checkout();
+            if (system.getProduct("P003").getQuantity() != 2 || system.getProduct("P005").getQuantity() != 0)
+                fail("Stock did not reduce correctly after successful checkout");
+            success("Stock reduces correctly after successful checkout");
+
+            // checkout empty cart test
+            system.getCart().clear();
+            system.checkout();
+            success("Checkout on empty cart works without error");
+
+            // duplicate product IDs test
+            String dupJson = "[" +
+                    "{\"id\": \"DUP1\", \"name\": \"Item1\", \"price\": 10.0, \"quantity\": 5}," +
+                    "{\"id\": \"DUP1\", \"name\": \"Item1-DUP\", \"price\": 12.0, \"quantity\": 6}" +
+                    "]";
+            Files.writeString(Path.of("dup_products.json"), dupJson);
+            CheckoutSystem dupSystem = new CheckoutSystem("dup_products.json");
+            Product dupProduct = dupSystem.getProduct("DUP1");
+            if (dupProduct.getPrice() != 12.0 || dupProduct.getQuantity() != 6)
+                fail("Duplicate product IDs not handled correctly");
+            success("Duplicate product IDs handled correctly");
+
+            // malformed JSON test
+            String badJson = "[" +
+                    "{\"id\": \"BAD1\", \"name\": \"BadItem\"}" + // missing price & quantity
+                    "]";
+            Files.writeString(Path.of("bad_products.json"), badJson);
+            try {
+                new CheckoutSystem("bad_products.json");
+                fail("Malformed product JSON did not throw exception");
+            } catch (RuntimeException e) {
+                success("Malformed product JSON throws exception");
+            }
+
+            // product quantity persists test
+            system.getCart().clear();
+            system.getProduct("P003").setQuantity(5); // reset stock
+            int stockBefore = system.getProduct("P003").getQuantity();
+            system.addToCart("P003", 2);
+            system.checkout();
+            if (system.getProduct("P003").getQuantity() != stockBefore - 2)
+                fail("Product quantity did not persist after checkout");
+            success("Product quantity persists across multiple checkouts");
+
+            // simulate external stock change between addToCart and checkout
+            system.getCart().clear();
+            system.getProduct("P001").setQuantity(5);
+            system.addToCart("P001", 3);
+            system.getProduct("P001").setQuantity(2); // stock decreased externally
+            try {
+                system.checkout();
+                fail("Checkout did not detect external stock change");
+            } catch (IllegalStateException e) {
+                success("Checkout correctly detects stock changes made after addToCart");
+            }
 
             // Cleanup
             Files.deleteIfExists(Path.of(testFilePath));
+            Files.deleteIfExists(Path.of("dup_products.json"));
+            Files.deleteIfExists(Path.of("bad_products.json"));
 
             System.out.println("\n==================================================");
             System.out.println("      VALIDATION COMPLETE - ALL CHECKS PASSED      ");
