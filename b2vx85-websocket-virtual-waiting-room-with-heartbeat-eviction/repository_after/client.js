@@ -19,13 +19,22 @@ class WebSocketClient {
         return new Promise((resolve, reject) => {
             try {
                 this.ws = new WebSocket(this.serverUrl);
+                let isConnected = false;
 
-                this.ws.on('open', () => {
+                this.ws.once('open', () => {
+                    isConnected = true;
                     console.log('Connected to server');
                     if (this.autoPing) {
                         this.startPinging();
                     }
                     resolve();
+                });
+
+                this.ws.once('error', (error) => {
+                    if (!isConnected) {
+                        console.error('WebSocket connection error:', error.message);
+                        reject(error);
+                    }
                 });
 
                 this.ws.on('message', (data) => {
@@ -38,11 +47,12 @@ class WebSocketClient {
                 });
 
                 this.ws.on('error', (error) => {
-                    console.error('WebSocket error:', error.message);
-                    if (this.onError) {
-                        this.onError(error);
+                    if (isConnected) {
+                        console.error('WebSocket error:', error.message);
+                        if (this.onError) {
+                            this.onError(error);
+                        }
                     }
-                    reject(error);
                 });
             } catch (error) {
                 reject(error);

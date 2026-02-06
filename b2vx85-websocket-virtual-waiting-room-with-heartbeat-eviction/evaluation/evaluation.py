@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import sys
 import json
-import time
 import uuid
 import platform
 import subprocess
@@ -26,9 +25,14 @@ def get_node_version():
             text=True,
             timeout=5
         )
-        return result.stdout.strip()
-    except:
-        return "unknown"
+        if result.returncode == 0:
+            return result.stdout.strip() or "unknown"
+        error_output = (result.stderr or result.stdout or "").strip()
+        if error_output:
+            return f"unknown (node exited with {result.returncode}: {error_output})"
+        return f"unknown (node exited with {result.returncode})"
+    except Exception as e:
+        return f"unknown (error: {e})"
 
 def run_tests(repo_path: Path):
     """Run tests for a specific repository"""
@@ -194,8 +198,11 @@ def main():
             REPORTS.mkdir(parents=True, exist_ok=True)
             report_path = REPORTS / "latest.json"
             report_path.write_text(json.dumps(error_report, indent=2))
-        except:
-            pass
+        except Exception as write_error:
+            print(
+                f"Failed to write error report to {REPORTS / 'latest.json'}: {write_error}",
+                file=sys.stderr,
+            )
         
         return 1
 

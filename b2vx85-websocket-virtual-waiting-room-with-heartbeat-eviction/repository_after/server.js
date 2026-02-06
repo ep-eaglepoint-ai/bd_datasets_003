@@ -171,11 +171,17 @@ class HeartbeatMonitor {
     handlePing(sessionId) {
         const ws = this.stateManager.getWebSocket(sessionId);
         if (ws && this.stateManager.activePool.has(sessionId)) {
-            this.startMonitoring(sessionId, ws); // Reset timer
-            // Send pong response
+            this.startMonitoring(sessionId, ws);
             if (ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'pong' }));
             }
+        }
+    }
+
+    resetTimer(sessionId) {
+        const ws = this.stateManager.getWebSocket(sessionId);
+        if (ws && this.stateManager.activePool.has(sessionId)) {
+            this.startMonitoring(sessionId, ws);
         }
     }
 
@@ -197,31 +203,28 @@ class PromotionManager {
     }
 
     promoteNext() {
-        if (!this.canPromote()) {
-            return false;
+        while (this.canPromote()) {
+            const sessionId = this.queueManager.dequeue();
+            if (!sessionId) {
+                return false;
+            }
+
+            const ws = this.stateManager.getWebSocket(sessionId);
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                this.stateManager.removeSession(sessionId);
+                continue;
+            }
+
+            this.stateManager.addToActivePool(sessionId, ws);
+            this.heartbeatMonitor.startMonitoring(sessionId, ws);
+            this.messageHandler.sendActive(ws);
+
+            this.queueManager.updateAllPositions(this.messageHandler);
+
+            console.log(`Promoted session ${sessionId} to active pool`);
+            return true;
         }
-
-        const sessionId = this.queueManager.dequeue();
-        if (!sessionId) {
-            return false;
-        }
-
-        const ws = this.stateManager.getWebSocket(sessionId);
-        if (!ws || ws.readyState !== WebSocket.OPEN) {
-            // WebSocket is closed, skip this session
-            return this.promoteNext(); // Try next in queue
-        }
-
-        // Atomic state transition
-        this.stateManager.addToActivePool(sessionId, ws);
-        this.heartbeatMonitor.startMonitoring(sessionId, ws);
-        this.messageHandler.sendActive(ws);
-
-        // Update remaining queue positions
-        this.queueManager.updateAllPositions(this.messageHandler);
-
-        console.log(`Promoted session ${sessionId} to active pool`);
-        return true;
+        return false;
     }
 
     canPromote() {
@@ -335,22 +338,38 @@ class WebSocketServer {
     }
 
     handleConnection(ws) {
+        let sessionId = null;
+        let cleanedUp = false;
+
+        const safeDisconnect = () => {
+            if (cleanedUp) {
+                return;
+            }
+            cleanedUp = true;
+            if (sessionId) {
+                this.handleDisconnection(sessionId);
+            }
+        };
+
+        ws.on('message', (message) => {
+            if (!sessionId) {
+                return;
+            }
+            this.handleMessage(sessionId, message.toString());
+        });
+
+        ws.on('close', () => {
+            safeDisconnect();
+        });
+
+        ws.on('error', (error) => {
+            console.error(`WebSocket error for session ${sessionId || 'unknown'}:`, error.message);
+            safeDisconnect();
+        });
+
         try {
-            const sessionId = this.connectionManager.handleNewConnection(ws);
+            sessionId = this.connectionManager.handleNewConnection(ws);
             this.sessionToId.set(ws, sessionId);
-
-            ws.on('message', (message) => {
-                this.handleMessage(sessionId, message.toString());
-            });
-
-            ws.on('close', () => {
-                this.handleDisconnection(sessionId);
-            });
-
-            ws.on('error', (error) => {
-                console.error(`WebSocket error for session ${sessionId}:`, error.message);
-                this.handleDisconnection(sessionId);
-            });
         } catch (error) {
             console.error('Error handling connection:', error.message);
             ws.terminate();
@@ -367,7 +386,7 @@ class WebSocketServer {
             if (parsed.type === 'ping') {
                 this.heartbeatMonitor.handlePing(sessionId);
             } else if (parsed.type === 'pong') {
-                this.heartbeatMonitor.handlePing(sessionId); // Treat pong same as ping
+                this.heartbeatMonitor.resetTimer(sessionId);
             }
         } catch (error) {
             console.error(`Error handling message from ${sessionId}:`, error.message);
@@ -392,6 +411,15 @@ class WebSocketServer {
 
     shutdown() {
         if (this.wss) {
+            this.wss.clients.forEach(ws => {
+                ws.terminate();
+            });
+
+            this.heartbeatMonitor.heartbeatTimers.forEach((timer, sessionId) => {
+                clearTimeout(timer);
+            });
+            this.heartbeatMonitor.heartbeatTimers.clear();
+
             this.wss.close();
             console.log('WebSocket server shut down');
         }
