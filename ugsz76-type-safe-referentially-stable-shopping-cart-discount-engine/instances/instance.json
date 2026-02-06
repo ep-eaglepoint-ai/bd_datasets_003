@@ -1,0 +1,11 @@
+{
+            "instance_id": "UGSZ76",
+            "problem_statement": "Design a deterministic shopping cart discount utility in TypeScript that applies a percentage discount only to line items where isEligible(item) returns true. The function must never mutate the input cart or any nested objects. It must preserve referential identity (===) for every unchanged line item, price, metadata, and nested field, and only create new objects along the exact changed path. For discounted items, store the pre-discount amount in originalAmountCents, ensure idempotency (reapplying the same discount does not change references), reconcile incorrect discounted amounts when originalAmountCents exists, and use half-up rounding away from zero (including negatives). No external libraries, spreads, or cloning utilities.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ugsz76-type-safe-referentially-stable-shopping-cart-discount-engine",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
