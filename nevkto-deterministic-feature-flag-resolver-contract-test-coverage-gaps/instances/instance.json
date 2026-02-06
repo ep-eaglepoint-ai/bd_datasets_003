@@ -1,0 +1,13 @@
+{
+            "instance_id": "NEVKTO",
+            "problem_statement": "Recent regressions in the Feature Flag Resolver caused users to see inconsistent variants, broken override precedence, and incorrect rollout behavior when inputs were malformed. To prevent these issues pre-deployment, a Vitest contract test suite was introduced to validate determinism, override precedence, disabled behavior, rollout boundaries, sanitization, and dirty-input safety.
+Multiple test implementations were submitted. While most core paths were covered, repeated failures appeared across versions—specifically around over-specifying rollout bucket outcomes and incomplete override scenario coverage. This report documents the exact requirements, highlights the shared misses, and defines what the test suite must validate to be considered correct and future-proof.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/nevkto-deterministic-feature-flag-resolver-contract-test-coverage-gaps",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
