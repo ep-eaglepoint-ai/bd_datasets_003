@@ -1,0 +1,68 @@
+version: "3.8"
+
+services:
+  app:
+    build:
+      context: .
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/postgres
+    depends_on:
+      - db
+    command: sh -c "npx prisma generate && npx prisma db push && npm run build && npm start"
+    volumes:
+      - ./repository_after:/app
+      - /app/node_modules
+
+  test:
+    build:
+      context: .
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/postgres
+      - TEST_ROOT=/app/tests
+      - BASE_URL=http://app:3000
+    depends_on:
+      - db
+      - app
+    volumes:
+      - ./repository_after:/app
+      - /app/node_modules
+      - ./tests:/app/tests
+    command: sh -c "npx prisma generate && npx prisma db push && npx jest --coverage --no-cache"
+
+  evaluation:
+    build:
+      context: .
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/postgres
+      - TEST_ROOT=/app/tests
+      - BASE_URL=http://app:3000
+    depends_on:
+      - db
+      - app
+    volumes:
+      - ./repository_after:/app
+      - /app/node_modules
+      - ./evaluation:/app/evaluation
+      - ./tests:/app/tests
+    command: npx tsx /app/evaluation/evaluation.ts
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:

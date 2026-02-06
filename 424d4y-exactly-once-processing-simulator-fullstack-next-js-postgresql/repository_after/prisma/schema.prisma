@@ -1,0 +1,40 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum TaskStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model Task {
+  id             String      @id @default(uuid())
+  taskId         String?     @unique
+  payload        Json
+  status         TaskStatus  @default(PENDING)
+  result         Json?
+  attempts       Int         @default(0)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  lastAttemptAt  DateTime?
+  logs           TaskLog[]
+  errorMessage   String?
+  
+  // Versioning for optimistic locking
+  version        Int         @default(0)
+}
+
+model TaskLog {
+  id        String   @id @default(uuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id])
+  status    TaskStatus
+  timestamp DateTime @default(now())
+  message   String?
+}
