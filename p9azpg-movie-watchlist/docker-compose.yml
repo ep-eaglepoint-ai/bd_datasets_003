@@ -1,0 +1,13 @@
+services:
+  app:
+    build:
+      context: .
+      # Assuming Dockerfile is in the root (same level as docker-compose.yml)
+      dockerfile: Dockerfile
+    volumes:
+      - ./repository_after:/app
+      - ./evaluation:/app/evaluation
+      - /app/node_modules
+    environment:
+      - DATABASE_URL=sqlite.db
+      - NPM_CONFIG_LOGLEVEL=warn
