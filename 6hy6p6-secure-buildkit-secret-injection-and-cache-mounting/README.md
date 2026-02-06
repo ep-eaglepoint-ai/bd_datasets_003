@@ -1,11 +1,16 @@
 # 6HY6P6 - Secure BuildKit Secret Injection and Cache Mounting
 
-    ## Before Test Docker Command
-    <docker before command here>
+## After Test Docker Command
+```bash
+docker compose run --rm test
+```
 
-    ## After Test Docker Command
-    <docker after command here>
+## Run the build image
+```bash
+docker compose up app
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## Evaluation Docker Command
+```bash
+docker compose run --rm evaluate
+```
