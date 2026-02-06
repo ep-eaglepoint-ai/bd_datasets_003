@@ -1,11 +1,17 @@
 # HET2RV - Build Deadline Reminder System for Project Management Platform
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Before Test Docker Command
 
-    ## After Test Docker Command
-    <docker after command here>
+`no repository before`
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## After Test Docker Command
+
+```bash
+docker compose run --rm app npm test
+```
+
+## Evaluation Docker Command
+
+```bash
+docker compose run --rm app node evaluation/evaluation.js
+```
