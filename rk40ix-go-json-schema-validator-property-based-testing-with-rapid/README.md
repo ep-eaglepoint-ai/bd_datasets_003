@@ -1,11 +1,19 @@
-# RK40IX - Go JSON Schema Validator Property-Based Testing with Rapid
+# JSON Schema Validator - Property Tests + Meta Tests
 
-    ## Before Test Docker Command
-    <docker before command here>
+### Run meta-tests against `repository_before` (expected: fail):
 
-    ## After Test Docker Command
-    <docker after command here>
+```bash
+docker compose run --rm -e REPO_PATH=/app/repository_before app go run -tags tools tests/runner.go
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+### Run meta-tests against `repository_after` (expected: pass):
+
+```bash
+docker compose run --rm -e REPO_PATH=/app/repository_after app go run -tags tools tests/runner.go
+```
+
+### Run evaluation report generation:
+
+```bash
+docker compose run --rm app go run ./evaluation/evaluation.go
+```
