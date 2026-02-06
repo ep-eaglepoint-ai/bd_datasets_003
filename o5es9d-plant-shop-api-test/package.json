@@ -1,0 +1,25 @@
+{
+  "name": "plant-shop-api-test-project",
+  "version": "1.0.0",
+  "description": "Plant Shop API Test Suite Project",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest tests/plantShop.test.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "supertest": "^6.3.4"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "collectCoverage": true,
+    "coverageDirectory": "coverage",
+    "testMatch": [
+      "**/tests/**/*.test.js"
+    ],
+    "verbose": true
+  }
+}

@@ -1,0 +1,216 @@
+{
+    "plants": [
+        {
+            "id": "plt_001",
+            "name": "Monstera Deliciosa",
+            "commonName": "Swiss Cheese Plant",
+            "species": "Monstera deliciosa",
+            "category": "tropical",
+            "difficulty": "easy",
+            "light": "indirect",
+            "water": "weekly",
+            "humidity": "high",
+            "toxic": true,
+            "price": 45.00,
+            "stock": 12
+        },
+        {
+            "id": "plt_002",
+            "name": "Snake Plant",
+            "commonName": "Mother-in-Law's Tongue",
+            "species": "Sansevieria trifasciata",
+            "category": "succulent",
+            "difficulty": "easy",
+            "light": "low",
+            "water": "biweekly",
+            "humidity": "low",
+            "toxic": true,
+            "price": 25.00,
+            "stock": 30
+        },
+        {
+            "id": "plt_003",
+            "name": "Fiddle Leaf Fig",
+            "commonName": "Fiddle Leaf Fig",
+            "species": "Ficus lyrata",
+            "category": "tropical",
+            "difficulty": "hard",
+            "light": "bright",
+            "water": "weekly",
+            "humidity": "medium",
+            "toxic": true,
+            "price": 85.00,
+            "stock": 5
+        },
+        {
+            "id": "plt_004",
+            "name": "Pothos",
+            "commonName": "Devil's Ivy",
+            "species": "Epipremnum aureum",
+            "category": "vine",
+            "difficulty": "easy",
+            "light": "low",
+            "water": "weekly",
+            "humidity": "medium",
+            "toxic": true,
+            "price": 15.00,
+            "stock": 50
+        },
+        {
+            "id": "plt_005",
+            "name": "Spider Plant",
+            "commonName": "Spider Plant",
+            "species": "Chlorophytum comosum",
+            "category": "hanging",
+            "difficulty": "easy",
+            "light": "indirect",
+            "water": "weekly",
+            "humidity": "medium",
+            "toxic": false,
+            "price": 18.00,
+            "stock": 25
+        },
+        {
+            "id": "plt_006",
+            "name": "Peace Lily",
+            "commonName": "Peace Lily",
+            "species": "Spathiphyllum",
+            "category": "flowering",
+            "difficulty": "medium",
+            "light": "low",
+            "water": "weekly",
+            "humidity": "high",
+            "toxic": true,
+            "price": 35.00,
+            "stock": 15
+        },
+        {
+            "id": "plt_007",
+            "name": "Aloe Vera",
+            "commonName": "Aloe Vera",
+            "species": "Aloe barbadensis",
+            "category": "succulent",
+            "difficulty": "easy",
+            "light": "bright",
+            "water": "biweekly",
+            "humidity": "low",
+            "toxic": false,
+            "price": 20.00,
+            "stock": 40
+        },
+        {
+            "id": "plt_008",
+            "name": "Bird of Paradise",
+            "commonName": "Bird of Paradise",
+            "species": "Strelitzia reginae",
+            "category": "tropical",
+            "difficulty": "medium",
+            "light": "bright",
+            "water": "weekly",
+            "humidity": "medium",
+            "toxic": true,
+            "price": 120.00,
+            "stock": 3
+        }
+    ],
+    "careSchedule": [
+        {
+            "id": "care_001",
+            "plantId": "plt_001",
+            "userId": "user_001",
+            "action": "water",
+            "frequency": "weekly",
+            "lastCompleted": "2024-01-20T09:00:00Z",
+            "nextDue": "2024-01-27T09:00:00Z"
+        },
+        {
+            "id": "care_002",
+            "plantId": "plt_001",
+            "userId": "user_001",
+            "action": "fertilize",
+            "frequency": "monthly",
+            "lastCompleted": "2024-01-01T09:00:00Z",
+            "nextDue": "2024-02-01T09:00:00Z"
+        },
+        {
+            "id": "care_003",
+            "plantId": "plt_003",
+            "userId": "user_001",
+            "action": "water",
+            "frequency": "weekly",
+            "lastCompleted": "2024-01-15T10:00:00Z",
+            "nextDue": "2024-01-22T10:00:00Z"
+        },
+        {
+            "id": "care_004",
+            "plantId": "plt_002",
+            "userId": "user_002",
+            "action": "water",
+            "frequency": "biweekly",
+            "lastCompleted": "2024-01-10T08:00:00Z",
+            "nextDue": "2024-01-24T08:00:00Z"
+        }
+    ],
+    "users": [
+        {
+            "id": "user_001",
+            "name": "Emma Green",
+            "email": "emma@example.com",
+            "collection": [
+                "plt_001",
+                "plt_003",
+                "plt_005"
+            ],
+            "experience": "intermediate"
+        },
+        {
+            "id": "user_002",
+            "name": "James Bloom",
+            "email": "james@example.com",
+            "collection": [
+                "plt_002",
+                "plt_004"
+            ],
+            "experience": "beginner"
+        },
+        {
+            "id": "user_003",
+            "name": "Lily Moss",
+            "email": "lily@example.com",
+            "collection": [],
+            "experience": "expert"
+        }
+    ],
+    "orders": [
+        {
+            "id": "ord_001",
+            "userId": "user_001",
+            "items": [
+                {
+                    "plantId": "plt_001",
+                    "quantity": 1
+                },
+                {
+                    "plantId": "plt_005",
+                    "quantity": 2
+                }
+            ],
+            "total": 81.00,
+            "status": "delivered",
+            "createdAt": "2024-01-10T14:30:00Z"
+        },
+        {
+            "id": "ord_002",
+            "userId": "user_002",
+            "items": [
+                {
+                    "plantId": "plt_002",
+                    "quantity": 1
+                }
+            ],
+            "total": 25.00,
+            "status": "processing",
+            "createdAt": "2024-01-22T11:00:00Z"
+        }
+    ]
+}
