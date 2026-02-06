@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Review System</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="login-screen" class="screen">
+        <div class="card">
+            <h1>Login</h1>
+            <p>Select a user to continue</p>
+            <div id="user-list">
+                <!-- Seeding happens on backend startup -->
+                <button onclick="login('emp1')">Employee 1</button>
+                <button onclick="login('emp2')">Employee 2</button>
+                <button onclick="login('mgr1')">Manager 1</button>
+                <button onclick="login('mgr2')">Manager 2</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="app-screen" class="screen hidden">
+        <header>
+            <div class="user-info">
+                Logged in as: <span id="current-username"></span> (<span id="current-role"></span>)
+            </div>
+            <button onclick="logout()">Logout</button>
+        </header>
+
+        <main>
+            <section id="doc-submission" class="hidden">
+                <h2>Submit New Document</h2>
+                <form id="submit-form">
+                    <input type="text" id="doc-title" placeholder="Title" required>
+                    <textarea id="doc-description" placeholder="Description" required></textarea>
+                    <select id="doc-type" required>
+                        <option value="POLICY">POLICY</option>
+                        <option value="REPORT">REPORT</option>
+                        <option value="CONTRACT">CONTRACT</option>
+                    </select>
+                    <textarea id="doc-content" placeholder="Content (Plain Text)" required></textarea>
+                    <button type="submit">Submit</button>
+                </form>
+            </section>
+
+            <section id="doc-list-section">
+                <h2>Documents</h2>
+                <div id="doc-list" class="grid-list"></div>
+            </section>
+
+            <section id="doc-detail-section" class="hidden">
+                <button onclick="backToList()">← Back to List</button>
+                <div id="doc-detail" class="card"></div>
+                <div id="doc-actions" class="hidden">
+                    <button id="approve-btn" class="success-btn">APPROVE</button>
+                    <button id="reject-btn" class="danger-btn">REJECT</button>
+                </div>
+                <div id="audit-log-section">
+                    <h3>Audit History</h3>
+                    <ul id="audit-logs"></ul>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
