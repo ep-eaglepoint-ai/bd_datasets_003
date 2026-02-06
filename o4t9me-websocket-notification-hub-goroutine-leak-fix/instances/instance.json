@@ -1,0 +1,11 @@
+{
+            "instance_id": "O4T9ME",
+            "problem_statement": "A real-time WebSocket notification hub built in Go exhibits degrading performance under sustained client load. Memory usage grows continuously and never stabilizes even when client count is stable, goroutine counts climb after repeated connect/disconnect cycles, and broadcast latency spikes as subscriber count increases despite small message payloads. CPU profiling shows most time spent in mutex contention during broadcast operations, and periodic health checks to a downstream service occasionally exhaust connection resources. Core logic is in main.go with dependencies in go.mod.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/o4t9me-websocket-notification-hub-goroutine-leak-fix",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
