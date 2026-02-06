@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  test:
+    build: .
+    command: pytest -q tests
+    environment:
+      - TARGET_FILE=repository_after/report_generator.py
+    volumes:
+      - .:/app
+
+  test-before:
+    build: .
+    command: pytest -q tests
+    environment:
+      - TARGET_FILE=repository_before/main.py
+    volumes:
+      - .:/app
+
+  evaluate:
+    build: .
+    command: python3 evaluation/evaluation.py
+    volumes:
+      - .:/app
