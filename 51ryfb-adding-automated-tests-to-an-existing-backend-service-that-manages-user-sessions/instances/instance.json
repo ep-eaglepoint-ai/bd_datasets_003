@@ -1,0 +1,11 @@
+{
+            "instance_id": "51RYFB",
+            "problem_statement": "Recent changes to the session logic have increased concern about regressions related to session expiration and invalid access. Because session validity depends on time and internal state, incorrect behavior may not surface immediately during manual testing. Missing or insufficient automated tests make it difficult to confidently change or optimize the code. A robust test suite is needed to validate expected behavior across normal and edge-case scenarios.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/51ryfb-adding-automated-tests-to-an-existing-backend-service-that-manages-user-sessions",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
