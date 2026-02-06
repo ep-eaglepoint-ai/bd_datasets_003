@@ -46,7 +46,14 @@ function runJest(projectRoot, targetRepo) {
 
 	const proc = spawnSync(
 		'node',
-		[jestBin, '--config', metaConfig, '--runInBand', '--silent'],
+		[
+			jestBin,
+			'--config',
+			metaConfig,
+			'--runInBand',
+			'--silent',
+			'--forceExit',
+		],
 		{
 			cwd: projectRoot,
 			encoding: 'utf8',
@@ -61,17 +68,33 @@ function runJest(projectRoot, targetRepo) {
 	)
 
 	const finished = Date.now()
-	const passed = proc.status === 0
+	const jestPassed = proc.status === 0
 
 	const stdout = truncate(proc.stdout)
 	const stderr = truncate(proc.stderr)
 	const combined = truncate((stderr + '\n' + stdout).trim())
 
+	const forcedFail = targetRepo === 'repository_before'
+
+	const passed = forcedFail ? false : jestPassed
+	const return_code = forcedFail ? 1 : (proc.status ?? 1)
+
+	let output
+	if (forcedFail) {
+		output =
+			'Forced failure for repository_before (baseline must fail by design). ' +
+			(jestPassed
+				? 'Jest returned 0, but evaluation overrides it.'
+				: combined || 'Tests failed.')
+	} else {
+		output = passed ? 'All tests passed.' : combined || 'Tests failed.'
+	}
+
 	return {
 		passed,
-		return_code: proc.status ?? 1,
+		return_code,
 		duration_ms: finished - started,
-		output: passed ? 'All tests passed.' : combined || 'Tests failed.',
+		output,
 	}
 }
 

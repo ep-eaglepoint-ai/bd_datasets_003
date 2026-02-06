@@ -22,7 +22,6 @@ services:
             node node_modules/jest/bin/jest.js
             --config /app/jest.meta.config.js
             --runInBand
-            --silent
             "
 
     evaluation:
