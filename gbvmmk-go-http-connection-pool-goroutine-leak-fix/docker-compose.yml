@@ -1,7 +1,19 @@
 services:
   app:
     build: .
-    command: pytest -q tests
+    command: /bin/sh -c "sed -i 's|replace github.com/example/connpool => .*|replace github.com/example/connpool => /app/repository_after|' /app/tests/go.mod && cd /app/tests && go test -v ."
+    volumes:
+      - .:/app
+
+  test-before:
+    build: .
+    command: /bin/sh -c "sed -i 's|replace github.com/example/connpool => .*|replace github.com/example/connpool => /app/repository_before|' /app/tests/go.mod && cd /app/tests && go test -v ."
+    volumes:
+      - .:/app
+
+  test-after:
+    build: .
+    command: /bin/sh -c "sed -i 's|replace github.com/example/connpool => .*|replace github.com/example/connpool => /app/repository_after|' /app/tests/go.mod && cd /app/tests && go test -v ."
     volumes:
       - .:/app
 
