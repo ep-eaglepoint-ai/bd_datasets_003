@@ -1,0 +1,8 @@
+services:
+  app:
+    build: .
+    command: xvfb-run -a pytest -q tests
+    volumes:
+      - .:/app
+    environment:
+      - DISPLAY=:99
