@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  test-after:
+    build: .
+    command: pytest tests -v
+    volumes:
+      - .:/app
+    environment:
+      - PYTHONPATH=/app/repository_after
+
+  evaluate:
+    build: .
+    command: python evaluation/evaluation.py
+    volumes:
+      - .:/app
+    environment:
+      - PYTHONPATH=/app/repository_after
