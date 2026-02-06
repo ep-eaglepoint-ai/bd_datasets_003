@@ -6176,83 +6176,10 @@ index 0000000..8d912a4
 +}
 diff --git a/repository_after/src/db.ts b/repository_after/src/db.ts
 new file mode 100644
-index 0000000..16a43fb
+index 0000000..036644e
 --- /dev/null
 +++ b/repository_after/src/db.ts
-@@ -0,0 +1,147 @@
-+// import { Pool } from 'pg';
-+
-+// export const pool = new Pool({
-+//   connectionString: process.env.DATABASE_URL || 'postgresql://postgres:password@db:5432/app',
-+// });
-+
-+// export const initDB = async () => {
-+//   const client = await pool.connect();
-+//   try {
-+//     await client.query('BEGIN');
-+
-+//     // Users table
-+//     await client.query(`
-+//       CREATE TABLE IF NOT EXISTS users (
-+//         id SERIAL PRIMARY KEY,
-+//         name TEXT NOT NULL
-+//       );
-+//     `);
-+
-+//     // Tasks table
-+//     await client.query(`
-+//       CREATE TABLE IF NOT EXISTS tasks (
-+//         id SERIAL PRIMARY KEY,
-+//         title TEXT NOT NULL,
-+//         owner_id INT REFERENCES users(id),
-+//         status TEXT NOT NULL DEFAULT 'active',
-+//         deadline TIMESTAMPTZ
-+//       );
-+//     `);
-+
-+//     // Ensure deadline column exists (migration-like behavior)
-+//     try {
-+//         await client.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS deadline TIMESTAMPTZ;`);
-+//     } catch (e) {
-+//         // Ignore if error, likely already exists or other issue we can't solve easily here
-+//         console.warn('Could not alter table tasks to add deadline', e);
-+//     }
-+
-+//     // Reminders table
-+//     await client.query(`
-+//       CREATE TABLE IF NOT EXISTS reminders (
-+//         id SERIAL PRIMARY KEY,
-+//         task_id INT REFERENCES tasks(id) ON DELETE CASCADE,
-+//         trigger_at TIMESTAMPTZ NOT NULL,
-+//         status TEXT NOT NULL DEFAULT 'pending',
-+//         created_at TIMESTAMPTZ DEFAULT NOW(),
-+//         updated_at TIMESTAMPTZ DEFAULT NOW(),
-+//         UNIQUE(task_id, trigger_at)
-+//       );
-+//     `);
-+
-+//     // Index for scheduler polling (include updated_at for zombie check)
-+//     await client.query(`
-+//       CREATE INDEX IF NOT EXISTS idx_reminders_trigger_status_updated ON reminders(trigger_at, status, updated_at);
-+//     `);
-+
-+//     // Index for task status to optimize joins
-+//     await client.query(`
-+//       CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
-+//     `);
-+
-+//     await client.query('COMMIT');
-+//     console.log('Database initialized');
-+//   } catch (error) {
-+//     await client.query('ROLLBACK');
-+//     console.error('Failed to initialize database', error);
-+//     throw error;
-+//   } finally {
-+//     client.release();
-+//   }
-+// };
-+
-+
+@@ -0,0 +1,74 @@
 +import { Pool } from 'pg';
 +
 +export const pool = new Pool({
@@ -6873,86 +6800,10 @@ index 0000000..a562611
 \ No newline at end of file
 diff --git a/repository_after/src/scheduler.ts b/repository_after/src/scheduler.ts
 new file mode 100644
-index 0000000..f244a54
+index 0000000..82bb61a
 --- /dev/null
 +++ b/repository_after/src/scheduler.ts
-@@ -0,0 +1,178 @@
-+// import { pool } from './db';
-+
-+// const PROCESS_INTERVAL_MS = 10000; // Check every 10 seconds
-+// let schedulerInterval: NodeJS.Timeout | null = null;
-+
-+// export const startScheduler = () => {
-+//   if (schedulerInterval) return;
-+//   console.log('Starting scheduler...');
-+//   schedulerInterval = setInterval(processReminders, PROCESS_INTERVAL_MS);
-+// };
-+
-+// export const stopScheduler = () => {
-+//   if (schedulerInterval) {
-+//     clearInterval(schedulerInterval);
-+//     schedulerInterval = null;
-+//   }
-+// };
-+
-+// export const processReminders = async () => {
-+//   const client = await pool.connect();
-+//   let remindersToProcess: any[] = [];
-+
-+//   try {
-+//     // 1. Atomically pick a batch and mark as 'processing'
-+//     await client.query('BEGIN');
-+//     const result = await client.query(`
-+//       UPDATE reminders
-+//       SET status = 'processing', updated_at = NOW()
-+//       WHERE id IN (
-+//         SELECT r.id
-+//         FROM reminders r
-+//         JOIN tasks t ON r.task_id = t.id
-+//         WHERE (r.status = 'pending' OR (r.status = 'processing' AND r.updated_at < NOW() - INTERVAL '5 minutes'))
-+//           AND r.trigger_at <= NOW()
-+//           AND t.status = 'active'
-+//         FOR UPDATE SKIP LOCKED
-+//         LIMIT 100
-+//       )
-+//       RETURNING id, task_id, trigger_at;
-+//     `);
-+
-+//     remindersToProcess = result.rows;
-+//     await client.query('COMMIT');
-+//   } catch (error) {
-+//     await client.query('ROLLBACK');
-+//     console.error('Error fetching reminders batch', error);
-+//     client.release();
-+//     return;
-+//   }
-+
-+//   client.release(); // Release connection to pool while we process I/O
-+
-+//   if (remindersToProcess.length === 0) return;
-+
-+//   console.log(`Processing batch of ${remindersToProcess.length} reminders...`);
-+
-+//   // 2. Process the batch in PARALLEL
-+//   await Promise.allSettled(remindersToProcess.map(async (reminder) => {
-+//     try {
-+//       // Send notification (Mock logic)
-+//       console.log(`[NOTIFICATION] Reminder for Task ID ${reminder.task_id} at ${new Date().toISOString()}`);
-+
-+//       // Mark as processed
-+//       await pool.query(`
-+//         UPDATE reminders
-+//         SET status = 'processed', updated_at = NOW()
-+//         WHERE id = $1
-+//       `, [reminder.id]);
-+//     } catch (err) {
-+//       console.error(`Failed to process reminder ${reminder.id}`, err);
-+//       // We don't mark as 'failed' immediately, allowing Zombie logic to retry it later
-+//     }
-+//   }));
-+// };
-+
-+
+@@ -0,0 +1,102 @@
 +import { pool } from './db';
 +
 +const POLL_INTERVAL_MS = 10000;
