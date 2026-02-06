@@ -1,0 +1,22 @@
+{
+  "name": "vf9c1b-test-a-star-pathfinding-integrity",
+  "version": "1.0.0",
+  "description": "Jest test suite for A-Star pathfinding algorithm",
+  "main": "repository_after/pathfinder.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "node --max-old-space-size=4096 node_modules/jest/bin/jest.js --verbose --forceExit",
+    "test:api": "node --max-old-space-size=4096 node_modules/jest/bin/jest.js --verbose --forceExit --testPathPattern=repository_after/__tests__",
+    "test:meta": "node --max-old-space-size=4096 node_modules/jest/bin/jest.js --verbose --testPathPattern=tests/",
+    "test:coverage": "node --max-old-space-size=4096 node_modules/jest/bin/jest.js --coverage --forceExit --testPathPattern=repository_after/__tests__",
+    "evaluate": "node evaluation/evaluation.js"
+  },
+  "keywords": ["a-star", "pathfinding", "jest", "testing"],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}

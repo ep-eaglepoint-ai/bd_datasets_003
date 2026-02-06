@@ -1,0 +1,24 @@
+services:
+  # Run pathfinder tests (repository_after)
+  repo-before:
+    build: .
+    command: npm run test:api
+    volumes:
+      - .:/app
+      - /app/node_modules
+
+  # Run meta tests (tests/)
+  repo-after:
+    build: .
+    command: npm run test:meta
+    volumes:
+      - .:/app
+      - /app/node_modules
+
+  # Run evaluation (all tests + report)
+  evaluation:
+    build: .
+    command: npm run evaluate
+    volumes:
+      - .:/app
+      - /app/node_modules
