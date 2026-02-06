@@ -1,12 +1,17 @@
 {
             "instance_id": "NW51D6",
-            "problem_statement": "Users are experiencing noticeable lag when typing in the search bar of an e-commerce product catalog. The autocomplete feature in search/autocomplete.js should display suggestions within 50 milliseconds of each keystroke, but performance testing shows response times averaging 800 milliseconds when the product catalog contains 50000 items. The delay makes the typing experience feel sluggish and users often complete their query before suggestions appear. The system needs to find products whose names start with or contain the typed prefix, rank results by relevance and popularity, and return the top 10 suggestions instantly. Frontend monitoring revealed that each keystroke triggers a full scan of the product array using filter and includes, typing "wire" triggers 4 separate search operations in rapid succession as each letter is typed, and the ranking sort runs on thousands of matched products even though only 10 are displayed.
-",
+"problem_statement": "Users are experiencing noticeable lag when typing in the search bar of an e-commerce product catalog. The autocomplete feature in search/autocomplete.js should display suggestions within 50 milliseconds of each keystroke, but performance testing shows response times averaging 800 milliseconds when the product catalog contains 50000 items. The delay makes the typing experience feel sluggish and users often complete their query before suggestions appear. The system needs to find products whose names start with or contain the typed prefix, rank results by relevance and popularity, and return the top 10 suggestions instantly. Frontend monitoring revealed that each keystroke triggers a full scan of the product array using filter and includes, typing \"wire\" triggers 4 separate search operations in rapid succession as each letter is typed, and the ranking sort runs on thousands of matched products even though only 10 are displayed.",
             "base_commit": "repository_before/",
             "test_patch": "tests/",
             "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/nw51d6-autocomplete-optimization",
             "environment_setup": "Dockerfile",
-            "FAIL_TO_PASS": [],
-            "PASS_TO_PASS": []
+            "FAIL_TO_PASS": [
+                "performance: search is sub-50ms for 100k prefix query (after)",
+                "performance: optimized implementation is significantly faster than legacy",
+                "requirement 5: throttle/debounce coalesces rapid calls; only latest executes"
+            ],
+            "PASS_TO_PASS": [
+                "compatibility: optimized finds the same matches as legacy (>=2 chars)"
+            ]
         }
         

@@ -1,11 +1,11 @@
 # NW51D6 - autocomplete_optimization
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Before Test Docker Command
+`docker compose run --rm before_test`
 
-    ## After Test Docker Command
-    <docker after command here>
+## Test and Report Docker Command
+`docker compose run --rm test_report`
 
-    ## Evaluation Docker Command
-    <evaluation command here>
+## After Test Docker Command
+`docker compose run --rm after_test`
     

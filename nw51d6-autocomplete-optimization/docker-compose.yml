@@ -1,8 +1,21 @@
-# Docker Compose file for running tests. You should customize this as needed.
-
 services:
-  app:
+  before_test:
     build: .
-    command: pytest -q tests
+    working_dir: /app
+    command: "node -e \"console.log('before_test: node', process.version)\""
+    volumes:
+      - .:/app
+
+  test_report:
+    build: .
+    working_dir: /app
+    command: node --test --test-reporter spec
+    volumes:
+      - .:/app
+
+  after_test:
+    build: .
+    working_dir: /app
+    command: 'node -e "console.log(''after_test: done'')"'
     volumes:
       - .:/app
