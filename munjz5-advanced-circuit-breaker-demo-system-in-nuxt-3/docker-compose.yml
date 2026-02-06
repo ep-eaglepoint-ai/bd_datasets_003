@@ -1,0 +1,50 @@
+services:
+  app-after:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: app
+    ports:
+      - "3001:3000"
+    environment:
+      - NODE_ENV=production
+      - NITRO_HOST=0.0.0.0
+      - NITRO_PORT=3000
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3000/api/breaker/status').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  test-after:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: test-runner
+    environment:
+      - TEST_URL=http://app-after:3000
+    depends_on:
+      app-after:
+        condition: service_healthy
+
+  evaluation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: evaluation
+    environment:
+      - TEST_URL=http://app-after:3000
+      - INSTANCE_ID=MUNJZ5
+      - REPOSITORY=repository_after
+    volumes:
+      - ./evaluation:/app/evaluation
+    depends_on:
+      app-after:
+        condition: service_healthy

@@ -1,0 +1,25 @@
+{
+  "instance_id": "MUNJZ5",
+  "problem_statement": "Design and implement an advanced Circuit Breaker demo system in Nuxt 3 that showcases production-grade resilience patterns when calling unreliable upstream services.",
+  "base_commit": "repository_before/",
+  "test_patch": "tests/",
+  "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/munjz5-advanced-circuit-breaker-demo-system-in-nuxt-3",
+  "environment_setup": "Dockerfile.app",
+  "FAIL_TO_PASS": [
+    "Nuxt 3 server routes integration",
+    "Three states support (CLOSED, OPEN, HALF_OPEN)",
+    "CLOSED to OPEN transition",
+    "OPEN to HALF_OPEN transition",
+    "HALF_OPEN to CLOSED transition",
+    "Immediate blocking when OPEN",
+    "Fallback response when OPEN",
+    "Rolling time window tracking",
+    "Timeout enforcement and classification",
+    "No automatic retries",
+    "State and stats in response",
+    "Multiple simulated services",
+    "Server-side logging",
+    "UI dashboard"
+  ],
+  "PASS_TO_PASS": []
+}
