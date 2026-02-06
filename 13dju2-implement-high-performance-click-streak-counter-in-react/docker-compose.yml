@@ -1,0 +1,27 @@
+services:
+  app:
+    build: .
+    ports:
+      - "5173:5173"
+    working_dir: /app/repository_after
+    command: npm run dev -- --host
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/repository_after/node_modules
+
+  test-after:
+    build: .
+    command: npx jest
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/repository_after/node_modules
+
+  evaluation:
+    build: .
+    command: node evaluation/evaluate.js
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/repository_after/node_modules

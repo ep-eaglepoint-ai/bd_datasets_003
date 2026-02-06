@@ -1,0 +1,27 @@
+{
+  "instance_id": "13DJU2",
+  "problem_statement": "A game feature requires tracking rapid user clicks without causing unnecessary re-renders or incorrect counts. The component must precisely reset streaks after exactly one second of inactivity while remaining stable during rapid interaction.",
+  "base_commit": "repository_before/",
+  "test_patch": "tests/",
+  "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/13dju2-implement-high-performance-click-streak-counter-in-react",
+  "environment_setup": "Dockerfile",
+  "FAIL_TO_PASS": [
+    "Increment streak per click > test_increment_on_click",
+    "Increment streak per click > test_initial_state_zero",
+    "Increment streak per click > test_rapid_clicking_accuracy",
+    "Reset exactly after 1 second inactivity > test_reset_after_one_second",
+    "Reset exactly after 1 second inactivity > test_no_reset_if_click_before_timeout",
+    "Reset exactly after 1 second inactivity > test_timer_reset_on_each_click",
+    "Track highest streak > test_highest_streak_updated_on_end",
+    "Track highest streak > test_highest_streak_persists_across_rounds",
+    "Track highest streak > test_highest_streak_not_updated_for_lower",
+    "Avoid stale closures > test_correct_count_with_interleaved_timers",
+    "Avoid stale closures > test_callback_receives_correct_count",
+    "Minimize re-renders > test_render_count_matches_clicks",
+    "Use React hooks only > test_component_renders_without_error",
+    "Use React hooks only > test_component_structure",
+    "Edge cases > test_multiple_instances_independent",
+    "Edge cases > test_very_rapid_clicking"
+  ],
+  "PASS_TO_PASS": []
+}
