@@ -1,0 +1,11 @@
+{
+            "instance_id": "D3FQPH",
+            "problem_statement": "You have an order processing system implemented in Python that handles order creation, validation, asynchronous fetching, and processing. The system includes classes for Order, User, and OrderProcessingService, as well as methods for fetching data from external APIs and processing orders. The system is not currently tested. The QA team needs a test suite to validate the core functionality and edge cases to ensure everything works correctly.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/d3fqph-order-processing-system-test-case-generation",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
