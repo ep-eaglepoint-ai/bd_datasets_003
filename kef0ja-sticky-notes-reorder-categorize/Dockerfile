@@ -10,4 +10,4 @@ RUN sed -i 's/\r$//' /app/run \
 	&& printf '#!/bin/sh\nexec node /app/run "$@"\n' > /usr/local/bin/run \
 	&& chmod +x /usr/local/bin/run
 
-CMD ["npm", "test"]
+CMD ["node", "evaluation/evaluation.js"]
