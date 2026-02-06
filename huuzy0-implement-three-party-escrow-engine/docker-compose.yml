@@ -11,6 +11,6 @@ services:
     build: .
     environment:
       - PYTHONPATH=/app/repository_after
-    command: pytest -q -rA tests
+    command: sh -c "pytest -q tests --junitxml=/app/evaluation/report.xml"
     volumes:
       - .:/app
