@@ -142,6 +142,16 @@ class TestFit:
         
         assert isinstance(classifier.X_train, np.ndarray)
         assert isinstance(classifier.y_train, np.ndarray)
+    
+    def test_fit_empty_training_set(self):
+        """Test behavior when training set is empty."""
+        classifier = KNNClassifier(k=1)
+        X_train = np.array([]).reshape(0, 2)  # 0 samples, 2 features
+        y_train = np.array([])
+        
+        # With k=1 and 0 samples, fit should raise because k > n_samples (0)
+        with pytest.raises(ValueError, match="k \\(1\\) cannot exceed the number of training samples \\(0\\)"):
+            classifier.fit(X_train, y_train)
 
 
 class TestEuclideanDistance:
@@ -410,6 +420,20 @@ class TestScore:
         accuracy = classifier.score(X_test, y_test)
         assert isinstance(accuracy, float)
         assert 0.0 <= accuracy <= 1.0
+    
+    def test_score_length_mismatch_between_X_test_and_y_test(self):
+        """Test that score raises when X_test and y_test have different lengths."""
+        classifier = KNNClassifier(k=3)
+        X_train = np.array([[1, 1], [2, 2], [3, 3]])
+        y_train = np.array([0, 1, 0])
+        classifier.fit(X_train, y_train)
+        
+        # Two test samples but only one label
+        X_test = np.array([[1.5, 1.5], [2.5, 2.5]])
+        y_test = np.array([0])
+        
+        with pytest.raises(ValueError, match="Number of predictions \\(2\\) does not match number of test samples \\(1\\)"):
+            classifier.score(X_test, y_test)
 
 
 class TestEdgeCases:
