@@ -3,11 +3,12 @@ import re
 import pytest
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
+from django.core import mail
 from django.db import IntegrityError
 from django.utils import timezone
 from freezegun import freeze_time
 
-from organizations.models import APIKey, Invitation, Organization, OrganizationMembership, Project
+from organizations.models import APIKey, Invitation, Organization, OrganizationMembership, Project, UserProfile
 
 
 @pytest.mark.django_db
@@ -259,6 +260,47 @@ def test_organization_create_auto_creates_owner_membership(api_client, user):
     membership = OrganizationMembership.objects.get(organization=org, user=user)
     assert membership.role == OrganizationMembership.Role.OWNER
 
+    profile = UserProfile.objects.get(user=user)
+    assert profile.primary_organization_id == org.id
+
+
+@pytest.mark.django_db
+def test_invitation_create_sends_email(api_client, settings, user):
+    settings.FRONTEND_BASE_URL = "https://app.example.com"
+    org = Organization.objects.create(name="Org")
+    OrganizationMembership.objects.create(organization=org, user=user, role=OrganizationMembership.Role.ADMIN)
+
+    api_client.force_authenticate(user=user)
+    mail.outbox.clear()
+
+    resp = api_client.post(
+        f"/api/organizations/{org.slug}/invitations/",
+        {"email": "invitee@example.com", "role": OrganizationMembership.Role.MEMBER},
+        format="json",
+    )
+    assert resp.status_code in (200, 201)
+    assert len(mail.outbox) == 1
+    assert "invitee@example.com" in mail.outbox[0].to
+    assert "/join/" in mail.outbox[0].body
+
+
+@pytest.mark.django_db
+def test_api_key_usage_stats_increment_on_authenticated_requests(api_client, user):
+    org = Organization.objects.create(name="Org")
+    OrganizationMembership.objects.create(organization=org, user=user, role=OrganizationMembership.Role.OWNER)
+    api_key, plaintext = APIKey.create_with_plaintext(organization=org, created_by=user)
+
+    cache.clear()
+    url = f"/api/organizations/{org.slug}/dashboard/"
+    resp = api_client.get(url, HTTP_X_API_KEY=plaintext)
+    assert resp.status_code == 200
+    resp2 = api_client.get(url, HTTP_X_API_KEY=plaintext)
+    assert resp2.status_code == 200
+
+    api_key.refresh_from_db()
+    assert api_key.request_count >= 2
+    assert api_key.last_used_at is not None
+
 
 @pytest.mark.django_db
 def test_organization_create_is_atomic_and_does_not_leave_orphan_memberships(api_client, user, monkeypatch):
@@ -328,4 +370,7 @@ def test_api_key_rate_limit_1000_per_hour_returns_429_with_retry_after(api_clien
 
     resp_last = api_client.get(url, HTTP_X_API_KEY=plaintext)
     assert resp_last.status_code == 429
-    assert "Retry-After" in resp_last
+    retry_after = resp_last.headers.get("Retry-After")
+    assert retry_after is not None
+    retry_after_int = int(retry_after)
+    assert 1 <= retry_after_int <= 3600

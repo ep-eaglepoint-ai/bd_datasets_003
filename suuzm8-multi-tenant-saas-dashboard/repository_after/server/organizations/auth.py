@@ -31,6 +31,12 @@ class APIKeyAuthentication(authentication.BaseAuthentication):
         if not api_key.is_active:
             raise AuthenticationFailed(_("API key revoked"))
 
+        # Best-effort usage stats for operational visibility.
+        try:
+            api_key.record_use()
+        except Exception:
+            pass
+
         # Treat API key as acting on behalf of creator.
         request.api_key = api_key
         request.organization = api_key.organization

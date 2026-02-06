@@ -26,6 +26,34 @@ describe("Dashboard", () => {
     expect(document.querySelector('[aria-busy="true"]')).toBeInTheDocument();
   });
 
+  it("shows an offline notice when navigator is offline", () => {
+    const nav = window.navigator as unknown as Record<string, unknown>;
+    const hadOwn = Object.prototype.hasOwnProperty.call(nav, "onLine");
+    const originalOwn = hadOwn
+      ? Object.getOwnPropertyDescriptor(nav, "onLine")
+      : undefined;
+
+    Object.defineProperty(nav, "onLine", {
+      configurable: true,
+      get: () => false,
+    });
+
+    try {
+      renderWithQuery(<Dashboard organizationSlug="acme" />);
+
+      expect(
+        screen.getByText(/You’re offline\. Showing cached data if available\./)
+      ).toBeInTheDocument();
+    } finally {
+      if (originalOwn) {
+        Object.defineProperty(nav, "onLine", originalOwn);
+      } else {
+        // Remove our injected own-property so JSDOM falls back to its default.
+        delete (nav as { onLine?: unknown }).onLine;
+      }
+    }
+  });
+
   it("renders metrics once loaded", async () => {
     vi.stubGlobal(
       "fetch",

@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery } from "@tanstack/react-query";
+import { apiFetchJson } from "./api";
 
 export type Organization = {
   id: number;
@@ -8,15 +9,15 @@ export type Organization = {
 };
 
 async function fetchOrganizations(): Promise<Organization[]> {
-  const res = await fetch('/api/organizations/', { credentials: 'include' });
-  if (!res.ok) throw new Error('Failed to load organizations');
-  return res.json();
+  return apiFetchJson("/api/organizations/");
 }
 
 export function useOrganizations() {
   return useQuery({
-    queryKey: ['organizations'],
+    queryKey: ["organizations"],
     queryFn: fetchOrganizations,
     staleTime: 5 * 60 * 1000,
+    networkMode: "offlineFirst",
+    refetchOnWindowFocus: false,
   });
 }

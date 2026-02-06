@@ -14,7 +14,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from organizations.models import APIKey, Invitation, Organization, OrganizationMembership, Project
+from organizations.models import APIKey, Invitation, Organization, OrganizationMembership, Project, UserProfile
 from organizations.permissions import IsAdmin, IsMember, IsOrganizationMember, IsOwner
 from organizations.serializers import (
     APIKeyCreateSerializer,
@@ -24,6 +24,7 @@ from organizations.serializers import (
     OrganizationCreateSerializer,
     OrganizationSerializer,
     ProjectSerializer,
+    UserProfileSerializer,
 )
 
 
@@ -100,7 +101,12 @@ class InvitationViewSet(OrganizationScopedMixin, viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         org = self.get_organization()
-        serializer.save(organization=org, created_by=self.request.user)
+        invitation = serializer.save(organization=org, created_by=self.request.user)
+        try:
+            invitation.send_invitation_email()
+        except Exception:
+            # Email failures must not break invitation creation.
+            pass
 
 
 class APIKeyViewSet(OrganizationScopedMixin, viewsets.GenericViewSet, mixins.ListModelMixin, mixins.CreateModelMixin):
@@ -188,9 +194,28 @@ class JoinViewSet(viewsets.ViewSet):
         try:
             with transaction.atomic():
                 membership = invitation.accept(request.user)
+                profile, _ = UserProfile.objects.get_or_create(user=request.user)
+                if profile.primary_organization_id is None:
+                    profile.primary_organization = membership.organization
+                    profile.save(update_fields=["primary_organization"])
         except ValidationError as exc:
             raise ValidationError(detail=str(exc))
         return Response({"membership_id": membership.id}, status=status.HTTP_200_OK)
+
+
+class ProfileViewSet(viewsets.ViewSet):
+    permission_classes = [IsAuthenticated]
+
+    def retrieve(self, request):
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+        return Response(UserProfileSerializer(profile, context={"request": request}).data)
+
+    def partial_update(self, request):
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+        serializer = UserProfileSerializer(profile, data=request.data, partial=True, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
 
 
 class TransferOwnershipViewSet(OrganizationScopedMixin, viewsets.ViewSet):

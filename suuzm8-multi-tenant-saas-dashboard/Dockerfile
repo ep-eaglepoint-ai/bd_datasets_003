@@ -10,7 +10,7 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 
 COPY . /app
 
-CMD ["pytest", "-q", "--cov=repository_after/server", "--cov-report=term-missing", "tests"]
+CMD ["pytest", "-q", "--cov=repository_after/server", "--cov-report=term-missing", "--cov-fail-under=80", "tests"]
 
 
 FROM node:20-bookworm AS test
@@ -19,7 +19,8 @@ WORKDIR /app
 
 # Python + venv for backend tests
 RUN apt-get update -y \
-        && apt-get install -y --no-install-recommends python3 python3-venv python3-pip \
+        && apt-get install -y --no-install-recommends \
+                python3 python3-venv python3-pip \
         && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /app/requirements.txt

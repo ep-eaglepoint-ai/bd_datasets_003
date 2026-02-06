@@ -201,6 +201,7 @@ def run_server_suite(project_root: Path, timeout_s: int) -> RunResults:
             "-vv",
             "--cov=repository_after/server",
             "--cov-report=term-missing",
+            "--cov-fail-under=80",
             "tests",
         ]
     else:
@@ -211,6 +212,7 @@ def run_server_suite(project_root: Path, timeout_s: int) -> RunResults:
             "-vv",
             "--cov=repository_after/server",
             "--cov-report=term-missing",
+            "--cov-fail-under=80",
             "tests",
         ]
 
@@ -287,6 +289,173 @@ def run_client_suite(project_root: Path, timeout_s: int) -> RunResults:
     return rr
 
 
+def run_lighthouse_check(project_root: Path, timeout_s: int) -> Tuple[str, Optional[Dict[str, Any]], str]:
+    """Optional Lighthouse performance check.
+
+    Enabled with RUN_LIGHTHOUSE=1.
+    Runs via docker compose when available (no repo scripts required).
+    Returns: (outcome, summary_dict, raw_output)
+    outcome: passed | failed | skipped
+    """
+
+    if os.environ.get("RUN_LIGHTHOUSE", "0") != "1":
+        return "skipped", None, "RUN_LIGHTHOUSE not enabled"
+
+    # Use sqlite so this check doesn't need Postgres/Redis services.
+    # Start Django in background, wait for /admin/login/, run Lighthouse CLI, then print a single-line marker.
+    server_dir = project_root / "repository_after" / "server"
+    client_dir = project_root / "repository_after" / "client"
+
+    shell = r"""
+set -e
+
+if [ -x /opt/venv/bin/python3 ]; then
+    PY=/opt/venv/bin/python3
+else
+    PY=python3
+fi
+
+export DJANGO_SETTINGS_MODULE=saas_dashboard.settings
+export PYTHONPATH=__SERVER_DIR__
+export DATABASE_URL=
+export REDIS_URL=
+
+cd __SERVER_DIR__
+"$PY" manage.py migrate --noinput
+"$PY" manage.py runserver 127.0.0.1:8000 --noreload >/tmp/django_runserver.log 2>&1 &
+srv_pid=$!
+
+cleanup() {
+  kill "$srv_pid" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+"$PY" - <<'PY'
+import time
+import urllib.request
+
+url = "http://127.0.0.1:8000/admin/login/"
+deadline = time.time() + 30
+last_err = None
+while time.time() < deadline:
+    try:
+        with urllib.request.urlopen(url) as r:
+            if 200 <= r.status < 500:
+                raise SystemExit(0)
+    except Exception as e:
+        last_err = e
+        time.sleep(0.25)
+raise SystemExit(f"Timed out waiting for {url}: {last_err}")
+PY
+
+cd __CLIENT_DIR__
+npm ci --silent --include=dev
+
+CHROME_BIN=""
+if command -v chromium >/dev/null 2>&1; then
+    CHROME_BIN="$(command -v chromium)"
+elif command -v chromium-browser >/dev/null 2>&1; then
+    CHROME_BIN="$(command -v chromium-browser)"
+elif command -v google-chrome >/dev/null 2>&1; then
+    CHROME_BIN="$(command -v google-chrome)"
+elif command -v google-chrome-stable >/dev/null 2>&1; then
+    CHROME_BIN="$(command -v google-chrome-stable)"
+fi
+
+if [ -z "$CHROME_BIN" ]; then
+    echo "LIGHTHOUSE_SKIPPED:no_chrome_binary"
+    exit 0
+fi
+
+export CHROME_PATH="$CHROME_BIN"
+
+./node_modules/.bin/lighthouse http://127.0.0.1:8000/admin/login/ \
+  --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage --disable-gpu' \
+  --only-categories=performance \
+  --output=json \
+  --output-path=/tmp/lhr.json \
+  --quiet \
+  --log-level=error
+
+"$PY" - <<'PY'
+import json
+
+with open('/tmp/lhr.json', 'r', encoding='utf-8') as f:
+    lhr = json.load(f)
+
+perf = None
+try:
+    perf = lhr.get('categories', {}).get('performance', {}).get('score', None)
+except Exception:
+    perf = None
+
+def audit(name):
+    a = lhr.get('audits', {}).get(name, {})
+    return a.get('numericValue', None)
+
+summary = {
+    'url': lhr.get('finalUrl') or lhr.get('requestedUrl'),
+    'performance_score': perf,
+    'tti_ms': audit('interactive'),
+    'fcp_ms': audit('first-contentful-paint'),
+    'lcp_ms': audit('largest-contentful-paint'),
+}
+
+print('LIGHTHOUSE_SUMMARY:' + json.dumps(summary, separators=(',', ':')))
+PY
+""".strip()
+
+    shell = (
+        shell.replace("__SERVER_DIR__", str(server_dir))
+        .replace("__CLIENT_DIR__", str(client_dir))
+    )
+
+    if has_docker_compose():
+        # Run inside the test container (no deps).
+        cmd = [
+            "docker",
+            "compose",
+            "run",
+            "--rm",
+            "--no-deps",
+            "--entrypoint",
+            "sh",
+            "test",
+            "-lc",
+            shell,
+        ]
+    else:
+        # Fallback for when the evaluator itself is executed inside the test container.
+        cmd = ["sh", "-lc", shell]
+
+    exit_code, output = run_command_merged(
+        cmd,
+        timeout_s=timeout_s,
+        cwd=project_root,
+        env={**os.environ, "FORCE_COLOR": "0", "NO_COLOR": "1"},
+    )
+
+    summary: Optional[Dict[str, Any]] = None
+    skipped_reason: Optional[str] = None
+    for raw in strip_ansi(output).split("\n"):
+        line = raw.strip()
+        if line.startswith("LIGHTHOUSE_SKIPPED:"):
+            skipped_reason = line.split(":", 1)[1] or "skipped"
+        if line.startswith("LIGHTHOUSE_SUMMARY:"):
+            payload = line.split(":", 1)[1]
+            try:
+                summary = json.loads(payload)
+            except Exception:
+                summary = None
+
+    if skipped_reason is not None:
+        return "skipped", None, output
+
+    if exit_code == 0 and summary is not None:
+        return "passed", summary, output
+    return "failed", summary, output
+
+
 def summarize(rr: RunResults) -> Dict[str, int]:
     passed = failed = errors = skipped = 0
     for t in rr.tests:
@@ -301,7 +470,13 @@ def summarize(rr: RunResults) -> Dict[str, int]:
     return {"total": len(rr.tests), "passed": passed, "failed": failed, "errors": errors, "skipped": skipped}
 
 
-def write_report_json(report_path: Path, run_id: str, server: RunResults, client: RunResults) -> None:
+def write_report_json(
+    report_path: Path,
+    run_id: str,
+    server: RunResults,
+    client: RunResults,
+    lighthouse: Tuple[str, Optional[Dict[str, Any]], str],
+) -> None:
     started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
     git_commit = (run_one_line(["git", "rev-parse", "HEAD"]) or "unknown")[:8]
@@ -321,6 +496,13 @@ def write_report_json(report_path: Path, run_id: str, server: RunResults, client
         "server_suite_passes": "Pass" if server.success else "Fail",
         "client_suite_passes": "Pass" if client.success else "Fail",
         "both_pass": "Pass" if (server.success and client.success) else "Fail",
+        "lighthouse_check": (
+            "Pass"
+            if lighthouse[0] == "passed"
+            else "Skipped"
+            if lighthouse[0] == "skipped"
+            else "Fail"
+        ),
     }
 
     report: Dict[str, Any] = {
@@ -342,6 +524,11 @@ def write_report_json(report_path: Path, run_id: str, server: RunResults, client
                 "summary": summarize(client),
                 "tests": [t.__dict__ for t in client.tests],
                 "output": client.output or "",
+            },
+            "lighthouse": {
+                "outcome": lighthouse[0],
+                "summary": lighthouse[1],
+                "output": lighthouse[2],
             },
         },
         "criteria_analysis": criteria,
@@ -371,9 +558,10 @@ def main() -> int:
 
     server = run_server_suite(project_root, int(args.timeout))
     client = run_client_suite(project_root, int(args.timeout))
+    lighthouse = run_lighthouse_check(project_root, int(args.timeout))
 
     try:
-        write_report_json(report_path, run_id, server, client)
+        write_report_json(report_path, run_id, server, client, lighthouse)
         sys.stdout.write(f"Report saved to: {report_path}\n")
     except Exception as e:
         sys.stderr.write(f"evaluation: failed to write report: {e}\n")

@@ -1,5 +1,7 @@
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
+import { apiFetchJson } from "./api";
+import { OfflineNotice } from "./offline";
 
 type TrendPoint = { day: string; count: number };
 
@@ -41,11 +43,9 @@ function formatLocalDateTime(iso: string) {
 async function fetchDashboard(
   organizationSlug: string
 ): Promise<DashboardResponse> {
-  const res = await fetch(`/api/organizations/${organizationSlug}/dashboard/`, {
-    credentials: "include",
-  });
-  if (!res.ok) throw new Error("Failed to load dashboard");
-  return res.json();
+  return apiFetchJson<DashboardResponse>(
+    `/api/organizations/${organizationSlug}/dashboard/`
+  );
 }
 
 export function Dashboard({ organizationSlug }: { organizationSlug: string }) {
@@ -53,11 +53,14 @@ export function Dashboard({ organizationSlug }: { organizationSlug: string }) {
     queryKey: ["dashboard", organizationSlug],
     queryFn: () => fetchDashboard(organizationSlug),
     staleTime: 5 * 60 * 1000,
+    networkMode: "offlineFirst",
+    refetchOnWindowFocus: false,
   });
 
   if (query.isLoading) {
     return (
       <div aria-busy="true" aria-live="polite">
+        <OfflineNotice />
         <div style={{ height: 16, width: 220, background: "var(--muted)" }} />
         <div
           style={{
@@ -80,13 +83,22 @@ export function Dashboard({ organizationSlug }: { organizationSlug: string }) {
   }
 
   if (query.isError || !query.data) {
-    return <div role="alert">Failed to load dashboard</div>;
+    const message =
+      (query.error as unknown as { message?: string })?.message ||
+      "Failed to load dashboard";
+    return (
+      <div>
+        <OfflineNotice />
+        <div role="alert">{String(message)}</div>
+      </div>
+    );
   }
 
   const data = query.data;
 
   return (
     <div>
+      <OfflineNotice />
       <h1>{data.organization.name} Dashboard</h1>
       {data.latest_project_created_at ? (
         <p>

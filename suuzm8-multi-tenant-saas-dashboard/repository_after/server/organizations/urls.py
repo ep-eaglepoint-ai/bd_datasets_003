@@ -9,6 +9,7 @@ from organizations.views import (
     OrganizationDashboardViewSet,
     OrganizationViewSet,
     ProjectViewSet,
+    ProfileViewSet,
     TransferOwnershipViewSet,
 )
 
@@ -23,6 +24,7 @@ org_router.register(r"api-keys", APIKeyViewSet, basename="org-api-keys")
 
 urlpatterns = [
     path("", include(router.urls)),
+    path("profile/", ProfileViewSet.as_view({"get": "retrieve", "patch": "partial_update"}), name="profile"),
     path("organizations/<slug:organization_slug>/", include(org_router.urls)),
     path(
         "organizations/<slug:organization_slug>/dashboard/",

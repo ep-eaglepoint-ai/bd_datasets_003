@@ -3,11 +3,15 @@ from __future__ import annotations
 import hashlib
 import re
 import secrets
+from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfoNotFoundError
 from datetime import timedelta
 
 from django.conf import settings
+from django.core.mail import send_mail
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, models, transaction
+from django.db.models import F
 from django.db.models import Q
 from django.utils import timezone
 from django.utils.text import slugify
@@ -141,6 +145,7 @@ class Invitation(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
     accepted_at = models.DateTimeField(null=True, blank=True)
+    email_sent_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         indexes = [models.Index(fields=["token"])]
@@ -198,6 +203,28 @@ class Invitation(models.Model):
         invitation.save(update_fields=["accepted_at"])
         return membership
 
+    def invite_url(self) -> str:
+        base = getattr(settings, "FRONTEND_BASE_URL", "") or ""
+        base = base.rstrip("/")
+        return f"{base}/join/{self.token}" if base else f"/join/{self.token}"
+
+    def send_invitation_email(self) -> None:
+        subject = f"You're invited to join {self.organization.name}"
+        message = (
+            f"You have been invited to join {self.organization.name}.\n\n"
+            f"Join link: {self.invite_url()}\n\n"
+            f"This invitation expires at: {self.expires_at.isoformat()}\n"
+        )
+        send_mail(
+            subject=subject,
+            message=message,
+            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "no-reply@example.com"),
+            recipient_list=[self.email],
+            fail_silently=True,
+        )
+        self.email_sent_at = timezone.now()
+        self.save(update_fields=["email_sent_at"])
+
 
 class APIKey(models.Model):
     class Scope(models.TextChoices):
@@ -213,6 +240,10 @@ class APIKey(models.Model):
 
     scope = models.CharField(max_length=10, choices=Scope.choices, default=Scope.READ)
     revoked_at = models.DateTimeField(null=True, blank=True)
+
+    # Lightweight usage stats (best-effort) for operational visibility.
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    request_count = models.BigIntegerField(default=0)
 
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -245,6 +276,46 @@ class APIKey(models.Model):
     @property
     def is_active(self) -> bool:
         return self.revoked_at is None
+
+    def record_use(self) -> None:
+        APIKey.objects.filter(pk=self.pk).update(
+            last_used_at=timezone.now(),
+            request_count=F("request_count") + 1,
+        )
+
+
+class UserProfile(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="profile")
+    avatar_url = models.URLField(blank=True)
+    timezone = models.CharField(max_length=64, default="UTC")
+    primary_organization = models.ForeignKey(
+        Organization,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="primary_for_profiles",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def clean(self):
+        super().clean()
+        try:
+            ZoneInfo(self.timezone)
+        except ZoneInfoNotFoundError as exc:
+            raise ValidationError({"timezone": "Invalid timezone"}) from exc
+
+        if self.primary_organization_id and self.user_id:
+            is_member = OrganizationMembership.objects.filter(
+                organization_id=self.primary_organization_id,
+                user_id=self.user_id,
+                is_active=True,
+            ).exists()
+            if not is_member:
+                raise ValidationError({"primary_organization": "User must be an active member of the organization"})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
 
 
 class Project(models.Model):

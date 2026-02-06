@@ -22,6 +22,10 @@ INSTALLED_APPS = [
     "organizations",
 ]
 
+ENABLE_DEBUG_TOOLBAR = os.environ.get("ENABLE_DEBUG_TOOLBAR", "0") == "1"
+if ENABLE_DEBUG_TOOLBAR and DEBUG:
+    INSTALLED_APPS += ["debug_toolbar"]
+
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -31,6 +35,16 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+
+# Insert Debug Toolbar middleware after Authentication.
+if ENABLE_DEBUG_TOOLBAR and DEBUG:
+    try:
+        auth_index = MIDDLEWARE.index("django.contrib.auth.middleware.AuthenticationMiddleware")
+    except ValueError:
+        auth_index = 0
+    MIDDLEWARE.insert(auth_index + 1, "debug_toolbar.middleware.DebugToolbarMiddleware")
+
+INTERNAL_IPS = ["127.0.0.1"]
 
 ROOT_URLCONF = "saas_dashboard.urls"
 
@@ -91,6 +105,14 @@ INVITATION_DEFAULT_TTL_DAYS = int(os.environ.get("INVITATION_DEFAULT_TTL_DAYS", 
 
 STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Email is used for invitations. Default to an in-memory backend to avoid
+# external/network dependencies in evaluator environments.
+EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "django.core.mail.backends.locmem.EmailBackend")
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "no-reply@example.com")
+
+# Used to construct invitation links.
+FRONTEND_BASE_URL = os.environ.get("FRONTEND_BASE_URL", "")
 
 CACHES = {
     "default": {

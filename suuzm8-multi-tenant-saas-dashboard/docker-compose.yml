@@ -33,7 +33,7 @@ services:
       PYTHONPATH: /app/repository_after/server
     command: >
       sh -c "
-        pytest -q --cov=repository_after/server --cov-report=term-missing tests && \
+        pytest -q --cov=repository_after/server --cov-report=term-missing --cov-fail-under=80 tests && \
         cd /app/repository_after/client && npm ci --silent --include=dev && ./node_modules/.bin/vitest run --config vitest.config.ts
       "
     volumes:
