@@ -1,0 +1,11 @@
+{
+            "instance_id": "CJK02B",
+            "problem_statement": "Teams using the system have reported difficulty controlling who can see which tasks once organizations grow beyond a small number of users. Currently, all users within the same organization receive the same task data, regardless of relevance or sensitivity. This has led to confusion, accidental exposure of internal work, and the need for manual coordination outside the system. The issue becomes more noticeable when tasks are queried through aggregated endpoints, where filtering logic is inconsistent and hard to reason about.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/cjk02b-adding-a-new-feature-to-an-existing-multi-tenant-saas-application",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
