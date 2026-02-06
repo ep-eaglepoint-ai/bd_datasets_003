@@ -1,0 +1,18 @@
+# Build artifacts
+build/
+library_catalog
+library_catalog_tests
+*.o
+
+# Data files
+data/
+test_data_*/
+
+# OS
+.DS_Store
+
+# Evaluation
+evaluation/*.json
+evaluation/evaluate
+
+

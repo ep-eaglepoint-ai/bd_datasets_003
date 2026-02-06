@@ -1,0 +1,12 @@
+{
+            "instance_id": "ZJGZ2J",
+            "problem_statement": "The library has around 500 books and about 100 active patrons. Books need to be searchable by title or author, and the system should track when books are due back. The interface should be simple enough for volunteer staff to operate without extensive training. All data should be saved automatically so nothing is lost if the computer is restarted.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/zjgz2j-book-catalog",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
