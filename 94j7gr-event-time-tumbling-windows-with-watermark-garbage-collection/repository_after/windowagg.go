@@ -22,6 +22,7 @@ type WindowedAggregator struct {
 	windowKeys           map[int64]map[string]struct{}    // windowStart -> keys present
 	maxObservedTs        int64
 	watermark            int64 // monotonically increasing
+	hasObserved          bool
 	winMeta              map[int64]int64                  // windowStart -> windowEnd
 	winHeap              windowHeap                       // min-heap by windowEnd
 	emit                 EmitFunc
@@ -68,13 +69,16 @@ func (wa *WindowedAggregator) Ingest(ev Event) (late bool) {
 
 	// (2,10) compute candidate watermark and advance monotonically
 	candWm := wa.maxObservedTs - wa.allowedLatenessSec
-	if candWm > wa.watermark {
+	if !wa.hasObserved {
+		wa.watermark = candWm
+		wa.hasObserved = true
+	} else if candWm > wa.watermark {
 		wa.watermark = candWm
 	}
 	wm := wa.watermark
 
 	// (1) window assignment is by event time
-	wStart := (ts / wa.windowSizeSec) * wa.windowSizeSec
+	wStart := floorWindowStart(ts, wa.windowSizeSec)
 	wEnd := wStart + wa.windowSizeSec
 
 	// (3,7) drop event if window already closed: closed iff watermark > windowEnd
@@ -176,6 +180,17 @@ func (wa *WindowedAggregator) StateSize() (keys int, buckets int) {
 }
 
 func toUnixSeconds(ts int64) int64 { return ts }
+
+func floorWindowStart(ts int64, windowSizeSec int64) int64 {
+	if windowSizeSec <= 0 {
+		return 0
+	}
+	q := ts / windowSizeSec
+	if ts < 0 && ts%windowSizeSec != 0 {
+		q--
+	}
+	return q * windowSizeSec
+}
 
 type emitRecord struct {
 	key         string
