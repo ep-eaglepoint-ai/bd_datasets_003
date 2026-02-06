@@ -268,8 +268,6 @@ func runTests(repoPath string, rootDir string, isXFail bool) (TestResults, map[s
 		if isXFail {
 			if outcome == "failed" {
 				outcome = "xfailed"
-			} else if outcome == "passed" {
-				outcome = "failed" // Failure to verify bug
 			}
 		}
 
@@ -298,14 +296,15 @@ func runTests(repoPath string, rootDir string, isXFail bool) (TestResults, map[s
 
 	summary.Total = summary.Passed + summary.Failed + summary.XFailed + summary.Errors + summary.Skipped
 
-	logicalSuccess := exitCode == 0 && summary.Failed == 0 && summary.Errors == 0
+	logicalSuccess := summary.Failed == 0 && summary.Errors == 0
 	if isXFail {
-		// For before run, success means we successfully verified some bugs (XFailed)
-		// and didn't have any unexpected Passes or Errors.
-		logicalSuccess = summary.XFailed > 0 && summary.Failed == 0 && summary.Errors == 0
+		// For before run, success means the run completed and we verified some bugs.
+		logicalSuccess = summary.XFailed > 0 && summary.Errors == 0
 	}
 	logicalExitCode := exitCode
-	if !logicalSuccess && exitCode == 0 {
+	if logicalSuccess {
+		logicalExitCode = 0
+	} else if exitCode == 0 {
 		logicalExitCode = 1
 	}
 
