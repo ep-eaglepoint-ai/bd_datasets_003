@@ -9,9 +9,9 @@ const config: Config = {
   transform: {
     "^.+\\.ts$": "ts-jest",
   },
-  // Disable cache so swapped files are always re-read
+ 
   cache: false,
-  // Disable watchman to avoid permission issues
+
   watchman: false,
 };
 
