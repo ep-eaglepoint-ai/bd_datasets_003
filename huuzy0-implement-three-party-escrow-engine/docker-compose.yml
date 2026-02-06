@@ -12,6 +12,6 @@ services:
     environment:
       - PYTHONPATH=/app/repository_after
     command: >-
-      sh -c 'pytest -q tests --junitxml=/app/evaluation/report.xml; code=$?; python /app/evaluation/generate_report_json.py "$code"; exit 0'
+      sh -c "pytest -q tests --junitxml=/app/evaluation/report.xml; code=$?; python /app/evaluation/generate_report_json.py \"$code\"; exit 0"
     volumes:
       - .:/app
