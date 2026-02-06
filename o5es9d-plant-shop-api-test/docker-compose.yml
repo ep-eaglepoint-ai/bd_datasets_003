@@ -3,6 +3,9 @@
 services:
   app:
     build: .
-    command: pytest -q tests
+    command: node evaluation/evaluation.js
     volumes:
       - .:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=test
