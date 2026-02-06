@@ -1,0 +1,12 @@
+{
+            "instance_id": "CMI2UQ",
+            "problem_statement": "A naive parking system iterates through an array of spots to find the first free slot. This is O(N)
+linear time. In a facility with 100,000 spots, a linear scan creates a locking bottleneck that freezes the system during peak hours. The engineering solution requires maintaining a Min-Heap of free spot IDs. Allocation becomes an O(log⁡N) "Pop Min" operation, and Deallocation becomes an O(log⁡N)"Push" operation. The specific trap is the concurrency control: if the Heap state is not protected by a Mutex during the Pop/Push cycle, two threads will grab the same "Root" node (Spot ID 0), resulting in a double-booking collision.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/cmi2uq-concurrent-parking-allocation-with-manual-min-heap",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
