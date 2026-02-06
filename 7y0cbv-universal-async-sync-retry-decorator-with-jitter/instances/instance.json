@@ -1,0 +1,12 @@
+{
+            "instance_id": "7Y0CBV",
+            "problem_statement": "The legacy retry decorator breaks when used on async def functions because it wraps them in standard synchronous logic, causing the coroutine to never be awaited. It also hides the original function's arguments from type checkers, making the codebase unmaintainable. We need a "write once, run anywhere" decorator that handles the async/sync complexity internally and implements smart backoff logic to protect downstream services from retry storms.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/7y0cbv-universal-async-sync-retry-decorator-with-jitter",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
