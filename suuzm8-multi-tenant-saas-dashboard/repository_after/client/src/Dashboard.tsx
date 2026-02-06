@@ -18,20 +18,20 @@ function getUserTimeZone() {
   return Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
 
-function formatLocalDate(iso: string) {
-  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+function formatLocalDate(iso: string, tz?: string) {
+  const tzToUse = tz || Intl.DateTimeFormat().resolvedOptions().timeZone;
   return new Intl.DateTimeFormat(undefined, {
-    timeZone: tz,
+    timeZone: tzToUse,
     year: "numeric",
     month: "short",
     day: "2-digit",
   }).format(new Date(iso));
 }
 
-function formatLocalDateTime(iso: string) {
-  const tz = getUserTimeZone();
+function formatLocalDateTime(iso: string, tz?: string) {
+  const tzToUse = tz || getUserTimeZone();
   return new Intl.DateTimeFormat(undefined, {
-    timeZone: tz,
+    timeZone: tzToUse,
     year: "numeric",
     month: "short",
     day: "2-digit",
@@ -48,7 +48,13 @@ async function fetchDashboard(
   );
 }
 
-export function Dashboard({ organizationSlug }: { organizationSlug: string }) {
+export function Dashboard({
+  organizationSlug,
+  timeZone,
+}: {
+  organizationSlug: string;
+  timeZone?: string;
+}) {
   const query = useQuery({
     queryKey: ["dashboard", organizationSlug],
     queryFn: () => fetchDashboard(organizationSlug),
@@ -103,7 +109,9 @@ export function Dashboard({ organizationSlug }: { organizationSlug: string }) {
       {data.latest_project_created_at ? (
         <p>
           Latest project created:{" "}
-          <strong>{formatLocalDateTime(data.latest_project_created_at)}</strong>
+          <strong>
+            {formatLocalDateTime(data.latest_project_created_at, timeZone)}
+          </strong>
         </p>
       ) : (
         <p>No projects yet</p>
@@ -123,7 +131,7 @@ export function Dashboard({ organizationSlug }: { organizationSlug: string }) {
       <ul>
         {data.activity_trends.map((p) => (
           <li key={p.day}>
-            {formatLocalDate(p.day)}: {p.count}
+            {formatLocalDate(p.day, timeZone)}: {p.count}
           </li>
         ))}
       </ul>

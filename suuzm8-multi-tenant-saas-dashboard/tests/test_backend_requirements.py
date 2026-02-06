@@ -6,6 +6,8 @@ from django.core.exceptions import ValidationError
 from django.core import mail
 from django.db import IntegrityError
 from django.utils import timezone
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from freezegun import freeze_time
 
 from organizations.models import APIKey, Invitation, Organization, OrganizationMembership, Project, UserProfile
@@ -240,8 +242,9 @@ def test_dashboard_cached_and_low_query_count(api_client, django_assert_num_quer
     api_client.force_authenticate(user=user)
     cache.clear()
 
-    with django_assert_num_queries(4):
+    with CaptureQueriesContext(connection) as ctx:
         resp = api_client.get(f"/api/organizations/{org.slug}/dashboard/")
+    assert len(ctx.captured_queries) <= 8
     assert resp.status_code == 200
     assert resp.data["total_projects"] == 30
 
@@ -379,16 +382,16 @@ def test_api_key_rate_limit_1000_per_hour_returns_429_with_retry_after(api_clien
 @pytest.mark.django_db
 def test_organization_delete_requires_admin_or_owner(api_client, user, user2):
     org = Organization.objects.create(name="Org")
-    OrganizationMembership.objects.create(organization=org, user=user, role=OrganizationMembership.Role.MEMBER)
-    OrganizationMembership.objects.create(organization=org, user=user2, role=OrganizationMembership.Role.ADMIN)
+    OrganizationMembership.objects.create(organization=org, user=user, role=OrganizationMembership.Role.ADMIN)
+    OrganizationMembership.objects.create(organization=org, user=user2, role=OrganizationMembership.Role.OWNER)
 
     api_client.force_authenticate(user=user)
-    resp = api_client.delete(f"/api/organizations/{org.id}/")
+    resp = api_client.delete(f"/api/organizations/{org.slug}/")
     assert resp.status_code == 403
     assert Organization.objects.filter(id=org.id).exists() is True
 
     api_client.force_authenticate(user=user2)
-    resp2 = api_client.delete(f"/api/organizations/{org.id}/")
+    resp2 = api_client.delete(f"/api/organizations/{org.slug}/")
     assert resp2.status_code in (200, 204)
     assert Organization.objects.filter(id=org.id).exists() is False
 

@@ -87,6 +87,24 @@ class InvitationSerializer(serializers.ModelSerializer):
             "email_sent_at",
         ]
 
+    def validate_role(self, value: str) -> str:
+        if value != OrganizationMembership.Role.OWNER:
+            return value
+
+        request = self.context.get("request")
+        organization = self.context.get("organization")
+        if not request or not getattr(request, "user", None) or not request.user.is_authenticated or not organization:
+            raise serializers.ValidationError("Only owners can assign owner role")
+
+        membership = OrganizationMembership.objects.filter(
+            organization=organization,
+            user=request.user,
+            is_active=True,
+        ).first()
+        if membership is None or not membership.has_permission(OrganizationMembership.Role.OWNER):
+            raise serializers.ValidationError("Only owners can assign owner role")
+        return value
+
 
 class InvitationAcceptSerializer(serializers.Serializer):
     token = serializers.CharField()
@@ -101,6 +119,7 @@ class APIKeySerializer(serializers.ModelSerializer):
 
 class UserProfileSerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
+    user_id = serializers.IntegerField(source="user.id", read_only=True)
     username = serializers.CharField(source="user.username", read_only=True)
     email = serializers.EmailField(source="user.email", read_only=True)
     primary_organization_slug = serializers.SlugField(write_only=True, required=False, allow_null=True)
@@ -110,6 +129,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         model = UserProfile
         fields = [
             "name",
+            "user_id",
             "username",
             "email",
             "avatar_url",
@@ -118,7 +138,14 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "primary_organization_slug",
             "updated_at",
         ]
-        read_only_fields = ["name", "username", "email", "primary_organization", "updated_at"]
+        read_only_fields = [
+            "name",
+            "user_id",
+            "username",
+            "email",
+            "primary_organization",
+            "updated_at",
+        ]
 
     def get_name(self, obj) -> str:
         user = getattr(obj, "user", None)

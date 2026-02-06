@@ -32,6 +32,8 @@ class OrganizationViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, APIKeyScopeEnforcer]
     api_key_admin_actions = {"destroy"}
 
+    lookup_field = "slug"
+
     def get_queryset(self):
         return Organization.objects.filter(memberships__user=self.request.user, memberships__is_active=True).distinct()
 
@@ -47,7 +49,7 @@ class OrganizationViewSet(viewsets.ModelViewSet):
             user=request.user,
             is_active=True,
         ).first()
-        if membership is None or not membership.has_permission(OrganizationMembership.Role.ADMIN):
+        if membership is None or not membership.has_permission(OrganizationMembership.Role.OWNER):
             return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
         return super().destroy(request, *args, **kwargs)
 
@@ -103,6 +105,11 @@ class ProjectViewSet(OrganizationScopedMixin, viewsets.ModelViewSet):
 class InvitationViewSet(OrganizationScopedMixin, viewsets.ModelViewSet):
     serializer_class = InvitationSerializer
     api_key_required_scope = "admin"
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ctx["organization"] = self.get_organization()
+        return ctx
 
     def get_queryset(self):
         org = self.get_organization()
@@ -205,7 +212,9 @@ class JoinViewSet(viewsets.ViewSet):
     @action(detail=False, methods=["get"], url_path=r"(?P<token>[^/.]+)")
     def validate(self, request, token=None):
         invitation = self._get_invitation(token)
-        if not invitation.is_valid():
+        if invitation.accepted_at is not None:
+            return Response({"detail": "Invitation already used"}, status=status.HTTP_400_BAD_REQUEST)
+        if invitation.expires_at <= timezone.now():
             return Response({"detail": "Invitation expired"}, status=status.HTTP_400_BAD_REQUEST)
         return Response(
             {

@@ -10,6 +10,11 @@
 docker compose run --rm test
 ```
 
+This command runs:
+
+- Backend: `pytest` with `pytest-cov` and `--cov-fail-under=80`
+- Frontend: `vitest`
+
 ## Evaluation
 
 ```bash

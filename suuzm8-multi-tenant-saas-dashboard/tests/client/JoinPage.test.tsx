@@ -81,4 +81,22 @@ describe("JoinPage", () => {
       "Invitation expired"
     );
   });
+
+  it("shows a clear error for already-used invitations", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ detail: "Invitation already used" }), {
+            status: 400,
+          })
+      ) as unknown as typeof fetch
+    );
+
+    renderJoin("used-token");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Invitation already used"
+    );
+  });
 });

@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiFetchJson } from "./api";
+import { useMemberships } from "./useMemberships";
+import { useProfile } from "./useProfile";
 
 type Props = {
   organizationSlug: string;
@@ -23,6 +25,16 @@ async function invite(organizationSlug: string, payload: InvitePayload) {
 export function InviteUserModal({ organizationSlug, onInvited }: Props) {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<InvitePayload["role"]>("member");
+
+  const profileQuery = useProfile();
+  const membershipsQuery = useMemberships(organizationSlug);
+  const myRole = (() => {
+    const me = profileQuery.data?.user_id;
+    if (!me) return null;
+    const m = membershipsQuery.data?.find((row) => row.user_id === me);
+    return m?.role || null;
+  })();
+  const canInviteOwner = myRole === "owner";
 
   const mutation = useMutation({
     mutationFn: (payload: InvitePayload) => invite(organizationSlug, payload),
@@ -53,7 +65,7 @@ export function InviteUserModal({ organizationSlug, onInvited }: Props) {
           <option value="viewer">Viewer</option>
           <option value="member">Member</option>
           <option value="admin">Admin</option>
-          <option value="owner">Owner</option>
+          {canInviteOwner ? <option value="owner">Owner</option> : null}
         </select>
       </label>
       <button type="submit" disabled={mutation.isPending}>
