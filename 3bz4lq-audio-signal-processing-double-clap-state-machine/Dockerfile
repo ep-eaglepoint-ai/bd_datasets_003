@@ -1,7 +1,15 @@
-# Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
+FROM ubuntu:22.04
 
-FROM python:3.11-slim
+# Install dependencies including GTest, CMake, and JSON library
+RUN apt-get update && apt-get install -y cmake g++ libgtest-dev nlohmann-json3-dev git
+
 WORKDIR /app
+
+# Copy repo
 COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+# Build the project (tests and evaluator)
+RUN mkdir -p build && cd build && cmake .. && make
+
+# Entrypoint runs the C++ evaluation binary by default
+ENTRYPOINT ["./build/evaluate"]

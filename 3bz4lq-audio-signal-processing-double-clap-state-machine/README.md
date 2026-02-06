@@ -1,11 +1,13 @@
-# 3BZ4LQ - Audio Signal Processing: Double-Clap State Machine
+# Clap Switch Project
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Commands
 
-    ## After Test Docker Command
-    <docker after command here>
+### Run Tests (Directly)
+```bash
+docker compose run --rm --entrypoint ./build/run_tests clap-switch
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+### Run Evaluation (Generates Report)
+```bash
+docker compose run --rm clap-switch
+```

@@ -1,8 +1,6 @@
-# Docker Compose file for running tests. You should customize this as needed.
-
+version: '3.8'
 services:
-  app:
+  clap-switch:
     build: .
-    command: pytest -q tests
     volumes:
-      - .:/app
+      - ./evaluation/reports:/app/evaluation/reports
