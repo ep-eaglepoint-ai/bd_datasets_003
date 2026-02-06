@@ -1,7 +1,24 @@
-# Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
+FROM node:20-slim
 
-FROM python:3.11-slim
-WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+WORKDIR /app/repository_after
+
+# Install deps (separate layer for caching)
+COPY repository_after/package.json repository_after/package-lock.json ./
+RUN npm ci
+
+# App source
+COPY repository_after/nest-cli.json repository_after/tsconfig.json repository_after/jest.config.js ./
+COPY repository_after/src ./src
+
+# Root-level tests folder (required by evaluator)
+COPY tests /app/tests
+
+# Evaluation runner
+COPY evaluation /app/evaluation
+
+ENV NODE_ENV=production
+ENV PORT=3000
+
+EXPOSE 3000
+
+CMD ["npm", "run", "start"]

@@ -1,11 +1,17 @@
 # J61F71 - NestJS Event Notification Gateway with Reliable Delivery Pipeline
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Before Test Docker Command
 
-    ## After Test Docker Command
-    <docker after command here>
+`no command since this is feature development`
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## After Test Docker Command
+
+```bash
+docker compose run --rm --build app
+```
+
+## Evaluation Docker Command
+
+```bash
+docker compose run --rm app node /app/evaluation/evaluation.js
+```

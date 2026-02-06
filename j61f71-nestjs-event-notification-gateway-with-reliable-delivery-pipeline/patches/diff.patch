@@ -1,0 +1,1008 @@
+diff --git a/repository_before/jest.config.js b/repository_after/jest.config.js
+index 914ceeb..ff3a042 100644
+--- a/repository_before/jest.config.js
++++ b/repository_after/jest.config.js
+@@ -1,11 +1,12 @@
+ module.exports = {
+-  moduleFileExtensions: ['js', 'json', 'ts'],
+-  rootDir: 'src',
+-  testRegex: '.*\\.spec\\.ts$',
++  moduleFileExtensions: ["js", "json", "ts"],
++  rootDir: ".",
++  roots: ["<rootDir>/src", "<rootDir>/../tests"],
++  testRegex: ".*\\.spec\\.ts$",
+   transform: {
+-    '^.+\\.(t|j)s$': 'ts-jest',
++    "^.+\\.(t|j)s$": "ts-jest",
+   },
+-  collectCoverageFrom: ['**/*.(t|j)s'],
+-  coverageDirectory: '../coverage',
+-  testEnvironment: 'node',
++  collectCoverageFrom: ["src/**/*.(t|j)s"],
++  coverageDirectory: "../coverage",
++  testEnvironment: "node",
+ };
+diff --git a/repository_before/package.json b/repository_after/package.json
+index 5c786bf..643adb5 100644
+--- a/repository_before/package.json
++++ b/repository_after/package.json
+@@ -5,32 +5,34 @@
+     "start": "nest start",
+     "start:dev": "nest start --watch",
+     "build": "nest build",
+-    "test": "jest"
++    "test": "jest",
++    "test:after": "jest"
+   },
+   "dependencies": {
+-    "@nestjs/common": "^10.0.0",
+-    "@nestjs/core": "^10.0.0",
+-    "@nestjs/platform-express": "^10.0.0",
+-    "@nestjs/mongoose": "^10.0.0",
+     "@nestjs/bull": "^10.0.0",
++    "@nestjs/common": "^10.0.0",
+     "@nestjs/config": "^3.0.0",
++    "@nestjs/core": "^10.0.0",
+     "@nestjs/event-emitter": "^2.0.0",
+-    "mongoose": "^8.0.0",
+-    "bull": "^4.11.0",
+-    "ioredis": "^5.3.0",
++    "@nestjs/mongoose": "^10.0.0",
++    "@nestjs/platform-express": "^10.0.0",
+     "axios": "^1.6.0",
+-    "class-validator": "^0.14.0",
++    "bull": "^4.11.0",
+     "class-transformer": "^0.5.1",
++    "class-validator": "^0.14.0",
++    "ioredis": "^5.3.0",
++    "mongoose": "^8.0.0",
+     "uuid": "^9.0.0"
+   },
+   "devDependencies": {
+     "@nestjs/cli": "^10.0.0",
+     "@nestjs/testing": "^10.0.0",
+-    "@types/node": "^20.0.0",
+     "@types/express": "^4.17.0",
+-    "typescript": "^5.0.0",
++    "@types/jest": "^29.0.0",
++    "@types/node": "^20.0.0",
++    "@types/uuid": "^10.0.0",
+     "jest": "^29.0.0",
+     "ts-jest": "^29.0.0",
+-    "@types/jest": "^29.0.0"
++    "typescript": "^5.0.0"
+   }
+ }
+diff --git a/repository_before/src/app.module.ts b/repository_after/src/app.module.ts
+index b60aff7..5f0354e 100644
+--- a/repository_before/src/app.module.ts
++++ b/repository_after/src/app.module.ts
+@@ -1,24 +1,29 @@
+-import { Module } from '@nestjs/common';
+-import { ConfigModule } from '@nestjs/config';
+-import { MongooseModule } from '@nestjs/mongoose';
+-import { BullModule } from '@nestjs/bull';
+-import { EventEmitterModule } from '@nestjs/event-emitter';
+-import { TenantModule } from './tenant/tenant.module';
+-import { EventsModule } from './events/events.module';
++import { Module } from "@nestjs/common";
++import { ConfigModule } from "@nestjs/config";
++import { MongooseModule } from "@nestjs/mongoose";
++import { BullModule } from "@nestjs/bull";
++import { EventEmitterModule } from "@nestjs/event-emitter";
++import { TenantModule } from "./tenant/tenant.module";
++import { EventsModule } from "./events/events.module";
++import { WebhooksModule } from "./webhooks/webhooks.module";
+ 
+ @Module({
+   imports: [
+     ConfigModule.forRoot({ isGlobal: true }),
+-    MongooseModule.forRoot(process.env.MONGODB_URI || 'mongodb://localhost:27017/notification-gateway'),
++    MongooseModule.forRoot(
++      process.env.MONGODB_URI ||
++        "mongodb://localhost:27017/notification-gateway"
++    ),
+     BullModule.forRoot({
+       redis: {
+-        host: process.env.REDIS_HOST || 'localhost',
+-        port: parseInt(process.env.REDIS_PORT || '6379'),
++        host: process.env.REDIS_HOST || "localhost",
++        port: parseInt(process.env.REDIS_PORT || "6379"),
+       },
+     }),
+     EventEmitterModule.forRoot(),
+     TenantModule,
+     EventsModule,
++    WebhooksModule,
+   ],
+ })
+ export class AppModule {}
+diff --git a/repository_after/src/webhooks/circuit-breaker.service.ts b/repository_after/src/webhooks/circuit-breaker.service.ts
+new file mode 100644
+index 0000000..e108450
+--- /dev/null
++++ b/repository_after/src/webhooks/circuit-breaker.service.ts
+@@ -0,0 +1,86 @@
++import { Inject, Injectable } from "@nestjs/common";
++import Redis from "ioredis";
++import { CIRCUIT_COOLDOWN_MS, CIRCUIT_FAILURE_THRESHOLD } from "./constants";
++import { REDIS_CLIENT } from "./redis.constants";
++
++export type CircuitState = "closed" | "open" | "half-open";
++
++export interface CircuitSnapshot {
++  state: CircuitState;
++  failures: number;
++  openedAt?: number;
++}
++
++@Injectable()
++export class CircuitBreakerService {
++  constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
++
++  private key(endpointId: string) {
++    return `webhook:circuit:${endpointId}`;
++  }
++
++  async getSnapshot(endpointId: string): Promise<CircuitSnapshot> {
++    const data = await this.redis.hgetall(this.key(endpointId));
++    const state = (data.state as CircuitState) || "closed";
++    const failures = data.failures ? parseInt(data.failures, 10) : 0;
++    const openedAt = data.openedAt ? parseInt(data.openedAt, 10) : undefined;
++    return { state, failures, openedAt };
++  }
++
++  async canAttempt(
++    endpointId: string,
++    nowMs: number = Date.now()
++  ): Promise<{ allowed: boolean; retryAfterMs?: number; state: CircuitState }> {
++    const snapshot = await this.getSnapshot(endpointId);
++    if (snapshot.state !== "open") {
++      return { allowed: true, state: snapshot.state };
++    }
++
++    const openedAt = snapshot.openedAt ?? nowMs;
++    const elapsed = nowMs - openedAt;
++    if (elapsed < CIRCUIT_COOLDOWN_MS) {
++      return {
++        allowed: false,
++        retryAfterMs: CIRCUIT_COOLDOWN_MS - elapsed,
++        state: "open",
++      };
++    }
++
++    await this.redis.hset(this.key(endpointId), { state: "half-open" });
++    return { allowed: true, state: "half-open" };
++  }
++
++  async recordSuccess(endpointId: string): Promise<void> {
++    await this.redis.hset(this.key(endpointId), {
++      state: "closed",
++      failures: 0,
++    });
++    await this.redis.hdel(this.key(endpointId), "openedAt");
++  }
++
++  async recordFailure(
++    endpointId: string,
++    nowMs: number = Date.now()
++  ): Promise<CircuitSnapshot> {
++    const failures = await this.redis.hincrby(
++      this.key(endpointId),
++      "failures",
++      1
++    );
++    const current = await this.getSnapshot(endpointId);
++
++    if (failures >= CIRCUIT_FAILURE_THRESHOLD) {
++      await this.redis.hset(this.key(endpointId), {
++        state: "open",
++        openedAt: nowMs,
++      });
++      return { ...current, state: "open", failures, openedAt: nowMs };
++    }
++
++    return { ...current, failures };
++  }
++
++  async reset(endpointId: string): Promise<void> {
++    await this.redis.del(this.key(endpointId));
++  }
++}
+diff --git a/repository_after/src/webhooks/constants.ts b/repository_after/src/webhooks/constants.ts
+new file mode 100644
+index 0000000..6853ce9
+--- /dev/null
++++ b/repository_after/src/webhooks/constants.ts
+@@ -0,0 +1,12 @@
++export const WEBHOOK_DELIVERY_QUEUE = "webhook-delivery";
++
++export const WEBHOOK_DELIVERY_JOB = "deliver-webhook";
++
++export const WEBHOOK_MAX_ATTEMPTS = 6;
++export const WEBHOOK_BASE_DELAY_MS = 60_000;
++export const WEBHOOK_JITTER_RATIO = 0.3;
++
++export const CIRCUIT_FAILURE_THRESHOLD = 5;
++export const CIRCUIT_COOLDOWN_MS = 60_000;
++
++export const RESPONSE_BODY_PREVIEW_MAX_BYTES = 5 * 1024;
+diff --git a/repository_after/src/webhooks/dto/create-endpoint.dto.ts b/repository_after/src/webhooks/dto/create-endpoint.dto.ts
+new file mode 100644
+index 0000000..019a6b7
+--- /dev/null
++++ b/repository_after/src/webhooks/dto/create-endpoint.dto.ts
+@@ -0,0 +1,18 @@
++import {
++  IsArray,
++  IsOptional,
++  IsString,
++  IsUrl,
++  ArrayMaxSize,
++} from "class-validator";
++
++export class CreateWebhookEndpointDto {
++  @IsUrl({ require_tld: false })
++  url: string;
++
++  @IsOptional()
++  @IsArray()
++  @ArrayMaxSize(100)
++  @IsString({ each: true })
++  subscribedEvents?: string[];
++}
+diff --git a/repository_after/src/webhooks/dto/update-subscriptions.dto.ts b/repository_after/src/webhooks/dto/update-subscriptions.dto.ts
+new file mode 100644
+index 0000000..6e0a5ee
+--- /dev/null
++++ b/repository_after/src/webhooks/dto/update-subscriptions.dto.ts
+@@ -0,0 +1,8 @@
++import { IsArray, IsString, ArrayMaxSize } from "class-validator";
++
++export class UpdateWebhookSubscriptionsDto {
++  @IsArray()
++  @ArrayMaxSize(100)
++  @IsString({ each: true })
++  subscribedEvents: string[];
++}
+diff --git a/repository_after/src/webhooks/redis.constants.ts b/repository_after/src/webhooks/redis.constants.ts
+new file mode 100644
+index 0000000..4339d8d
+--- /dev/null
++++ b/repository_after/src/webhooks/redis.constants.ts
+@@ -0,0 +1 @@
++export const REDIS_CLIENT = "REDIS_CLIENT";
+diff --git a/repository_after/src/webhooks/schemas/webhook-delivery-log.schema.ts b/repository_after/src/webhooks/schemas/webhook-delivery-log.schema.ts
+new file mode 100644
+index 0000000..f306fbb
+--- /dev/null
++++ b/repository_after/src/webhooks/schemas/webhook-delivery-log.schema.ts
+@@ -0,0 +1,45 @@
++import { Prop, Schema, SchemaFactory } from "@nestjs/mongoose";
++import { Document } from "mongoose";
++
++@Schema({ timestamps: { createdAt: true, updatedAt: false } })
++export class WebhookDeliveryLog extends Document {
++  @Prop({ required: true, index: true })
++  tenantId: string;
++
++  @Prop({ required: true, index: true })
++  endpointId: string;
++
++  @Prop({ required: true })
++  url: string;
++
++  @Prop({ required: true, index: true })
++  eventType: string;
++
++  @Prop({ required: true })
++  eventId: string;
++
++  @Prop({ required: true })
++  attempt: number;
++
++  @Prop({ required: true })
++  requestBody: string;
++
++  @Prop({ required: true })
++  signature: string;
++
++  @Prop({ required: true })
++  responseStatus: number;
++
++  @Prop({ required: true })
++  responseBodyPreview: string;
++
++  @Prop({ required: true })
++  latencyMs: number;
++
++  @Prop()
++  error?: string;
++}
++
++export const WebhookDeliveryLogSchema =
++  SchemaFactory.createForClass(WebhookDeliveryLog);
++WebhookDeliveryLogSchema.index({ endpointId: 1, createdAt: -1 });
+diff --git a/repository_after/src/webhooks/schemas/webhook-endpoint.schema.ts b/repository_after/src/webhooks/schemas/webhook-endpoint.schema.ts
+new file mode 100644
+index 0000000..158c1ea
+--- /dev/null
++++ b/repository_after/src/webhooks/schemas/webhook-endpoint.schema.ts
+@@ -0,0 +1,24 @@
++import { Prop, Schema, SchemaFactory } from "@nestjs/mongoose";
++import { Document } from "mongoose";
++
++@Schema({ timestamps: true })
++export class WebhookEndpoint extends Document {
++  @Prop({ required: true, index: true })
++  tenantId: string;
++
++  @Prop({ required: true })
++  url: string;
++
++  @Prop({ required: true })
++  secret: string;
++
++  @Prop({ default: true })
++  isActive: boolean;
++
++  @Prop({ type: [String], default: [] })
++  subscribedEvents: string[];
++}
++
++export const WebhookEndpointSchema =
++  SchemaFactory.createForClass(WebhookEndpoint);
++WebhookEndpointSchema.index({ tenantId: 1, url: 1 }, { unique: true });
+diff --git a/repository_after/src/webhooks/schemas/webhook-quarantine.schema.ts b/repository_after/src/webhooks/schemas/webhook-quarantine.schema.ts
+new file mode 100644
+index 0000000..723267b
+--- /dev/null
++++ b/repository_after/src/webhooks/schemas/webhook-quarantine.schema.ts
+@@ -0,0 +1,36 @@
++import { Prop, Schema, SchemaFactory } from "@nestjs/mongoose";
++import { Document } from "mongoose";
++
++@Schema({ timestamps: { createdAt: true, updatedAt: false } })
++export class WebhookQuarantine extends Document {
++  @Prop({ required: true, index: true })
++  tenantId: string;
++
++  @Prop({ required: true, index: true })
++  endpointId: string;
++
++  @Prop({ required: true })
++  url: string;
++
++  @Prop({ required: true, index: true })
++  eventType: string;
++
++  @Prop({ required: true })
++  eventId: string;
++
++  @Prop({ required: true, type: Object })
++  payload: Record<string, any>;
++
++  @Prop({ required: true })
++  lastError: string;
++
++  @Prop({ required: true })
++  attempts: number;
++
++  @Prop()
++  lastStatus?: number;
++}
++
++export const WebhookQuarantineSchema =
++  SchemaFactory.createForClass(WebhookQuarantine);
++WebhookQuarantineSchema.index({ endpointId: 1, createdAt: -1 });
+diff --git a/repository_after/src/webhooks/utils/retry.util.ts b/repository_after/src/webhooks/utils/retry.util.ts
+new file mode 100644
+index 0000000..377c16b
+--- /dev/null
++++ b/repository_after/src/webhooks/utils/retry.util.ts
+@@ -0,0 +1,13 @@
++import { WEBHOOK_BASE_DELAY_MS, WEBHOOK_JITTER_RATIO } from "../constants";
++
++export function computeExponentialBackoffWithJitterMs(
++  attemptsMade: number,
++  baseDelayMs: number = WEBHOOK_BASE_DELAY_MS,
++  jitterRatio: number = WEBHOOK_JITTER_RATIO,
++  rand: () => number = Math.random
++): number {
++  const exponentialDelay =
++    baseDelayMs * Math.pow(2, Math.max(0, attemptsMade - 1));
++  const jitterMultiplier = 1 + rand() * jitterRatio;
++  return Math.round(exponentialDelay * jitterMultiplier);
++}
+diff --git a/repository_after/src/webhooks/utils/signature.util.ts b/repository_after/src/webhooks/utils/signature.util.ts
+new file mode 100644
+index 0000000..f191e4d
+--- /dev/null
++++ b/repository_after/src/webhooks/utils/signature.util.ts
+@@ -0,0 +1,35 @@
++import * as crypto from "crypto";
++
++export function computeHmacSha256Hex(secret: string, body: string): string {
++  return crypto.createHmac("sha256", secret).update(body, "utf8").digest("hex");
++}
++
++export function verifyHmacSha256HexTimingSafe(
++  secret: string,
++  body: string,
++  providedSignatureHex: string
++): boolean {
++  const expectedHex = computeHmacSha256Hex(secret, body);
++
++  let expected: Buffer;
++  let provided: Buffer;
++
++  try {
++    expected = Buffer.from(expectedHex, "hex");
++    provided = Buffer.from(providedSignatureHex, "hex");
++  } catch {
++    provided = Buffer.alloc(0);
++    expected = Buffer.from(expectedHex, "hex");
++  }
++
++  if (provided.length !== expected.length) {
++    const padded = Buffer.alloc(expected.length);
++    if (provided.length > 0) {
++      provided.copy(padded, 0, 0, Math.min(provided.length, expected.length));
++    }
++    crypto.timingSafeEqual(expected, padded);
++    return false;
++  }
++
++  return crypto.timingSafeEqual(expected, provided);
++}
+diff --git a/repository_after/src/webhooks/utils/truncate.util.ts b/repository_after/src/webhooks/utils/truncate.util.ts
+new file mode 100644
+index 0000000..c1f4b77
+--- /dev/null
++++ b/repository_after/src/webhooks/utils/truncate.util.ts
+@@ -0,0 +1,10 @@
++export function truncateUtf8ToMaxBytes(
++  input: string,
++  maxBytes: number
++): string {
++  const buffer = Buffer.from(input ?? "", "utf8");
++  if (buffer.length <= maxBytes) return input ?? "";
++
++  const sliced = buffer.subarray(0, maxBytes);
++  return sliced.toString("utf8");
++}
+diff --git a/repository_after/src/webhooks/webhook-delivery.processor.ts b/repository_after/src/webhooks/webhook-delivery.processor.ts
+new file mode 100644
+index 0000000..6812bf8
+--- /dev/null
++++ b/repository_after/src/webhooks/webhook-delivery.processor.ts
+@@ -0,0 +1,136 @@
++import { Process, Processor, OnQueueFailed } from "@nestjs/bull";
++import { Job } from "bull";
++import { InjectModel } from "@nestjs/mongoose";
++import { Model } from "mongoose";
++import { httpPost } from "../common/http.util";
++import {
++  RESPONSE_BODY_PREVIEW_MAX_BYTES,
++  WEBHOOK_DELIVERY_JOB,
++  WEBHOOK_DELIVERY_QUEUE,
++  WEBHOOK_MAX_ATTEMPTS,
++} from "./constants";
++import { WebhookEndpoint } from "./schemas/webhook-endpoint.schema";
++import { WebhookDeliveryLog } from "./schemas/webhook-delivery-log.schema";
++import { WebhookQuarantine } from "./schemas/webhook-quarantine.schema";
++import { CircuitBreakerService } from "./circuit-breaker.service";
++import { computeHmacSha256Hex } from "./utils/signature.util";
++import { truncateUtf8ToMaxBytes } from "./utils/truncate.util";
++
++export interface WebhookDeliveryJobData {
++  endpointId: string;
++  tenantId: string;
++  eventId: string;
++  eventType: string;
++  payload: Record<string, any>;
++}
++
++@Processor(WEBHOOK_DELIVERY_QUEUE)
++export class WebhookDeliveryProcessor {
++  constructor(
++    @InjectModel(WebhookEndpoint.name)
++    private readonly endpointModel: Model<WebhookEndpoint>,
++    @InjectModel(WebhookDeliveryLog.name)
++    private readonly logModel: Model<WebhookDeliveryLog>,
++    @InjectModel(WebhookQuarantine.name)
++    private readonly quarantineModel: Model<WebhookQuarantine>,
++    private readonly circuitBreaker: CircuitBreakerService
++  ) {}
++
++  @Process({ name: WEBHOOK_DELIVERY_JOB, concurrency: 10 })
++  async handle(job: Job<WebhookDeliveryJobData>) {
++    const data = job.data;
++    const endpoint = await this.endpointModel.findOne({
++      _id: data.endpointId,
++      tenantId: data.tenantId,
++      isActive: true,
++    });
++    if (!endpoint) return;
++
++    const gate = await this.circuitBreaker.canAttempt(endpoint._id.toString());
++    if (!gate.allowed) {
++      const delay = Math.max(1, gate.retryAfterMs ?? 1);
++      await job.moveToDelayed(Date.now() + delay);
++      return;
++    }
++
++    const requestBody = JSON.stringify({
++      id: data.eventId,
++      type: data.eventType,
++      tenantId: data.tenantId,
++      payload: data.payload,
++      occurredAt: new Date().toISOString(),
++    });
++
++    const signature = computeHmacSha256Hex(endpoint.secret, requestBody);
++
++    const attempt = (job.attemptsMade ?? 0) + 1;
++
++    const response = await httpPost(
++      endpoint.url,
++      requestBody,
++      {
++        "Content-Type": "application/json",
++        "X-Signature": signature,
++      },
++      30_000
++    );
++
++    const responseBodyPreview = truncateUtf8ToMaxBytes(
++      response.body ?? "",
++      RESPONSE_BODY_PREVIEW_MAX_BYTES
++    );
++
++    const isSuccess = response.status >= 200 && response.status < 300;
++    await this.logModel.create({
++      tenantId: data.tenantId,
++      endpointId: endpoint._id.toString(),
++      url: endpoint.url,
++      eventType: data.eventType,
++      eventId: data.eventId,
++      attempt,
++      requestBody,
++      signature,
++      responseStatus: response.status,
++      responseBodyPreview,
++      latencyMs: response.latencyMs,
++      error: isSuccess
++        ? undefined
++        : response.status === 0
++        ? response.body
++        : `HTTP ${response.status}`,
++    });
++
++    if (isSuccess) {
++      await this.circuitBreaker.recordSuccess(endpoint._id.toString());
++      return;
++    }
++
++    await this.circuitBreaker.recordFailure(endpoint._id.toString());
++
++    throw new Error(`Webhook delivery failed (status=${response.status})`);
++  }
++
++  @OnQueueFailed()
++  async onFailed(job: Job<WebhookDeliveryJobData>, error: Error) {
++    const attemptsMade = job.attemptsMade ?? 0;
++    if (attemptsMade < WEBHOOK_MAX_ATTEMPTS) return;
++
++    const data = job.data;
++    const endpoint = await this.endpointModel.findOne({
++      _id: data.endpointId,
++      tenantId: data.tenantId,
++    });
++    if (!endpoint) return;
++
++    await this.quarantineModel.create({
++      tenantId: data.tenantId,
++      endpointId: endpoint._id.toString(),
++      url: endpoint.url,
++      eventType: data.eventType,
++      eventId: data.eventId,
++      payload: data.payload,
++      lastError: error?.message ?? "Delivery failed",
++      attempts: attemptsMade,
++    });
++  }
++}
+diff --git a/repository_after/src/webhooks/webhook-dispatcher.listener.ts b/repository_after/src/webhooks/webhook-dispatcher.listener.ts
+new file mode 100644
+index 0000000..e85893b
+--- /dev/null
++++ b/repository_after/src/webhooks/webhook-dispatcher.listener.ts
+@@ -0,0 +1,31 @@
++import { Injectable } from "@nestjs/common";
++import { OnEvent } from "@nestjs/event-emitter";
++import { InjectModel } from "@nestjs/mongoose";
++import { Model } from "mongoose";
++import { AppEvent } from "../events/events.service";
++import { WebhookEndpoint } from "./schemas/webhook-endpoint.schema";
++import { WebhooksService } from "./webhooks.service";
++
++@Injectable()
++export class WebhookDispatcherListener {
++  constructor(
++    @InjectModel(WebhookEndpoint.name)
++    private readonly endpointModel: Model<WebhookEndpoint>,
++    private readonly webhooksService: WebhooksService
++  ) {}
++
++  @OnEvent("app.event")
++  async handleAppEvent(event: AppEvent) {
++    const endpoints = await this.endpointModel.find({
++      tenantId: event.tenantId,
++      isActive: true,
++      subscribedEvents: event.type,
++    });
++
++    await Promise.all(
++      endpoints.map((endpoint) =>
++        this.webhooksService.enqueueDeliveryIfSubscribed(endpoint, event)
++      )
++    );
++  }
++}
+diff --git a/repository_after/src/webhooks/webhooks.controller.ts b/repository_after/src/webhooks/webhooks.controller.ts
+new file mode 100644
+index 0000000..d247b94
+--- /dev/null
++++ b/repository_after/src/webhooks/webhooks.controller.ts
+@@ -0,0 +1,87 @@
++import {
++  Body,
++  Controller,
++  Get,
++  Headers,
++  Param,
++  Patch,
++  Post,
++  Query,
++} from "@nestjs/common";
++import { CreateWebhookEndpointDto } from "./dto/create-endpoint.dto";
++import { UpdateWebhookSubscriptionsDto } from "./dto/update-subscriptions.dto";
++import { WebhooksService } from "./webhooks.service";
++
++@Controller("webhooks")
++export class WebhooksController {
++  constructor(private readonly webhooksService: WebhooksService) {}
++
++  @Post("endpoints")
++  async createEndpoint(
++    @Headers("x-api-key") apiKey: string,
++    @Body() dto: CreateWebhookEndpointDto
++  ) {
++    const tenant = await this.webhooksService.requireTenantByApiKey(apiKey);
++    return this.webhooksService.createEndpoint(
++      tenant._id.toString(),
++      dto.url,
++      dto.subscribedEvents ?? []
++    );
++  }
++
++  @Patch("endpoints/:id/subscriptions")
++  async updateSubscriptions(
++    @Headers("x-api-key") apiKey: string,
++    @Param("id") endpointId: string,
++    @Body() dto: UpdateWebhookSubscriptionsDto
++  ) {
++    const tenant = await this.webhooksService.requireTenantByApiKey(apiKey);
++    return this.webhooksService.updateSubscriptions(
++      tenant._id.toString(),
++      endpointId,
++      dto.subscribedEvents
++    );
++  }
++
++  @Get("endpoints/:id/deliveries")
++  async listDeliveries(
++    @Headers("x-api-key") apiKey: string,
++    @Param("id") endpointId: string,
++    @Query("from") from?: string,
++    @Query("to") to?: string
++  ) {
++    const tenant = await this.webhooksService.requireTenantByApiKey(apiKey);
++    const fromDate = from ? new Date(from) : undefined;
++    const toDate = to ? new Date(to) : undefined;
++    return this.webhooksService.listDeliveryLogs(
++      tenant._id.toString(),
++      endpointId,
++      fromDate,
++      toDate
++    );
++  }
++
++  @Get("quarantine")
++  async listQuarantine(
++    @Headers("x-api-key") apiKey: string,
++    @Query("endpointId") endpointId?: string
++  ) {
++    const tenant = await this.webhooksService.requireTenantByApiKey(apiKey);
++    return this.webhooksService.listQuarantine(
++      tenant._id.toString(),
++      endpointId
++    );
++  }
++
++  @Post("quarantine/:id/retry")
++  async retryQuarantine(
++    @Headers("x-api-key") apiKey: string,
++    @Param("id") quarantineId: string
++  ) {
++    const tenant = await this.webhooksService.requireTenantByApiKey(apiKey);
++    return this.webhooksService.retryQuarantine(
++      tenant._id.toString(),
++      quarantineId
++    );
++  }
++}
+diff --git a/repository_after/src/webhooks/webhooks.module.ts b/repository_after/src/webhooks/webhooks.module.ts
+new file mode 100644
+index 0000000..68e1fe9
+--- /dev/null
++++ b/repository_after/src/webhooks/webhooks.module.ts
+@@ -0,0 +1,64 @@
++import { Module } from "@nestjs/common";
++import { BullModule } from "@nestjs/bull";
++import { MongooseModule } from "@nestjs/mongoose";
++import { ConfigService } from "@nestjs/config";
++import Redis from "ioredis";
++import { TenantModule } from "../tenant/tenant.module";
++import { WEBHOOK_DELIVERY_QUEUE } from "./constants";
++import {
++  WebhookEndpoint,
++  WebhookEndpointSchema,
++} from "./schemas/webhook-endpoint.schema";
++import {
++  WebhookDeliveryLog,
++  WebhookDeliveryLogSchema,
++} from "./schemas/webhook-delivery-log.schema";
++import {
++  WebhookQuarantine,
++  WebhookQuarantineSchema,
++} from "./schemas/webhook-quarantine.schema";
++import { WebhooksController } from "./webhooks.controller";
++import { WebhooksService } from "./webhooks.service";
++import { WebhookDeliveryProcessor } from "./webhook-delivery.processor";
++import { WebhookDispatcherListener } from "./webhook-dispatcher.listener";
++import { CircuitBreakerService } from "./circuit-breaker.service";
++import { REDIS_CLIENT } from "./redis.constants";
++import { computeExponentialBackoffWithJitterMs } from "./utils/retry.util";
++
++@Module({
++  imports: [
++    TenantModule,
++    MongooseModule.forFeature([
++      { name: WebhookEndpoint.name, schema: WebhookEndpointSchema },
++      { name: WebhookDeliveryLog.name, schema: WebhookDeliveryLogSchema },
++      { name: WebhookQuarantine.name, schema: WebhookQuarantineSchema },
++    ]),
++    BullModule.registerQueue({
++      name: WEBHOOK_DELIVERY_QUEUE,
++      settings: {
++        backoffStrategies: {
++          exponentialJitter: (attemptsMade: number) =>
++            computeExponentialBackoffWithJitterMs(attemptsMade),
++        },
++      },
++    }),
++  ],
++  controllers: [WebhooksController],
++  providers: [
++    WebhooksService,
++    WebhookDeliveryProcessor,
++    WebhookDispatcherListener,
++    CircuitBreakerService,
++    {
++      provide: REDIS_CLIENT,
++      inject: [ConfigService],
++      useFactory: (config: ConfigService) => {
++        const host = config.get<string>("REDIS_HOST") || "localhost";
++        const port = parseInt(config.get<string>("REDIS_PORT") || "6379", 10);
++        return new Redis({ host, port });
++      },
++    },
++  ],
++  exports: [WebhooksService],
++})
++export class WebhooksModule {}
+diff --git a/repository_after/src/webhooks/webhooks.service.ts b/repository_after/src/webhooks/webhooks.service.ts
+new file mode 100644
+index 0000000..e003dec
+--- /dev/null
++++ b/repository_after/src/webhooks/webhooks.service.ts
+@@ -0,0 +1,187 @@
++import {
++  Injectable,
++  NotFoundException,
++  UnauthorizedException,
++  BadRequestException,
++} from "@nestjs/common";
++import { InjectModel } from "@nestjs/mongoose";
++import { Model } from "mongoose";
++import * as crypto from "crypto";
++import { Queue } from "bull";
++import { InjectQueue } from "@nestjs/bull";
++import { TenantService } from "../tenant/tenant.service";
++import { WebhookEndpoint } from "./schemas/webhook-endpoint.schema";
++import { WebhookDeliveryLog } from "./schemas/webhook-delivery-log.schema";
++import { WebhookQuarantine } from "./schemas/webhook-quarantine.schema";
++import {
++  WEBHOOK_DELIVERY_JOB,
++  WEBHOOK_DELIVERY_QUEUE,
++  WEBHOOK_MAX_ATTEMPTS,
++} from "./constants";
++import { CircuitBreakerService } from "./circuit-breaker.service";
++
++@Injectable()
++export class WebhooksService {
++  constructor(
++    private readonly tenantService: TenantService,
++    @InjectModel(WebhookEndpoint.name)
++    private readonly endpointModel: Model<WebhookEndpoint>,
++    @InjectModel(WebhookDeliveryLog.name)
++    private readonly logModel: Model<WebhookDeliveryLog>,
++    @InjectModel(WebhookQuarantine.name)
++    private readonly quarantineModel: Model<WebhookQuarantine>,
++    @InjectQueue(WEBHOOK_DELIVERY_QUEUE) private readonly queue: Queue,
++    private readonly circuitBreaker: CircuitBreakerService
++  ) {}
++
++  async requireTenantByApiKey(apiKey?: string) {
++    if (!apiKey) throw new UnauthorizedException("API key required");
++    const tenant = await this.tenantService.findByApiKey(apiKey);
++    if (!tenant) throw new UnauthorizedException("Invalid API key");
++    return tenant;
++  }
++
++  async createEndpoint(
++    tenantId: string,
++    url: string,
++    subscribedEvents: string[] = []
++  ) {
++    const secret = crypto.randomBytes(32).toString("hex");
++    try {
++      const endpoint = await this.endpointModel.create({
++        tenantId,
++        url,
++        secret,
++        isActive: true,
++        subscribedEvents,
++      });
++
++      return {
++        id: endpoint._id.toString(),
++        url: endpoint.url,
++        subscribedEvents: endpoint.subscribedEvents,
++        secret,
++      };
++    } catch (err: any) {
++      if (err?.code === 11000) {
++        throw new BadRequestException(
++          "Endpoint already exists for this tenant"
++        );
++      }
++      throw err;
++    }
++  }
++
++  async updateSubscriptions(
++    tenantId: string,
++    endpointId: string,
++    subscribedEvents: string[]
++  ) {
++    const endpoint = await this.endpointModel.findOneAndUpdate(
++      { _id: endpointId, tenantId },
++      { $set: { subscribedEvents } },
++      { new: true }
++    );
++    if (!endpoint) throw new NotFoundException("Webhook endpoint not found");
++    return {
++      id: endpoint._id.toString(),
++      url: endpoint.url,
++      subscribedEvents: endpoint.subscribedEvents,
++      isActive: endpoint.isActive,
++    };
++  }
++
++  async enqueueDeliveryIfSubscribed(
++    endpoint: WebhookEndpoint,
++    event: {
++      id: string;
++      type: string;
++      tenantId: string;
++      payload: Record<string, any>;
++    }
++  ) {
++    if (!endpoint.isActive) return;
++    if (!endpoint.subscribedEvents?.includes(event.type)) return;
++
++    const can = await this.circuitBreaker.canAttempt(endpoint._id.toString());
++    const delay = can.allowed ? 0 : can.retryAfterMs ?? 0;
++
++    await this.queue.add(
++      WEBHOOK_DELIVERY_JOB,
++      {
++        endpointId: endpoint._id.toString(),
++        tenantId: event.tenantId,
++        eventId: event.id,
++        eventType: event.type,
++        payload: event.payload,
++      },
++      {
++        attempts: WEBHOOK_MAX_ATTEMPTS,
++        backoff: { type: "exponentialJitter", delay: 60_000 },
++        delay,
++        removeOnComplete: true,
++        removeOnFail: false,
++      }
++    );
++  }
++
++  async listDeliveryLogs(
++    tenantId: string,
++    endpointId: string,
++    from?: Date,
++    to?: Date
++  ) {
++    const query: any = { tenantId, endpointId };
++    if (from || to) {
++      query.createdAt = {};
++      if (from) query.createdAt.$gte = from;
++      if (to) query.createdAt.$lte = to;
++    }
++
++    return this.logModel.find(query).sort({ createdAt: -1 }).limit(500);
++  }
++
++  async listQuarantine(tenantId: string, endpointId?: string) {
++    const query: any = { tenantId };
++    if (endpointId) query.endpointId = endpointId;
++    return this.quarantineModel.find(query).sort({ createdAt: -1 }).limit(500);
++  }
++
++  async retryQuarantine(tenantId: string, quarantineId: string) {
++    const entry = await this.quarantineModel.findOne({
++      _id: quarantineId,
++      tenantId,
++    });
++    if (!entry) throw new NotFoundException("Quarantine entry not found");
++
++    const endpoint = await this.endpointModel.findOne({
++      _id: entry.endpointId,
++      tenantId,
++      isActive: true,
++    });
++    if (!endpoint)
++      throw new NotFoundException("Endpoint not found or inactive");
++
++    await this.circuitBreaker.reset(endpoint._id.toString());
++
++    await this.queue.add(
++      WEBHOOK_DELIVERY_JOB,
++      {
++        endpointId: endpoint._id.toString(),
++        tenantId,
++        eventId: entry.eventId,
++        eventType: entry.eventType,
++        payload: entry.payload,
++      },
++      {
++        attempts: WEBHOOK_MAX_ATTEMPTS,
++        backoff: { type: "exponentialJitter", delay: 60_000 },
++        removeOnComplete: true,
++        removeOnFail: false,
++      }
++    );
++
++    await entry.deleteOne();
++    return { success: true };
++  }
++}
