@@ -1,0 +1,11 @@
+{
+            "instance_id": "9YHZGN",
+            "problem_statement": "Implement a payroll adjustment engine that calculates 'Pro-rata' backpay when a salary increase is applied mid-month but backdated to a specific date in the past. The engine must handle varying month lengths (28, 29, 30, 31 days) and use integer-cent math to ensure 100% financial accuracy.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/9yhzgn-backdated-payroll-pro-rata-adjuster",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
