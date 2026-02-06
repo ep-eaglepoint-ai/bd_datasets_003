@@ -1,11 +1,13 @@
 # 1H6LVZ - Context-Aware-Dependency-Resolver
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Run test after
 
-    ## After Test Docker Command
-    <docker after command here>
+```bash
+docker-compose run test-after
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## Generate Evaluation Report
+
+```bash
+docker-compose run evaluation
+```

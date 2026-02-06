@@ -1,11 +1,34 @@
 {
-            "instance_id": "1H6LVZ",
-            "problem_statement": "Develop a dependency resolution engine in Python that handles 'Soft Conflicts'—conditional versioning rules that change based on the presence of unrelated packages in the dependency graph. Unlike standard resolvers (like pip or npm) that rely on static version constraints, this system must evaluate 3rd-order logic: 'Package A requires B@1.0, but if Package C is present anywhere in the graph, Package B must be upgraded to @1.5'.",
-            "base_commit": "repository_before/",
-            "test_patch": "tests/",
-            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/1h6lvz-context-aware-dependency-resolver",
-            "environment_setup": "Dockerfile",
-            "FAIL_TO_PASS": [],
-            "PASS_TO_PASS": []
-        }
-        
+  "instance_id": "1H6LVZ",
+  "problem_statement": "Develop a dependency resolution engine in Python that handles 'Soft Conflicts'—conditional versioning rules that change based on the presence of unrelated packages in the dependency graph. Unlike standard resolvers (like pip or npm) that rely on static version constraints, this system must evaluate 3rd-order logic: 'Package A requires B@1.0, but if Package C is present anywhere in the graph, Package B must be upgraded to @1.5'.",
+  "base_commit": null,
+  "test_patch": "tests/",
+  "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/1h6lvz-context-aware-dependency-resolver",
+  "environment_setup": "Dockerfile",
+  "FAIL_TO_PASS": [
+    "test_dependency_resolver.py::TestVersion::test_version_parsing",
+    "test_dependency_resolver.py::TestVersion::test_version_invalid_format",
+    "test_dependency_resolver.py::TestVersion::test_version_comparison_equality",
+    "test_dependency_resolver.py::TestVersion::test_version_comparison_less_than",
+    "test_dependency_resolver.py::TestVersion::test_version_comparison_greater_or_equal",
+    "test_dependency_resolver.py::TestVersionConstraint::test_constraint_greater_or_equal",
+    "test_dependency_resolver.py::TestVersionConstraint::test_constraint_equals",
+    "test_dependency_resolver.py::TestVersionConstraint::test_constraint_satisfied_by_greater_or_equal",
+    "test_dependency_resolver.py::TestVersionConstraint::test_constraint_satisfied_by_equals",
+    "test_dependency_resolver.py::TestVersionConstraint::test_constraint_unsupported_operator",
+    "test_dependency_resolver.py::TestDependencyResolver::test_simple_single_package",
+    "test_dependency_resolver.py::TestDependencyResolver::test_transitive_dependencies",
+    "test_dependency_resolver.py::TestDependencyResolver::test_soft_conflict_basic",
+    "test_dependency_resolver.py::TestDependencyResolver::test_soft_conflict_cascade",
+    "test_dependency_resolver.py::TestDependencyResolver::test_hard_conflict_incompatible_versions",
+    "test_dependency_resolver.py::TestDependencyResolver::test_circular_dependency_detection",
+    "test_dependency_resolver.py::TestDependencyResolver::test_circular_dependency_three_packages",
+    "test_dependency_resolver.py::TestDependencyResolver::test_package_not_in_registry",
+    "test_dependency_resolver.py::TestDependencyResolver::test_oscillation_detection",
+    "test_dependency_resolver.py::TestDependencyResolver::test_multiple_constraints_same_package",
+    "test_dependency_resolver.py::TestDependencyResolver::test_empty_manifest",
+    "test_dependency_resolver.py::TestDependencyResolver::test_soft_rule_with_exact_version",
+    "test_dependency_resolver.py::TestDependencyResolver::test_soft_rule_causes_hard_conflict"
+  ],
+  "PASS_TO_PASS": []
+}
