@@ -125,6 +125,8 @@ export default class Quote extends React.Component {
             favorites: restoredFavorites,
             pendingRemoval: null,
             undoTimerId: null
+        }, () => {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(restoredFavorites));
         });
     };
 

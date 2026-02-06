@@ -1,24 +1,4 @@
-const fs = require("fs");
-const path = require("path");
-
-const repoPath =
-  process.env.REPO_PATH || path.join(__dirname, "..", "repository_after");
-
-function getQuoteJsContent() {
-  const quotePath = path.join(repoPath, "src", "components", "Quote.js");
-  if (fs.existsSync(quotePath)) {
-    return fs.readFileSync(quotePath, "utf-8");
-  }
-  return "";
-}
-
-function getQuotesJsContent() {
-  const quotesPath = path.join(repoPath, "src", "data", "quotes.js");
-  if (fs.existsSync(quotesPath)) {
-    return fs.readFileSync(quotesPath, "utf-8");
-  }
-  return "";
-}
+const { getQuoteJsContent, getQuotesJsContent } = require("./utils");
 
 describe("Original Quote Functionality", () => {
   test("must import React", () => {

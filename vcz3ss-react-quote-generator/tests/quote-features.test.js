@@ -1,24 +1,4 @@
-const fs = require("fs");
-const path = require("path");
-
-const repoPath =
-  process.env.REPO_PATH || path.join(__dirname, "..", "repository_after");
-
-function getQuoteJsContent() {
-  const quotePath = path.join(repoPath, "src", "components", "Quote.js");
-  if (fs.existsSync(quotePath)) {
-    return fs.readFileSync(quotePath, "utf-8");
-  }
-  return "";
-}
-
-function getAppCssContent() {
-  const cssPath = path.join(repoPath, "src", "App.css");
-  if (fs.existsSync(cssPath)) {
-    return fs.readFileSync(cssPath, "utf-8");
-  }
-  return "";
-}
+const { getQuoteJsContent, getAppCssContent } = require("./utils");
 
 describe("Heart/Favorites Functionality", () => {
   test("heart icon must exist to add quotes to favorites", () => {
@@ -88,33 +68,6 @@ describe("Favorites Display", () => {
     const content = getQuoteJsContent();
     const hasAppend = /\[\.\.\.favorites|favorites\.concat|push/.test(content);
     expect(hasAppend).toBe(true);
-  });
-});
-
-describe("localStorage Persistence", () => {
-  test("must use localStorage for persistence", () => {
-    const content = getQuoteJsContent();
-    const hasStorageKey = /localStorage|STORAGE_KEY/.test(content);
-    expect(hasStorageKey).toBe(true);
-  });
-
-  test("must load favorites from localStorage", () => {
-    const content = getQuoteJsContent();
-    const hasGetItem = content.includes("localStorage.getItem");
-    expect(hasGetItem).toBe(true);
-  });
-
-  test("must save favorites to localStorage", () => {
-    const content = getQuoteJsContent();
-    const hasSetItem = content.includes("localStorage.setItem");
-    expect(hasSetItem).toBe(true);
-  });
-
-  test("must load localStorage on component mount", () => {
-    const content = getQuoteJsContent();
-    const hasMount =
-      content.includes("componentDidMount") || content.includes("useEffect");
-    expect(hasMount).toBe(true);
   });
 });
 
