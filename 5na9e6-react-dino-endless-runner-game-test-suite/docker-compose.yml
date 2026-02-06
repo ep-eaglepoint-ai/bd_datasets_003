@@ -2,6 +2,7 @@ services:
     noop:
         image: alpine
         command: ['true']
+        profiles: ['manual']
 
     test-runner:
         build: .
@@ -19,3 +20,4 @@ services:
             - ./evaluation:/app/evaluation
         working_dir: /app/tests
         command: node ../evaluation/evaluate.js
+        profiles: ['manual']

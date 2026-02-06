@@ -1,32 +1,115 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+// tests/resources/dino/broken_double_jump.jsx
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 
-/*
-  BROKEN IMPLEMENTATION:
-  - Allows jumping even when already airborne
-  - Missing `isJumping` guard
-*/
+/**
+ * BROKEN:
+ * - Allows re-applying jump velocity while already airborne (double jump).
+ * - i.e. it does NOT guard with isJumping.
+ */
 
 const GRAVITY = 0.8
 const JUMP_VELOCITY = -15
 const GROUND_Y = 150
 
+const DINO_WIDTH = 44
+const DINO_HEIGHT = 47
+const DINO_DUCK_HEIGHT = 30
+
+const GAME_SPEED_INITIAL = 6
+const SPEED_INCREMENT = 0.5
+
+const SPAWN_INTERVAL_MIN = 1500
+const SPAWN_INTERVAL_MAX = 3000
+
 export default function DinoGame() {
 	const [gameState, setGameState] = useState('idle')
+
+	const [score, setScore] = useState(0)
+	const [highScore, setHighScore] = useState(0)
+
 	const [dinoY, setDinoY] = useState(GROUND_Y)
 	const [dinoVelocity, setDinoVelocity] = useState(0)
 
-	const animationRef = useRef(null)
+	// NOTE: we track ducking just to satisfy the suite shape
+	const [isDucking, setIsDucking] = useState(false)
+
+	const [obstacles, setObstacles] = useState([])
+	const [gameSpeed, setGameSpeed] = useState(GAME_SPEED_INITIAL)
+
+	const rafRef = useRef(null)
 	const lastTimeRef = useRef(0)
+	const spawnTimerRef = useRef(null)
+	const scoreTimerRef = useRef(null)
+
+	useEffect(() => {
+		try {
+			const saved = localStorage.getItem('dinoHighScore')
+			if (saved) {
+				const v = parseInt(saved, 10)
+				if (!Number.isNaN(v)) setHighScore(v)
+			}
+		} catch {
+			// ignore
+		}
+	}, [])
+
+	const saveHighScore = useCallback(
+		(v) => {
+			if (v > highScore) {
+				setHighScore(v)
+				try {
+					localStorage.setItem('dinoHighScore', String(v))
+				} catch {
+					// ignore
+				}
+			}
+		},
+		[highScore],
+	)
+
+	const spawnObstacle = useCallback(() => {
+		const isCactus = Math.random() > 0.3
+		const obs = isCactus
+			? {
+					id: Date.now(),
+					type: 'cactus',
+					x: 800,
+					y: GROUND_Y,
+					width: 25,
+					height: 50,
+				}
+			: {
+					id: Date.now(),
+					type: 'pterodactyl',
+					x: 800,
+					y: GROUND_Y - 30 - Math.random() * 40,
+					width: 46,
+					height: 40,
+				}
+
+		setObstacles((prev) => [...prev, obs])
+	}, [])
+
+	const overlaps = (a, b) => {
+		return (
+			a.x < b.x + b.width &&
+			a.x + a.width > b.x &&
+			a.y < b.y + b.height &&
+			a.y + a.height > b.y
+		)
+	}
 
 	const gameLoop = useCallback(
 		(timestamp) => {
 			if (gameState !== 'running') return
 
-			const delta = timestamp - lastTimeRef.current
+			const last = lastTimeRef.current || timestamp
+			const dt = timestamp - last
 			lastTimeRef.current = timestamp
-			const frame = delta / 16.67
+			const frame = dt / 16.67
 
-			setDinoVelocity((v) => v + GRAVITY * frame)
+			// physics
+			setDinoVelocity((v) => Math.min(v + GRAVITY * frame, 20))
 			setDinoY((y) => {
 				const next = y + dinoVelocity * frame
 				if (next >= GROUND_Y) {
@@ -36,49 +119,173 @@ export default function DinoGame() {
 				return next
 			})
 
-			animationRef.current = requestAnimationFrame(gameLoop)
+			// move obstacles and collide
+			setObstacles((prev) => {
+				const moved = prev
+					.map((o) => ({ ...o, x: o.x - gameSpeed * frame }))
+					.filter((o) => o.x > -50)
+
+				const dinoH = isDucking ? DINO_DUCK_HEIGHT : DINO_HEIGHT
+				const dinoBox = {
+					x: 50,
+					y: dinoY - dinoH,
+					width: DINO_WIDTH,
+					height: dinoH,
+				}
+
+				for (const o of moved) {
+					const obsBox = {
+						x: o.x,
+						y: o.y - o.height,
+						width: o.width,
+						height: o.height,
+					}
+					if (overlaps(dinoBox, obsBox)) {
+						setGameState('gameOver')
+						saveHighScore(score)
+						break
+					}
+				}
+
+				return moved
+			})
+
+			rafRef.current = requestAnimationFrame(gameLoop)
 		},
-		[gameState, dinoVelocity],
+		[
+			gameState,
+			dinoVelocity,
+			dinoY,
+			gameSpeed,
+			isDucking,
+			score,
+			saveHighScore,
+		],
 	)
 
 	useEffect(() => {
 		if (gameState === 'running') {
 			lastTimeRef.current = performance.now()
-			animationRef.current = requestAnimationFrame(gameLoop)
+			rafRef.current = requestAnimationFrame(gameLoop)
+
+			scoreTimerRef.current = setInterval(() => {
+				setScore((s) => {
+					const next = s + 1
+					if (next % 100 === 0)
+						setGameSpeed((gs) => gs + SPEED_INCREMENT)
+					return next
+				})
+			}, 100)
+
+			// spawn scheduling
+			const schedule = () => {
+				const delay =
+					SPAWN_INTERVAL_MIN +
+					Math.random() * (SPAWN_INTERVAL_MAX - SPAWN_INTERVAL_MIN)
+				spawnTimerRef.current = setTimeout(() => {
+					if (gameState === 'running') {
+						spawnObstacle()
+						schedule()
+					}
+				}, delay)
+			}
+			schedule()
 		}
-		return () => cancelAnimationFrame(animationRef.current)
-	}, [gameState, gameLoop])
+
+		return () => {
+			cancelAnimationFrame(rafRef.current)
+			clearInterval(scoreTimerRef.current)
+			clearTimeout(spawnTimerRef.current)
+		}
+	}, [gameState, gameLoop, spawnObstacle])
 
 	useEffect(() => {
 		const onKeyDown = (e) => {
 			if (e.code === 'Space' || e.code === 'ArrowUp') {
-				if (gameState === 'idle') {
+				e.preventDefault()
+
+				if (gameState === 'idle' || gameState === 'gameOver') {
+					// restart
+					setScore(0)
+					setObstacles([])
+					setGameSpeed(GAME_SPEED_INITIAL)
+					setIsDucking(false)
+					setDinoY(GROUND_Y)
+					setDinoVelocity(0)
 					setGameState('running')
+					return
 				}
-				// ❌ BROKEN: no isJumping check
+
 				if (gameState === 'running') {
+					// ❌ BROKEN: always re-apply jump impulse (double jump allowed)
 					setDinoVelocity(JUMP_VELOCITY)
 				}
 			}
+
+			if (e.code === 'ArrowDown' && gameState === 'running') {
+				setIsDucking(true)
+			}
+
+			if (e.code === 'Escape') {
+				if (gameState === 'running') setGameState('paused')
+				else if (gameState === 'paused') setGameState('running')
+			}
+		}
+
+		const onKeyUp = (e) => {
+			if (e.code === 'ArrowDown') setIsDucking(false)
 		}
 
 		window.addEventListener('keydown', onKeyDown)
-		return () => window.removeEventListener('keydown', onKeyDown)
+		window.addEventListener('keyup', onKeyUp)
+		return () => {
+			window.removeEventListener('keydown', onKeyDown)
+			window.removeEventListener('keyup', onKeyUp)
+		}
 	}, [gameState])
+
+	useEffect(() => {
+		const onBlur = () => {
+			if (gameState === 'running') setGameState('paused')
+		}
+		window.addEventListener('blur', onBlur)
+		return () => window.removeEventListener('blur', onBlur)
+	}, [gameState])
+
+	const fmt = (v) => String(v).padStart(5, '0')
+	const dinoH = isDucking ? DINO_DUCK_HEIGHT : DINO_HEIGHT
 
 	return (
 		<div>
-			<div data-testid="state">{gameState}</div>
+			<div data-testid="high-score">{fmt(highScore)}</div>
+			<div data-testid="score">{fmt(score)}</div>
+
 			<div
 				data-testid="dino"
 				style={{
 					position: 'absolute',
-					top: dinoY - 47,
 					left: 50,
-					width: 44,
-					height: 47,
+					top: `${dinoY - dinoH}px`,
+					width: `${DINO_WIDTH}px`,
+					height: `${dinoH}px`,
 				}}
 			/>
+
+			{obstacles.map((o) => (
+				<div
+					key={o.id}
+					data-testid="obstacle"
+					style={{
+						position: 'absolute',
+						left: `${o.x}px`,
+						top: `${o.y - o.height}px`,
+						width: `${o.width}px`,
+						height: `${o.height}px`,
+					}}
+				/>
+			))}
+
+			<div data-testid="state">{gameState}</div>
 		</div>
 	)
 }

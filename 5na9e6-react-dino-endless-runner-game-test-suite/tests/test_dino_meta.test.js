@@ -5,17 +5,16 @@ const os = require('os')
 
 const ROOT = path.resolve(__dirname, '..')
 
-const SUITE_PATH = path.join(
-	ROOT,
-	'repository_after',
-	'src',
-	'__tests__',
-	'DinoGame.test.jsx',
-)
+const SUITE_PATH = path.join(ROOT, 'tests', 'suite.jsx')
 
 const RESOURCES = path.join(ROOT, 'tests', 'resources', 'dino')
 
 function loadSuiteText() {
+	if (!fs.existsSync(SUITE_PATH)) {
+		throw new Error(
+			`Missing suite file.\nExpected: ${SUITE_PATH}\nCreate tests/suite.jsx (this is your Jest+RTL test suite).`,
+		)
+	}
 	return fs.readFileSync(SUITE_PATH, 'utf8')
 }
 
@@ -28,15 +27,13 @@ function makeTempProject(implCode, suiteCode) {
 
 	fs.mkdirSync(path.join(dir, 'src', '__tests__'), { recursive: true })
 
-	// Create minimal package.json
 	fs.writeFileSync(
 		path.join(dir, 'package.json'),
 		JSON.stringify(
 			{
-				name: 'dino-test',
+				name: 'dino-meta-temp',
 				version: '1.0.0',
 				private: true,
-				// type: 'module',
 				scripts: {
 					test: 'jest --runInBand --no-coverage',
 				},
@@ -82,10 +79,16 @@ function makeTempProject(implCode, suiteCode) {
 
 	fs.writeFileSync(path.join(dir, 'src', 'DinoGame.jsx'), implCode)
 
-	const fixedSuiteCode = suiteCode.replace(
-		"import DinoGame from '../DinoGame'",
-		"import DinoGame from '../DinoGame.jsx'",
-	)
+	const fixedSuiteCode = suiteCode
+		.replace(
+			"import DinoGame from '../DinoGame'",
+			"import DinoGame from '../DinoGame.jsx'",
+		)
+		.replace(
+			'import DinoGame from "../DinoGame"',
+			'import DinoGame from "../DinoGame.jsx"',
+		)
+
 	fs.writeFileSync(
 		path.join(dir, 'src', '__tests__', 'DinoGame.test.jsx'),
 		fixedSuiteCode,
@@ -96,19 +99,8 @@ function makeTempProject(implCode, suiteCode) {
 
 function runJest(dir) {
 	try {
-		// Install dependencies
-		execSync('npm install', {
-			cwd: dir,
-			stdio: 'pipe',
-			timeout: 300000, // 5 minutes
-		})
-
-		// Run tests
-		execSync('npm test', {
-			cwd: dir,
-			stdio: 'pipe',
-			timeout: 60000, // 1 minute
-		})
+		execSync('npm install', { cwd: dir, stdio: 'pipe', timeout: 300000 })
+		execSync('npm test', { cwd: dir, stdio: 'pipe', timeout: 180000 })
 		return { passed: true }
 	} catch (err) {
 		return {
@@ -124,6 +116,7 @@ async function runMetaTests() {
 	console.log('=== Running DinoGame Meta Tests ===\n')
 
 	const suiteText = loadSuiteText()
+
 	const tests = [
 		{ name: 'broken_double_jump', shouldPass: false },
 		{ name: 'broken_no_collision', shouldPass: false },
@@ -135,47 +128,39 @@ async function runMetaTests() {
 
 	let allPassed = true
 
-	for (const test of tests) {
-		console.log(`Testing: ${test.name}`)
+	for (const t of tests) {
+		console.log(`Testing: ${t.name}`)
 
-		const dir = makeTempProject(loadImpl(`${test.name}.jsx`), suiteText)
+		const dir = makeTempProject(loadImpl(`${t.name}.jsx`), suiteText)
 		const result = runJest(dir)
 
-		const passed = result.passed
-		const expected = test.shouldPass
-		const testPassed = passed === expected
+		const gotPass = result.passed
+		const expectedPass = t.shouldPass
+		const ok = gotPass === expectedPass
 
-		if (testPassed) {
-			console.log(
-				`  ✓ ${expected ? 'PASSED as expected' : 'FAILED as expected'}`,
-			)
+		if (ok) {
+			console.log(`  ✓ ${expectedPass ? 'PASSED' : 'FAILED'} as expected`)
 		} else {
 			console.log(
-				`  ✗ Expected ${expected ? 'PASS' : 'FAIL'}, got ${passed ? 'PASS' : 'FAIL'}`,
+				`  ✗ Expected ${expectedPass ? 'PASS' : 'FAIL'}, got ${gotPass ? 'PASS' : 'FAIL'}`,
 			)
-			if (!passed) {
-				console.log('--- JEST STDOUT ---')
-				console.log(result.stdout || '(none)')
-				console.log('--- JEST STDERR ---')
-				console.log(result.stderr || '(none)')
-			}
-
+			console.log('--- JEST STDOUT ---')
+			console.log(result.stdout || '(none)')
+			console.log('--- JEST STDERR ---')
+			console.log(result.stderr || '(none)')
 			allPassed = false
 		}
 
 		try {
 			fs.rmSync(dir, { recursive: true, force: true })
-		} catch (e) {
-			// Ignore cleanup errors
-		}
+		} catch {}
 
 		console.log()
 	}
 
 	console.log('=== Summary ===')
-	if (allPassed) {
-		console.log('✅ All meta tests passed!')
-	} else {
+	if (allPassed) console.log('✅ All meta tests passed!')
+	else {
 		console.log('❌ Some meta tests failed.')
 		process.exit(1)
 	}
@@ -191,7 +176,6 @@ process.on('unhandledRejection', (reason, promise) => {
 	process.exit(1)
 })
 
-// Run the tests
 runMetaTests().catch((error) => {
 	console.error('Test runner failed:', error)
 	process.exit(1)

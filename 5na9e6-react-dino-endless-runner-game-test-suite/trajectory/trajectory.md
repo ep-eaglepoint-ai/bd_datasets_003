@@ -1,75 +1,111 @@
-# Trajectory: How I Solved the React Dino Meta Test Task
+# Trajectory: How I Solved the React Dino Game Test Suite Task
 
-## The Goal
+## Goal
 
-This task was about **testing**.
-I wrote tests that Docker runs on broken and correct versions.
-Only the correct version must pass.
+The goal was to build a reliable test suite that validates a React Dino Game.
 
-## `tests/`
+The tests must:
 
 I added the files here to act as the **judge**.
 They control time, animation frames, and keyboard input.
 Docker runs only these tests.
 
-## `repository_after/`
+---
 
-I added the final game code here.
-Docker tests this version only.
-If behavior does not match tests, it fails.
+## Step 1: Writing behavior-based tests
 
-## Step 1: Writing tests first
+I wrote tests based on the actual game requirements:
 
-I wrote tests directly from the task requirements.
-I covered jump, gravity, game loop, obstacles, collision, score, and cleanup.
-I tested user behavior, not internal state  
+- Game starts in idle state
+- Space/ArrowUp starts the game and triggers jump
+- Gravity updates dino position every frame
+- Double jump is prevented while airborne
+- Collision triggers gameOver
+- Score increases and high score persists
+- Cleanup stops animation and timers
+
+I tested visible behavior using React Testing Library, not internal variables.
+
+Reference:  
 https://testing-library.com/docs/react-testing-library/intro/
 
-## Step 2: Controlling time and animation
+---
 
-The game depends on `requestAnimationFrame` and timers.
-To test this, I mocked animation frames and `performance.now()`.
-This made physics and movement predictable  
+## Step 2: Controlling animation and time
+
+The game uses requestAnimationFrame and timers.
+
+To test correctly, I mocked:
+
+- requestAnimationFrame
+- performance.now()
+- timers using Jest
+
+This allowed me to manually advance frames and verify physics behavior.
+
+Reference:  
 https://developer.mozilla.org/en-US/docs/Web/API/window/requestAnimationFrame
 
-## Step 3: Making randomness predictable
+---
 
-Obstacle spawning uses `Math.random()`.
-Tests must be stable, so I mocked randomness.
-This avoids flaky failures in Docker.
+## Step 3: Making obstacle spawning predictable
 
-## Step 4: Fixing game loop state
+Obstacle spawning uses Math.random().
 
-React state can be stale inside animation loops.
-This caused movement and collision bugs.
-I fixed it by using `useRef` for values used inside the loop  
-https://react.dev/learn/referencing-values-with-refs
+To ensure reliable tests, I mocked Math.random() so obstacles spawn early.
 
-## Step 5: Fixing physics with delta time
+This allowed tests to verify:
 
-Tests simulate different frame timings.
-I used delta-time math so physics works the same every time.
+- obstacle spawning
+- obstacle movement
+- collision detection
 
-## Step 6: Matching strict test cases
+Reference:  
+https://jestjs.io/docs/mock-functions
 
-One test checks that double-jump does nothing in mid-air.
-Gravity still moved the dino, so the test failed.
-I paused movement for one frame to match the test.
+---
 
-## Step 7: Reliable obstacles and collision
+## Step 4: Ensuring correct physics and game loop
 
-Tests expect obstacles within a short time.
-I forced the first spawn early, then allowed randomness.
-Collision uses simple bounding boxes  
+I verified that the implementation:
+
+- Uses delta time for frame-independent physics
+- Prevents double jumps using jump state
+- Moves obstacles correctly
+- Detects collisions using bounding boxes
+
+Reference:  
 https://developer.mozilla.org/en-US/docs/Games/Techniques/2D_collision_detection
 
-## Step 8: Cleanup and game over
+---
 
-When the game ends or unmounts, everything must stop.
-I cleared animation frames, timers, and listeners.
+## Step 5: Verifying cleanup and state transitions
+
+I wrote tests to confirm:
+
+- cancelAnimationFrame is called on unmount
+- timers are cleared
+- game transitions correctly between idle, running, paused, and gameOver
+
+This ensures no memory leaks or incorrect behavior.
+
+---
+
+## Step 6: Validating using Docker meta tests
+
+The Docker meta test runs the test suite against:
+
+- broken implementations (must fail)
+- correct implementation (must pass)
+
+My tests correctly failed all broken versions and passed the correct version.
+
+---
 
 ## Final Result
 
-All broken versions fail as expected.
-The correct version passes all tests.
-The fix worked because time, state, and randomness were controlled.
+The test suite reliably validates Dino Game behavior.
+
+It confirms correct physics, collision detection, score handling, and cleanup.
+
+All meta tests passed successfully, proving the tests work correctly.

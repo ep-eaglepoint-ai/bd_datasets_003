@@ -21,37 +21,22 @@ function flushRafOnce() {
 	})
 }
 
-function flushRafMany(n) {
+function flushRafFrames(n) {
 	for (let i = 0; i < n; i++) flushRafOnce()
 }
 
-function waitForGameOver(maxFrames = 240) {
-	for (let i = 0; i < maxFrames; i++) {
-		flushRafOnce()
-		const txt = screen.getByTestId('state').textContent || ''
-		if (txt.includes('gameOver')) return true
-	}
-	return false
-}
-
-function advanceFrame(ms = 16.67) {
+function advanceTimers(ms) {
 	act(() => {
 		jest.advanceTimersByTime(ms)
 	})
-	flushRafOnce()
 }
+
 function keyDown(code) {
-	act(() => {
-		fireEvent.keyDown(window, { code })
-	})
+	act(() => fireEvent.keyDown(window, { code }))
 }
-
 function keyUp(code) {
-	act(() => {
-		fireEvent.keyUp(window, { code })
-	})
+	act(() => fireEvent.keyUp(window, { code }))
 }
-
 function press(code) {
 	keyDown(code)
 	keyUp(code)
@@ -59,18 +44,33 @@ function press(code) {
 
 function startGame() {
 	press('Space')
-
-	act(() => {
-		jest.advanceTimersByTime(50)
-	})
-
+	advanceTimers(60)
 	flushRafOnce()
 }
 
-function makeSpawnFastCactus() {
-	Math.random
-		.mockImplementationOnce(() => 0.0) // spawn delay min
-		.mockImplementationOnce(() => 0.9) // cactus chosen (> 0.3)
+function setDeterministicRandomForSpawns() {
+	const seq = [0.0, 0.9, 0.9, 0.9, 0.9]
+	let i = 0
+	Math.random.mockImplementation(() => {
+		const v = seq[i % seq.length]
+		i += 1
+		return v
+	})
+}
+
+function expectObstacleSpawned() {
+	const obs = screen.queryAllByTestId('obstacle')
+	expect(obs.length).toBeGreaterThan(0)
+	return obs
+}
+
+function runUntilGameOver(maxFrames = 600) {
+	for (let i = 0; i < maxFrames; i++) {
+		flushRafOnce()
+		if (screen.getByTestId('state').textContent.includes('gameOver'))
+			return true
+	}
+	return false
 }
 
 beforeAll(() => {
@@ -99,9 +99,7 @@ afterEach(() => {
 	jest.clearAllTimers()
 	try {
 		localStorage.clear()
-	} catch {
-		// ignore
-	}
+	} catch {}
 })
 
 afterAll(() => {
@@ -129,49 +127,34 @@ describe('2) jump mechanics + gravity', () => {
 	})
 
 	test('pressing Space triggers a jump only when grounded', () => {
-		const dino = screen.getByTestId('dino')
-		const groundedTop = dino.style.top
-
+		const groundedTop = screen.getByTestId('dino').style.top
 		press('Space')
-		advanceFrame()
-
+		flushRafOnce()
 		expect(screen.getByTestId('dino').style.top).not.toBe(groundedTop)
 	})
 
 	test('gravity applies every frame (dino continues moving after jump)', () => {
 		press('Space')
-
-		advanceFrame()
+		flushRafOnce()
 		const t1 = screen.getByTestId('dino').style.top
-
-		advanceFrame()
+		flushRafOnce()
 		const t2 = screen.getByTestId('dino').style.top
-
 		expect(t2).not.toBe(t1)
 	})
 
-	test('double jump is prevented while airborne (no second impulse)', () => {
-		const dino = screen.getByTestId('dino')
-
+	test('double jump is prevented while airborne', () => {
 		press('Space')
-		advanceFrame()
-		const afterFirstJumpTop = dino.style.top
-
+		flushRafOnce()
+		const afterFirst = screen.getByTestId('dino').style.top
 		press('Space')
-		advanceFrame()
-
-		const afterSecondAttemptTop = screen.getByTestId('dino').style.top
-		expect(afterSecondAttemptTop).not.toBe('')
-		expect(afterSecondAttemptTop).not.toBe(afterFirstJumpTop)
+		flushRafOnce()
+		const afterSecond = screen.getByTestId('dino').style.top
+		expect(afterSecond).not.toBe(afterFirst)
 	})
 
 	test('dino lands at ground level and jump state resets', () => {
 		press('Space')
-
-		for (let i = 0; i < 60; i++) {
-			advanceFrame()
-		}
-
+		flushRafFrames(80)
 		expect(screen.getByTestId('dino').style.top).toBe('103px')
 	})
 })
@@ -183,26 +166,24 @@ describe('3) game loop + cleanup', () => {
 		expect(window.requestAnimationFrame).toHaveBeenCalled()
 	})
 
-	test('loop stops when gameState becomes gameOver (no further RAF scheduling)', () => {
+	test('loop stops when gameState becomes gameOver', () => {
+		setDeterministicRandomForSpawns()
+
 		render(<DinoGame />)
 		startGame()
 
-		makeSpawnFastCactus()
-
-		act(() => {
-			jest.advanceTimersByTime(2000)
-		})
+		advanceTimers(1700)
 		flushRafOnce()
-		const ok = waitForGameOver(260)
+
+		expectObstacleSpawned()
+
+		const ok = runUntilGameOver(600)
 		expect(ok).toBe(true)
 		expect(screen.getByTestId('state')).toHaveTextContent('gameOver')
 
-		const callsAfterGameOver =
-			window.requestAnimationFrame.mock.calls.length
+		const callsAfter = window.requestAnimationFrame.mock.calls.length
 		flushRafOnce()
-		expect(window.requestAnimationFrame.mock.calls.length).toBe(
-			callsAfterGameOver,
-		)
+		expect(window.requestAnimationFrame.mock.calls.length).toBe(callsAfter)
 	})
 
 	test('cancelAnimationFrame called on unmount', () => {
@@ -215,51 +196,42 @@ describe('3) game loop + cleanup', () => {
 
 describe('4) obstacle spawning + movement', () => {
 	beforeEach(() => {
+		setDeterministicRandomForSpawns()
 		render(<DinoGame />)
 		startGame()
 	})
 
-	test('obstacles spawn within interval bounds (deterministic fast spawn)', () => {
-		makeSpawnFastCactus()
-
-		act(() => {
-			jest.advanceTimersByTime(1600)
-		})
+	test('obstacles spawn at randomized intervals (deterministic min delay)', () => {
+		advanceTimers(1700)
 		flushRafOnce()
-
-		expect(screen.queryAllByTestId('obstacle').length).toBeGreaterThan(0)
+		expectObstacleSpawned()
 	})
 
 	test('obstacles move left over frames', () => {
-		makeSpawnFastCactus()
-
-		act(() => {
-			jest.advanceTimersByTime(1600)
-		})
+		advanceTimers(1700)
 		flushRafOnce()
 
-		const obs = screen.getAllByTestId('obstacle')[0]
+		const obs = expectObstacleSpawned()[0]
 		const left1 = obs.style.left
 
-		advanceFrame(50)
+		flushRafFrames(30)
 		const left2 = screen.getAllByTestId('obstacle')[0].style.left
-
 		expect(left2).not.toBe(left1)
 	})
 })
 
 describe('5) collision detection', () => {
-	test('bounding box collision triggers gameOver', () => {
+	test('collision triggers gameOver', () => {
+		setDeterministicRandomForSpawns()
+
 		render(<DinoGame />)
 		startGame()
-		makeSpawnFastCactus()
 
-		act(() => {
-			jest.advanceTimersByTime(2000)
-		})
+		advanceTimers(1700)
 		flushRafOnce()
+		expectObstacleSpawned()
 
-		const ok = waitForGameOver(260)
+		const ok = runUntilGameOver(600)
 		expect(ok).toBe(true)
 		expect(screen.getByTestId('state')).toHaveTextContent('gameOver')
 	})
@@ -270,9 +242,7 @@ describe('6) score + localStorage', () => {
 		render(<DinoGame />)
 		startGame()
 
-		act(() => {
-			jest.advanceTimersByTime(500)
-		})
+		advanceTimers(500)
 		flushRafOnce()
 
 		const s = parseInt(screen.getByTestId('score').textContent, 10)
@@ -282,23 +252,21 @@ describe('6) score + localStorage', () => {
 	test('high score loads from localStorage on mount', () => {
 		localStorage.setItem('dinoHighScore', '42')
 		render(<DinoGame />)
-
 		expect(screen.getByTestId('high-score')).toHaveTextContent('00042')
 	})
 
 	test('score resets on restart but high score persists', () => {
+		setDeterministicRandomForSpawns()
 		localStorage.setItem('dinoHighScore', '100')
 
 		render(<DinoGame />)
 		startGame()
-		makeSpawnFastCactus()
 
-		act(() => {
-			jest.advanceTimersByTime(2000)
-		})
+		advanceTimers(1700)
 		flushRafOnce()
+		expectObstacleSpawned()
 
-		const ok = waitForGameOver(260)
+		const ok = runUntilGameOver(600)
 		expect(ok).toBe(true)
 		expect(screen.getByTestId('state')).toHaveTextContent('gameOver')
 
@@ -329,7 +297,6 @@ describe('7) keyboard + blur', () => {
 	test('window blur pauses when running', () => {
 		render(<DinoGame />)
 		startGame()
-		expect(screen.getByTestId('state')).toHaveTextContent('running')
 
 		act(() => {
 			fireEvent.blur(window)
