@@ -22,13 +22,11 @@ def transform_data(df: pd.DataFrame) -> pd.DataFrame:
     # Store directly in new column
     df['revenue'] = df['quantity'] * df['unit_price'] * discount_factor
     
-    # Note: we intentionally do NOT compute a combined store_category string.
-    # Aggregations group by store_id and category directly; computing a joined
-    # string is wasted work and increases memory.
+    # Store Category calculation removed (unused).
     
     # Date Extract
     # df['timestamp'] is datetime64
-    df['hour'] = df['timestamp'].dt.hour.astype('int32') # optimization
+    df['hour'] = df['timestamp'].dt.hour.astype('int32') 
     df['date'] = df['timestamp'].dt.date
     
     # High Value Flag

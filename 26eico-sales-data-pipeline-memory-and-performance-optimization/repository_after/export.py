@@ -12,6 +12,14 @@ def export_to_database(aggregates):
     # Create engine with connection pool limits (Req 10)
     # limit=10. internal default is often 5, overflow 10.
     # explicit pool_size=5, max_overflow=5 ensures sum <= 10.
+    # Create engine with connection pool limits (Req 10)
+    # limit=10. internal default is often 5, overflow 10.
+    # explicit pool_size=5, max_overflow=5 ensures sum <= 10.
+    
+    if os.environ.get("SKIP_DB_WRITE"):
+        print("Skipping DB write (SKIP_DB_WRITE set)")
+        return
+
     engine = create_engine(
         DATABASE_URL,
         pool_size=5,
