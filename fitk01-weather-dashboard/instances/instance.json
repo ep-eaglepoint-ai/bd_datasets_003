@@ -1,0 +1,11 @@
+{
+            "instance_id": "FITK01",
+            "problem_statement": "Build a full-stack weather dashboard application with a React frontend and Node.js/Express backend. The system must allow users to search for cities, view current weather and 5-day forecasts, toggle between Celsius and Fahrenheit display, and manage a list of favorite cities with localStorage persistence.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/fitk01-weather-dashboard",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        

@@ -1,0 +1,8 @@
+services:
+  app:
+    build: .
+    environment:
+      - USE_MOCK=true
+      - NODE_ENV=test
+    volumes:
+      - ./evaluation/reports:/app/evaluation/reports

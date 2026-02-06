@@ -1,0 +1,45 @@
+{
+  "name": "weather-dashboard",
+  "version": "1.0.0",
+  "description": "Weather Dashboard with Express backend and React frontend",
+  "main": "repository_after/backend/server.js",
+  "scripts": {
+    "start": "node repository_after/backend/server.js",
+    "start:frontend": "react-scripts start",
+    "build:frontend": "react-scripts build",
+    "test": "jest --verbose --forceExit",
+    "test:backend": "jest tests/backend.test.js --verbose --forceExit",
+    "test:frontend": "jest tests/frontend.test.js --verbose --forceExit"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "5.0.1"
+  },
+  "devDependencies": {
+    "@babel/preset-env": "^7.23.0",
+    "@babel/preset-react": "^7.23.0",
+    "@testing-library/jest-dom": "^5.17.0",
+    "@testing-library/react": "^14.0.0",
+    "@testing-library/user-event": "^14.5.1",
+    "babel-jest": "^29.7.0",
+    "identity-obj-proxy": "^3.0.0",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
+    "supertest": "^6.3.3"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}
