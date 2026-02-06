@@ -1,0 +1,26 @@
+services:
+    api:
+        build: .
+        container_name: moderation-api
+        ports:
+            - '8000:8000'
+        environment:
+            - PYTHONPATH=/app/repository_after
+        command:
+            ['uvicorn', 'app.main:app', '--host', '0.0.0.0', '--port', '8000']
+
+    tests:
+        build: .
+        container_name: moderation-tests
+        environment:
+            - PYTHONPATH=/app/repository_after
+        command: ['pytest', '-v']
+
+    evaluation:
+        build: .
+        container_name: moderation-evaluation
+        environment:
+            - PYTHONPATH=/app/repository_after
+        volumes:
+            - ./evaluation/reports:/app/evaluation/reports
+        command: ['python', 'evaluation/run_evaluation.py']
