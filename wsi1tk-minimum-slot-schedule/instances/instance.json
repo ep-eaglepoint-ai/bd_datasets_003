@@ -1,0 +1,11 @@
+{
+            "instance_id": "WSI1TK",
+            "problem_statement": "You are given a list of task IDs and a cooldown value n such that the same task must be separated by at least n slots. Your goal is to construct a schedule that minimizes the total number of slots, including idle slots if necessary. When multiple tasks can be scheduled without violating the cooldown, always choose the task with the smallest ID. Among all minimum-length schedules, return the one that is lexicographically smallest, treating idle as larger than any task.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/wsi1tk-minimum-slot-schedule",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        

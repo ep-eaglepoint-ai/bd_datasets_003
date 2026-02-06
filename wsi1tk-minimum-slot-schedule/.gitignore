@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+.env
+
+# Python cache in specific directories
+repository_after/__pycache__/
+repository_before/__pycache__/
+tests/__pycache__/
+evaluation/__pycache__/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+.hypothesis/
+
+# Evaluation reports
+evaluation/*.json
+evaluation_report.json
+comparison_report.json
+
+# Commands file
+commands.json
+
+# Test reports
+test_report.json
+*.xml
+*.html
+
+# Node
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
