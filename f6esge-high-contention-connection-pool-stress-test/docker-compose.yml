@@ -12,7 +12,7 @@ services:
   meta-test:
     image: f6esge-test-image
     working_dir: /app
-    command: python3 tests/meta_test.py
+    command: java tests/MetaTest.java
   evaluation:
     image: f6esge-test-image
     working_dir: /app
