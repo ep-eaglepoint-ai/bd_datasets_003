@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -70,7 +71,15 @@ public class EventStore {
             
             // Serialize and persist the event
             EventEntity entity = toEntity(eventWithVersion);
-            eventRepository.save(entity);
+            try {
+                eventRepository.save(entity);
+                eventRepository.flush(); // Force immediate execution to catch constraint violations
+            } catch (DataIntegrityViolationException e) {
+                // Database constraint violation means another transaction already saved this version
+                // Cannot query DB here - PostgreSQL has aborted the transaction
+                // The actual version must be > expectedVersion (concurrent write occurred)
+                throw new ConcurrencyException(aggregateId, expectedVersion, expectedVersion + 1, e);
+            }
             
             savedEvents.add(eventWithVersion);
             nextVersion++;
@@ -98,7 +107,15 @@ public class EventStore {
         }
         
         EventEntity entity = toEntity(event);
-        eventRepository.save(entity);
+        try {
+            eventRepository.save(entity);
+            eventRepository.flush(); // Force immediate execution to catch constraint violations
+        } catch (DataIntegrityViolationException e) {
+            // Database constraint violation means another transaction already created this aggregate
+            // Cannot query DB here - PostgreSQL has aborted the transaction
+            // The actual version must be at least 1 (initial event exists)
+            throw new ConcurrencyException(aggregateId, 0L, 1L, e);
+        }
         logger.info("Saved initial event {} for aggregate {}", event.getEventId(), aggregateId);
         return event;
     }

@@ -190,7 +190,7 @@ public class OrderProjection {
     
     /**
      * Rebuild the projection from scratch by replaying all events.
-     * Uses streaming/batch loading to keep memory bounded.
+     * Uses pagination to keep memory bounded - aggregate IDs are loaded in batches.
      * 
      * Note: This method is synchronous. If async/background rebuild is required,
      * the caller (e.g., OrderService) should invoke it asynchronously.
@@ -208,39 +208,48 @@ public class OrderProjection {
         long totalEvents = eventRepository.count();
         logger.info("Replaying {} events for projection rebuild", totalEvents);
         
-        // Load events per-aggregate to process all events for each aggregate together.
-        // This is more efficient and ensures correct ordering per aggregate.
-        // First, get all unique aggregate IDs
-        List<String> aggregateIds = eventRepository.findDistinctAggregateIds();
-        logger.info("Rebuilding projections for {} aggregates", aggregateIds.size());
+        // Load aggregate IDs in batches to avoid memory issues with large datasets
+        int aggregatePageSize = 1000; // Load 1000 aggregate IDs at a time
+        int aggregatePage = 0;
+        int totalProcessedAggregates = 0;
+        Page<String> aggregateIdsPage;
         
-        int processedAggregates = 0;
-        for (String aggregateId : aggregateIds) {
-            // Load all events for this aggregate in order
-            List<EventEntity> events = eventRepository.findByAggregateIdOrderByVersionAsc(aggregateId);
+        do {
+            // Load next batch of aggregate IDs
+            aggregateIdsPage = eventRepository.findDistinctAggregateIdsPaged(
+                PageRequest.of(aggregatePage, aggregatePageSize, Sort.by("aggregateId"))
+            );
             
-            // Process events for this aggregate
-            for (EventEntity entity : events) {
-                DomainEvent event = reconstructEvent(entity);
-                if (event != null) {
-                    handleDomainEventForRebuild(event);
+            logger.info("Processing aggregate ID batch {} ({} aggregates in this batch)", 
+                aggregatePage + 1, aggregateIdsPage.getNumberOfElements());
+            
+            // Process each aggregate in this batch
+            for (String aggregateId : aggregateIdsPage.getContent()) {
+                // Load all events for this aggregate in order
+                List<EventEntity> events = eventRepository.findByAggregateIdOrderByVersionAsc(aggregateId);
+                
+                // Process events for this aggregate
+                for (EventEntity entity : events) {
+                    DomainEvent event = reconstructEvent(entity);
+                    if (event != null) {
+                        handleDomainEventForRebuild(event);
+                    }
+                }
+                
+                totalProcessedAggregates++;
+                
+                // Periodically clear cache to prevent unbounded memory growth during large rebuilds
+                if (totalProcessedAggregates % 100 == 0) {
+                    clearOldCacheEntries();
+                    logger.debug("Processed {} aggregates, cleared old cache entries", totalProcessedAggregates);
                 }
             }
             
-            processedAggregates++;
+            aggregatePage++;
             
-            // Periodically clear cache to prevent unbounded memory growth during large rebuilds
-            if (processedAggregates % 100 == 0) {
-                clearOldCacheEntries();
-                logger.debug("Processed {} aggregates, cleared old cache entries", processedAggregates);
-            }
-            
-            if (processedAggregates % 10 == 0) {
-                logger.debug("Processed {} of {} aggregates", processedAggregates, aggregateIds.size());
-            }
-        }
+        } while (aggregateIdsPage.hasNext());
         
-        logger.info("Completed full projection rebuild");
+        logger.info("Completed full projection rebuild - processed {} aggregates", totalProcessedAggregates);
     }
     
     /**

@@ -18,6 +18,15 @@ public class ConcurrencyException extends RuntimeException {
         this.actualVersion = actualVersion;
     }
     
+    public ConcurrencyException(String aggregateId, Long expectedVersion, Long actualVersion, Throwable cause) {
+        super(String.format("Concurrent modification detected for aggregate %s. " +
+                "Expected version %d but found version %d",
+                aggregateId, expectedVersion, actualVersion), cause);
+        this.aggregateId = aggregateId;
+        this.expectedVersion = expectedVersion;
+        this.actualVersion = actualVersion;
+    }
+    
     public ConcurrencyException(String message) {
         super(message);
         this.aggregateId = null;

@@ -117,7 +117,17 @@
                 "shouldUseJava17Plus",
                 "eventSourcingFrameworkShouldBeImplementedFromScratch",
                 "shouldNotUseExternalEventSourcingAbstractions",
-                "shouldUseStandardSpringComponents"
+                "shouldUseStandardSpringComponents",
+                "shouldAllowOnlyOneConcurrentWriteToSucceed",
+                "shouldHandleHighContentionWithManyThreads",
+                "shouldMaintainVersionSequenceIntegrityUnderConcurrentWrites",
+                "shouldAllowConcurrentWritesToDifferentAggregates",
+                "shouldPreventLostUpdatesInRaceCondition",
+                "shouldRebuildProjectionFromTimestamp",
+                "shouldHandleEmptyEventSetWhenRebuildingFromTimestamp",
+                "shouldRebuildAllEventsWhenTimestampIsInPast",
+                "shouldDeleteAndRecreateProjectionsWhenRebuildingFromTimestamp",
+                "shouldUsePaginationWhenRebuildingFromTimestamp"
         ],
         "PASS_TO_PASS": []
         }

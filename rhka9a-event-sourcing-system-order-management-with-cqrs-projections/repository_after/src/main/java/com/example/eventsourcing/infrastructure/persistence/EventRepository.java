@@ -80,4 +80,11 @@ public interface EventRepository extends JpaRepository<EventEntity, String> {
      */
     @Query("SELECT DISTINCT e.aggregateId FROM EventEntity e ORDER BY e.aggregateId")
     List<String> findDistinctAggregateIds();
+    
+    /**
+     * Find distinct aggregate IDs with pagination to avoid loading all IDs into memory.
+     * Used for memory-bounded projection rebuilds.
+     */
+    @Query("SELECT DISTINCT e.aggregateId FROM EventEntity e ORDER BY e.aggregateId")
+    Page<String> findDistinctAggregateIdsPaged(Pageable pageable);
 }
