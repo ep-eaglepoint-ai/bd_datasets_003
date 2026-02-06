@@ -1,0 +1,11 @@
+{
+            "instance_id": "0TYCHG",
+            "problem_statement": "Design and implement a demo-grade Distributed Lock Manager that demonstrates safe and correct coordination of shared resources under concurrent access. The system must handle lock acquisition, renewal, expiration, and release across multiple simulated clients while remaining observable, testable, and resilient to failures. The goal is to showcase concurrency control, lease-based locking, and real-time visibility using a Vue 3 frontend and a FastAPI backend.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/0tychg-distributed-lock-manager-demo-with-vue-3-and-fastapi",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        

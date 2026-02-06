@@ -1,0 +1,65 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://user:password@db/lockmanager
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/demo/setup"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dlm-network
+
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: lockmanager
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d lockmanager"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dlm-network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: frontend
+    ports:
+      - "3000:3000"
+    networks:
+      - dlm-network
+
+  harness:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: harness
+    network_mode: "host"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/app
+    profiles:
+      - test
+    depends_on:
+      backend:
+        condition: service_healthy
+
+networks:
+  dlm-network:
+    driver: bridge
