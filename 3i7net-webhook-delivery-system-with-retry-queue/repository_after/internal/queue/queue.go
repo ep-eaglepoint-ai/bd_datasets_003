@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"webhook-delivery-system/internal/models"
@@ -40,6 +41,45 @@ func NewRedisQueue(redisURL string) (*RedisQueue, error) {
 
 func (q *RedisQueue) Close() error {
 	return q.client.Close()
+}
+
+// ValidatePersistence checks if Redis has persistence enabled and returns a warning if not
+func (q *RedisQueue) ValidatePersistence(ctx context.Context) error {
+	// Get Redis persistence config
+	info, err := q.client.Info(ctx, "persistence").Result()
+	if err != nil {
+		return fmt.Errorf("failed to check Redis persistence config: %w", err)
+	}
+
+	// Check for RDB or AOF persistence
+	hasRDB := strings.Contains(info, "rdb_bgsave_in_progress:") 
+	hasAOF := strings.Contains(info, "aof_enabled:1")
+	
+	// Also check Redis CONFIG for appendonly
+	appendonly, err := q.client.ConfigGet(ctx, "appendonly").Result()
+	if err == nil {
+		for i := 0; i < len(appendonly); i += 2 {
+			if appendonly[i] == "appendonly" && appendonly[i+1] == "yes" {
+				hasAOF = true
+			}
+		}
+	}
+
+	// Check save configuration
+	save, err := q.client.ConfigGet(ctx, "save").Result()
+	if err == nil {
+		for i := 0; i < len(save); i += 2 {
+			if save[i] == "save" && save[i+1] != "" {
+				hasRDB = true
+			}
+		}
+	}
+
+	if !hasRDB && !hasAOF {
+		return fmt.Errorf("WARNING: Redis persistence is not enabled. Pending deliveries may be lost on restart. Enable RDB or AOF persistence in Redis configuration")
+	}
+
+	return nil
 }
 
 func (q *RedisQueue) Enqueue(ctx context.Context, item models.QueueItem) error {

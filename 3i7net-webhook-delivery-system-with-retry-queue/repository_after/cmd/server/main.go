@@ -39,6 +39,11 @@ func main() {
 	}
 	defer redisQueue.Close()
 
+	// Validate Redis persistence configuration
+	if err := redisQueue.ValidatePersistence(context.Background()); err != nil {
+		log.Printf("WARNING: %v", err)
+	}
+
 	metricsCollector := metrics.New()
 	circuitBreaker := delivery.NewCircuitBreaker()
 	rateLimiter := delivery.NewRateLimiter(100, time.Minute)

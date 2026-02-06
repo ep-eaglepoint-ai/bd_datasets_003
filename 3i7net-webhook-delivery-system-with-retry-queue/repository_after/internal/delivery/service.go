@@ -98,6 +98,10 @@ func (s *Service) CreateEventAndEnqueue(ctx context.Context, event *models.Event
 
 func (s *Service) StartWorker(ctx context.Context, workerID int) {
 	log.Printf("Worker %d started", workerID)
+	
+	// Use a semaphore to limit concurrent deliveries per worker (non-blocking)
+	const maxConcurrent = 10
+	sem := make(chan struct{}, maxConcurrent)
 
 	for {
 		select {
@@ -117,7 +121,19 @@ func (s *Service) StartWorker(ctx context.Context, workerID int) {
 				continue
 			}
 
-			s.processDelivery(ctx, item)
+			// Non-blocking: process delivery in a goroutine
+			select {
+			case sem <- struct{}{}:
+				go func(item *models.QueueItem) {
+					defer func() { <-sem }()
+					s.processDelivery(ctx, item)
+				}(item)
+			default:
+				// Semaphore full, reschedule for later processing
+				if err := s.queue.Reschedule(ctx, *item, 100*time.Millisecond); err != nil {
+					log.Printf("Worker %d: failed to reschedule item: %v", workerID, err)
+				}
+			}
 		}
 	}
 }
@@ -140,12 +156,21 @@ func (s *Service) processDelivery(ctx context.Context, item *models.QueueItem) {
 		return
 	}
 
-	if s.circuitBreaker.IsOpen(webhook.ID) {
+	// Use AllowRequest for circuit breaker check with probe/test request support
+	allowed, isProbe := s.circuitBreaker.AllowRequest(webhook.ID)
+	if !allowed {
 		delay := s.circuitBreaker.GetResetDelay(webhook.ID)
+		if delay == 0 {
+			delay = 100 * time.Millisecond // Small delay if another probe is in flight
+		}
 		if err := s.queue.Reschedule(ctx, *item, delay); err != nil {
 			log.Printf("Failed to reschedule delivery %s: %v", item.DeliveryID, err)
 		}
 		return
+	}
+
+	if isProbe {
+		log.Printf("Delivery %s is a probe/test request after circuit breaker pause", item.DeliveryID)
 	}
 
 	if !s.rateLimiter.Allow(webhook.ID) {
@@ -341,6 +366,11 @@ func (s *Service) ReplayDelivery(ctx context.Context, deliveryID string) (*model
 		return nil, fmt.Errorf("failed to get delivery: %w", err)
 	}
 
+	// Only allow replaying failed or dead deliveries
+	if delivery.Status != models.DeliveryStatusFailed && delivery.Status != models.DeliveryStatusDead {
+		return nil, fmt.Errorf("can only replay failed or dead-lettered deliveries, current status: %s", delivery.Status)
+	}
+
 	newDelivery := &models.Delivery{
 		ID:            uuid.New().String(),
 		EventID:       event.ID,
@@ -363,8 +393,6 @@ func (s *Service) ReplayDelivery(ctx context.Context, deliveryID string) (*model
 	if err := s.queue.Enqueue(ctx, queueItem); err != nil {
 		return nil, fmt.Errorf("failed to enqueue delivery: %w", err)
 	}
-
-	_ = delivery
 
 	return newDelivery, nil
 }

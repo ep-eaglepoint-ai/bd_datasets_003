@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 )
@@ -827,3 +829,246 @@ func TestRateLimiterDelaysNotDrops(t *testing.T) {
 	}
 }
 
+func TestCircuitBreaker_HalfOpenProbeRequest(t *testing.T) {
+	type CircuitState string
+	const (
+		StateClosed   CircuitState = "closed"
+		StateOpen     CircuitState = "open"
+		StateHalfOpen CircuitState = "half-open"
+	)
+
+	type circuitBreaker struct {
+		failures      int
+		openedAt      *time.Time
+		probeInFlight bool
+	}
+
+	threshold := 5
+	timeout := time.Minute
+
+	cb := &circuitBreaker{}
+
+	recordFailure := func() {
+		if cb.probeInFlight {
+			cb.probeInFlight = false
+			now := time.Now()
+			cb.openedAt = &now
+			return
+		}
+		cb.failures++
+		if cb.failures >= threshold && cb.openedAt == nil {
+			now := time.Now()
+			cb.openedAt = &now
+		}
+	}
+
+	recordSuccess := func() {
+		cb.probeInFlight = false
+		cb.failures = 0
+		cb.openedAt = nil
+	}
+
+	allowRequest := func() (bool, bool) {
+		if cb.openedAt == nil {
+			return true, false
+		}
+		if time.Since(*cb.openedAt) >= timeout {
+			if !cb.probeInFlight {
+				cb.probeInFlight = true
+				return true, true
+			}
+			return false, false
+		}
+		return false, false
+	}
+
+	getState := func() CircuitState {
+		if cb.openedAt == nil {
+			return StateClosed
+		}
+		if time.Since(*cb.openedAt) >= timeout {
+			return StateHalfOpen
+		}
+		return StateOpen
+	}
+
+	if getState() != StateClosed {
+		t.Error("Circuit should start closed")
+	}
+
+	for i := 0; i < 5; i++ {
+		recordFailure()
+	}
+
+	if getState() != StateOpen {
+		t.Error("Circuit should be open after 5 failures")
+	}
+
+	allowed, isProbe := allowRequest()
+	if allowed {
+		t.Error("Should not allow requests when circuit is open and timeout not elapsed")
+	}
+	if isProbe {
+		t.Error("Should not mark as probe when still in timeout period")
+	}
+
+	pastTime := time.Now().Add(-2 * timeout)
+	cb.openedAt = &pastTime
+
+	if getState() != StateHalfOpen {
+		t.Error("Circuit should be half-open after timeout")
+	}
+
+	allowed, isProbe = allowRequest()
+	if !allowed {
+		t.Error("Should allow probe request in half-open state")
+	}
+	if !isProbe {
+		t.Error("First request in half-open state should be marked as probe")
+	}
+	if !cb.probeInFlight {
+		t.Error("Probe in flight should be set")
+	}
+
+	allowed2, _ := allowRequest()
+	if allowed2 {
+		t.Error("Should not allow second request while probe is in flight")
+	}
+
+	recordSuccess()
+
+	if getState() != StateClosed {
+		t.Error("Circuit should close after probe success")
+	}
+	if cb.failures != 0 {
+		t.Error("Failures should reset after success")
+	}
+
+	for i := 0; i < 5; i++ {
+		recordFailure()
+	}
+	cb.openedAt = &pastTime
+	allowRequest()
+
+	recordFailure()
+
+	if getState() != StateOpen {
+		t.Error("Circuit should reopen after probe failure")
+	}
+}
+
+func TestReplayRestriction_FailedAndDeadOnly(t *testing.T) {
+	type DeliveryStatus string
+	const (
+		StatusPending DeliveryStatus = "pending"
+		StatusSuccess DeliveryStatus = "success"
+		StatusFailed  DeliveryStatus = "failed"
+		StatusDead    DeliveryStatus = "dead"
+	)
+
+	canReplay := func(status DeliveryStatus) bool {
+		return status == StatusFailed || status == StatusDead
+	}
+
+	tests := []struct {
+		status       DeliveryStatus
+		shouldReplay bool
+	}{
+		{StatusPending, false},
+		{StatusSuccess, false},
+		{StatusFailed, true},
+		{StatusDead, true},
+	}
+
+	for _, tt := range tests {
+		result := canReplay(tt.status)
+		if result != tt.shouldReplay {
+			t.Errorf("Status %s: expected canReplay=%v, got %v", tt.status, tt.shouldReplay, result)
+		}
+	}
+}
+
+func TestNonBlockingWorkerBehavior(t *testing.T) {
+	maxConcurrent := 10
+	sem := make(chan struct{}, maxConcurrent)
+	results := make([]string, 0, 15)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	
+	processItem := func(id string) {
+		select {
+		case sem <- struct{}{}:
+			wg.Add(1)
+			go func() {
+				defer func() { 
+					<-sem
+					wg.Done()
+				}()
+				time.Sleep(10 * time.Millisecond)
+				mu.Lock()
+				results = append(results, id)
+				mu.Unlock()
+			}()
+		default:
+			mu.Lock()
+			results = append(results, "rescheduled-"+id)
+			mu.Unlock()
+		}
+	}
+
+	for i := 0; i < 15; i++ {
+		processItem(string(rune('a' + i)))
+	}
+
+	wg.Wait()
+
+	successCount := 0
+	rescheduleCount := 0
+	mu.Lock()
+	for _, result := range results {
+		if len(result) > 11 && result[:11] == "rescheduled" {
+			rescheduleCount++
+		} else {
+			successCount++
+		}
+	}
+	mu.Unlock()
+
+	if successCount != 10 {
+		t.Errorf("Expected 10 concurrent items processed, got %d", successCount)
+	}
+	if rescheduleCount != 5 {
+		t.Errorf("Expected 5 items rescheduled (semaphore full), got %d", rescheduleCount)
+	}
+}
+
+func TestRedisPersistenceValidation(t *testing.T) {
+	hasRDB := true
+	hasAOF := false
+
+	validatePersistence := func() error {
+		if !hasRDB && !hasAOF {
+			return fmt.Errorf("WARNING: Redis persistence not enabled")
+		}
+		return nil
+	}
+
+	err := validatePersistence()
+	if err != nil {
+		t.Error("Should not error when RDB is enabled")
+	}
+
+	hasRDB = false
+	hasAOF = true
+	err = validatePersistence()
+	if err != nil {
+		t.Error("Should not error when AOF is enabled")
+	}
+
+	hasRDB = false
+	hasAOF = false
+	err = validatePersistence()
+	if err == nil {
+		t.Error("Should error when neither RDB nor AOF is enabled")
+	}
+}

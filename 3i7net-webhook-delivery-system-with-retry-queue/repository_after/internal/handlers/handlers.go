@@ -384,6 +384,12 @@ func (h *Handler) ReplayDelivery(w http.ResponseWriter, r *http.Request) {
 	
 	newDelivery, err := h.deliveryService.ReplayDelivery(r.Context(), id)
 	if err != nil {
+		// Check if it's a status restriction error
+		errStr := err.Error()
+		if len(errStr) > 20 && errStr[:20] == "can only replay fail" {
+			writeError(w, http.StatusBadRequest, "invalid_status", err.Error())
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "replay_error", "Failed to replay delivery")
 		return
 	}
