@@ -1,5 +1,3 @@
-const path = require('path');
-
 module.exports = {
   testEnvironment: 'jsdom',
 
@@ -11,10 +9,7 @@ module.exports = {
     enableGlobally: true,
   },
   
-  testMatch: [
-    '<rootDir>/tests/**/*.test.js',
-    '<rootDir>/tests/**/*.spec.js'
-  ],
+  testMatch: ['<rootDir>/**/*.test.js', '<rootDir>/**/*.spec.js'],
   
   testPathIgnorePatterns: ['/node_modules/'],
   

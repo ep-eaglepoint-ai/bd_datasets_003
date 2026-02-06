@@ -40,7 +40,7 @@ function runTests(repoPath) {
         : ['run', script];
 
     const testProcess = spawn(npmCmd, args, {
-      cwd: ROOT,
+      cwd: testFolder,
       env: {
         ...process.env,
         CI: 'true'

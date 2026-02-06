@@ -6,4 +6,4 @@ services:
       - REPO_PATH=repository_after
     volumes:
       - .:/app
-      - /app/node_modules
+      - /app/tests/node_modules
