@@ -18,11 +18,15 @@ depends_on = None
 
 def upgrade() -> None:
     # Create users table
+    # NOTE: Both created_at and updated_at are included to match ORM model.
+    # The updated_at column uses server-side defaults and triggers for auto-update
+    # on PostgreSQL. SQLAlchemy's `onupdate` is application-side only.
     op.create_table('users',
     sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('email', sa.String(), nullable=False),
-    sa.Column('password_hash', sa.String(), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('email', sa.String(255), nullable=False),
+    sa.Column('password_hash', sa.String(255), nullable=False),
+    sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.text('NOW()')),
+    sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.text('NOW()')),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('email')
     )
@@ -30,14 +34,17 @@ def upgrade() -> None:
     op.create_index(op.f('ix_users_id'), 'users', ['id'], unique=False)
 
     # Create time_entries table
+    # NOTE: Both created_at and updated_at are included to match ORM model.
+    # The notes column uses Text type to match the ORM model.
     op.create_table('time_entries',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('user_id', sa.Integer(), nullable=False),
     sa.Column('start_at', sa.DateTime(), nullable=False),
     sa.Column('end_at', sa.DateTime(), nullable=True),
-    sa.Column('notes', sa.String(), nullable=True),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
-    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
+    sa.Column('notes', sa.Text(), nullable=True),
+    sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.text('NOW()')),
+    sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.text('NOW()')),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_time_entries_id'), 'time_entries', ['id'], unique=False)

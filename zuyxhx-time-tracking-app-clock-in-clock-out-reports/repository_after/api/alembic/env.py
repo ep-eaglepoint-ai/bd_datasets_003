@@ -10,7 +10,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'repository_after'))
 
-from api.config import settings
+from api.config import get_settings
 from api.database import Base
 from api.models.user import User
 from api.models.time_entry import TimeEntry
@@ -23,6 +23,12 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 def get_url():
+    # First check if URL was provided via Alembic config (e.g., for testing)
+    url = config.get_main_option("sqlalchemy.url")
+    if url:
+        return url
+    # Fall back to settings
+    settings = get_settings()
     return settings.DATABASE_URL
 
 def run_migrations_offline() -> None:
