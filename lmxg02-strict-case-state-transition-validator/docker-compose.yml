@@ -1,0 +1,16 @@
+services:
+  test-after:
+    build: .
+    working_dir: /app
+    command: npm test
+    volumes:
+      - .:/app
+      - /app/node_modules
+
+  evaluation:
+    build: .
+    working_dir: /app
+    command: npm run evaluate
+    volumes:
+      - .:/app
+      - /app/node_modules
