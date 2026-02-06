@@ -1,0 +1,12 @@
+{
+            "instance_id": "ANM7TE",
+            "problem_statement": "Need to implement a Python utility that simulates an offline data processing workflow for structured records. The utility will be used as a standalone module to transform in-memory data into a deterministic, human-readable summary suitable for reporting and validation. The system must operate without external input or dependencies and must produce output that can be compared exactly against expected results in automated test suites.
+The goal of this task is to design and implement the required functionality from scratch, with an emphasis on correctness, clarity, and explicit behavior. The resulting implementation should demonstrate disciplined data modeling, predictable execution flow, and clear separation of responsibilities, making it suitable for reuse, testing, and future extension.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/anm7te-python-data-processing",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
