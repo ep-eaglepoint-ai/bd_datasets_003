@@ -1,11 +1,15 @@
-# 0TYCHG - Distributed Lock Manager Demo with Vue 3 and FastAPI
+# Distributed Lock Manager Demo
 
-    ## Before Test Docker Command
-    <docker before command here>
 
-    ## After Test Docker Command
-    <docker after command here>
+### 1. Run Tests
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+
+```bash
+docker compose run --rm harness pytest tests/test_core.py
+```
+
+### 2. Run Evaluation
+
+```bash
+docker compose run --rm harness python evaluation/evaluation.py
+```
