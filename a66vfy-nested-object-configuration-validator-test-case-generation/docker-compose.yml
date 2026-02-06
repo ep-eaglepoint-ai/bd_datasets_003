@@ -1,9 +1,21 @@
-
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
-  app:
+services:
+  test:
     build: .
-    command: pytest -q tests
+    command: ["npx", "jest", "--config", "jest.config.ts", "--verbose"]
     volumes:
       - .:/app
+      - /app/node_modules
+
+  meta-test:
+    build: .
+    command: ["npx", "jest", "--config", "jest.meta.config.ts", "--verbose"]
+    volumes:
+      - .:/app
+      - /app/node_modules
+
+  evaluation:
+    build: .
+    command: ["bash", "evaluation/evaluate.sh"]
+    volumes:
+      - .:/app
+      - /app/node_modules
