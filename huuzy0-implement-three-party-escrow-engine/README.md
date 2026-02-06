@@ -6,5 +6,7 @@ docker compose run --rm test
 ## Test and report command: 
 docker compose run --rm test-report
 
-This command also writes a JUnit XML report to `evaluation/report.xml`.
+This command also writes:
+- `evaluation/report.xml` (JUnit XML)
+- `evaluation/report.json` (JSON metadata used by evaluators)
     
