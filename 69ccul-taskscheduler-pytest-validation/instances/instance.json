@@ -1,0 +1,11 @@
+{
+            "instance_id": "69CCUL",
+            "problem_statement": "We evaluated multiple pytest-based test suites intended to validate a concurrent TaskScheduler with dependency constraints. While the suites correctly validate basic dependency ordering, deadlock prevention, and concurrent submission, they fail to fully enforce several critical correctness guarantees required under real-world conditions. In particular, sustained high-load behavior, strict stop() flush semantics, and reliable race-condition exposure are not conclusively validated. These gaps allow incorrect scheduler implementations to pass despite violating core lifecycle and concurrency guarantees. A revised test specification is required to ensure failures are detected deterministically and under realistic stress conditions.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/69ccul-taskscheduler-pytest-validation",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
