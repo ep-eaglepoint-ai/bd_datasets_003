@@ -1,11 +1,8 @@
 # HUUZY0 - Implement-Three-Party-Escrow-Engine
 
-    ## Before Test Docker Command
-    <docker before command here>
+## After test command: 
+docker compose run --rm test
 
-    ## After Test Docker Command
-    <docker after command here>
-
-    ## Evaluation Docker Command
-    <evaluation command here>
+## Test and report command: 
+docker compose run --rm test-report
     
