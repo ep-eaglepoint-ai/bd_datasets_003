@@ -1,0 +1,12 @@
+{
+            "instance_id": "KGPBYF",
+            "problem_statement": "  "problem_statement": "The objective is to optimize a Node.js data access layer to mitigate 'Cache Stampede' effects. When high-traffic keys expire in the cache, the system currently allows every concurrent request to pass through to the database, resulting in redundant IO and CPU spikes. You must implement a request-collapsing mechanism that identifies identical in-flight queries and merges them into a single execution, ensuring that all participating callers receive the same result or error without triggering multiple database calls.",
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/kgpbyf-database-request-collapser-middleware",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
