@@ -1,0 +1,11 @@
+{
+            "instance_id": "WCFGT8",
+            "problem_statement": "A cybersecurity firm's real-time network telemetry pipeline ingests encrypted binary events over TCP. The current Go implementation has memory leaks and data loss during peak traffic due to faulty buffer management and unrecycled object pools. A redesign is required to guarantee zero memory growth after warm-up, implement a true 90% capacity circuit breaker with backpressure, and provide atomic aggregation for configurable time windows. The system must sustain 100,000 events/second with sub-millisecond P99 latency.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/wcfgt8-zero-allocation-concurrent-telemetry-aggregator",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
