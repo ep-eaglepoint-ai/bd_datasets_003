@@ -1,98 +1,103 @@
 from .cube_state import CubeState
 
-# Corners: 0:UFR, 1:URB, 2:UBL, 3:ULF, 4:DRF, 5:DFL, 6:DLB, 7:DBR
-# Edges: 0:UR, 1:UF, 2:UL, 3:UB, 4:DR, 5:DF, 6:DL, 7:DB, 8:FR, 9:FL, 10:BR, 11:BL
-
-# Base 90-degree moves
-_BASE_MOVE_DATA = {
+# Pre-calculated move tables for piece permutations and orientations.
+MOVE_DATA = {
     'U': {
-        'cp_p': [3, 0, 1, 2, 4, 5, 6, 7],
+        'cp_p': [1, 2, 3, 0, 4, 5, 6, 7],
         'co_i': [0, 0, 0, 0, 0, 0, 0, 0],
-        'ep_p': [3, 0, 1, 2, 4, 5, 6, 7, 8, 9, 10, 11],
+        'ep_p': [1, 2, 3, 0, 4, 5, 6, 7, 8, 9, 10, 11],
         'eo_i': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     },
     'D': {
-        'cp_p': [0, 1, 2, 3, 5, 6, 7, 4],
+        'cp_p': [0, 1, 2, 3, 7, 4, 5, 6],
         'co_i': [0, 0, 0, 0, 0, 0, 0, 0],
-        'ep_p': [0, 1, 2, 3, 5, 6, 7, 4, 8, 9, 10, 11],
+        'ep_p': [0, 1, 2, 3, 7, 4, 5, 6, 8, 9, 10, 11],
         'eo_i': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     },
     'L': {
-        'cp_p': [0, 1, 6, 2, 4, 3, 5, 7],
+        'cp_p': [0, 1, 3, 5, 4, 6, 2, 7],
         'co_i': [0, 0, 1, 2, 0, 1, 2, 0],
-        'ep_p': [0, 1, 11, 3, 4, 5, 9, 7, 8, 2, 10, 6],
+        'ep_p': [0, 1, 9, 3, 4, 5, 11, 7, 8, 6, 10, 2],
         'eo_i': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     },
     'R': {
-        'cp_p': [4, 0, 2, 3, 7, 5, 6, 1],
+        'cp_p': [1, 7, 2, 3, 0, 5, 6, 4],
         'co_i': [2, 1, 0, 0, 1, 0, 0, 2],
-        'ep_p': [8, 1, 2, 3, 10, 5, 6, 7, 4, 9, 0, 11],
+        'ep_p': [10, 1, 2, 3, 8, 5, 6, 7, 0, 9, 4, 11],
         'eo_i': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     },
     'F': {
-        'cp_p': [3, 1, 2, 5, 0, 4, 6, 7],
+        'cp_p': [4, 1, 2, 0, 5, 3, 6, 7],
         'co_i': [1, 0, 0, 2, 2, 1, 0, 0],
-        'ep_p': [0, 9, 2, 3, 4, 8, 6, 7, 1, 5, 10, 11],
+        'ep_p': [0, 8, 2, 3, 4, 9, 6, 7, 5, 1, 10, 11],
         'eo_i': [0, 1, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0]
     },
     'B': {
-        'cp_p': [0, 7, 1, 3, 4, 5, 2, 6],
+        'cp_p': [0, 2, 6, 3, 4, 5, 7, 1],
         'co_i': [0, 1, 2, 0, 0, 0, 1, 2],
-        'ep_p': [0, 1, 2, 10, 4, 5, 6, 11, 8, 9, 7, 3],
+        'ep_p': [0, 1, 2, 11, 4, 5, 6, 10, 8, 9, 3, 7],
         'eo_i': [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1]
     }
 }
 
-# Pre-calculate all 18 moves
-MOVE_DATA = {}
-for face, data in _BASE_MOVE_DATA.items():
-    cp, co = data['cp_p'], data['co_i']
-    ep, eo = data['ep_p'], data['eo_i']
-    
-    # CW 90
-    MOVE_DATA[face] = data
-    
-    # 180
-    MOVE_DATA[face + '2'] = {
-        'cp_p': [cp[cp[i]] for i in range(8)],
-        'co_i': [(co[cp[i]] + co[i]) % 3 for i in range(8)],
-        'ep_p': [ep[ep[i]] for i in range(12)],
-        'eo_i': [(eo[ep[i]] + eo[i]) % 2 for i in range(12)]
+# Derived moves (', 2)
+for face in 'UDFLRB':
+    m1 = MOVE_DATA[face]
+    # Double move (2)
+    m2 = {
+        'cp_p': [m1['cp_p'][m1['cp_p'][i]] for i in range(8)],
+        'co_i': [(m1['co_i'][i] + m1['co_i'][m1['cp_p'][i]]) % 3 for i in range(8)],
+        'ep_p': [m1['ep_p'][m1['ep_p'][i]] for i in range(12)],
+        'eo_i': [(m1['eo_i'][i] + m1['eo_i'][m1['ep_p'][i]]) % 2 for i in range(12)]
     }
-    
-    # CCW 90
-    cp2, co2 = MOVE_DATA[face + '2']['cp_p'], MOVE_DATA[face + '2']['co_i']
-    ep2, eo2 = MOVE_DATA[face + '2']['ep_p'], MOVE_DATA[face + '2']['eo_i']
-    MOVE_DATA[face + "'"] = {
-        'cp_p': [cp[cp2[i]] for i in range(8)],
-        'co_i': [(co[cp2[i]] + co2[i]) % 3 for i in range(8)],
-        'ep_p': [ep[ep2[i]] for i in range(12)],
-        'eo_i': [(eo[ep2[i]] + eo2[i]) % 2 for i in range(12)]
+    MOVE_DATA[face + '2'] = m2
+    # Inverse move (') = 3x CW
+    m3 = {
+        'cp_p': [m2['cp_p'][m1['cp_p'][i]] for i in range(8)],
+        'co_i': [(m2['co_i'][i] + m1['co_i'][m2['cp_p'][i]]) % 3 for i in range(8)],
+        'ep_p': [m2['ep_p'][m1['ep_p'][i]] for i in range(12)],
+        'eo_i': [(m2['eo_i'][i] + m1['eo_i'][m2['ep_p'][i]]) % 2 for i in range(12)]
     }
+    MOVE_DATA[face + "'"] = m3
 
-def apply_move(state, move_name):
+# Inverse mapping for undoing moves
+INVERSE_MOVES = {}
+for face in 'UDFLRB':
+    INVERSE_MOVES[face] = face + "'"
+    INVERSE_MOVES[face + "'"] = face
+    INVERSE_MOVES[face + '2'] = face + '2'
+
+# Static buffers for interim piece states to ensure ZERO allocations in apply_move
+_BUFC_P = [0] * 8
+_BUFC_O = [0] * 8
+_BUFE_P = [0] * 12
+_BUFE_O = [0] * 12
+
+def apply_move(state, move):
     """
-    Applies move in-place with minimal operations.
+    Applies a Rubik's Cube move to the CubeState in-place with ZERO allocations.
     """
-    m = MOVE_DATA.get(move_name)
-    if not m:
-        raise ValueError(f"Invalid move: {move_name}")
-    
-    cp_p, co_i = m['cp_p'], m['co_i']
-    ep_p, eo_i = m['ep_p'], m['eo_i']
+    m = MOVE_DATA[move]
+    p_cp, i_co = m['cp_p'], m['co_i']
+    p_ep, i_eo = m['ep_p'], m['eo_i']
     
     cp, co = state.cp, state.co
     ep, eo = state.ep, state.eo
 
-    # Update corners
-    # (Using local variables to avoid repeated attribute access)
-    n_cp = [cp[cp_p[i]] for i in range(8)]
-    n_co = [(co[cp_p[i]] + co_i[i]) % 3 for i in range(8)]
-    state.cp = n_cp
-    state.co = n_co
+    # Update corners in-place using buffers
+    for i in range(8):
+        _BUFC_P[i] = cp[p_cp[i]]
+        _BUFC_O[i] = (co[p_cp[i]] + i_co[i]) % 3
+    for i in range(8):
+        cp[i], co[i] = _BUFC_P[i], _BUFC_O[i]
 
-    # Update edges
-    n_ep = [ep[ep_p[i]] for i in range(12)]
-    n_eo = [(eo[ep_p[i]] + eo_i[i]) % 2 for i in range(12)]
-    state.ep = n_ep
-    state.eo = n_eo
+    # Update edges in-place using buffers
+    for i in range(12):
+        _BUFE_P[i] = ep[p_ep[i]]
+        _BUFE_O[i] = (eo[p_ep[i]] + i_eo[i]) % 2
+    for i in range(12):
+        ep[i], eo[i] = _BUFE_P[i], _BUFE_O[i]
+
+def undo_move(state, move):
+    """Undoes a move by applying its inverse in-place with ZERO allocations."""
+    apply_move(state, INVERSE_MOVES[move])

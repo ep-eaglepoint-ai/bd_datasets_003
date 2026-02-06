@@ -1,172 +1,68 @@
+import pathlib
 from .moves import MOVE_DATA
-import math
-
-# Updated PDBs:
-# 1. Corner Orientation (2187)
-# 2. Edge Orientation (2048)
-# 3. Corner Permutation (40320)
-# 4. UD-slice Edges (FR, FL, BR, BL) Position & Permutation (11880)
-# 5. Top Edges (UR, UF, UL, UB) Position & Permutation (11880)
-
-def get_co_index(co):
-    idx = 0
-    for i in range(7):
-        idx = idx * 3 + co[i]
-    return idx
-
-def get_eo_index(eo):
-    idx = 0
-    for i in range(11):
-        idx = idx * 2 + eo[i]
-    return idx
-
-FACT = [1, 1, 2, 6, 24, 120, 720, 5040, 40320]
-def get_cp_index(cp):
-    idx = 0
-    for i in range(7):
-        less = 0
-        v = cp[i]
-        for j in range(i+1, 8):
-            if v > cp[j]: less += 1
-        idx += less * FACT[7-i]
-    return idx
-
-def get_edge_subset_index(ep, subset):
-    # k-permutation of n: P(12, k)
-    # subset is the set of edge pieces we track (e.g., [8,9,10,11])
-    # We find where these pieces are and in what order.
-    # This is slightly more complex.
-    # Actually, simpler: track where each piece is.
-    # piece 8 is at pos p0, piece 9 at p1, etc.
-    res = 0
-    # Positions of subset pieces
-    pos = [0] * len(subset)
-    for p_idx, piece in enumerate(subset):
-        for i in range(12):
-            if ep[i] == piece:
-                pos[p_idx] = i
-                break
-    
-    # Lehmer code style for positions
-    # (Simplified: just treat as 12*11*10*9)
-    # Wait, the number of states is 12*11*10*9 = 11880.
-    # We can use a simpler index.
-    used_mask = 0
-    idx = 0
-    for i in range(len(subset)):
-        p = pos[i]
-        # count how many positions < p are NOT used
-        actual_p = p
-        temp_mask = used_mask
-        for _ in range(p):
-            if temp_mask & 1:
-                actual_p -= 1
-            temp_mask >>= 1
-        
-        # multiplier is P(12-1-i, len(subset)-1-i)
-        mult = 1
-        for k in range(len(subset)-1-i):
-            mult *= (12 - 1 - i - k)
-        
-        idx += actual_p * mult
-        used_mask |= (1 << p)
-    return idx
+from .indices import get_cp_index, get_subset_rank
+from . import tables
 
 class Heuristic:
     def __init__(self):
-        # We'll use 5 tables: CO, EO, CP, UD-slice, and Top-edges
-        self.co_table = self._gen_co_table()
-        self.eo_table = self._gen_eo_table()
-        self.cp_table = self._gen_cp_table()
-        self.ud_table = self._gen_edge_table([8, 9, 10, 11])
-        self.top_table = self._gen_edge_table([0, 1, 2, 3])
+        # We'll use 5 tables: CO, EO, CP, and two 6-edge subsets
+        self.data_dir = pathlib.Path(__file__).parent / "data"
+        
+        self.co_table = self._load_or_gen("co.bin", tables.gen_co_table)
+        self.eo_table = self._load_or_gen("eo.bin", tables.gen_eo_table)
+        self.cp_table = self._load_or_gen("cp.bin", tables.gen_cp_table)
+        
+        # Two 6-edge subsets track all 12 edges
+        self.e05_table = self._load_or_gen("edges_05.bin", lambda: tables.gen_edge_table([0,1,2,3,4,5]))
+        self.e611_table = self._load_or_gen("edges_611.bin", lambda: tables.gen_edge_table([6,7,8,9,10,11]))
+        
 
-    def _gen_co_table(self):
-        table = bytearray([255]) * 2187
-        start = (0,)*8
-        table[get_co_index(start)] = 0
-        queue = [start]
-        d = 0
-        while queue:
-            next_q = []
-            for s in queue:
-                # Iterate over ALL 18 moves (FTM)
-                for move_name, m in MOVE_DATA.items():
-                    p, inc = m['cp_p'], m['co_i']
-                    ns = tuple((s[p[i]] + inc[i]) % 3 for i in range(8))
-                    idx = get_co_index(ns)
-                    if table[idx] == 255:
-                        table[idx] = d + 1
-                        next_q.append(ns)
-            queue = next_q
-            d += 1
-        return table
+    def _load_or_gen(self, filename, gen_func):
+        path = self.data_dir / filename
+        if path.exists():
+            print(f"Loading PDB {filename} from disk...")
+            with open(path, "rb") as f:
+                return bytearray(f.read())
+        else:
+            print(f"PDB {filename} NOT found, generating (this may take several minutes)...")
+            table = gen_func()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with open(path, "wb") as f:
+                f.write(table)
+            return table
 
-    def _gen_eo_table(self):
-        table = bytearray([255]) * 2048
-        start = (0,)*12
-        table[get_eo_index(start)] = 0
-        queue = [start]
-        d = 0
-        while queue:
-            next_q = []
-            for s in queue:
-                for move_name, m in MOVE_DATA.items():
-                    p, inc = m['ep_p'], m['eo_i']
-                    ns = tuple((s[p[i]] + inc[i]) % 2 for i in range(12))
-                    idx = get_eo_index(ns)
-                    if table[idx] == 255:
-                        table[idx] = d + 1
-                        next_q.append(ns)
-            queue = next_q
-            d += 1
-        return table
-
-    def _gen_cp_table(self):
-        table = bytearray([255]) * 40320
-        start = tuple(range(8))
-        table[get_cp_index(start)] = 0
-        queue = [start]
-        d = 0
-        while queue:
-            next_q = []
-            for s in queue:
-                for move_name, m in MOVE_DATA.items():
-                    p = m['cp_p']
-                    ns = tuple(s[p[i]] for i in range(8))
-                    idx = get_cp_index(ns)
-                    if table[idx] == 255:
-                        table[idx] = d + 1
-                        next_q.append(ns)
-            queue = next_q
-            d += 1
-        return table
-
-    def _gen_edge_table(self, subset):
-        table = bytearray([255]) * 11880
-        start = tuple(range(12))
-        table[get_edge_subset_index(start, subset)] = 0
-        queue = [start]
-        d = 0
-        while queue:
-            next_q = []
-            for s in queue:
-                for move_name, m in MOVE_DATA.items():
-                    p = m['ep_p']
-                    ns = tuple(s[p[i]] for i in range(12))
-                    idx = get_edge_subset_index(ns, subset)
-                    if table[idx] == 255:
-                        table[idx] = d + 1
-                        next_q.append(ns)
-            queue = next_q
-            d += 1
-        return table
-
-    def get_h(self, state) -> int:
-        return max(
-            self.co_table[get_co_index(state.co)],
-            self.eo_table[get_eo_index(state.eo)],
-            self.cp_table[get_cp_index(state.cp)],
-            self.ud_table[get_edge_subset_index(state.ep, [8, 9, 10, 11])],
-            self.top_table[get_edge_subset_index(state.ep, [0, 1, 2, 3])]
-        )
+    def get_h(self, state, p) -> int:
+        co = state.co
+        eo = state.eo
+        cp = state.cp
+        ep = state.ep
+        
+        # Inlined index calcs
+        idx_co = 0
+        for i in range(7): idx_co = idx_co * 3 + co[i]
+        h_co = self.co_table[idx_co]
+        
+        idx_eo = 0
+        for i in range(11): idx_eo = idx_eo * 2 + eo[i]
+        h_eo = self.eo_table[idx_eo]
+        
+        h_cp = self.cp_table[get_cp_index(cp)]
+        
+        # p is a pre-allocated buffer passed from the search to avoid allocation
+        for i in range(12):
+            p[ep[i]] = i
+            
+        # Subset [0,1,2,3,4,5]
+        idx_05 = get_subset_rank((p[0], p[1], p[2], p[3], p[4], p[5]), 12)
+        h_05 = self.e05_table[idx_05]
+        
+        # Subset [6,7,8,9,10,11]
+        idx_611 = get_subset_rank((p[6], p[7], p[8], p[9], p[10], p[11]), 12)
+        h_611 = self.e611_table[idx_611]
+        
+        res = h_co
+        if h_eo > res: res = h_eo
+        if h_cp > res: res = h_cp
+        if h_05 > res: res = h_05
+        if h_611 > res: res = h_611
+        return res

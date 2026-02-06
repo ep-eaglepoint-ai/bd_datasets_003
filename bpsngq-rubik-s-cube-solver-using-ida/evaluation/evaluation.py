@@ -7,6 +7,11 @@ import subprocess
 import sys
 
 def run_evaluation():
+    # Strict version check for compliance
+    if sys.version_info < (3, 10):
+        print(f"CRITICAL ERROR: Evaluation must run on Python 3.10+. Current version: {sys.version}")
+        sys.exit(1)
+        
     started_at = datetime.datetime.now(datetime.timezone.utc)
     
     # Run pytest with json-report
@@ -15,8 +20,9 @@ def run_evaluation():
     
     try:
         # Run tests and capture output
+        pytest_cmd = [sys.executable, "-m", "pytest", "--json-report", f"--json-report-file={temp_report}", "-q", "tests"]
         process = subprocess.run(
-            ["pytest", "--json-report", f"--json-report-file={temp_report}", "-q", "tests"],
+            pytest_cmd,
             capture_output=True,
             text=True
         )
@@ -41,12 +47,12 @@ def run_evaluation():
             
             # Map tests
             for test in raw_data.get('tests', []):
-                # Format duration: raw is in seconds, convert to ms for display if needed or keep as is.
-                # Template showed ms-like small ints, but raw is floats like 0.03
+                # Aggregate duration from all phases
+                test_duration = sum(test.get(p, {}).get('duration', 0) for p in ['setup', 'call', 'teardown'])
                 test_results.append({
                     "name": test.get('nodeid'),
                     "status": test.get('outcome'),
-                    "duration": int(test.get('duration', 0) * 1000), # in ms
+                    "duration": test_duration,
                     "failureMessages": [test.get('call', {}).get('longrepr')] if test.get('outcome') == 'failed' else []
                 })
             

@@ -26,10 +26,12 @@ def test_ida_star_optimal_3_moves():
     apply_move(state, "U")
     apply_move(state, "F")
     
-    solution = solver.solve(state)
+    # solve() mutates state in-place, copy it for verification if needed
+    scramble_state = state.copy()
+    solution = solver.solve(scramble_state)
     assert len(solution) == 3
     
-    # Verify solution
+    # Verify solution on the original scrambled state
     verify_state = state.copy()
     for move in solution:
         apply_move(verify_state, move)
@@ -47,7 +49,9 @@ def test_ida_star_performance_7_moves():
         apply_move(state, m)
         
     start_time = time.time()
-    solution = solver.solve(state)
+    # solve() mutates state in-place, copy it for verification
+    scramble_state = state.copy()
+    solution = solver.solve(scramble_state)
     end_time = time.time()
     
     print(f"\nSolution: {solution}")
