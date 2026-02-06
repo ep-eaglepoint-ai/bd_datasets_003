@@ -1,11 +1,7 @@
 # 9YHZGN - backdated-payroll-pro-rata-adjuster
 
-    ## Before Test Docker Command
-    <docker before command here>
+# After Command
+docker-compose run --rm app pytest -v
 
-    ## After Test Docker Command
-    <docker after command here>
-
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+# Evaluation Command
+docker-compose run --rm app python evaluation/evaluation.py

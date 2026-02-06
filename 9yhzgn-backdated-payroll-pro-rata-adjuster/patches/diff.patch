@@ -1,0 +1,75 @@
+diff --git a/repository_after/payroll_service.py b/repository_after/payroll_service.py
+new file mode 100644
+index 0000000..23db7d5
+--- /dev/null
++++ b/repository_after/payroll_service.py
+@@ -0,0 +1,69 @@
++from __future__ import annotations
++
++from dataclasses import dataclass
++from datetime import date, timedelta
++
++
++def _bankers_round_div(numerator: int, denominator: int) -> int:
++    """Divide integers using round-half-to-even."""
++
++    q, r = divmod(numerator, denominator)
++    if r == 0:
++        return q
++
++    twice_r = 2 * r
++    if twice_r < denominator:
++        return q
++    if twice_r > denominator:
++        return q + 1
++
++    return q if (q % 2 == 0) else (q + 1)
++
++
++def _days_in_month(d: date) -> int:
++    """Return number of days in the calendar month containing d."""
++    if d.month == 12:
++        next_month = date(d.year + 1, 1, 1)
++    else:
++        next_month = date(d.year, d.month + 1, 1)
++    return (next_month - date(d.year, d.month, 1)).days
++
++
++@dataclass(frozen=True)
++class PayrollEngine:
++    """Calculates backdated pro-rata salary adjustments using integer arithmetic."""
++
++    micros_per_cent: int = 1_000_000
++
++    def _daily_rate_micros(self, monthly_salary_cents: int, any_day_in_month: date) -> int:
++        """Compute the per-day rate in micros for the month containing any_day_in_month."""
++        dim = _days_in_month(any_day_in_month)
++        monthly_micros = monthly_salary_cents * self.micros_per_cent
++        return _bankers_round_div(monthly_micros, dim)
++
++    def calculate_backpay(
++        self,
++        old_salary_cents: int,
++        new_salary_cents: int,
++        backdate: date,
++        effective_date: date,
++    ) -> int:
++        """Return backpay owed in cents for days in [backdate, effective_date)."""
++
++        if old_salary_cents < 0 or new_salary_cents < 0:
++            raise ValueError("Salaries must be non-negative")
++        if backdate > effective_date:
++            raise ValueError("backdate must be on or before effective_date")
++        if backdate == effective_date:
++            return 0
++
++        total_delta_micros = 0
++        day = backdate
++        one_day = timedelta(days=1)
++        while day < effective_date:
++            old_daily = self._daily_rate_micros(old_salary_cents, day)
++            new_daily = self._daily_rate_micros(new_salary_cents, day)
++            total_delta_micros += (new_daily - old_daily)
++            day += one_day
++
++        return _bankers_round_div(total_delta_micros, self.micros_per_cent)
