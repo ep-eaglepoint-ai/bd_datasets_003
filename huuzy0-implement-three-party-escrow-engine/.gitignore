@@ -9,5 +9,3 @@ node_modules/
 
 # OS
 .DS_Store
-evaluation/*.json
-evaluation/*.xml

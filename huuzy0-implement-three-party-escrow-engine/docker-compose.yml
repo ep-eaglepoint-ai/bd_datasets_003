@@ -12,6 +12,6 @@ services:
     environment:
       - PYTHONPATH=/app/repository_after
     command: >-
-      sh -c 'pytest -q tests --junitxml=/app/evaluation/report.xml; code=$?; python -c '"'"'import json, pathlib, sys; code=int(sys.argv[1]); xmlp=pathlib.Path("/app/evaluation/report.xml"); xml=xmlp.read_text(encoding="utf-8") if xmlp.exists() else ""; out={"ok": (code==0 and bool(xml)), "pytest_exit_code": code, "report_url": ("evaluation/report.xml" if xml else "No report available"), "report_content": (xml[:200000] if xml else "Error: report.xml not found")}; pathlib.Path("/app/evaluation/report.json").write_text(json.dumps(out, indent=2), encoding="utf-8")'"'"' "$code"; exit 0'
+      sh -c 'pytest -q tests --junitxml=/app/evaluation/report.xml; code=$?; python /app/evaluation/generate_report_json.py "$code"; exit 0'
     volumes:
       - .:/app
