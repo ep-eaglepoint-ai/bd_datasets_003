@@ -6,6 +6,6 @@
 ## Test and Report Docker Command
 `docker compose run --rm test_report`
 
-## After Test Docker Command
+## Evaluation (After Test) Docker Command
 `docker compose run --rm after_test`
     

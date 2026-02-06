@@ -16,6 +16,6 @@ services:
   after_test:
     build: .
     working_dir: /app
-    command: 'node -e "console.log(''after_test: done'')"'
+    command: node evaluation/evaluation.js
     volumes:
       - .:/app

@@ -1,21 +1,24 @@
+const fs = require('node:fs');
 const path = require('node:path');
+
+const REPORT_PATH = path.join(__dirname, 'report.json');
+
+function safeWriteReportFile(obj) {
+  try {
+    fs.writeFileSync(REPORT_PATH, JSON.stringify(obj, null, 2) + '\n', 'utf8');
+  } catch {
+  }
+}
 
 function die_oom() {
   try {
     process.stderr.write('evaluation: OOM detected (heap out of memory)\n');
   } catch {
   }
+  const report = { ok: false, error: 'oom' };
+  safeWriteReportFile(report);
   try {
-    process.stdout.write(
-      JSON.stringify(
-        {
-          ok: false,
-          error: 'oom',
-        },
-        null,
-        2,
-      ) + '\n',
-    );
+    process.stdout.write(JSON.stringify(report, null, 2) + '\n');
   } catch {
   }
   process.exit(0);
@@ -128,7 +131,7 @@ function main() {
     before: beforeReport,
     after: afterReport,
   };
-
+  safeWriteReportFile(report);
   process.stdout.write(JSON.stringify(report, null, 2) + '\n');
   process.exit(0);
 }
@@ -140,6 +143,7 @@ process.on('unhandledRejection', (e) => {
     process.stderr.write(`evaluation: unhandled rejection: ${msg}\n`);
   } catch {
   }
+  safeWriteReportFile({ ok: false, error: 'unhandledRejection', message: msg });
   process.exit(0);
 });
 
@@ -152,5 +156,6 @@ try {
     process.stderr.write(`evaluation: fatal error: ${msg}\n`);
   } catch {
   }
+  safeWriteReportFile({ ok: false, error: 'fatal', message: msg });
   process.exit(0);
 }
