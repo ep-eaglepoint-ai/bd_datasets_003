@@ -1,0 +1,12 @@
+{
+            "instance_id": "XEVYCN",
+            "problem_statement": "The project requires a high-performance Cache-Aside Manager that orchestrates data flow between a primary mock database and an in-memory Least Recently Used (LRU) store. The goal is to minimize database load by caching frequent queries while strictly adhering to a memory-bound capacity. The service must implement a deterministic eviction policy, handle Time-to-Live (TTL) expirations, and provide atomic synchronization logic to prevent stale data from persisting in the cache after database updates.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/xevycn-node-cache-aside-lru-manager",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
