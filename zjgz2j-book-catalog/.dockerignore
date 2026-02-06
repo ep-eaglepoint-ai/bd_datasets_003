@@ -14,5 +14,3 @@ test_data_*/
 # Evaluation
 evaluation/*.json
 evaluation/evaluate
-
-

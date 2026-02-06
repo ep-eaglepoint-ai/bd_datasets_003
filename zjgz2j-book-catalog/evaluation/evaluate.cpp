@@ -234,8 +234,8 @@ std::string run_tests(const std::string& impl_dir, const std::string& project_ro
         return oss.str();
     }
     
-    // Build Docker image
-    std::string build_cmd = "docker compose build";
+    // Build Docker image - try both docker compose and docker-compose
+    std::string build_cmd = "(docker compose build 2>&1) || (docker-compose build 2>&1)";
     CommandResult build_result = run_command(build_cmd, project_root);
     
     if (build_result.exit_code != 0) {
@@ -256,8 +256,8 @@ std::string run_tests(const std::string& impl_dir, const std::string& project_ro
         return oss.str();
     }
     
-    // Run tests
-    std::string test_cmd = "docker compose run --rm -e SRC_DIR=" + impl_dir + " app sh -c \"make clean && make all && make test\"";
+    // Run tests - try both docker compose and docker-compose
+    std::string test_cmd = "(docker compose run --rm -e SRC_DIR=" + impl_dir + " app sh -c \"make clean && make all && make test\" 2>&1) || (docker-compose run --rm -e SRC_DIR=" + impl_dir + " app sh -c \"make clean && make all && make test\" 2>&1)";
     CommandResult test_result = run_command(test_cmd, project_root);
     
     std::clock_t test_end = std::clock();
@@ -333,6 +333,16 @@ int main(int /* argc */, char* argv[]) {
     std::string project_root = evaluation_dir + "/..";
     if (realpath(project_root.c_str(), resolved_path)) {
         project_root = resolved_path;
+    } else {
+        // Fallback: resolve manually
+        char cwd[PATH_MAX];
+        if (getcwd(cwd, sizeof(cwd))) {
+            std::string cwd_str = cwd;
+            size_t eval_pos = cwd_str.find("/evaluation");
+            if (eval_pos != std::string::npos) {
+                project_root = cwd_str.substr(0, eval_pos);
+            }
+        }
     }
     
     std::string report_file = evaluation_dir + "/report.json";

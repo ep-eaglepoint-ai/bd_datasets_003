@@ -5,8 +5,10 @@ RUN apt-get update && apt-get install -y \
     make \
     libgtest-dev \
     cmake \
-    && cd /usr/src/googletest && cmake . && make && \
-    cp lib/libgtest*.a /usr/lib/ \
+    && if [ -d /usr/src/googletest ]; then \
+        cd /usr/src/googletest && cmake . && make && \
+        cp lib/libgtest*.a /usr/lib/ 2>/dev/null || true; \
+    fi \
     && apt-get remove -y cmake \
     && apt-get autoremove -y \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
