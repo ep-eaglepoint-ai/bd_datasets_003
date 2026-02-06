@@ -4,8 +4,8 @@ __pycache__/
 .venv/
 .env
 
-# Node
-node_modules/
+# Task Specific
+reports/
 
 # OS
 .DS_Store
