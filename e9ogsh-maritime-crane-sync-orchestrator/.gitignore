@@ -1,0 +1,25 @@
+# Maven
+target/
+*.jar
+*.class
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.project
+.classpath
+.settings/
+evaluation/classes
+tests/classes
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Reports (generated)
+evaluation/reports/
+!evaluation/reports/.gitkeep
+
+# Logs
+*.log
