@@ -1,0 +1,16 @@
+{
+            "instance_id": "WBJKVL",
+            "problem_statement": "You are building a core Access Control / Authorization engine used by multiple internal services to decide whether a request should be ALLOWED or DENIED.
+ The engine receives untrusted, heterogeneous input for policies, rules, requests, and options. Inputs may be malformed, missing fields, wrong types, or partially valid.
+The system must never crash, must apply strict, deterministic conflict-resolution rules, and must always return the same decision and reasons for the same inputs.
+ DENY rules must override ALLOW rules, rule priority and specificity must be respected, and invalid data must be handled via defined fallbacks—not exceptions.
+This engine is security-critical and must be safe, predictable, auditable, and fully in-memory.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/wbjkvl-deterministic-access-control-permission-resolution-engine",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
