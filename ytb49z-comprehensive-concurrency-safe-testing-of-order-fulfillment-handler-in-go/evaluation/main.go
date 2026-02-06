@@ -43,15 +43,35 @@ type TestRun struct {
 	DurationMs int64       `json:"duration_ms"`
 }
 
+type TestStatus struct {
+	Passed     bool   `json:"passed"`
+	ReturnCode int    `json:"return_code"`
+	Output     string `json:"output"`
+}
+
+type TestResult struct {
+	Tests     TestStatus             `json:"tests"`
+	TestCases []TestCase             `json:"test_cases,omitempty"`
+	Metrics   map[string]interface{} `json:"metrics,omitempty"`
+}
+
+type Comparison struct {
+	PassedGate         bool              `json:"passed_gate"`
+	ImprovementSummary string            `json:"improvement_summary"`
+	CriteriaAnalysis   map[string]string `json:"criteria_analysis,omitempty"`
+}
+
 type Report struct {
-	RunID            string                 `json:"run_id"`
-	Tool             string                 `json:"tool"`
-	StartedAt        string                 `json:"started_at"`
-	Environment      map[string]string      `json:"environment"`
-	Before           any                    `json:"before"`
-	After            TestRun                `json:"after"`
-	CriteriaAnalysis map[string]string      `json:"criteria_analysis"`
-	Comparison       map[string]interface{} `json:"comparison"`
+	RunID           string            `json:"run_id"`
+	StartedAt       string            `json:"started_at"`
+	FinishedAt      string            `json:"finished_at"`
+	DurationSeconds float64           `json:"duration_seconds"`
+	Environment     map[string]string `json:"environment"`
+	Before          *TestResult       `json:"before"`
+	After           *TestResult       `json:"after"`
+	Comparison      Comparison        `json:"comparison"`
+	Success         bool              `json:"success"`
+	Error           *string           `json:"error"`
 }
 
 func generateRunID() string {
@@ -216,6 +236,7 @@ func mapCriteria(tests []TestCase) map[string]string {
 }
 
 func main() {
+	start := time.Now()
 	runID := generateRunID()
 	wd, _ := os.Getwd()
 	projectRoot := wd
@@ -223,34 +244,61 @@ func main() {
 
 	fmt.Printf("Starting Order Fulfillment Evaluation [Run ID: %s]\n", runID)
 
-	after, err := runGoTestJSON(repoAfter, "./...")
+	afterRun, err := runGoTestJSON(repoAfter, "./...")
 	if err != nil {
 		fmt.Printf("Error running tests: %v\n", err)
 	}
-	if after.Summary.Total == 0 {
+	if afterRun.Summary.Total == 0 {
 		fmt.Println("No tests were detected. Raw stdout/stderr:")
-		if after.Stdout != "" {
+		if afterRun.Stdout != "" {
 			fmt.Println("--- stdout ---")
-			fmt.Print(after.Stdout)
+			fmt.Print(afterRun.Stdout)
 		}
-		if after.Stderr != "" {
+		if afterRun.Stderr != "" {
 			fmt.Println("--- stderr ---")
-			fmt.Print(after.Stderr)
+			fmt.Print(afterRun.Stderr)
 		}
 	}
 
-	report := Report{
-		RunID:            runID,
-		Tool:             "Order Fulfillment Evaluator",
-		StartedAt:        time.Now().Format(time.RFC3339),
-		Environment:      getEnvironmentInfo(),
-		Before:           nil,
-		After:            after,
-		CriteriaAnalysis: mapCriteria(after.Tests),
-		Comparison: map[string]interface{}{
-			"summary": "Containerized Evaluation",
-			"success": after.Success,
+	// Prepare output string (combining stdout and stderr)
+	outputCombined := afterRun.Stdout
+	if afterRun.Stderr != "" {
+		outputCombined += "\n" + afterRun.Stderr
+	}
+
+	afterResult := &TestResult{
+		Tests: TestStatus{
+			Passed:     afterRun.Success,
+			ReturnCode: afterRun.ExitCode,
+			Output:     outputCombined,
 		},
+		TestCases: afterRun.Tests,
+		Metrics:   map[string]interface{}{},
+	}
+
+	passedGate := afterRun.Success
+	var improvementSummary string
+	if passedGate {
+		improvementSummary = "Tests passed successfully"
+	} else {
+		improvementSummary = "Tests failed"
+	}
+
+	report := Report{
+		RunID:           runID,
+		StartedAt:       start.Format(time.RFC3339),
+		FinishedAt:      time.Now().Format(time.RFC3339),
+		DurationSeconds: time.Since(start).Seconds(),
+		Environment:     getEnvironmentInfo(),
+		Before:          nil,
+		After:           afterResult,
+		Comparison: Comparison{
+			PassedGate:         passedGate,
+			ImprovementSummary: improvementSummary,
+			CriteriaAnalysis:   mapCriteria(afterRun.Tests),
+		},
+		Success: passedGate,
+		Error:   nil,
 	}
 
 	outputPath, err := generateOutputPath(projectRoot, "")
@@ -263,9 +311,9 @@ func main() {
 	_ = os.WriteFile(outputPath, data, 0o644)
 
 	fmt.Println("---------------------------------------------------")
-	fmt.Printf("Tests Run: %d\n", after.Summary.Total)
-	fmt.Printf("Passed:    %d\n", after.Summary.Passed)
-	fmt.Printf("Failed:    %d\n", after.Summary.Failed)
+	fmt.Printf("Tests Run: %d\n", afterRun.Summary.Total)
+	fmt.Printf("Passed:    %d\n", afterRun.Summary.Passed)
+	fmt.Printf("Failed:    %d\n", afterRun.Summary.Failed)
 	fmt.Println("---------------------------------------------------")
 	fmt.Printf("✅ Report saved to: %s\n", outputPath)
 }
