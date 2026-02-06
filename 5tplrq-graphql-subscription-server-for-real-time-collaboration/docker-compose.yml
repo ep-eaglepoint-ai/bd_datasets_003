@@ -4,7 +4,7 @@ services:
       context: ./${REPO_PATH:-repository_after}
       dockerfile: ../Dockerfile
     ports:
-      - "${APP_PORT:-4000}:4000"
+      - "4000:4000"
     environment:
       - DATABASE_URL=postgresql://user:pass@db:5432/collab_db
       - REDIS_HOST=redis
@@ -58,3 +58,15 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  evaluator:
+    build:
+      context: ./repository_after
+      dockerfile: ../Dockerfile
+    command: sh -c "npm install -g tsx && npx tsx evaluation/evaluation.ts"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/project
+    working_dir: /project
+    environment:
+      - REPO_PATH=repository_after

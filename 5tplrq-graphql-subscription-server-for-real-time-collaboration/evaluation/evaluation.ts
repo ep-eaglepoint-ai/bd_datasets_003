@@ -1,5 +1,5 @@
 import { execSync } from 'child_process';
-import { writeFileSync, mkdirSync, existsSync, readdirSync, unlinkSync } from 'fs';
+import { writeFileSync, mkdirSync, existsSync, readdirSync, unlinkSync, chmodSync } from 'fs';
 import { join, resolve } from 'path';
 import { randomUUID } from 'crypto';
 import os from 'os';
@@ -26,24 +26,24 @@ function environmentInfo() {
 }
 
 function runTests(repoPath: string, projectName: string): TestResult {
-    // We use a unique project name (-p) and APP_PORT=0 to ensure isolation.
-    // Docker will assign a random port for the app's host binding.
-    const env = { ...process.env, REPO_PATH: repoPath, APP_PORT: '0' };
+    const env = { ...process.env, REPO_PATH: repoPath };
+
+    // Cleanup before run
+    try {
+        console.log(`[Evaluator] Cleaning up for ${projectName}...`);
+        execSync(`docker compose -p ${projectName} down --volumes --remove-orphans`, { cwd: ROOT, stdio: 'ignore' });
+    } catch (e) { }
 
     try {
-        console.log(`[Evaluator] Orchestrating tests for ${repoPath}...`);
-
-        // Clean up any stale state for this specific project
-        execSync(`docker compose -p ${projectName} down --volumes --remove-orphans`, { cwd: ROOT, stdio: 'ignore' });
-
-        // Run tests using 'docker compose run' for better isolation
+        console.log(`[Evaluator] Running tests for ${repoPath} (Project ID: ${projectName})...`);
+        // We use 'run' to avoid publishing ports to the host and potential clashes.
+        // The images are built to ensure we test the specific repository state.
         const output = execSync(`docker compose -p ${projectName} run --build --rm tests`, {
             cwd: ROOT,
             env,
             encoding: 'utf-8',
             timeout: 300000 // 5 minutes
         });
-
         return {
             passed: true,
             return_code: 0,
@@ -56,8 +56,9 @@ function runTests(repoPath: string, projectName: string): TestResult {
             output: (e.stdout + e.stderr || e.message).slice(-8000)
         };
     } finally {
-        // Final cleanup for this project
+        // Cleanup after run
         try {
+            console.log(`[Evaluator] Final cleanup for ${projectName}...`);
             execSync(`docker compose -p ${projectName} down --volumes --remove-orphans`, { cwd: ROOT, stdio: 'ignore' });
         } catch (e) { }
     }
@@ -78,9 +79,9 @@ async function runEvaluation() {
     const startedAt = new Date().toISOString();
     const start = Date.now();
 
-    console.log("[Evaluator] Starting comparative analysis...");
+    console.log("[Evaluator] Starting comparative evaluation...");
 
-    // Unique project names prevent collisions between 'before' and 'after' runs
+    // Isolated project names prevent collisions between the two runs
     const before = evaluate('repository_before', `eval_before_${runId.slice(0, 8)}`);
     const after = evaluate('repository_after', `eval_after_${runId.slice(0, 8)}`);
 
@@ -88,6 +89,10 @@ async function runEvaluation() {
     const finishedAt = new Date().toISOString();
 
     const passedGate = after.tests.passed;
+    const improvementSummary = passedGate
+        ? "Evaluation Successful: Implementation passed all correctness checks."
+        : "Evaluation Failed: Implementation did not pass correctness checks.";
+
     const report = {
         run_id: runId,
         started_at: startedAt,
@@ -98,27 +103,31 @@ async function runEvaluation() {
         after,
         comparison: {
             passed_gate: passedGate,
-            improvement_summary: passedGate
-                ? "Implementation successful: Logic passed all correctness checks."
-                : "Implementation failed: Correctness checks did not pass."
+            improvement_summary: improvementSummary
         },
         success: passedGate,
         error: null
     };
 
-    // Ensure directory exists and only holds latest.json
+    // Requirement: Only latest.json exists in reports folder
     if (!existsSync(REPORTS)) {
         mkdirSync(REPORTS, { recursive: true });
     } else {
-        readdirSync(REPORTS).forEach(file => {
+        const files = readdirSync(REPORTS);
+        for (const file of files) {
             try { unlinkSync(join(REPORTS, file)); } catch (e) { }
-        });
+        }
     }
 
     const path = join(REPORTS, 'latest.json');
     writeFileSync(path, JSON.stringify(report, null, 2));
 
-    console.log(`[Evaluator] Completed. Report written to ${path}`);
+    // Ensure the host can read/write/delete the report files
+    try { chmodSync(path, 0o666); } catch (e) { }
+    try { chmodSync(REPORTS, 0o777); } catch (e) { }
+
+    console.log(`[Evaluator] Evaluation complete. Report written to ${path}`);
+
     return report.success ? 0 : 1;
 }
 
