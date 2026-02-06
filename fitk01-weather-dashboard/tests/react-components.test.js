@@ -374,6 +374,96 @@ describe('Weather Dashboard - Real React Component Tests', () => {
             expect(screen.getByTestId('error')).toHaveTextContent('Weather service unavailable');
         });
 
+        test('displays "Unable to connect to weather service" when backend is unreachable (network failure)', async () => {
+            const user = userEvent.setup();
+
+            // Mock fetch to reject with a network error (simulates backend unreachable)
+            mockFetch.mockImplementation(() => Promise.reject(new Error('Network error')));
+
+            render(<App />);
+
+            // Verify initial state - no error, no loading
+            expect(screen.queryByTestId('error')).not.toBeInTheDocument();
+            expect(screen.queryByTestId('loading')).not.toBeInTheDocument();
+
+            // Type a city and submit
+            await user.type(screen.getByTestId('city-input'), 'London');
+            await user.click(screen.getByTestId('search-button'));
+
+            // Wait for error to appear
+            await waitFor(() => {
+                expect(screen.getByTestId('error')).toBeInTheDocument();
+            });
+
+            // Assert: Clear error message is shown
+            expect(screen.getByTestId('error')).toHaveTextContent('Unable to connect to weather service');
+
+            // Assert: Loading indicator is removed (not stuck in loading state)
+            expect(screen.queryByTestId('loading')).not.toBeInTheDocument();
+
+            // Assert: App header is still visible (UI did not crash or go blank)
+            expect(screen.getByText('Weather Dashboard')).toBeInTheDocument();
+
+            // Assert: Search functionality is still rendered (UI is functional)
+            expect(screen.getByTestId('city-input')).toBeInTheDocument();
+            expect(screen.getByTestId('search-button')).toBeInTheDocument();
+        });
+
+        test('network error message is distinct from 404 and 503 errors', async () => {
+            const user = userEvent.setup();
+
+            // Test network error
+            mockFetch.mockImplementation(() => Promise.reject(new Error('Network error')));
+
+            const { unmount } = render(<App />);
+            await user.type(screen.getByTestId('city-input'), 'London');
+            await user.click(screen.getByTestId('search-button'));
+
+            await waitFor(() => {
+                expect(screen.getByTestId('error')).toBeInTheDocument();
+            });
+
+            const networkErrorMsg = screen.getByTestId('error').textContent;
+            unmount();
+
+            // Test 404
+            mockFetch.mockImplementation(() => Promise.resolve(createMockResponse({}, 404)));
+
+            const { unmount: unmount404 } = render(<App />);
+            await user.type(screen.getByTestId('city-input'), 'InvalidCity');
+            await user.click(screen.getByTestId('search-button'));
+
+            await waitFor(() => {
+                expect(screen.getByTestId('error')).toBeInTheDocument();
+            });
+
+            const msg404 = screen.getByTestId('error').textContent;
+            unmount404();
+
+            // Test 503
+            mockFetch.mockImplementation(() => Promise.resolve(createMockResponse({}, 503)));
+
+            render(<App />);
+            await user.type(screen.getByTestId('city-input'), 'London');
+            await user.click(screen.getByTestId('search-button'));
+
+            await waitFor(() => {
+                expect(screen.getByTestId('error')).toBeInTheDocument();
+            });
+
+            const msg503 = screen.getByTestId('error').textContent;
+
+            // All three error messages must be distinct
+            expect(networkErrorMsg).not.toBe(msg404);
+            expect(networkErrorMsg).not.toBe(msg503);
+            expect(msg404).not.toBe(msg503);
+
+            // Verify expected content
+            expect(networkErrorMsg).toContain('Unable to connect');
+            expect(msg404).toContain('City not found');
+            expect(msg503).toContain('Weather service unavailable');
+        });
+
         test('404 and 503 error messages are visually distinct', async () => {
             const user = userEvent.setup();
 
