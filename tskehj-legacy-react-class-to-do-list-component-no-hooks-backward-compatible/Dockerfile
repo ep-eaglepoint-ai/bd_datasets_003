@@ -1,8 +1,21 @@
+FROM node:18-slim
 
-        # Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
-
-        FROM python:3.11-slim
 WORKDIR /app
+
+# Copy package files first for better caching
+COPY package*.json ./
+COPY babel.config.js ./
+COPY jest.config.js ./
+COPY jest.setup.js ./
+
+# Install dependencies
+RUN npm install
+
+# Copy all project files
 COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+# Set NODE_ENV
+ENV NODE_ENV=test
+
+# Default command runs evaluation
+CMD ["node", "evaluation/evaluation.js"]
