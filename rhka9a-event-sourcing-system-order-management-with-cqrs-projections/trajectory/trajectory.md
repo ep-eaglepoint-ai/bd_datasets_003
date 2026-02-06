@@ -1,242 +1,221 @@
-# Trajectory - Event Sourcing System - Order Management with CQRS Projections
+## 1. Problem statement
 
+Based on the prompt and problem statement, I first clarified that I needed to design **a reusable event‑sourcing framework for an order management domain**, not just a CRUD service. I wrote down the core business goal in my own words: *“Every change to an order must be represented as an immutable event, from which I can fully reconstruct state, drive projections, and support temporal queries, while remaining safe under concurrent writes and heavy load.”* That immediately told me I needed to separate **command-side aggregates + event store** from **query-side projections**, and to think about how this design would scale over time (snapshots, rebuilds, idempotency).
 
+I then mapped that abstract goal onto concrete sub‑problems: (1) how to model events and aggregates cleanly in Java 17, (2) how to persist events with optimistic locking in PostgreSQL via Spring Data JPA, (3) how to add snapshotting without polluting domain code with persistence concerns, and (4) how to build projection pipelines that are both **idempotent** and **rebuildable** from the event log. From the beginning I treated this as a framework rather than a one‑off feature, so I looked for abstractions (base aggregate, generic repository, generic event store) that could be reused for other domains beyond orders.
 
-## 1. Initial Problem Understanding
+## 2. Requirements I distilled from the prompt
 
-When I first read the prompt, I was overwhelmed by the complexity. An event sourcing framework from scratch? No libraries? I started by breaking down what I didn't understand:
+Based on the prompt and the detailed requirements, I explicitly wrote down the following “must haves” before touching code, to use as a checklist:
 
-**My initial questions:**
-- How do I ensure events are truly immutable in Java?
-- How do I prevent two transactions from corrupting the event stream?
-- How do I rebuild state without loading millions of events into memory?
-- How do I make projections idempotent when events might be redelivered?
+- **Event store semantics**: append‑only, per‑aggregate **strictly increasing version numbers**, each row containing `eventId`, `aggregateId`, `version`, `timestamp`, fully‑qualified `eventType`, and JSON `payload`. The store must expose **“append with expected version”** and “load by aggregate / after version” operations.
+- **Aggregate base class**: a single abstract base that all aggregates extend, responsible for:
+  - Tracking **uncommitted events**.
+  - Applying events to rebuild state from history.
+  - Providing a consistent **versioning scheme** (including `getNextVersion()` that accounts for staged, uncommitted events).
+- **Snapshot support**: periodically capture aggregate state at a given version, store it in a dedicated snapshot table, and on load:
+  - Restore from the latest snapshot (if any).
+  - Replay only events after the snapshot’s version.
+  - Ensure snapshots are created **in separate transactions and threads** so they never block command processing.
+- **Order aggregate behaviour**: commands `CreateOrder`, `AddItem`, `RemoveItem`, `SubmitOrder` must:
+  - Enforce draft‑only modifications.
+  - Forbid submitting empty orders.
+  - Emit well‑typed domain events for every state change (no in‑place mutation without an event).
+- **Event immutability / serialization**:
+  - Events implemented as immutable objects (final fields, constructor‑only initialization).
+  - JSON serialization / deserialization with Jackson, with the **concrete class name persisted** and used for polymorphic reconstruction.
+- **Projections & CQRS**:
+  - A read‑side order projection storing `orderId`, `customerId`, `status`, `totalAmount`, `itemCount`, and timestamps.
+  - Projection handlers must be **idempotent** (safe if the same event is processed twice).
+  - Projections must support **full rebuild from the event log** using batch / paginated loading to keep memory bounded.
+- **Event publication & transaction boundaries**:
+  - Only publish events **after** they are successfully persisted.
+  - Projection updates must run in **REQUIRES_NEW** transactions so a projection failure never rolls back the command transaction.
+- **Technology constraints**:
+  - Java 17+, Spring Boot 3.x, Spring Data JPA, PostgreSQL, Jackson, Maven.
+  - **No external event‑sourcing frameworks**; all abstractions implemented from scratch.
 
-I realized I needed to understand event sourcing at a fundamental level before writing any code. So I started researching.
+I kept this checklist next to me while designing the modules so I could continuously verify that each architectural decision was directly answering one or more requirements.
 
-## 2. Research Phase: Learning the Fundamentals
+## 3. Constraints that shaped my design
 
-I began by reading Martin Fowler's event sourcing article (https://martinfowler.com/eaaDev/EventSourcing.html). The key insight that clicked for me was: **events are facts that happened, not current state**. This meant I couldn't modify them after creation - they're historical records.
+The explicit constraints from the prompt strongly influenced architectural choices:
 
-Then I watched Greg Young's talk (https://www.youtube.com/watch?v=8JKj6YARnxw) and understood why version numbers matter. If two transactions try to append events simultaneously, I need a way to detect and reject one of them. This led me to research optimistic locking.
+- **Immutability**: Events had to be immutable, which ruled out setters, default constructors with later mutation, and any “active record” style design. I committed early to **final fields + constructor parameters** and Jackson `@JsonCreator` / `@JsonProperty` to keep events serializable.
+- **Aggregates not directly mutable**: All aggregate mutations had to go through events. That led me to design aggregates with **command methods** (`addItem`, `removeItem`, `submitOrder`) that only ever **emit events + apply them**, never arbitrary field writes.
+- **Optimistic locking & concurrency**: The event store had to defend against concurrent writers corrupting streams. That meant every append path needed an explicit **expected version check** at the database boundary, not just in memory.
+- **Projection non‑blocking rebuilds**: Projections needed to be rebuilt without blocking commands, so any rebuild logic had to be **pure read‑side**, using pagination over the event store and its own transaction scope. I explicitly avoided long‑running transactions that span large portions of the event table.
+- **No external frameworks**: I consciously avoided Axon/EventStoreDB–style convenience abstractions. Instead I leaned on **plain Spring services, repositories, and configuration** and designed small, explicit interfaces (event store, aggregate repository, projection) that a reviewer could easily reason about.
 
-I read about Spring Data JPA optimistic locking (https://www.baeldung.com/jpa-optimistic-locking) and realized I could use version numbers to detect concurrent modifications. But I had a question: **how do I check the version atomically with the insert?** 
+I used these constraints as “guard rails”: whenever I considered a shortcut (e.g. mutating aggregates directly during rebuild, or using `@Transactional` on both command and projection in the same boundary), I rejected it if it violated any of these rules.
 
-I researched PostgreSQL transaction isolation (https://www.postgresql.org/docs/current/transaction-iso.html) and learned that within a transaction, a SELECT followed by an INSERT is atomic. This gave me confidence that I could check the version, then insert, and if another transaction modified it in between, my transaction would see the change.
+## 4. Research I did (articles, docs, videos)
 
-## 3. First Attempt: Building the Event Store
+Before finalizing the design, I revisited a few canonical resources on event sourcing and CQRS to align my approach with industry practice and to avoid common pitfalls:
 
-I started with the EventStore because it's the foundation. My first thought was: "I'll just save events to the database." But immediately I hit a problem: **how do I ensure events are in the correct order?**
+- **Event sourcing & CQRS fundamentals**  
+  I refreshed the core patterns and trade‑offs by skimming:
+  - Martin Fowler’s article on Event Sourcing (`https://martinfowler.com/eaaDev/EventSourcing.html`) to validate the general flow of **command → event store → projection** and the use of snapshots.
+  - Greg Young’s CQRS/Event Sourcing talk on YouTube (search: *“Greg Young CQRS and Event Sourcing”*) to reaffirm that **aggregates should be reconstructed from events and remain behavior‑centric**, not anemic data holders.
 
-I tried assigning version numbers in the application code, but realized this wouldn't work for concurrent writes. If two threads both think they're writing version 5, they'll both try to insert version 5, causing a conflict.
+- **Snapshots & performance**  
+  I specifically looked up snapshot patterns in event‑sourced systems, e.g.:
+  - Documentation from various blogs and presentations that recommend **snapshot‑then‑replay‑after‑snapshot** instead of periodically compacting event streams, confirming that my plan to store snapshots as separate rows keyed by aggregate ID and version was sound.
 
-**My breakthrough moment**: I realized I need to check the current version in the database BEFORE assigning new versions. So my approach became:
-1. Query current max version for the aggregate
-2. If it matches what I expect, assign sequential versions starting from max+1
-3. Insert all events
+- **Spring Boot & Spring Data JPA for event stores**  
+  I checked Spring Data JPA docs and examples (`https://docs.spring.io/spring-data/jpa/docs/current/reference/html/`) to validate:
+  - How to express **custom JPQL queries** for loading events by aggregate and version.
+  - How to model repositories so that I could **separate event store logic from aggregate application logic**, keeping the domain code free of persistence APIs.
 
-But wait - what if another transaction does the same thing between my check and my insert? I needed this to be atomic.
+- **Jackson polymorphic deserialization**  
+  To ensure robust event serialization, I reviewed the Jackson annotations reference (`https://github.com/FasterXML/jackson-databind`) around `@JsonCreator`, `@JsonProperty`, and JavaTime handling to make sure my event and value‑object constructors were deserializable without exposing setters.
 
-I learned about `@Transactional` in Spring and realized that the entire method runs in one transaction. So my version check and inserts are atomic. If another transaction modifies the version between my check and insert, my transaction will see it (depending on isolation level), or the database will prevent the conflict.
+From these sources I confirmed that my direction (immutable events, explicit event store, snapshot + replay, separate read model) was aligned with standard practice, and I used these materials as justification whenever I had to choose between multiple possible designs.
 
-I implemented this:
+## 5. How I chose the core methods and abstractions
 
-```java
-@Transactional
-public List<DomainEvent> appendEvents(String aggregateId, Long expectedVersion, 
-                                      List<? extends DomainEvent> events) {
-    Long currentVersion = eventRepository.getCurrentVersion(aggregateId);
-    if (!currentVersion.equals(expectedVersion)) {
-        throw new ConcurrencyException(...);
-    }
-    // ... insert events
-}
-```
+### 5.1 Event store API and schema
 
-But I immediately hit another problem: **what if the events I'm trying to save already have version numbers that don't match?** I needed to ensure the event versions match the sequence I'm assigning.
+I started by deciding **what the event store service needed to expose**. Based on the requirements and my research, I concluded I needed at least:
 
-I added a validation step: `ensureEventVersion()` that checks if the event's version matches what I expect. If not, I throw an exception. This enforces that events can't be persisted with incorrect versions.
+- `appendEvents(aggregateId, expectedVersion, events)` – to persist a batch of events with optimistic locking.
+- `appendInitialEvent(aggregateId, event)` – a special path for the very first event with an enforced expected version of `0`.
+- `loadEvents(aggregateId)` and `loadEventsAfterVersion(aggregateId, version)` – to rebuild aggregates and support snapshot replay.
+- `getCurrentVersion(aggregateId)` and `isEventProcessed(eventId)` – to support optimistic locking and idempotency.
 
-## 4. The Immutability Challenge
+I chose to put all of this behind a single `EventStore` Spring `@Service` so that **domain code never touches JPA repositories directly** and all concurrency checks happen in one place. This clean separation allowed me to change persistence details (e.g. add metrics or logging) without touching the aggregate logic.
 
-The prompt said events must be immutable. I thought: "Easy, I'll use Java records." But then I realized records might not be available in all Java versions, and I wanted more control.
+### 5.2 Aggregate base class and versioning strategy
 
-I tried making fields `final` and providing only a constructor. But I hit a problem: **how do I deserialize events from JSON if the constructor requires all parameters?**
+Next I focused on the aggregate base. I wanted a small, reusable abstraction that all aggregates could share. I decided that the base class should be responsible for:
 
-I researched Jackson deserialization (https://www.baeldung.com/jackson-inheritance) and learned about `@JsonProperty` annotations. I could mark constructor parameters with `@JsonProperty` and Jackson would use the constructor for deserialization.
+- Holding `aggregateId` and `version`.
+- Maintaining a list of uncommitted events and exposing **read‑only views** of that list.
+- Offering a single `registerEvent(event)` helper that both stores the event and calls `apply(event)` so domain behavior stays DRY.
+- Offering a `loadFromHistory(events)` method that applies a sequence of historical events, updating the version as it goes.
 
-But I had another challenge: **how do I know which concrete event class to deserialize to?** The JSON doesn't contain type information by default.
+I chose to keep `apply` abstract and **type‑specific in each aggregate**, so that the base class does not need to know about concrete event types; this keeps the domain logic strongly typed and easy to test in isolation.
 
-I considered using `@JsonTypeInfo` and `@JsonSubTypes`, but that would require annotations on every event class. Instead, I decided to store the fully qualified class name in a separate `event_type` column. When deserializing, I use `Class.forName()` to load the class, then deserialize the JSON payload into that class.
+### 5.3 Snapshot strategy and separation of concerns
 
-This approach worked, but I later discovered a subtle bug: **when deserializing BigDecimal values, different ObjectMapper instances can produce different representations**. I had to ensure the same ObjectMapper instance is used throughout the application, which I did by injecting it as a Spring bean.
+For snapshots, I considered two options:
 
-## 5. Building the Aggregate Base Class
+- Embedding snapshot logic directly into the aggregate (e.g. an aggregate method that serializes itself).
+- Handling snapshots purely in the **infrastructure layer**, using a generic repository that can serialize aggregates without polluting domain code.
 
-I started thinking about aggregates. The prompt said aggregates should only be modified through events. But how do I enforce this?
+I chose the second approach. I wanted aggregates to remain unaware of persistence and snapshot policies, so I designed:
 
-My first attempt was to make all aggregate fields private with no setters. But then I realized: **how do I rebuild state from events?** I need a way to apply events to update state.
+- A generic **aggregate repository** that knows how to:
+  - Load snapshots.
+  - Deserialize aggregates from JSON.
+  - Reapply events after a snapshot.
+  - Trigger snapshot creation asynchronously once a configured threshold is reached.
 
-I designed the `Aggregate` base class with an abstract `apply()` method. Subclasses implement this to update their state based on events. But I had a design question: **should I apply events immediately when they're registered, or only when they're persisted?**
+This separation lets me adjust snapshot thresholds or storage format without altering the domain model, which is critical for long‑lived systems.
 
-I tried applying events only on persistence, but this created a problem: business logic in the aggregate couldn't see the updated state immediately. For example, if I register an "ItemAdded" event, I want to query the total amount right away, not wait for persistence.
+### 5.4 Projection design and idempotency
 
-So I changed the design: `registerEvent()` both adds the event to the uncommitted list AND applies it immediately. This way, the aggregate's state is always consistent with its uncommitted events.
+On the read side, I wanted projection handlers that were:
 
-But this created another issue: **what if I register an event, then load the aggregate from the database?** The loaded aggregate won't have the uncommitted event applied. I realized this is actually correct behavior - uncommitted events are only in memory, not persisted yet.
+- **Simple functions from event → updated projection state**, with no command‑side coupling.
 
-## 6. The Snapshot Optimization Problem
+- Idempotent: reprocessing the same event ID should not change the projection.
 
-The prompt mentioned snapshots to optimize loading aggregates with many events. My first thought was: "I'll just save the aggregate state periodically." But immediately I had questions:
+To achieve this, I chose to give the order projection its own JPA entity tracking:
 
-**When should I create snapshots?** Every N events? Based on time? Based on aggregate size?
+- `lastProcessedEventId` or equivalent marker per aggregate.
 
-I decided on every N events (configurable threshold) because it's simple and predictable. But then I thought: **what if snapshot creation is slow?** It could block command processing.
+and to ensure that **each handler updates this marker transactionally** in the same write as the projection row. This means that if I re‑emit an event, the projection can cheaply detect it has already processed that event and skip re‑applying it.
 
-I researched Spring's `@Async` annotation (https://www.baeldung.com/spring-async) and learned I could make snapshot creation asynchronous. But I had another concern: **what if the snapshot creation fails?** Should it roll back the command transaction?
+## 6. How I implemented the solution (step‑by‑step, from my perspective)
 
-I decided no - if snapshot creation fails, the command should still succeed. The system can work without snapshots, they're just an optimization. So I made snapshot creation run in a separate transaction using `@Transactional(propagation = REQUIRES_NEW)`. This way, if snapshot creation fails, it doesn't affect the command.
+### 6.1 I modeled the core event and aggregate types
 
-But I hit a problem: **how do I serialize the aggregate to JSON?** Some aggregates might have circular references or complex object graphs. I used Jackson's `ObjectMapper` to serialize, but I had to be careful about what gets serialized. I decided to serialize the entire aggregate, which works because aggregates are designed to be self-contained.
+I started by defining a **base domain event type** with immutable fields: event ID, aggregate ID, version, timestamp, and a derived event type string. I ensured there were no setters and used constructors to initialize all fields. Then I introduced concrete order events such as “order created”, “item added”, “item removed”, and “order submitted”, each carrying only the data truly needed to rebuild order state.
 
-## 7. The Projection Idempotency Puzzle
+Next I implemented the **aggregate base**: a class that stores an ID, version, and a private list of uncommitted events. I gave it helper methods to:
 
-The prompt said projections must be idempotent. I thought: "I'll just check if I've processed this event before." But how?
+- Register new events (which appends to the uncommitted list and immediately calls an abstract `apply` method).
+- Load from history by iterating over a list of events, applying each and updating the version.
+- Compute `getNextVersion()` as `currentVersion + uncommittedEvents.size() + 1` so that multiple new events created before a save get sequential versions.
 
-My first attempt was to store processed event IDs in a Set in memory. But I realized: **what if the application restarts?** The in-memory set is lost, and I'll process events again.
+With this foundation, I implemented the **order aggregate**. I provided command methods (`createOrder`, `addItem`, `removeItem`, `submitOrder`) that:
 
-I needed persistent storage. I added a `lastProcessedEventId` field to the projection entity. Before processing an event, I check if the projection's `lastProcessedEventId` matches the event ID. If so, I skip processing.
+- Validate business rules (e.g. draft‑only mutation, non‑empty cart before submit).
+- Construct concrete events with the correct next version and derived totals.
+- Call `registerEvent(event)` so the event is both recorded and applied to in‑memory state.
 
-But this created a performance problem: **checking the database for every event is slow**. I wanted fast in-memory checks for hot events, but persistent checks for resilience.
+### 6.2 I built the event store against PostgreSQL
 
-I implemented a dual-layer approach: first check an in-memory `ConcurrentHashMap`, then fall back to the database. If the database check succeeds, I cache it in memory for next time.
+After the domain types were in place, I turned to persistence. I defined a simple `EventEntity` mapped to the `domain_events` table, containing the required columns (`event_id`, `aggregate_id`, `version`, `timestamp`, `event_type`, `payload`). I then created a Spring Data JPA repository with finder methods such as “find by aggregate ID ordered by version” and “find by aggregate ID and version greater than X ordered by version”.
 
-But I discovered a subtle bug: **during projection rebuild, I was clearing the projection repository but not the in-memory cache**. This meant events were being skipped during rebuild because the cache still had them. I fixed this by clearing the cache in `rebuildProjection()`.
+On top of this, I implemented the `EventStore` service. In `appendEvents` I:
 
-## 8. The Bounded Memory Challenge
+- Queried the current version for the aggregate via a repository query.
+- Compared it to the expected version passed in; if they didn’t match, I threw a domain‑level concurrency exception.
+- Serialized each event to JSON using Jackson, using the concrete class for both `eventType` and payload serialization.
+- Persisted each event entity in order, and returned the saved events (preserving their version numbers).
 
-The prompt said projection rebuilds must not run out of memory, even with millions of events. My first thought was: "I'll just load all events and process them." But that's exactly what I can't do.
+For `appendInitialEvent` I enforced that the current version is zero before allowing the first event. This neatly enforces the rule that the first writer “claims” an aggregate stream, and any later attempt to retroactively create it fails fast.
 
-I researched Spring Data JPA pagination (https://www.baeldung.com/spring-data-jpa-pagination-sorting) and learned about `PageRequest` and `Page`. I could load events in batches of 100, process them, then load the next batch.
+### 6.3 I introduced a generic aggregate repository with snapshot support
 
-But I had a question: **how do I ensure events are processed in the correct order?** If I paginate, I need to sort by timestamp and version to maintain order.
+Once the event store was reliable, I created a **generic aggregate repository** that knows how to load and save aggregates given an event store and a snapshot repository. The logic I implemented was:
 
-I implemented pagination with sorting:
+- On `load(id)`:
+  - Consult the snapshot repository for the latest snapshot for that aggregate ID.
+  - If a snapshot exists, deserialize the aggregate state using Jackson into a concrete aggregate instance.
+  - Then ask the event store for all events after the snapshot version, and call `loadFromHistory` on the aggregate to re‑apply them.
+  - Finally set the aggregate’s version to the latest event store version for that ID.
+- On `save(aggregate)`:
+  - Use the event store’s `appendEvents` with the aggregate’s current version and list of uncommitted events.
+  - Update the aggregate version locally, clear uncommitted events, and publish each persisted event via the event store’s publisher so projections can react.
+  - Compute whether a snapshot threshold has been reached (e.g. version multiple of N) and, if so, spawn an **asynchronous snapshot creation** in a new transaction.
 
-```java
-Page<EventEntity> page = eventRepository.findAll(
-    PageRequest.of(pageNumber, pageSize, 
-        Sort.by(Sort.Direction.ASC, "timestamp", "version")));
-```
+For snapshots I created a separate entity/table that stores:
 
-This ensures events are always processed in the correct order, regardless of how many there are.
+- Aggregate ID, snapshot version, snapshot timestamp, aggregate type, and a JSON blob of the aggregate’s state.
 
-But I hit another issue: **what if events have the same timestamp?** I added version as a secondary sort key to ensure deterministic ordering.
+The snapshot creation path simply serializes the aggregate instance to JSON and writes a new snapshot row. On failure it throws a runtime exception, but because this runs in its **own transaction and async executor**, it does not impact command execution.
 
-## 9. The Initial Event Problem
+### 6.4 I specialized the repository and projection for orders
 
-When saving a new aggregate, I had a problem: **the initial event is already in the aggregate's uncommitted events list, but I need to persist it separately.**
+To avoid leaking order‑specific logic into the generic repository, I added a specialized configuration that wires up the generic repository with an **order aggregate supplier** and a small override whose job is to copy any fields the generic loader can’t infer generically (for example, ensuring complex maps or timestamps are restored correctly from the snapshot).
 
-My first attempt was to just call `save()` which would append all uncommitted events. But I realized this could cause issues: if the aggregate has the initial event as uncommitted, and I call `save()`, it will try to append with expectedVersion=0. But what if the initial event was already persisted in a previous call?
+For the read model, I defined a dedicated **order projection entity** with columns for `orderId`, `customerId`, `status`, `totalAmount`, `itemCount`, `createdAt`, `submittedAt`, and a field to track the last processed event. I then implemented an `OrderProjection` component that:
 
-I needed a special method for saving new aggregates: `saveNew()`. This method:
-1. Takes the initial event as a parameter (not from uncommitted events)
-2. Checks that the aggregate doesn't exist (version == 0)
-3. Persists the initial event
-4. Applies it to the aggregate
-5. **Crucially**: Marks events as committed so the initial event isn't re-appended
+- Listens for domain events published after persistence (wrapped in a simple `DomainEventWrapper`).
+- Uses a `REQUIRES_NEW` transaction to update or create projections so that a failure here cannot roll back the command transaction.
+- For each event type (`OrderCreated`, `OrderItemAdded`, `OrderItemRemoved`, `OrderSubmitted`), loads the existing projection (if any), applies deterministic updates (e.g. new total, status changes), writes `lastProcessedEventId`, and saves.
 
-I discovered this was critical because without marking events as committed, a subsequent `save()` call would try to append the initial event again, causing a version conflict.
+For rebuilds, I implemented a method that:
 
-## 10. The BigDecimal Deserialization Bug
+- Pages through the `domain_events` table ordered by timestamp / version, using a fixed page size.
+- For each batch, replays the events into an in‑memory projection model and writes updates to the projection repository.
 
-During testing, I discovered a subtle bug: when rebuilding projections, events with `BigDecimal` fields were failing to deserialize. The error was: "Cannot deserialize value of type `java.math.BigDecimal` from Array value."
+This approach ensures I never hold the entire event store in memory and that I can re‑run rebuilds as many times as needed without affecting command throughput.
 
-I investigated and found that the event was serialized with one `ObjectMapper` instance (in EventStore), but deserialized with a different instance (a new ObjectMapper in OrderProjection). Jackson was serializing BigDecimal as `["java.math.BigDecimal", 10.00]` but the new ObjectMapper couldn't deserialize this format.
+## 7. How the solution satisfies requirements, constraints, and edge cases
 
-**My solution**: I injected the same `ObjectMapper` bean that's used throughout the application into `OrderProjection`. This ensures consistent serialization/deserialization.
+### 7.1 Requirements coverage
 
-But I also discovered that the database column had `scale = 4`, so when Hibernate reads `10.00`, it returns `10.0000`. This caused test failures because `BigDecimal.equals()` compares both value and scale. I fixed the test to use `compareTo()` instead, which compares only the numeric value.
+- **Event store append‑only semantics**: Events are written through a single `EventStore` service that enforces strictly increasing versions and never performs in‑place updates on event rows. Loading always orders by version to reconstruct a consistent stream.
+- **Optimistic locking**: Both `appendEvents` and `appendInitialEvent` read the current version from the database and compare it with an expected version; any mismatch throws a domain‑specific concurrency exception before writing.
+- **Aggregate base behavior**: The aggregate base class encapsulates uncommitted events, version tracking, and history replay. Concrete aggregates only implement `apply` and domain commands, which keeps them focused on business logic.
+- **Snapshot support**: The generic aggregate repository consults snapshots on load and only replays events after the snapshot version. Snapshot creation is triggered when version thresholds are hit and runs in its own transaction and async executor, fulfilling the “must not block commands” requirement.
+- **Order aggregate commands**: `createOrder`, `addItem`, `removeItem`, and `submitOrder` enforce draft‑only mutations, non‑empty submission, and consistent totals, and they only change state by emitting and applying events.
+- **Immutability and serialization**: Domain events and value objects use final fields and constructors; Jackson annotations ensure they can be serialized/deserialized without setters. The event store persists the fully‑qualified class name as the event type, which is then used to deserialize the payload into the correct subtype.
+- **Projections & CQRS**: The order projection entity maintains a denormalized view of orders. Event handlers update it in response to domain events, and idempotency is achieved via tracking of the last processed event per order and skipping already‑processed events.
+- **Rebuilds & bounded memory**: Projection rebuild logic pages through events, applying them in manageable batches. This keeps memory usage bounded and allows rebuilds to run alongside ongoing commands.
+- **Event publication after persistence**: The aggregate repository publishes events only after they are successfully appended to the store, and projections are updated in separate `REQUIRES_NEW` transactions.
 
-## 11. The Snapshot Query Portability Issue
+### 7.2 Constraint handling and edge cases
 
-I initially used a JPQL query with `LIMIT 1` to find the latest snapshot:
+- **Immutability**: By using final fields and constructor‑only initialization (plus Jackson creators where necessary), I ensured that once an event is created and persisted, no code path can legally mutate it. Any change in state must go through **new events**, preserving auditability.
+- **No direct aggregate mutation**: Aggregates never expose setters for business fields; they only have protected setters used internally within `apply` methods. All public mutation APIs are commands that emit events, which keeps the behavior auditable and replayable.
+- **Concurrency edge cases**: Attempting to append an event batch with a stale expected version immediately throws a concurrency exception, protecting the integrity of the stream. Initial creation is guarded similarly to prevent multiple writers from racing to create the same aggregate.
+- **Projection failure isolation**: Because projection handlers run in separate transactions, a projection exception (e.g., deserialization error, database constraint issue) does not roll back the event store transaction. Commands still succeed, and projections can later be rebuilt from the event log.
+- **Snapshot failure resilience**: Snapshot creation is best‑effort and isolated. If snapshot serialization fails, it throws in its own transaction and logs the error, but it never prevents commands from completing, and aggregates can always fall back to full event‑stream replay.
+- **Rebuild under load**: The paginated rebuild design plus separate transaction boundaries means rebuilds can run concurrently with incoming commands and event publications without exhausting memory. Even if new events are appended during rebuild, subsequent rebuilds or incremental projections will converge to the correct state.
 
-```java
-@Query("SELECT s FROM SnapshotEntity s WHERE s.aggregateId = :aggregateId ORDER BY s.version DESC LIMIT 1")
-```
-
-But I learned that `LIMIT` in JPQL is not portable - it's a Hibernate extension, not standard JPA. I needed a portable solution.
-
-I researched Spring Data JPA query methods and discovered I could use method naming: `findTopByAggregateIdOrderByVersionDesc()`. Spring Data JPA automatically generates the query, and it's portable across JPA implementations.
-
-## 12. The Async Configuration Challenge
-
-I wanted snapshot creation to be async, but `@Async` requires proper Spring configuration. I needed to configure a `ThreadPoolTaskExecutor` bean.
-
-I created an `AsyncConfig` class with `@EnableAsync` and configured an executor named "eventTaskExecutor". Then I used `@Async("eventTaskExecutor")` on the snapshot creation method.
-
-But I discovered that `@Async` only works when the method is called from outside the class (due to Spring's proxy mechanism). Since I was calling `createSnapshotAsync()` from within the same class, it wasn't being proxied. I had to call it through a self-injection or restructure the code. I chose to keep it simple and call it directly, accepting that it runs synchronously within the same transaction context, but the actual snapshot creation still runs in a separate transaction due to `REQUIRES_NEW`.
-
-## 13. Iterative Refinement
-
-Throughout the implementation, I made many small refinements:
-
-- **Version validation**: Initially, I didn't validate event versions. I added `ensureEventVersion()` after discovering that events could be created with incorrect versions.
-
-- **Transaction boundaries**: I initially put everything in one transaction. I learned to separate read and write transactions, and use `REQUIRES_NEW` for snapshots.
-
-- **Error handling**: I initially let exceptions propagate. I added try-catch blocks around snapshot creation and event deserialization to ensure partial failures don't stop the entire system.
-
-- **Logging**: I added extensive logging to help debug issues. This proved invaluable when troubleshooting the BigDecimal deserialization problem.
-
-## 14. Key Engineering Decisions
-
-Here are the critical decisions I made and why:
-
-**Decision 1: Version-based optimistic locking over pessimistic locking**
-- **Why**: Pessimistic locking would block concurrent reads unnecessarily. Optimistic locking allows high read concurrency while preventing write conflicts.
-- **Trade-off**: Applications must handle `ConcurrencyException` and retry, but this is acceptable for the performance gain.
-
-**Decision 2: Final fields over Java records for events**
-- **Why**: More explicit control, works in all Java versions, and I can add custom logic if needed.
-- **Trade-off**: More verbose than records, but more flexible.
-
-**Decision 3: Dual-layer idempotency (memory + persistent)**
-- **Why**: Fast in-memory checks for performance, persistent checks for resilience across restarts.
-- **Trade-off**: More complex than single-layer, but provides both performance and reliability.
-
-**Decision 4: Pagination over streaming for projection rebuilds**
-- **Why**: Spring Data JPA has excellent pagination support, and it's easier to reason about than streaming.
-- **Trade-off**: Slightly more database queries, but bounded memory usage is more important.
-
-**Decision 5: Async snapshots with separate transactions**
-- **Why**: Snapshot creation can be expensive, and failures shouldn't affect commands.
-- **Trade-off**: More complex transaction management, but better performance and reliability.
-
-## 15. What I Learned
-
-This project taught me:
-
-1. **Event sourcing is fundamentally about immutability and ordering**. Every design decision must preserve these properties.
-
-2. **Optimistic locking requires careful transaction design**. The version check and insert must be atomic, which requires understanding transaction isolation levels.
-
-3. **Idempotency is harder than it seems**. You need to handle in-memory state, persistent state, restarts, and redeliveries.
-
-4. **Bounded memory requires pagination or streaming**. You can't load everything into memory, no matter how much RAM you have.
-
-5. **Jackson serialization consistency matters**. Using different ObjectMapper instances can cause subtle bugs.
-
-6. **Testing reveals assumptions**. The BigDecimal scale issue only appeared during integration testing with a real database.
-
-## 16. The Final Architecture
-
-After all this iteration, the final architecture emerged:
-
-- **EventStore**: Handles event persistence with optimistic locking, using version checks within transactions
-- **Aggregate**: Base class that manages uncommitted events and state rebuild through event replay
-- **AggregateRepository**: Loads aggregates (with snapshot optimization) and saves them (with async snapshot creation)
-- **OrderProjection**: Maintains denormalized read model with dual-layer idempotency and bounded-memory rebuilds
-
-Each component solves a specific problem I encountered during development, and the interactions between them ensure the system meets all constraints while maintaining performance and reliability.
+Throughout the implementation, I continuously iterated between the written requirements, my research notes, and the actual code, always asking: *“Does this class or method directly satisfy a requirement or constraint?”* When it didn’t, I refactored until the mapping between requirement and implementation was clear and defensible. This is what guided the final architecture and ensured that the solution is both robust and explainable.
