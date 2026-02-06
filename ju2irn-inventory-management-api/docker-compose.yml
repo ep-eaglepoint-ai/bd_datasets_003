@@ -1,8 +1,24 @@
-# Docker Compose file for running tests. You should customize this as needed.
+version: '3.8'
 
 services:
-  app:
+  repo-before:
     build: .
-    command: pytest -q tests
+    command: npm run test:api
     volumes:
       - .:/app
+      - /app/node_modules
+
+  repo-after:
+    build: .
+    command: npm run test:meta
+    volumes:
+      - .:/app
+      - /app/node_modules
+
+  evaluation:
+    build: .
+    command: node evaluation/evaluation.js
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - ./evaluation:/app/evaluation

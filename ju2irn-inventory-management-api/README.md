@@ -1,11 +1,16 @@
-# JU2IRN - inventory management api
+# JU2IRN - Inventory Management API Test Suite
 
-    ## Before Test Docker Command
-    <docker before command here>
+### Run API Tests (repository_after)
+```bash
+docker-compose run repo-before
+```
 
-    ## After Test Docker Command
-    <docker after command here>
+### Run Meta Tests (tests/)
+```bash
+docker-compose run repo-after
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+### Run Evaluation (both + report)
+```bash
+docker-compose run evaluation
+```
