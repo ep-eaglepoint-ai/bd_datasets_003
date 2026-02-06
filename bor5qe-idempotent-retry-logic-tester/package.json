@@ -1,0 +1,17 @@
+{
+  "name": "fetch-with-retry-tests",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "jest",
+    "metatest": "node tests/network.metatest.js"
+  },
+  "devDependencies": {
+    "@jest/globals": "^30.2.0",
+    "jest": "^30.2.0"
+  },
+  "dependencies": {
+    "uuid": "^13.0.0"
+  }
+}

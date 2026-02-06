@@ -1,0 +1,10 @@
+
+services:
+  app:
+    build: .
+    command: node evaluation/evaluator.js
+    environment:
+      - NODE_OPTIONS=--experimental-vm-modules
+    volumes:
+      - .:/app
+      - /app/node_modules

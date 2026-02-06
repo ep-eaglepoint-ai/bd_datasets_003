@@ -1,0 +1,11 @@
+{
+            "instance_id": "BOR5QE",
+            "problem_statement": "Develop a comprehensive Jest test suite for a resilient 'Fetch with Retry' utility. The challenge is to mock the network layer to simulate specific failure sequences (e.g., 'Fail, Fail, Success') and verify that the utility adheres to an exponential backoff strategy, correctly handles non-retriable errors (like 401s), and guarantees idempotency (does not process side effects multiple times for the same request ID).",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/bor5qe-idempotent-retry-logic-tester",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
