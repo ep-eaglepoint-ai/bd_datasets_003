@@ -3,7 +3,7 @@ services:
     build: .
     environment:
       - TARGET_REPO=repository_before
-    command: "pytest tests/ || true"
+    command: pytest tests/ || true
     volumes:
       - .:/app
 
