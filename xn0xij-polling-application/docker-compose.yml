@@ -1,8 +1,57 @@
-# Docker Compose file for running tests. You should customize this as needed.
+version: '3.8'
 
 services:
-  app:
-    build: .
-    command: pytest -q tests
+  # Evaluation service - runs tests and generates report
+  evaluation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: polling-evaluation
     volumes:
-      - .:/app
+      # Mount evaluation directory to persist reports
+      - ./evaluation:/app/evaluation
+    environment:
+      - NODE_ENV=test
+
+  # Test service - runs tests directly without evaluation wrapper
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: polling-test
+    command: npm test
+    environment:
+      - NODE_ENV=test
+
+  # Production server (from repository_after)
+  server:
+    build:
+      context: ./repository_after/server
+      dockerfile: Dockerfile
+    container_name: polling-server
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+    restart: unless-stopped
+    networks:
+      - polling-network
+
+  # Production client (from repository_after)
+  client:
+    build:
+      context: ./repository_after/client
+      dockerfile: Dockerfile
+    container_name: polling-client
+    ports:
+      - "3000:3000"
+    depends_on:
+      - server
+    restart: unless-stopped
+    networks:
+      - polling-network
+
+networks:
+  polling-network:
+    driver: bridge

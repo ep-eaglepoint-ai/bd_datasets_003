@@ -1,7 +1,19 @@
-# Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
+# Dockerfile for running evaluation tests
+FROM node:18-alpine
 
-FROM python:3.11-slim
 WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+# Copy package files
+COPY package*.json ./
+
+# Install all dependencies (including dev dependencies for testing)
+RUN npm ci
+
+# Copy the entire project
+COPY . .
+
+# Create evaluation output directory
+RUN mkdir -p /app/evaluation
+
+# Set the command to run evaluation
+CMD ["npm", "run", "evaluate"]
