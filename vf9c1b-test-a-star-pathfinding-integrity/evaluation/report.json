@@ -1,44 +1,44 @@
 {
-  "timestamp": "2026-02-06T15:04:03.314Z",
+  "timestamp": "2026-02-06T17:28:47.841Z",
   "repository_before": {
     "passed": 34,
     "failed": 0,
     "total": 34,
     "tests": [
       {
-        "name": "should handle zero-cost tile when start equals end on that tile",
+        "name": "should complete within 200ms on 3x3 grid with adjacent zero-cost tiles at (1,1) and (1,2)",
         "passed": true
       },
       {
-        "name": "should complete within 200ms for simple grid navigation",
+        "name": "should not oscillate between adjacent zero-cost tiles",
         "passed": true
       },
       {
-        "name": "should complete within 200ms for larger grid",
+        "name": "should handle path through zero-cost teleporter tiles within time limit",
         "passed": true
       },
       {
-        "name": "should find path when obstacles create narrow passage",
+        "name": "should find path around walls when target is reachable via alternate route",
         "passed": true
       },
       {
-        "name": "should find path around walls",
+        "name": "should navigate through narrow passage when walls block direct path",
         "passed": true
       },
       {
-        "name": "should navigate maze-like structure",
+        "name": "should find path in maze-like structure with single solution",
         "passed": true
       },
       {
-        "name": "should find optimal path preferring grass over water",
+        "name": "should find optimal path with exact cost 4 preferring grass over water",
         "passed": true
       },
       {
-        "name": "should choose shorter weighted path over longer cheap path",
+        "name": "should find path and verify cost calculation is correct",
         "passed": true
       },
       {
-        "name": "should detect when path is not optimal due to heuristic issues",
+        "name": "should find strictly optimal path in weighted grid",
         "passed": true
       },
       {
@@ -122,7 +122,7 @@
         "passed": true
       },
       {
-        "name": "should handle 20x20 grid with obstacles that have path",
+        "name": "should handle 20x20 grid with obstacles efficiently",
         "passed": true
       },
       {
@@ -144,9 +144,9 @@
     ]
   },
   "repository_after": {
-    "passed": 39,
+    "passed": 44,
     "failed": 0,
-    "total": 39,
+    "total": 44,
     "tests": [
       {
         "name": "should have test_infinite_loop_on_zero_cost test",
@@ -237,19 +237,39 @@
         "passed": true
       },
       {
-        "name": "should test grid with zero-cost tiles",
+        "name": "should have 3x3 grid with zeros at (1,1) and (1,2)",
         "passed": true
       },
       {
-        "name": "should test for timeout or timing",
+        "name": "should have 200ms timeout assertion for zero-cost tests",
         "passed": true
       },
       {
-        "name": "should test paths with different weights",
+        "name": "should test adjacent zero-cost tiles",
         "passed": true
       },
       {
-        "name": "should use toMatchPathCost in assertions",
+        "name": "should have tests for navigating around walls",
+        "passed": true
+      },
+      {
+        "name": "should have grid with Infinity-walled regions",
+        "passed": true
+      },
+      {
+        "name": "should test path finding around obstacles",
+        "passed": true
+      },
+      {
+        "name": "should use strict cost assertions with toMatchPathCost",
+        "passed": true
+      },
+      {
+        "name": "should test paths with different weights (grass vs water)",
+        "passed": true
+      },
+      {
+        "name": "should verify optimal path costs",
         "passed": true
       },
       {

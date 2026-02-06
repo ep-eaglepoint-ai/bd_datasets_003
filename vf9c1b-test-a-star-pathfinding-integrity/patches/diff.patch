@@ -1,7 +1,7 @@
 diff -ruN repository_before/__tests__/pathfinder.test.js repository_after/__tests__/pathfinder.test.js
 --- repository_before/__tests__/pathfinder.test.js	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/__tests__/pathfinder.test.js	2026-02-06 17:53:18.476771100 +0300
-@@ -0,0 +1,342 @@
++++ repository_after/__tests__/pathfinder.test.js	2026-02-06 20:25:32.706436700 +0300
+@@ -0,0 +1,391 @@
 +/**
 + * A-Star Pathfinding Test Suite
 + * Tests for the findPath function
@@ -51,53 +51,84 @@ diff -ruN repository_before/__tests__/pathfinder.test.js repository_after/__test
 +
 +describe('A-Star Pathfinding Tests', () => {
 +    describe('test_infinite_loop_on_zero_cost', () => {
-+        it('should handle zero-cost tile when start equals end on that tile', () => {
-+            const grid = [[0]];
-+            const result = findPath(grid, [0, 0], [0, 0]);
-+            expect(result).toEqual([[0, 0]]);
-+        });
-+
-+        it('should complete within 200ms for simple grid navigation', () => {
-+            const grid = [[1, 1, 1], [1, 1, 1], [1, 1, 1]];
++        // Requirement 1: 3x3 grid with zeros at indices (1,1) and (1,2) with 200ms assertion
++        it('should complete within 200ms on 3x3 grid with adjacent zero-cost tiles at (1,1) and (1,2)', () => {
++            // Grid with zeros at row 1, columns 1 and 2 - tests oscillation handling
++            const grid = [
++                [1, 1, 1],
++                [1, 0, 0],  // zeros at indices (1,1) and (1,2)
++                [1, 1, 1]
++            ];
 +            const startTime = Date.now();
 +            const result = findPath(grid, [0, 0], [2, 2]);
-+            expect(Date.now() - startTime).toBeLessThan(200);
++            const elapsed = Date.now() - startTime;
++
++            expect(elapsed).toBeLessThan(200);
++            expect(result).not.toBeNull();
++            expect(result[0]).toEqual([0, 0]);
++            expect(result[result.length - 1]).toEqual([2, 2]);
++        });
++
++        it('should not oscillate between adjacent zero-cost tiles', () => {
++            // Multiple adjacent zero-cost tiles that could cause oscillation
++            const grid = [
++                [1, 0, 0, 1],
++                [1, 0, 0, 1],
++                [1, 1, 1, 1]
++            ];
++            const startTime = Date.now();
++            const result = findPath(grid, [0, 0], [3, 0]);
++            const elapsed = Date.now() - startTime;
++
++            expect(elapsed).toBeLessThan(200);
 +            expect(result).not.toBeNull();
 +        });
 +
-+        it('should complete within 200ms for larger grid', () => {
-+            const grid = Array(10).fill(null).map(() => Array(10).fill(1));
++        it('should handle path through zero-cost teleporter tiles within time limit', () => {
++            const grid = [
++                [1, 1, 1],
++                [0, 0, 0],  // Row of zero-cost tiles
++                [1, 1, 1]
++            ];
 +            const startTime = Date.now();
-+            const result = findPath(grid, [0, 0], [9, 9]);
-+            expect(Date.now() - startTime).toBeLessThan(200);
++            const result = findPath(grid, [0, 0], [2, 2]);
++            const elapsed = Date.now() - startTime;
++
++            expect(elapsed).toBeLessThan(200);
 +            expect(result).not.toBeNull();
 +        });
 +    });
 +
 +    describe('test_unreachable_target', () => {
-+        it('should find path when obstacles create narrow passage', () => {
++        // Requirement 2: Tests for obstacle navigation (paths around walls)
++        it('should find path around walls when target is reachable via alternate route', () => {
 +            const grid = [
 +                [1, 1, 1, 1, 1],
 +                [1, Infinity, Infinity, Infinity, 1],
++                [1, Infinity, 1, Infinity, 1],
++                [1, Infinity, Infinity, Infinity, 1],
 +                [1, 1, 1, 1, 1]
 +            ];
-+            const result = findPath(grid, [0, 0], [4, 2]);
++            // Target at (4,4) IS reachable going around the walls
++            const result = findPath(grid, [0, 0], [4, 4]);
 +            expect(result).not.toBeNull();
 +            expect(result[0]).toEqual([0, 0]);
-+            expect(result[result.length - 1]).toEqual([4, 2]);
++            expect(result[result.length - 1]).toEqual([4, 4]);
 +        });
 +
-+        it('should find path around walls', () => {
++        it('should navigate through narrow passage when walls block direct path', () => {
 +            const grid = [
-+                [1, Infinity, 1],
-+                [1, Infinity, 1],
-+                [1, 1, 1]
++                [1, 1, Infinity, 1, 1],
++                [1, 1, Infinity, 1, 1],
++                [1, 1, 1, 1, 1],  // Passage at bottom
++                [1, 1, Infinity, 1, 1],
++                [1, 1, Infinity, 1, 1]
 +            ];
-+            const result = findPath(grid, [0, 0], [2, 0]);
++            const result = findPath(grid, [0, 0], [4, 0]);
 +            expect(result).not.toBeNull();
 +        });
 +
-+        it('should navigate maze-like structure', () => {
++        it('should find path in maze-like structure with single solution', () => {
 +            const grid = [
 +                [1, 1, 1, 1, 1],
 +                [Infinity, Infinity, Infinity, Infinity, 1],
@@ -107,11 +138,14 @@ diff -ruN repository_before/__tests__/pathfinder.test.js repository_after/__test
 +            ];
 +            const result = findPath(grid, [0, 0], [4, 4]);
 +            expect(result).not.toBeNull();
++            expect(result[0]).toEqual([0, 0]);
++            expect(result[result.length - 1]).toEqual([4, 4]);
 +        });
 +    });
 +
 +    describe('test_suboptimal_path_detection', () => {
-+        it('should find optimal path preferring grass over water', () => {
++        // Requirement 3: Strict path cost verification
++        it('should find optimal path with exact cost 4 preferring grass over water', () => {
 +            const grid = [
 +                [1, 1, 1, 1, 1],
 +                [1, 5, 5, 5, 1],
@@ -121,22 +155,31 @@ diff -ruN repository_before/__tests__/pathfinder.test.js repository_after/__test
 +            ];
 +            const result = findPath(grid, [0, 0], [4, 0]);
 +            expect(result).not.toBeNull();
++            // Optimal path goes along top edge: cost = 4
 +            expect(result).toMatchPathCost(grid, 4);
 +        });
 +
-+        it('should choose shorter weighted path over longer cheap path', () => {
-+            const grid = [[1, 5, 1], [1, 5, 1], [1, 1, 1]];
-+            const result = findPath(grid, [0, 0], [2, 0]);
++        it('should find path and verify cost calculation is correct', () => {
++            const grid = [
++                [1, 1, 1],
++                [1, 1, 1],
++                [1, 1, 1]
++            ];
++            const result = findPath(grid, [0, 0], [2, 2]);
 +            expect(result).not.toBeNull();
-+            // Algorithm finds a path - optimal would be 4, but may find 6
-+            const pathCost = result.slice(1).reduce((sum, [x, y]) => sum + grid[y][x], 0);
-+            expect(pathCost).toBeGreaterThanOrEqual(4);
++            // Manhattan distance path: 4 steps of weight 1 = cost 4
++            expect(result).toMatchPathCost(grid, 4);
 +        });
 +
-+        it('should detect when path is not optimal due to heuristic issues', () => {
-+            const grid = [[1, 1, 1, 1, 1], [5, 5, 5, 5, 1], [1, 1, 1, 1, 1]];
++        it('should find strictly optimal path in weighted grid', () => {
++            const grid = [
++                [1, 1, 1, 1, 1],
++                [5, 5, 5, 5, 1],
++                [1, 1, 1, 1, 1]
++            ];
 +            const result = findPath(grid, [0, 0], [0, 2]);
 +            expect(result).not.toBeNull();
++            // Path: right 4, down 2 = 6 tiles of weight 1 = cost 6
 +            expect(result).toMatchPathCost(grid, 6);
 +        });
 +    });
@@ -171,7 +214,8 @@ diff -ruN repository_before/__tests__/pathfinder.test.js repository_after/__test
 +            for (let i = 0; i < result.length - 1; i++) {
 +                const [x1, y1] = result[i];
 +                const [x2, y2] = result[i + 1];
-+                expect(Math.abs(x2 - x1) + Math.abs(y2 - y1)).toBe(1);
++                const distance = Math.abs(x2 - x1) + Math.abs(y2 - y1);
++                expect(distance).toBe(1);
 +            }
 +        });
 +
@@ -182,7 +226,8 @@ diff -ruN repository_before/__tests__/pathfinder.test.js repository_after/__test
 +            for (let i = 0; i < result.length - 1; i++) {
 +                const [x1, y1] = result[i];
 +                const [x2, y2] = result[i + 1];
-+                expect(Math.abs(x2 - x1) + Math.abs(y2 - y1)).toBe(1);
++                const distance = Math.abs(x2 - x1) + Math.abs(y2 - y1);
++                expect(distance).toBe(1);
 +            }
 +        });
 +
@@ -192,6 +237,7 @@ diff -ruN repository_before/__tests__/pathfinder.test.js repository_after/__test
 +            expect(result).not.toBeNull();
 +            expect(result[0]).toEqual([0, 0]);
 +            expect(result[result.length - 1]).toEqual([2, 2]);
++            expect(result.length).toBeGreaterThanOrEqual(5);
 +        });
 +    });
 +
@@ -298,17 +344,19 @@ diff -ruN repository_before/__tests__/pathfinder.test.js repository_after/__test
 +            const grid = Array(20).fill(null).map(() => Array(20).fill(1));
 +            const startTime = Date.now();
 +            const result = findPath(grid, [0, 0], [19, 19]);
++            const elapsed = Date.now() - startTime;
 +            expect(result).not.toBeNull();
-+            expect(Date.now() - startTime).toBeLessThan(1000);
++            expect(elapsed).toBeLessThan(1000);
 +        });
 +
-+        it('should handle 20x20 grid with obstacles that have path', () => {
++        it('should handle 20x20 grid with obstacles efficiently', () => {
 +            const grid = Array(20).fill(null).map(() => Array(20).fill(1));
 +            for (let i = 0; i < 18; i++) grid[10][i] = Infinity;
 +            const startTime = Date.now();
 +            const result = findPath(grid, [0, 0], [19, 19]);
++            const elapsed = Date.now() - startTime;
 +            expect(result).not.toBeNull();
-+            expect(Date.now() - startTime).toBeLessThan(1000);
++            expect(elapsed).toBeLessThan(1000);
 +        });
 +
 +        it('should handle 20x20 grid with varied weights', () => {
@@ -317,8 +365,9 @@ diff -ruN repository_before/__tests__/pathfinder.test.js repository_after/__test
 +            );
 +            const startTime = Date.now();
 +            const result = findPath(grid, [0, 0], [19, 19]);
++            const elapsed = Date.now() - startTime;
 +            expect(result).not.toBeNull();
-+            expect(Date.now() - startTime).toBeLessThan(1000);
++            expect(elapsed).toBeLessThan(1000);
 +        });
 +    });
 +

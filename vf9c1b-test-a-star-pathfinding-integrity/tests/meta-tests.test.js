@@ -134,25 +134,48 @@ describe('Meta Tests - Test Suite Requirements', () => {
         });
     });
 
-    describe('Zero-Cost Tile Tests', () => {
-        it('should test grid with zero-cost tiles', () => {
-            expect(testFileContent).toMatch(/\[\[0\]\]|\[\s*0\s*\]/);
+    describe('Requirement 1: Zero-Cost Tile Tests', () => {
+        it('should have 3x3 grid with zeros at (1,1) and (1,2)', () => {
+            expect(testFileContent).toMatch(/\[1,\s*0,\s*0\]/);
         });
 
-        it('should test for timeout or timing', () => {
-            expect(testFileContent).toMatch(/200|startTime|elapsed|Date\.now/i);
+        it('should have 200ms timeout assertion for zero-cost tests', () => {
+            expect(testFileContent).toMatch(/200/);
+            expect(testFileContent).toMatch(/toBeLessThan\s*\(\s*200\s*\)/);
+        });
+
+        it('should test adjacent zero-cost tiles', () => {
+            expect(testFileContent).toMatch(/zero-cost|oscillat/i);
         });
     });
 
-    describe('Path Cost Tests', () => {
-        it('should test paths with different weights', () => {
-            expect(testFileContent).toMatch(/\[\s*\d+\s*,\s*5\s*,\s*\d+\s*\]/);
+    describe('Requirement 2: Obstacle Navigation Tests', () => {
+        it('should have tests for navigating around walls', () => {
+            expect(testFileContent).toMatch(/wall|obstacle|maze/i);
         });
 
-        it('should use toMatchPathCost in assertions', () => {
-            const matchPathCostUsage = testFileContent.match(/\.toMatchPathCost\s*\(/g);
-            expect(matchPathCostUsage).not.toBeNull();
-            expect(matchPathCostUsage.length).toBeGreaterThanOrEqual(3);
+        it('should have grid with Infinity-walled regions', () => {
+            expect(testFileContent).toMatch(/Infinity.*Infinity.*Infinity/);
+        });
+
+        it('should test path finding around obstacles', () => {
+            expect(testFileContent).toMatch(/around|passage|alternate/i);
+        });
+    });
+
+    describe('Requirement 3: Path Cost Verification', () => {
+        it('should use strict cost assertions with toMatchPathCost', () => {
+            const strictMatches = testFileContent.match(/\.toMatchPathCost\s*\(\s*grid\s*,\s*\d+\s*\)/g);
+            expect(strictMatches).not.toBeNull();
+            expect(strictMatches.length).toBeGreaterThanOrEqual(3);
+        });
+
+        it('should test paths with different weights (grass vs water)', () => {
+            expect(testFileContent).toMatch(/grass|water|weight/i);
+        });
+
+        it('should verify optimal path costs', () => {
+            expect(testFileContent).toMatch(/optimal|cost/i);
         });
     });
 

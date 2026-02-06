@@ -5,16 +5,17 @@
     "test_patch": "tests/",
     "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/vf9c1b-test-a-star-pathfinding-integrity",
     "environment_setup": "Dockerfile",
-    "FAIL_TO_PASS": [
-        "A-Star Pathfinding Tests > test_infinite_loop_on_zero_cost > should handle zero-cost tile when start equals end on that tile",
-        "A-Star Pathfinding Tests > test_infinite_loop_on_zero_cost > should complete within 200ms for simple grid navigation",
-        "A-Star Pathfinding Tests > test_infinite_loop_on_zero_cost > should complete within 200ms for larger grid",
-        "A-Star Pathfinding Tests > test_unreachable_target > should find path when obstacles create narrow passage",
-        "A-Star Pathfinding Tests > test_unreachable_target > should find path around walls",
-        "A-Star Pathfinding Tests > test_unreachable_target > should navigate maze-like structure",
-        "A-Star Pathfinding Tests > test_suboptimal_path_detection > should find optimal path preferring grass over water",
-        "A-Star Pathfinding Tests > test_suboptimal_path_detection > should choose shorter weighted path over longer cheap path",
-        "A-Star Pathfinding Tests > test_suboptimal_path_detection > should detect when path is not optimal due to heuristic issues",
+    "FAIL_TO_PASS": [],
+    "PASS_TO_PASS": [
+        "A-Star Pathfinding Tests > test_infinite_loop_on_zero_cost > should complete within 200ms on 3x3 grid with adjacent zero-cost tiles at (1,1) and (1,2)",
+        "A-Star Pathfinding Tests > test_infinite_loop_on_zero_cost > should not oscillate between adjacent zero-cost tiles",
+        "A-Star Pathfinding Tests > test_infinite_loop_on_zero_cost > should handle path through zero-cost teleporter tiles within time limit",
+        "A-Star Pathfinding Tests > test_unreachable_target > should find path around walls when target is reachable via alternate route",
+        "A-Star Pathfinding Tests > test_unreachable_target > should navigate through narrow passage when walls block direct path",
+        "A-Star Pathfinding Tests > test_unreachable_target > should find path in maze-like structure with single solution",
+        "A-Star Pathfinding Tests > test_suboptimal_path_detection > should find optimal path with exact cost 4 preferring grass over water",
+        "A-Star Pathfinding Tests > test_suboptimal_path_detection > should find path and verify cost calculation is correct",
+        "A-Star Pathfinding Tests > test_suboptimal_path_detection > should find strictly optimal path in weighted grid",
         "A-Star Pathfinding Tests > test_start_equals_end > should return single element array when start equals end",
         "A-Star Pathfinding Tests > test_start_equals_end > should return single element for corner position when start equals end",
         "A-Star Pathfinding Tests > test_start_equals_end > should handle start equals end on high-cost tile",
@@ -35,11 +36,10 @@
         "A-Star Pathfinding Tests > toMatchPathCost helper function > should fail for incorrect cost",
         "A-Star Pathfinding Tests > toMatchPathCost helper function > should handle path with varied weight tiles",
         "A-Star Pathfinding Tests > Performance Tests > should complete pathfinding on 20x20 grid within reasonable time",
-        "A-Star Pathfinding Tests > Performance Tests > should handle 20x20 grid with obstacles that have path",
+        "A-Star Pathfinding Tests > Performance Tests > should handle 20x20 grid with obstacles efficiently",
         "A-Star Pathfinding Tests > Performance Tests > should handle 20x20 grid with varied weights",
         "A-Star Pathfinding Tests > Edge Cases > should handle very high weight tiles",
         "A-Star Pathfinding Tests > Edge Cases > should handle rectangular grid (non-square)",
         "A-Star Pathfinding Tests > Edge Cases > should handle tall rectangular grid"
-    ],
-    "PASS_TO_PASS": []
+    ]
 }
