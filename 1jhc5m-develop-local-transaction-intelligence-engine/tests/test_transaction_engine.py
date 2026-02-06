@@ -91,11 +91,9 @@ def test_merchant_categorization(engine):
     assert res['category'] == 'Uncategorized' # McDonald's not in my list? 
     # Wait, 'burger' is in list. 
     # If msg matches keyword. McDonald's doesn't contain 'burger' usually unless normalized.
-    # User requirement: "Mapping should utilize a case-insensitive substring search."
     # My dictionary: 'Dining': ['restaurant', 'cafe', ... 'burger']
     # If the merchant name "McDonald's" doesn't contain "burger", it fails.
     # I should add 'mcdonald' to dictionary or update test.
-    # Requirement doesn't provide full dictionary. "Dining, Travel, Utilities, and Shopping."
     # I implemented a sample list. I should check if it classifies logic correctly.
     # Let's use a clear one "Burger King".
 

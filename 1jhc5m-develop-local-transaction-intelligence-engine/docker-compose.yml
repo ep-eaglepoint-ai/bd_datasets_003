@@ -1,7 +1,13 @@
-version: '3'
+version: "3"
 services:
   tests:
     build: .
     volumes:
       - .:/app
     command: pytest tests
+
+  evaluation:
+    build: .
+    volumes:
+      - .:/app
+    command: python evaluation/evaluation.py

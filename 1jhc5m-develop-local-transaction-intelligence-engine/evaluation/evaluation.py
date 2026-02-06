@@ -1,11 +1,9 @@
 import os
 import sys
 import json
-import time
 import uuid
 import platform
 import subprocess
-import shutil
 import re
 from datetime import datetime
 
