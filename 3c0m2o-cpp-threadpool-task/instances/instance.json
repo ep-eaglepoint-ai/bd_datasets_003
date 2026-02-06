@@ -1,0 +1,13 @@
+{
+            "instance_id": "3C0M2O",
+            "problem_statement": "A game engine team is refactoring their asset loading system that currently blocks the main thread while loading textures, meshes, and audio files. Sequential loading causes 8-second startup times, but naively spawning one thread per asset overwhelms the CPU and causes memory pressure. They need a thread pool that accepts work items and executes them across a fixed number of worker threads.
+
+The system must queue tasks when all workers are busy, support task prioritization so critical assets load first, and return futures that callers can wait on. Thread safety is paramount since multiple game systems submit tasks concurrently.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/3c0m2o-cpp-threadpool-task",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
