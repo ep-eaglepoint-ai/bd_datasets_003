@@ -4,10 +4,10 @@ FROM node:18-alpine
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
+COPY package.json package-lock.json ./
 
 # Install all dependencies (including dev dependencies for testing)
-RUN npm ci
+RUN npm install
 
 # Copy the entire project
 COPY . .
