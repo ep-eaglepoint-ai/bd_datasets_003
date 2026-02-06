@@ -1,0 +1,11 @@
+{
+            "instance_id": "3XDDK1",
+            "problem_statement": "A task management REST API built with Flask handles user registration, JWT-based authentication, task CRUD with per-user ownership, status transition enforcement, task assignment, paginated listings, and search/filter capabilities. The application is fully functional but has zero test coverage, meaning regressions can ship undetected. The API spans two models (User, Task) and eight route handlers across authentication and task management endpoints. Core logic is in app.py and depends on Flask-SQLAlchemy, Flask-JWT-Extended, and Werkzeug for password hashing.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/3xddk1-flask-task-management-api-comprehensive-pytest-test-suite",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
