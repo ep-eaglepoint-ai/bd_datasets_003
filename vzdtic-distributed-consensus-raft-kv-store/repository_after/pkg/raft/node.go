@@ -14,7 +14,6 @@ import (
 type Node struct {
 	mu sync.RWMutex
 
-	// Node identity and configuration
 	id     string
 	config NodeConfig
 
@@ -32,20 +31,17 @@ type Node struct {
 	nextIndex  map[string]uint64
 	matchIndex map[string]uint64
 
-	// Cluster configuration (with joint consensus support)
-	cluster       *ClusterConfig
-	jointConfig   *JointConfig
-	configPending bool
+	// Cluster configuration
+	cluster *ClusterConfig
 
 	// Channels
-	applyCh         chan ApplyMsg
-	stopCh          chan struct{}
-	electionResetCh chan struct{}
+	applyCh    chan ApplyMsg
+	commitCh   chan struct{} // Notify applyLoop of new commits
+	stopCh     chan struct{}
+	resetTimer chan struct{}
 
 	// Pending operations
 	pendingCommands map[uint64]*PendingCommand
-	pendingReads    []*ReadIndex
-	readMu          sync.Mutex
 
 	// Components
 	transport    Transport
@@ -58,20 +54,7 @@ type Node struct {
 	snapshotInProgress int32
 
 	// Leader tracking
-	leaderID        string
-	lastHeartbeat   time.Time
-	electionTimeout time.Duration
-
-	// Monotonic election timer
-	electionDeadline time.Time
-	electionMu       sync.Mutex
-
-	// Read index tracking
-	readIndex     uint64
-	readIndexTerm uint64
-
-	// Metrics
-	lastLogSize uint64
+	leaderID string
 }
 
 // WALInterface defines the interface for write-ahead log
@@ -92,35 +75,28 @@ type StateMachineInterface interface {
 	RestoreSnapshot(data map[string]string)
 }
 
-// JointConfig for joint consensus membership changes
-type JointConfig struct {
-	OldConfig []string
-	NewConfig []string
-}
-
 func NewNode(config NodeConfig, transport Transport, wal WALInterface, stateMachine StateMachineInterface) *Node {
 	n := &Node{
-		id:               config.ID,
-		config:           config,
-		currentTerm:      0,
-		votedFor:         "",
-		log:              make([]LogEntry, 0),
-		state:            Follower,
-		commitIndex:      0,
-		lastApplied:      0,
-		nextIndex:        make(map[string]uint64),
-		matchIndex:       make(map[string]uint64),
-		cluster:          NewClusterConfig(),
-		applyCh:          make(chan ApplyMsg, 100),
-		stopCh:           make(chan struct{}),
-		electionResetCh:  make(chan struct{}, 1),
-		pendingCommands:  make(map[uint64]*PendingCommand),
-		pendingReads:     make([]*ReadIndex, 0),
-		transport:        transport,
-		wal:              wal,
-		stateMachine:     stateMachine,
+		id:                config.ID,
+		config:            config,
+		currentTerm:       0,
+		votedFor:          "",
+		log:               make([]LogEntry, 0),
+		state:             Follower,
+		commitIndex:       0,
+		lastApplied:       0,
+		nextIndex:         make(map[string]uint64),
+		matchIndex:        make(map[string]uint64),
+		cluster:           NewClusterConfig(),
+		applyCh:           make(chan ApplyMsg, 100),
+		commitCh:          make(chan struct{}, 1),
+		stopCh:            make(chan struct{}),
+		resetTimer:        make(chan struct{}, 1),
+		pendingCommands:   make(map[uint64]*PendingCommand),
+		transport:         transport,
+		wal:               wal,
+		stateMachine:      stateMachine,
 		snapshotThreshold: config.SnapshotThreshold,
-		electionDeadline: time.Now().Add(config.ElectionTimeoutMax),
 	}
 
 	n.cluster.AddNode(config.ID)
@@ -175,46 +151,38 @@ func (n *Node) run() {
 	}
 }
 
+// runFollower handles the follower state with simplified timer logic
 func (n *Node) runFollower() {
-	n.resetElectionDeadline()
+	timer := time.NewTimer(n.randomElectionTimeout())
+	defer timer.Stop()
 
 	for {
 		select {
 		case <-n.stopCh:
 			return
-		default:
-		}
-
-		n.electionMu.Lock()
-		deadline := n.electionDeadline
-		n.electionMu.Unlock()
-
-		timeout := time.Until(deadline)
-		if timeout <= 0 {
+		case <-timer.C:
+			// Election timeout - become candidate
 			n.mu.Lock()
 			if n.state == Follower {
-				n.becomeCandidate()
+				log.Printf("Node %s: Election timeout, becoming candidate", n.id)
+				n.state = Candidate
 			}
 			n.mu.Unlock()
 			return
-		}
-
-		select {
-		case <-n.stopCh:
-			return
-		case <-n.electionResetCh:
-			n.resetElectionDeadline()
-		case <-time.After(timeout):
-			n.mu.Lock()
-			if n.state == Follower {
-				n.becomeCandidate()
+		case <-n.resetTimer:
+			// Reset timer on valid RPC
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
 			}
-			n.mu.Unlock()
-			return
+			timer.Reset(n.randomElectionTimeout())
 		}
 	}
 }
 
+// runCandidate handles the candidate state
 func (n *Node) runCandidate() {
 	n.mu.Lock()
 	n.currentTerm++
@@ -227,21 +195,17 @@ func (n *Node) runCandidate() {
 
 	log.Printf("Node %s: Starting election for term %d", n.id, currentTerm)
 
-	votesReceived := int32(1)
+	votesReceived := int32(1) // Vote for self
 	votesNeeded := int32(n.cluster.Size()/2 + 1)
+	electionWon := make(chan struct{}, 1)
 
 	peers := n.cluster.GetNodes()
-	var wg sync.WaitGroup
-
 	for _, peer := range peers {
 		if peer == n.id {
 			continue
 		}
 
-		wg.Add(1)
 		go func(peer string) {
-			defer wg.Done()
-
 			args := &RequestVoteArgs{
 				Term:         currentTerm,
 				CandidateID:  n.id,
@@ -268,33 +232,45 @@ func (n *Node) runCandidate() {
 
 			if reply.VoteGranted {
 				votes := atomic.AddInt32(&votesReceived, 1)
-				if votes >= votesNeeded && n.state == Candidate {
-					n.becomeLeader()
+				if votes >= votesNeeded {
+					select {
+					case electionWon <- struct{}{}:
+					default:
+					}
 				}
 			}
 		}(peer)
 	}
 
-	timeout := n.randomElectionTimeout()
-	timer := time.NewTimer(timeout)
+	// Wait for election result or timeout
+	timer := time.NewTimer(n.randomElectionTimeout())
 	defer timer.Stop()
 
 	select {
 	case <-n.stopCh:
 		return
-	case <-timer.C:
+	case <-electionWon:
 		n.mu.Lock()
-		if n.state == Candidate {
-			log.Printf("Node %s: Election timeout, restarting election", n.id)
-			// Immediately restart election by re-entering candidate state
+		if n.state == Candidate && n.currentTerm == currentTerm {
+			n.becomeLeader()
 		}
 		n.mu.Unlock()
-	case <-n.electionResetCh:
-		// Received valid AppendEntries, become follower
+	case <-timer.C:
+		// Election timeout - will restart as candidate
+		log.Printf("Node %s: Election timeout, restarting", n.id)
+	case <-n.resetTimer:
+		// Received AppendEntries from new leader
+		n.mu.Lock()
+		if n.state == Candidate {
+			n.state = Follower
+		}
+		n.mu.Unlock()
 	}
 }
 
+// runLeader handles the leader state
 func (n *Node) runLeader() {
+	// Send initial heartbeats immediately
 	n.sendHeartbeats()
 
 	ticker := time.NewTicker(n.config.HeartbeatInterval)
@@ -315,18 +291,9 @@ func (n *Node) runLeader() {
 
 			n.sendHeartbeats()
 			n.advanceCommitIndex()
-			n.checkReadIndices()
-			n.maybeSnapshotBySize()
-		case <-n.electionResetCh:
-			// Ignore in leader state
+			n.maybeSnapshot()
 		}
 	}
-}
-
-func (n *Node) resetElectionDeadline() {
-	n.electionMu.Lock()
-	defer n.electionMu.Unlock()
-	n.electionDeadline = time.Now().Add(n.randomElectionTimeout())
 }
 
 func (n *Node) sendHeartbeats() {
@@ -375,7 +342,6 @@ func (n *Node) sendAppendEntries(peer string, term uint64, leaderCommit uint64) 
 	prevLogIndex := nextIdx - 1
 	prevLogTerm := uint64(0)
 
-	// Handle prevLogIndex with snapshot awareness
 	if prevLogIndex > 0 {
 		if snapshotIdx > 0 && prevLogIndex == snapshotIdx {
 			prevLogTerm = n.snapshot.LastIncludedTerm
@@ -431,6 +397,7 @@ func (n *Node) sendAppendEntries(peer string, term uint64, leaderCommit uint64) 
 		}
 		n.tryAdvanceCommitIndex()
 	} else {
+		// Handle log inconsistency
 		if reply.ConflictTerm > 0 {
 			lastIndex := uint64(0)
 			for i := len(n.log) - 1; i >= 0; i-- {
@@ -461,13 +428,6 @@ func (n *Node) logIndexToArrayIndex(logIndex uint64) int {
 		return -1
 	}
 	return int(logIndex - baseIndex)
-}
-
-func (n *Node) arrayIndexToLogIndex(arrayIndex int) uint64 {
-	if len(n.log) == 0 || arrayIndex < 0 {
-		return 0
-	}
-	return n.log[0].Index + uint64(arrayIndex)
 }
 
 func (n *Node) sendSnapshot(peer string) {
@@ -516,7 +476,7 @@ func (n *Node) tryAdvanceCommitIndex() {
 
 	// Collect all match indices including self
 	matchIndices := make([]uint64, 0, n.cluster.Size())
-	matchIndices = append(matchIndices, n.getLastLogIndex()) // Leader's own log
+	matchIndices = append(matchIndices, n.getLastLogIndex())
 
 	for _, peer := range n.cluster.GetNodes() {
 		if peer == n.id {
@@ -529,7 +489,6 @@ func (n *Node) tryAdvanceCommitIndex() {
 		return matchIndices[i] > matchIndices[j]
 	})
 
-	// Find median (majority)
 	majority := n.cluster.Size() / 2
 	if majority >= len(matchIndices) {
 		return
@@ -537,7 +496,6 @@ func (n *Node) tryAdvanceCommitIndex() {
 
 	newCommitIndex := matchIndices[majority]
 
-	// Only commit entries from current term
 	if newCommitIndex > n.commitIndex {
 		logIdx := n.logIndexToArrayIndex(newCommitIndex)
 		if logIdx >= 0 && logIdx < len(n.log) && n.log[logIdx].Term == n.currentTerm {
@@ -545,22 +503,10 @@ func (n *Node) tryAdvanceCommitIndex() {
 			n.commitIndex = newCommitIndex
 			log.Printf("Node %s: Committed index %d (was %d)", n.id, newCommitIndex, oldCommit)
 
-			// Notify pending commands
-			for idx := oldCommit + 1; idx <= newCommitIndex; idx++ {
-				if pending, ok := n.pendingCommands[idx]; ok {
-					arrIdx := n.logIndexToArrayIndex(idx)
-					if arrIdx >= 0 && arrIdx < len(n.log) {
-						result := CommitResult{
-							Index: idx,
-							Term:  n.log[arrIdx].Term,
-						}
-						select {
-						case pending.ResultCh <- result:
-						default:
-						}
-					}
-					delete(n.pendingCommands, idx)
-				}
+			// Notify applyLoop
+			select {
+			case n.commitCh <- struct{}{}:
+			default:
 			}
 		}
 	}
@@ -595,7 +541,7 @@ func (n *Node) HandleRequestVote(args *RequestVoteArgs) *RequestVoteReply {
 		n.votedFor = args.CandidateID
 		reply.VoteGranted = true
 		n.persist()
-		n.resetElectionTimer()
+		n.signalResetTimer()
 		log.Printf("Node %s: Granted vote to %s for term %d", n.id, args.CandidateID, args.Term)
 	}
 
@@ -620,8 +566,7 @@ func (n *Node) HandleAppendEntries(args *AppendEntriesArgs) *AppendEntriesReply 
 	}
 
 	n.leaderID = args.LeaderID
-	n.lastHeartbeat = time.Now()
-	n.resetElectionTimer()
+	n.signalResetTimer()
 
 	reply.Term = n.currentTerm
 
@@ -678,6 +623,11 @@ func (n *Node) HandleAppendEntries(args *AppendEntriesArgs) *AppendEntriesReply 
 		} else {
 			n.commitIndex = lastNewIndex
 		}
+		// Notify applyLoop
+		select {
+		case n.commitCh <- struct{}{}:
+		default:
+		}
 	}
 
 	reply.Success = true
@@ -701,7 +651,7 @@ func (n *Node) HandleInstallSnapshot(args *InstallSnapshotArgs) *InstallSnapshot
 	}
 
 	n.leaderID = args.LeaderID
-	n.resetElectionTimer()
+	n.signalResetTimer()
 
 	var snapshotData map[string]string
 	if err := json.Unmarshal(args.Data, &snapshotData); err != nil {
@@ -709,7 +659,7 @@ func (n *Node) HandleInstallSnapshot(args *InstallSnapshotArgs) *InstallSnapshot
 		return reply
 	}
 
-	// Discard log entries covered by snapshot
+	// Discard entire log, keep only snapshot reference
 	n.log = []LogEntry{{
 		Index:   args.LastIncludedIndex,
 		Term:    args.LastIncludedTerm,
@@ -758,7 +708,7 @@ func (n *Node) Submit(cmd Command) (uint64, uint64, bool) {
 	n.log = append(n.log, entry)
 	n.persist()
 
-	log.Printf("Node %s: Appended entry %d with command %v", n.id, entry.Index, cmd)
+	log.Printf("Node %s: Appended entry %d", n.id, entry.Index)
 
 	return entry.Index, entry.Term, true
 }
@@ -794,7 +744,7 @@ func (n *Node) SubmitWithResult(ctx context.Context, cmd Command) (CommitResult,
 	}
 }
 
-// Read performs a linearizable read using ReadIndex
+// Read performs a linearizable read
 func (n *Node) Read(ctx context.Context, key string) (string, error) {
 	n.mu.Lock()
 	if n.state != Leader {
@@ -849,18 +799,18 @@ func (n *Node) confirmLeadership(term uint64) bool {
 
 	ackCount := int32(1) // Count self
 	done := make(chan struct{}, 1)
-	var wg sync.WaitGroup
 
 	for _, peer := range peers {
 		if peer == n.id {
 			continue
 		}
 
-		wg.Add(1)
 		go func(peer string) {
-			defer wg.Done()
-
 			n.mu.RLock()
+			if n.state != Leader {
+				n.mu.RUnlock()
+				return
+			}
 			args := &AppendEntriesArgs{
 				Term:         n.currentTerm,
 				LeaderID:     n.id,
@@ -895,185 +845,78 @@ func (n *Node) confirmLeadership(term uint64) bool {
 	}
 }
 
-func (n *Node) checkReadIndices() {
-	n.readMu.Lock()
-	defer n.readMu.Unlock()
-
-	n.mu.RLock()
-	lastApplied := n.lastApplied
-	n.mu.RUnlock()
-
-	remaining := make([]*ReadIndex, 0)
-	for _, read := range n.pendingReads {
-		if lastApplied >= read.Index {
-			result := CommitResult{Index: read.Index}
-			select {
-			case read.ResultCh <- result:
-			default:
-			}
-		} else {
-			remaining = append(remaining, read)
-		}
-	}
-	n.pendingReads = remaining
-}
-
-// Joint consensus membership changes
-
+// AddNode is disabled - joint consensus not fully implemented
 func (n *Node) AddNode(nodeID string) error {
-	return n.changeMembership(nodeID, true)
+	return ErrMembershipChangeDisabled
 }
 
+// RemoveNode is disabled - joint consensus not fully implemented
 func (n *Node) RemoveNode(nodeID string) error {
-	return n.changeMembership(nodeID, false)
+	return ErrMembershipChangeDisabled
 }
 
-func (n *Node) changeMembership(nodeID string, adding bool) error {
-	n.mu.Lock()
-	if n.state != Leader {
-		n.mu.Unlock()
-		return ErrNotLeader
-	}
-
-	if n.configPending {
-		n.mu.Unlock()
-		return ErrConfigChangePending
-	}
-
-	// Create joint configuration
-	oldNodes := n.cluster.GetNodes()
-	newNodes := make([]string, 0)
-
-	if adding {
-		newNodes = append(newNodes, oldNodes...)
-		newNodes = append(newNodes, nodeID)
-	} else {
-		for _, node := range oldNodes {
-			if node != nodeID {
-				newNodes = append(newNodes, node)
-			}
-		}
-	}
-
-	n.jointConfig = &JointConfig{
-		OldConfig: oldNodes,
-		NewConfig: newNodes,
-	}
-	n.configPending = true
-	n.mu.Unlock()
-
-	// First phase: commit joint config
-	cmdType := CommandAddNode
-	if !adding {
-		cmdType = CommandRemoveNode
-	}
-
-	cmd := Command{
-		Type:  cmdType,
-		Key:   nodeID,
-		Value: "joint",
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	_, err := n.SubmitWithResult(ctx, cmd)
-	if err != nil {
-		n.mu.Lock()
-		n.jointConfig = nil
-		n.configPending = false
-		n.mu.Unlock()
-		return err
-	}
-
-	// Second phase: commit final config
-	n.mu.Lock()
-	if adding {
-		n.cluster.AddNode(nodeID)
-		n.nextIndex[nodeID] = n.getLastLogIndex() + 1
-		n.matchIndex[nodeID] = 0
-	} else {
-		n.cluster.RemoveNode(nodeID)
-		delete(n.nextIndex, nodeID)
-		delete(n.matchIndex, nodeID)
-	}
-	n.jointConfig = nil
-	n.configPending = false
-	n.mu.Unlock()
-
-	// Commit new config entry
-	cmd = Command{
-		Type:  cmdType,
-		Key:   nodeID,
-		Value: "final",
-	}
-
-	ctx2, cancel2 := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel2()
-
-	_, err = n.SubmitWithResult(ctx2, cmd)
-	return err
-}
-
+// applyLoop applies committed entries using channel-based notification
 func (n *Node) applyLoop() {
 	for {
 		select {
 		case <-n.stopCh:
 			return
-		default:
+		case <-n.commitCh:
+			n.applyCommitted()
+		case <-time.After(100 * time.Millisecond):
+			// Periodic check as fallback
+			n.applyCommitted()
 		}
-
-		n.mu.Lock()
-		commitIndex := n.commitIndex
-		lastApplied := n.lastApplied
-		n.mu.Unlock()
-
-		if lastApplied < commitIndex {
-			for i := lastApplied + 1; i <= commitIndex; i++ {
-				n.mu.RLock()
-				arrIdx := n.logIndexToArrayIndex(i)
-				if arrIdx < 0 || arrIdx >= len(n.log) {
-					n.mu.RUnlock()
-					break
-				}
-				entry := n.log[arrIdx]
-				n.mu.RUnlock()
-
-				result := n.stateMachine.Apply(entry.Command)
-
-				n.applyCh <- ApplyMsg{
-					CommandValid: true,
-					Command:      entry.Command,
-					CommandIndex: entry.Index,
-					CommandTerm:  entry.Term,
-				}
-
-				n.mu.Lock()
-				n.lastApplied = i
-
-				if n.state == Leader {
-					if pending, ok := n.pendingCommands[i]; ok {
-						commitResult := CommitResult{
-							Index: i,
-							Term:  entry.Term,
-							Value: result,
-						}
-						select {
-						case pending.ResultCh <- commitResult:
-						default:
-						}
-						delete(n.pendingCommands, i)
-					}
-				}
-				n.mu.Unlock()
-			}
-		}
-
-		time.Sleep(10 * time.Millisecond)
 	}
 }
 
-func (n *Node) maybeSnapshotBySize() {
+func (n *Node) applyCommitted() {
+	n.mu.Lock()
+	commitIndex := n.commitIndex
+	lastApplied := n.lastApplied
+	n.mu.Unlock()
+
+	for i := lastApplied + 1; i <= commitIndex; i++ {
+		n.mu.RLock()
+		arrIdx := n.logIndexToArrayIndex(i)
+		if arrIdx < 0 || arrIdx >= len(n.log) {
+			n.mu.RUnlock()
+			break
+		}
+		entry := n.log[arrIdx]
+		n.mu.RUnlock()
+
+		result := n.stateMachine.Apply(entry.Command)
+
+		n.applyCh <- ApplyMsg{
+			CommandValid: true,
+			Command:      entry.Command,
+			CommandIndex: entry.Index,
+			CommandTerm:  entry.Term,
+		}
+
+		n.mu.Lock()
+		n.lastApplied = i
+
+		if n.state == Leader {
+			if pending, ok := n.pendingCommands[i]; ok {
+				commitResult := CommitResult{
+					Index: i,
+					Term:  entry.Term,
+					Value: result,
+				}
+				select {
+				case pending.ResultCh <- commitResult:
+				default:
+				}
+				delete(n.pendingCommands, i)
+			}
+		}
+		n.mu.Unlock()
+	}
+}
+
+func (n *Node) maybeSnapshot() {
 	if atomic.LoadInt32(&n.snapshotInProgress) == 1 {
 		return
 	}
@@ -1082,12 +925,13 @@ func (n *Node) maybeSnapshotBySize() {
 		return
 	}
 
+	// Check WAL size
 	size, err := n.wal.Size()
 	if err != nil {
 		return
 	}
 
-	// Snapshot when WAL exceeds threshold (e.g., 10MB)
+	// Snapshot when WAL exceeds threshold (e.g., 1MB per 100 threshold units)
 	if size > int64(n.snapshotThreshold)*10000 {
 		go func() {
 			if atomic.CompareAndSwapInt32(&n.snapshotInProgress, 0, 1) {
@@ -1136,8 +980,6 @@ func (n *Node) CreateSnapshot(index uint64) error {
 	return nil
 }
 
-// Helper functions
-
 func (n *Node) becomeFollower(term uint64) {
 	log.Printf("Node %s: Becoming follower for term %d", n.id, term)
 	n.state = Follower
@@ -1145,6 +987,7 @@ func (n *Node) becomeFollower(term uint64) {
 	n.votedFor = ""
 	n.leaderID = ""
 
+	// Fail pending commands
 	for idx, pending := range n.pendingCommands {
 		result := CommitResult{
 			Index: idx,
@@ -1160,11 +1003,6 @@ func (n *Node) becomeFollower(term uint64) {
 	n.persist()
 }
 
-func (n *Node) becomeCandidate() {
-	log.Printf("Node %s: Becoming candidate for term %d", n.id, n.currentTerm+1)
-	n.state = Candidate
-}
-
 func (n *Node) becomeLeader() {
 	log.Printf("Node %s: Becoming leader for term %d", n.id, n.currentTerm)
 	n.state = Leader
@@ -1178,7 +1016,7 @@ func (n *Node) becomeLeader() {
 		}
 	}
 
-	// Append no-op entry
+	// Append no-op entry to commit entries from previous terms
 	noopEntry := LogEntry{
 		Index:   lastLogIndex + 1,
 		Term:    n.currentTerm,
@@ -1224,12 +1062,11 @@ func (n *Node) randomElectionTimeout() time.Duration {
 	return time.Duration(min + rand.Int63n(max-min))
 }
 
-func (n *Node) resetElectionTimer() {
+func (n *Node) signalResetTimer() {
 	select {
-	case n.electionResetCh <- struct{}{}:
+	case n.resetTimer <- struct{}{}:
 	default:
 	}
-	n.resetElectionDeadline()
 }
 
 func (n *Node) persist() {
@@ -1253,6 +1090,7 @@ func (n *Node) restore() error {
 		return nil
 	}
 
+	// Restore snapshot first
 	snapshot, err := n.wal.LoadSnapshot()
 	if err == nil && snapshot != nil {
 		n.snapshot = snapshot
@@ -1260,7 +1098,7 @@ func (n *Node) restore() error {
 		n.lastApplied = snapshot.LastIncludedIndex
 		n.commitIndex = snapshot.LastIncludedIndex
 
-		// Reinitialize log with snapshot base
+		// Reset log to start from snapshot
 		n.log = []LogEntry{{
 			Index:   snapshot.LastIncludedIndex,
 			Term:    snapshot.LastIncludedTerm,
@@ -1268,6 +1106,7 @@ func (n *Node) restore() error {
 		}}
 	}
 
+	// Restore persistent state
 	state, err := n.wal.Load()
 	if err != nil {
 		return err
@@ -1276,8 +1115,23 @@ func (n *Node) restore() error {
 	if state != nil {
 		n.currentTerm = state.CurrentTerm
 		n.votedFor = state.VotedFor
+
+		// Only restore log entries that are after snapshot
 		if len(state.Log) > 0 {
-			n.log = state.Log
+			if n.snapshot != nil {
+				// Filter out entries covered by snapshot
+				newLog := make([]LogEntry, 0)
+				for _, entry := range state.Log {
+					if entry.Index >= n.snapshot.LastIncludedIndex {
+						newLog = append(newLog, entry)
+					}
+				}
+				if len(newLog) > 0 {
+					n.log = newLog
+				}
+			} else {
+				n.log = state.Log
+			}
 		}
 	}
 

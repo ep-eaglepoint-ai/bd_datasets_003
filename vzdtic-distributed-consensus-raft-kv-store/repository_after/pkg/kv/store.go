@@ -28,8 +28,6 @@ func (s *Store) Apply(cmd raft.Command) string {
 	case raft.CommandSet:
 		s.data[cmd.Key] = cmd.Value
 		return cmd.Value
-	case raft.CommandGet:
-		return s.data[cmd.Key]
 	case raft.CommandDelete:
 		delete(s.data, cmd.Key)
 		return ""

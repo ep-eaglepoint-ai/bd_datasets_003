@@ -16,16 +16,10 @@ type HTTPHandler struct {
 }
 
 func NewHTTPHandler(node *raft.Node, store *kv.Store) *HTTPHandler {
-	handler := &HTTPHandler{
+	return &HTTPHandler{
 		node:  node,
 		store: store,
 	}
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/kv/", handler.handleKV)
-	mux.HandleFunc("/status", handler.handleStatus)
-
-	return handler
 }
 
 func (h *HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -44,11 +38,29 @@ func (h *HTTPHandler) handleKV(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		value, ok := h.store.Get(key)
-		if !ok {
-			http.Error(w, "key not found", http.StatusNotFound)
+		// Use linearizable read through Raft
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		value, err := h.node.Read(ctx, key)
+		if err != nil {
+			if err == raft.ErrNotLeader {
+				h.respondNotLeader(w)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+
+		if value == "" {
+			// Check if key exists
+			if _, ok := h.store.Get(key); !ok {
+				http.Error(w, "key not found", http.StatusNotFound)
+				return
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"value": value})
 
 	case http.MethodPut, http.MethodPost:
@@ -71,10 +83,15 @@ func (h *HTTPHandler) handleKV(w http.ResponseWriter, r *http.Request) {
 
 		_, err := h.node.SubmitWithResult(ctx, cmd)
 		if err != nil {
+			if err == raft.ErrNotLeader {
+				h.respondNotLeader(w)
+				return
+			}
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 
@@ -89,10 +106,15 @@ func (h *HTTPHandler) handleKV(w http.ResponseWriter, r *http.Request) {
 
 		_, err := h.node.SubmitWithResult(ctx, cmd)
 		if err != nil {
+			if err == raft.ErrNotLeader {
+				h.respondNotLeader(w)
+				return
+			}
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 
@@ -101,9 +123,20 @@ func (h *HTTPHandler) handleKV(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// respondNotLeader returns a redirect response with leader info
+func (h *HTTPHandler) respondNotLeader(w http.ResponseWriter) {
+	leaderID := h.node.GetLeaderID()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusServiceUnavailable)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"error":     "not leader",
+		"leader_id": leaderID,
+	})
+}
+
 func (h *HTTPHandler) handleStatus(w http.ResponseWriter, r *http.Request) {
 	term, isLeader := h.node.GetState()
-	
+
 	status := map[string]interface{}{
 		"id":           h.node.GetID(),
 		"term":         term,
@@ -113,5 +146,6 @@ func (h *HTTPHandler) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"cluster_size": h.node.GetClusterSize(),
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(status)
 }

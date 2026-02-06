@@ -46,7 +46,6 @@ type CommandType int
 
 const (
 	CommandSet CommandType = iota
-	CommandGet
 	CommandDelete
 	CommandNoop
 	CommandAddNode
@@ -171,25 +170,6 @@ type PendingCommand struct {
 	Term     uint64
 	ResultCh chan CommitResult
 }
-
-// ReadIndex represents a pending read operation
-type ReadIndex struct {
-	Index    uint64
-	ResultCh chan CommitResult
-}
-
-// MembershipChange represents a cluster membership change
-type MembershipChange struct {
-	Type   MembershipChangeType
-	NodeID string
-}
-
-type MembershipChangeType int
-
-const (
-	AddNode MembershipChangeType = iota
-	RemoveNode
-)
 
 // ClusterConfig represents the current cluster configuration
 type ClusterConfig struct {

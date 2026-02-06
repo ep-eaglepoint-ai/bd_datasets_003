@@ -13,14 +13,13 @@ import (
 	"time"
 
 	"github.com/vzdtic/distributed-consensus-raft-kv-store/repository_after/pkg/api"
-	"github.com/vzdtic/distributed-consensus-raft-kv-store/repository_after/pkg/grpc"
+	grpctransport "github.com/vzdtic/distributed-consensus-raft-kv-store/repository_after/pkg/grpc"
 	"github.com/vzdtic/distributed-consensus-raft-kv-store/repository_after/pkg/kv"
 	"github.com/vzdtic/distributed-consensus-raft-kv-store/repository_after/pkg/raft"
 	"github.com/vzdtic/distributed-consensus-raft-kv-store/repository_after/pkg/wal"
 )
 
 func main() {
-	// Parse command-line flags
 	nodeID := flag.String("id", "", "Node ID")
 	addr := flag.String("addr", "", "gRPC listen address (e.g., localhost:5000)")
 	httpAddr := flag.String("http", "", "HTTP API listen address (e.g., localhost:8000)")
@@ -33,12 +32,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Parse peer addresses
+	// Parse peer addresses with proper splitting
 	peerAddrs := make(map[string]string)
 	peerIDs := make([]string, 0)
 	if *peers != "" {
 		for _, peer := range strings.Split(*peers, ",") {
-			parts := strings.Split(peer, "=")
+			peer = strings.TrimSpace(peer)
+			parts := strings.SplitN(peer, "=", 2) // Use SplitN to handle values with "="
 			if len(parts) == 2 {
 				peerAddrs[parts[0]] = parts[1]
 				if parts[0] != *nodeID {
@@ -49,7 +49,6 @@ func main() {
 	}
 	peerAddrs[*nodeID] = *addr
 
-	// Set WAL directory
 	walPath := *walDir
 	if walPath == "" {
 		walPath = fmt.Sprintf("/tmp/raft-wal-%s", *nodeID)
@@ -61,22 +60,16 @@ func main() {
 	log.Printf("Peers: %v", peerIDs)
 	log.Printf("WAL path: %s", walPath)
 
-	// Create WAL
 	walInstance, err := wal.NewWAL(walPath)
 	if err != nil {
 		log.Fatalf("Failed to create WAL: %v", err)
 	}
 
-	// Create state machine
 	store := kv.NewStore()
 
-	// Create transport
-	transport := grpc.NewGRPCTransport(*addr, peerAddrs)
-	if err := transport.Start(); err != nil {
-		log.Fatalf("Failed to start transport: %v", err)
-	}
+	// Create transport and set node BEFORE starting
+	transport := grpctransport.NewGRPCTransport(*addr, peerAddrs)
 
-	// Create Raft node
 	config := raft.NodeConfig{
 		ID:                 *nodeID,
 		Peers:              peerIDs,
@@ -88,13 +81,18 @@ func main() {
 	}
 
 	node := raft.NewNode(config, transport, walInstance, store)
+
+	// Set node BEFORE starting transport
 	transport.SetNode(node)
+
+	if err := transport.Start(); err != nil {
+		log.Fatalf("Failed to start transport: %v", err)
+	}
 
 	if err := node.Start(); err != nil {
 		log.Fatalf("Failed to start node: %v", err)
 	}
 
-	// Create HTTP API server
 	apiServer := &http.Server{
 		Addr:    *httpAddr,
 		Handler: api.NewHTTPHandler(node, store),
@@ -107,14 +105,12 @@ func main() {
 		}
 	}()
 
-	// Wait for interrupt signal
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	<-sigCh
 
 	log.Println("Shutting down...")
 
-	// Graceful shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
