@@ -1,0 +1,13 @@
+{
+            "instance_id": "QN5PVS",
+            "problem_statement": "Build a TypeScript module that converts raw, inconsistent system actions into a clean and reliable audit trail for an internal admin platform. Upstream actions may be missing fields, use different actor formats, have inconsistent timestamps, or provide partial before/after data. Despite this, the audit output must always be deterministic, standardized, and safe for compliance reviews, investigations, and “who changed what” history.
+
+The module must normalize actor identity and timestamps, generate stable event IDs (no randomness), produce clear human-readable summaries, and extract structured field-level changes for UPDATE actions when usable snapshots exist. Actions that cannot be processed must not be silently dropped  they must be returned separately with clear, structured reasons.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/qn5pvs-deterministic-audit-trail-builder-for-admin-actions",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
