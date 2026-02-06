@@ -1,11 +1,13 @@
-# M60U0V - Go-In-Memory-Rate-Limiter
+# JSON Schema Validator - Property Tests + Meta Tests
 
-    ## Before Test Docker Command
-    <docker before command here>
+### Run meta-tests against `repository_after` (expected: pass):
 
-    ## After Test Docker Command
-    <docker after command here>
+```bash
+docker compose run --rm app go run -tags tools tests/runner.go
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+### Run evaluation report generation:
+
+```bash
+docker compose run --rm app go run ./evaluation/evaluation.go
+```
