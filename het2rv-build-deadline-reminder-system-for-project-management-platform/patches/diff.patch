@@ -6257,303 +6257,26 @@ index 0000000..036644e
 \ No newline at end of file
 diff --git a/repository_after/src/index.ts b/repository_after/src/index.ts
 new file mode 100644
-index 0000000..a562611
+index 0000000..8bb8c96
 --- /dev/null
 +++ b/repository_after/src/index.ts
-@@ -0,0 +1,536 @@
-+// import express from 'express';
-+// import { initDB, pool } from './db';
-+// import { startScheduler } from './scheduler';
-+
-+// export const app = express();
-+// app.use(express.json());
-+
-+// // Middleware to mock authentication
-+// const authenticateUser = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-+//   const userId = req.headers['x-user-id'];
-+//   if (!userId) {
-+//     res.status(401).json({ error: 'Unauthorized: Missing X-User-ID header' });
-+//     return;
-+//   }
-+//   // @ts-ignore
-+//   req.user = { id: parseInt(userId as string, 10) };
-+//   next();
-+// };
-+
-+// app.use(authenticateUser);
-+
-+// const PORT = 3000;
-+
-+// // API Endpoints
-+// // ... (routes are same)
-+
-+// // Create User
-+// app.post('/users', async (req, res) => {
-+//   const { name } = req.body;
-+//   try {
-+//     const result = await pool.query('INSERT INTO users (name) VALUES ($1) RETURNING *', [name]);
-+//     res.status(201).json(result.rows[0]);
-+//   } catch (err) {
-+//     res.status(500).json({ error: (err as Error).message });
-+//   }
-+// });
-+
-+// // Create Task with Reminders
-+// app.post('/tasks', async (req, res) => {
-+//   const { title, reminders } = req.body;
-+//   // @ts-ignore
-+//   const owner_id = req.user.id;
-+
-+//   const client = await pool.connect();
-+//   try {
-+//     await client.query('BEGIN');
-+//     const taskResult = await client.query(
-+//       'INSERT INTO tasks (title, owner_id) VALUES ($1, $2) RETURNING *',
-+//       [title, owner_id]
-+//     );
-+//     const task = taskResult.rows[0];
-+
-+//     if (reminders && Array.isArray(reminders)) {
-+//       for (const triggerAt of reminders) {
-+//         if (new Date(triggerAt) <= new Date()) {
-+//            throw new Error(`Cannot schedule reminder in the past: ${triggerAt}`);
-+//         }
-+//         await client.query(
-+//           'INSERT INTO reminders (task_id, trigger_at) VALUES ($1, $2)',
-+//           [task.id, triggerAt]
-+//         );
-+//       }
-+//     }
-+
-+//     await client.query('COMMIT');
-+//     res.status(201).json(task);
-+//   } catch (err) {
-+//     await client.query('ROLLBACK');
-+//     res.status(500).json({ error: (err as Error).message });
-+//   } finally {
-+//     client.release();
-+//   }
-+// });
-+
-+// // Get Task with Reminders
-+// app.get('/tasks/:id', async (req, res) => {
-+//   const { id } = req.params;
-+//   // @ts-ignore
-+//   const userId = req.user.id;
-+
-+//   try {
-+//     const taskResult = await pool.query('SELECT * FROM tasks WHERE id = $1', [id]);
-+//     if (taskResult.rowCount === 0) {
-+//        res.status(404).json({ error: 'Task not found' });
-+//        return;
-+//     }
-+//     const task = taskResult.rows[0];
-+//     if (task.owner_id !== userId) {
-+//         res.status(403).json({ error: 'Forbidden' });
-+//         return;
-+//     }
-+
-+//     // Explicitly handle "view" access control failure if needed,
-+//     // but the above check covers it (return 403 if found but not owner).
-+//     // The previous implementation was correct, but we'll ensure strictness.
-+
-+//     const remindersResult = await pool.query('SELECT * FROM reminders WHERE task_id = $1', [id]);
-+//     res.json({ ...task, reminders: remindersResult.rows });
-+//   } catch (err) {
-+//     res.status(500).json({ error: (err as Error).message });
-+//   }
-+// });
-+
-+// // Add Reminder to Task
-+// app.post('/tasks/:id/reminders', async (req, res) => {
-+//   const { id } = req.params;
-+//   const { trigger_at } = req.body;
-+//   // @ts-ignore
-+//   const userId = req.user.id;
-+
-+//   try {
-+//     const taskResult = await pool.query('SELECT owner_id FROM tasks WHERE id = $1', [id]);
-+//     if (taskResult.rowCount === 0) {
-+//        res.status(404).json({ error: 'Task not found' });
-+//        return;
-+//     }
-+//     if (taskResult.rows[0].owner_id !== userId) {
-+//         res.status(403).json({ error: 'Forbidden' });
-+//         return;
-+//     }
-+
-+//     if (new Date(trigger_at) <= new Date()) {
-+//        res.status(400).json({ error: 'Cannot schedule reminder in the past' });
-+//        return;
-+//     }
-+
-+//     const result = await pool.query(
-+//       'INSERT INTO reminders (task_id, trigger_at) VALUES ($1, $2) RETURNING *',
-+//       [id, trigger_at]
-+//     );
-+//     res.status(201).json(result.rows[0]);
-+//   } catch (err) {
-+//     res.status(500).json({ error: (err as Error).message });
-+//   }
-+// });
-+
-+// // Delete Reminder
-+// app.delete('/reminders/:id', async (req, res) => {
-+//     const { id } = req.params;
-+//     // @ts-ignore
-+//     const userId = req.user.id;
-+
-+//     try {
-+//         const reminderResult = await pool.query(`
-+//             SELECT r.id, t.owner_id
-+//             FROM reminders r
-+//             JOIN tasks t ON r.task_id = t.id
-+//             WHERE r.id = $1
-+//         `, [id]);
-+
-+//         if (reminderResult.rowCount === 0) {
-+//             res.status(404).json({ error: 'Reminder not found' });
-+//             return;
-+//         }
-+
-+//         if (reminderResult.rows[0].owner_id !== userId) {
-+//             res.status(403).json({ error: 'Forbidden' });
-+//             return;
-+//         }
-+
-+//         await pool.query('DELETE FROM reminders WHERE id = $1', [id]);
-+//         res.status(204).send();
-+//     } catch (err) {
-+//         res.status(500).json({ error: (err as Error).message });
-+//     }
-+// });
-+
-+// // Modify Reminder (PATCH)
-+// app.patch('/reminders/:id', async (req, res) => {
-+//     const { id } = req.params;
-+//     const { trigger_at } = req.body;
-+//     // @ts-ignore
-+//     const userId = req.user.id;
-+
-+//     if (!trigger_at) {
-+//         res.status(400).json({ error: 'Missing trigger_at' });
-+//         return;
-+//     }
-+
-+//     if (new Date(trigger_at) <= new Date()) {
-+//         res.status(400).json({ error: 'Cannot schedule reminder in the past' });
-+//         return;
-+//     }
-+
-+//     try {
-+//         const reminderResult = await pool.query(`
-+//             SELECT r.id, t.owner_id
-+//             FROM reminders r
-+//             JOIN tasks t ON r.task_id = t.id
-+//             WHERE r.id = $1
-+//         `, [id]);
-+
-+//         if (reminderResult.rowCount === 0) {
-+//             res.status(404).json({ error: 'Reminder not found' });
-+//             return;
-+//         }
-+
-+//         if (reminderResult.rows[0].owner_id !== userId) {
-+//             res.status(403).json({ error: 'Forbidden' });
-+//             return;
-+//         }
-+
-+//         const updateResult = await pool.query(
-+//             'UPDATE reminders SET trigger_at = $1, updated_at = NOW(), status = \'pending\' WHERE id = $2 RETURNING *',
-+//             [trigger_at, id]
-+//         );
-+//         res.json(updateResult.rows[0]);
-+//     } catch (err) {
-+//         res.status(500).json({ error: (err as Error).message });
-+//     }
-+// });
-+
-+// // Cancel Task (Soft)
-+// app.patch('/tasks/:id/cancel', async (req, res) => {
-+//     const { id } = req.params;
-+//     // @ts-ignore
-+//     const userId = req.user.id;
-+
-+//     try {
-+//         const result = await pool.query(
-+//             "UPDATE tasks SET status = 'canceled' WHERE id = $1 AND owner_id = $2 RETURNING *",
-+//             [id, userId]
-+//         );
-+
-+//         // Also cancel pending reminders for this task
-+//         if (result.rowCount && result.rowCount > 0) {
-+//             await pool.query(
-+//                 "UPDATE reminders SET status = 'canceled', updated_at = NOW() WHERE task_id = $1 AND status = 'pending'",
-+//                 [id]
-+//             );
-+//         }
-+
-+//         if (result.rowCount === 0) {
-+//              const check = await pool.query('SELECT owner_id FROM tasks WHERE id = $1', [id]);
-+//              if (check.rowCount && check.rowCount > 0 && check.rows[0].owner_id !== userId) {
-+//                  res.status(403).json({ error: 'Forbidden' });
-+//                  return;
-+//              }
-+//              res.status(404).json({ error: 'Task not found' });
-+//              return;
-+//         }
-+//         res.json(result.rows[0]);
-+//     } catch (err) {
-+//         res.status(500).json({ error: (err as Error).message });
-+//     }
-+// });
-+
-+// // Delete Task (Hard Delete)
-+// app.delete('/tasks/:id', async (req, res) => {
-+//   const { id } = req.params;
-+//   // @ts-ignore
-+//   const userId = req.user.id;
-+
-+//   try {
-+//     const result = await pool.query('DELETE FROM tasks WHERE id = $1 AND owner_id = $2', [id, userId]);
-+//     if (result.rowCount === 0) {
-+//         const check = await pool.query('SELECT owner_id FROM tasks WHERE id = $1', [id]);
-+//         if (check.rowCount && check.rowCount > 0 && check.rows[0].owner_id !== userId) {
-+//             res.status(403).json({ error: 'Forbidden' });
-+//             return;
-+//         }
-+//     }
-+//     res.status(204).send();
-+//   } catch (err) {
-+//     res.status(500).json({ error: (err as Error).message });
-+//   }
-+// });
-+
-+// export const startServer = async () => {
-+//   await initDB();
-+//   startScheduler();
-+//   return app.listen(PORT, () => {
-+//     console.log(`Server running on port ${PORT}`);
-+//   });
-+// };
-+
-+// if (require.main === module) {
-+//   startServer();
-+// }
-+
-+
-+import express from 'express';
-+import { initDB, pool } from './db';
-+import { startScheduler } from './scheduler';
+@@ -0,0 +1,321 @@
++import express from "express";
++import { initDB, pool } from "./db";
++import { startScheduler } from "./scheduler";
 +
 +export const app = express();
 +app.use(express.json());
 +
 +// Middleware: Authentication
-+const authenticateUser = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-+  const userId = req.headers['x-user-id'];
++const authenticateUser = (
++  req: express.Request,
++  res: express.Response,
++  next: express.NextFunction
++) => {
++  const userId = req.headers["x-user-id"];
 +  if (!userId) {
-+    res.status(401).json({ error: 'Unauthorized: Missing X-User-ID header' });
++    res.status(401).json({ error: "Unauthorized: Missing X-User-ID header" });
 +    return;
 +  }
 +  // @ts-ignore
@@ -6566,25 +6289,33 @@ index 0000000..a562611
 +const PORT = 3000;
 +
 +// --- Helper: Validate Reminder Time ---
-+const validateReminderTime = (triggerAt: string | Date, deadline: string | Date | null) => {
++const validateReminderTime = (
++  triggerAt: string | Date,
++  deadline: string | Date | null
++) => {
 +  const trigger = new Date(triggerAt);
 +  const now = new Date();
 +
-+  if (isNaN(trigger.getTime())) throw new Error('Invalid date format for reminder');
-+  if (trigger <= now) throw new Error('Cannot schedule reminder in the past');
++  if (isNaN(trigger.getTime()))
++    throw new Error("Invalid date format for reminder");
++  if (trigger <= now) throw new Error("Cannot schedule reminder in the past");
 +
 +  if (deadline) {
 +    const dead = new Date(deadline);
-+    if (trigger > dead) throw new Error('Cannot schedule reminder after the task deadline');
++    if (trigger > dead)
++      throw new Error("Cannot schedule reminder after the task deadline");
 +  }
 +};
 +
 +// --- Routes ---
 +
 +// Create User
-+app.post('/users', async (req, res) => {
++app.post("/users", async (req, res) => {
 +  try {
-+    const result = await pool.query('INSERT INTO users (name) VALUES ($1) RETURNING *', [req.body.name]);
++    const result = await pool.query(
++      "INSERT INTO users (name) VALUES ($1) RETURNING *",
++      [req.body.name]
++    );
 +    res.status(201).json(result.rows[0]);
 +  } catch (err) {
 +    res.status(500).json({ error: (err as Error).message });
@@ -6592,18 +6323,18 @@ index 0000000..a562611
 +});
 +
 +// Create Task (With Deadline & Reminders)
-+app.post('/tasks', async (req, res) => {
++app.post("/tasks", async (req, res) => {
 +  const { title, reminders, deadline } = req.body;
 +  // @ts-ignore
 +  const owner_id = req.user.id;
 +
 +  const client = await pool.connect();
 +  try {
-+    await client.query('BEGIN');
++    await client.query("BEGIN");
 +
 +    // 1. Create Task
 +    const taskResult = await client.query(
-+      'INSERT INTO tasks (title, owner_id, deadline) VALUES ($1, $2, $3) RETURNING *',
++      "INSERT INTO tasks (title, owner_id, deadline) VALUES ($1, $2, $3) RETURNING *",
 +      [title, owner_id, deadline]
 +    );
 +    const task = taskResult.rows[0];
@@ -6615,22 +6346,28 @@ index 0000000..a562611
 +        validateReminderTime(triggerAt, deadline);
 +
 +        await client.query(
-+          'INSERT INTO reminders (task_id, trigger_at) VALUES ($1, $2)',
++          "INSERT INTO reminders (task_id, trigger_at) VALUES ($1, $2)",
 +          [task.id, triggerAt]
 +        );
 +      }
 +    }
 +
-+    await client.query('COMMIT');
++    await client.query("COMMIT");
 +    res.status(201).json(task);
 +  } catch (err) {
-+    await client.query('ROLLBACK');
++    await client.query("ROLLBACK");
++    const anyErr = err as any;
++    if (anyErr?.code === "23505") {
++      res.status(409).json({ error: "Reminder already exists" });
++      return;
++    }
++
 +    const msg = (err as Error).message;
 +    // Distinguish Validation errors (400) from Server errors (500)
-+    if (msg.includes('Cannot schedule') || msg.includes('Invalid date')) {
-+        res.status(400).json({ error: msg });
++    if (msg.includes("Cannot schedule") || msg.includes("Invalid date")) {
++      res.status(400).json({ error: msg });
 +    } else {
-+        res.status(500).json({ error: msg });
++      res.status(500).json({ error: msg });
 +    }
 +  } finally {
 +    client.release();
@@ -6638,17 +6375,24 @@ index 0000000..a562611
 +});
 +
 +// Get Task
-+app.get('/tasks/:id', async (req, res) => {
++app.get("/tasks/:id", async (req, res) => {
 +  // @ts-ignore
 +  const userId = req.user.id;
 +  try {
-+    const taskResult = await pool.query('SELECT * FROM tasks WHERE id = $1', [req.params.id]);
-+    if (taskResult.rowCount === 0) return res.status(404).json({ error: 'Task not found' });
++    const taskResult = await pool.query("SELECT * FROM tasks WHERE id = $1", [
++      req.params.id,
++    ]);
++    if (taskResult.rowCount === 0)
++      return res.status(404).json({ error: "Task not found" });
 +
 +    const task = taskResult.rows[0];
-+    if (task.owner_id !== userId) return res.status(403).json({ error: 'Forbidden' });
++    if (task.owner_id !== userId)
++      return res.status(403).json({ error: "Forbidden" });
 +
-+    const reminders = await pool.query('SELECT * FROM reminders WHERE task_id = $1', [task.id]);
++    const reminders = await pool.query(
++      "SELECT * FROM reminders WHERE task_id = $1",
++      [task.id]
++    );
 +    res.json({ ...task, reminders: reminders.rows });
 +  } catch (err) {
 +    res.status(500).json({ error: (err as Error).message });
@@ -6656,37 +6400,47 @@ index 0000000..a562611
 +});
 +
 +// Add Reminder (Enforce Deadline)
-+app.post('/tasks/:id/reminders', async (req, res) => {
++app.post("/tasks/:id/reminders", async (req, res) => {
 +  const { trigger_at } = req.body;
 +  // @ts-ignore
 +  const userId = req.user.id;
 +
 +  try {
 +    // Check Task Ownership AND Deadline
-+    const taskRes = await pool.query('SELECT owner_id, deadline FROM tasks WHERE id = $1', [req.params.id]);
-+    if (taskRes.rowCount === 0) return res.status(404).json({ error: 'Task not found' });
++    const taskRes = await pool.query(
++      "SELECT owner_id, deadline FROM tasks WHERE id = $1",
++      [req.params.id]
++    );
++    if (taskRes.rowCount === 0)
++      return res.status(404).json({ error: "Task not found" });
 +
 +    const task = taskRes.rows[0];
-+    if (task.owner_id !== userId) return res.status(403).json({ error: 'Forbidden' });
++    if (task.owner_id !== userId)
++      return res.status(403).json({ error: "Forbidden" });
 +
 +    try {
-+        validateReminderTime(trigger_at, task.deadline);
++      validateReminderTime(trigger_at, task.deadline);
 +    } catch (e) {
-+        return res.status(400).json({ error: (e as Error).message });
++      return res.status(400).json({ error: (e as Error).message });
 +    }
 +
 +    const result = await pool.query(
-+      'INSERT INTO reminders (task_id, trigger_at) VALUES ($1, $2) RETURNING *',
++      "INSERT INTO reminders (task_id, trigger_at) VALUES ($1, $2) RETURNING *",
 +      [req.params.id, trigger_at]
 +    );
 +    res.status(201).json(result.rows[0]);
 +  } catch (err) {
++    const anyErr = err as any;
++    if (anyErr?.code === "23505") {
++      res.status(409).json({ error: "Reminder already exists" });
++      return;
++    }
 +    res.status(500).json({ error: (err as Error).message });
 +  }
 +});
 +
 +// Delete Reminder
-+app.delete('/reminders/:id', async (req, res) => {
++app.delete("/reminders/:id", async (req, res) => {
 +  // @ts-ignore
 +  const userId = req.user.id;
 +  try {
@@ -6694,10 +6448,12 @@ index 0000000..a562611
 +      `SELECT r.id, t.owner_id FROM reminders r JOIN tasks t ON r.task_id = t.id WHERE r.id = $1`,
 +      [req.params.id]
 +    );
-+    if (check.rowCount === 0) return res.status(404).json({ error: 'Reminder not found' });
-+    if (check.rows[0].owner_id !== userId) return res.status(403).json({ error: 'Forbidden' });
++    if (check.rowCount === 0)
++      return res.status(404).json({ error: "Reminder not found" });
++    if (check.rows[0].owner_id !== userId)
++      return res.status(403).json({ error: "Forbidden" });
 +
-+    await pool.query('DELETE FROM reminders WHERE id = $1', [req.params.id]);
++    await pool.query("DELETE FROM reminders WHERE id = $1", [req.params.id]);
 +    res.status(204).send();
 +  } catch (err) {
 +    res.status(500).json({ error: (err as Error).message });
@@ -6705,80 +6461,109 @@ index 0000000..a562611
 +});
 +
 +// Modify Reminder (PATCH)
-+app.patch('/reminders/:id', async (req, res) => {
-+    const { trigger_at } = req.body;
-+    // @ts-ignore
-+    const userId = req.user.id;
++app.patch("/reminders/:id", async (req, res) => {
++  const { trigger_at } = req.body;
++  // @ts-ignore
++  const userId = req.user.id;
 +
-+    if (!trigger_at) return res.status(400).json({ error: 'Missing trigger_at' });
++  if (!trigger_at) return res.status(400).json({ error: "Missing trigger_at" });
 +
-+    try {
-+        // Need task details to validate deadline
-+        const rRes = await pool.query(`
++  try {
++    // Need task details to validate deadline
++    const rRes = await pool.query(
++      `
 +            SELECT r.id, t.owner_id, t.deadline
 +            FROM reminders r
 +            JOIN tasks t ON r.task_id = t.id
 +            WHERE r.id = $1
-+        `, [req.params.id]);
++        `,
++      [req.params.id]
++    );
 +
-+        if (rRes.rowCount === 0) return res.status(404).json({ error: 'Reminder not found' });
-+        const row = rRes.rows[0];
-+        if (row.owner_id !== userId) return res.status(403).json({ error: 'Forbidden' });
++    if (rRes.rowCount === 0)
++      return res.status(404).json({ error: "Reminder not found" });
++    const row = rRes.rows[0];
++    if (row.owner_id !== userId)
++      return res.status(403).json({ error: "Forbidden" });
 +
-+        try {
-+            validateReminderTime(trigger_at, row.deadline);
-+        } catch (e) {
-+            return res.status(400).json({ error: (e as Error).message });
-+        }
-+
-+        const update = await pool.query(
-+            "UPDATE reminders SET trigger_at = $1, updated_at = NOW(), status = 'pending' WHERE id = $2 RETURNING *",
-+            [trigger_at, req.params.id]
-+        );
-+        res.json(update.rows[0]);
-+    } catch (err) {
-+        res.status(500).json({ error: (err as Error).message });
++    try {
++      validateReminderTime(trigger_at, row.deadline);
++    } catch (e) {
++      return res.status(400).json({ error: (e as Error).message });
 +    }
++
++    const update = await pool.query(
++      "UPDATE reminders SET trigger_at = $1, updated_at = NOW(), status = 'pending' WHERE id = $2 RETURNING *",
++      [trigger_at, req.params.id]
++    );
++    res.json(update.rows[0]);
++  } catch (err) {
++    const anyErr = err as any;
++    if (anyErr?.code === "23505") {
++      res.status(409).json({ error: "Reminder already exists" });
++      return;
++    }
++    res.status(500).json({ error: (err as Error).message });
++  }
 +});
 +
 +// Cancel Task (Soft)
-+app.patch('/tasks/:id/cancel', async (req, res) => {
-+    // @ts-ignore
-+    const userId = req.user.id;
-+    try {
-+        const result = await pool.query(
-+            "UPDATE tasks SET status = 'canceled' WHERE id = $1 AND owner_id = $2 RETURNING *",
-+            [req.params.id, userId]
-+        );
-+
-+        if (result.rowCount === 0) {
-+             const check = await pool.query('SELECT owner_id FROM tasks WHERE id = $1', [req.params.id]);
-+             if (check.rowCount && check.rowCount > 0 && check.rows[0].owner_id !== userId) return res.status(403).json({ error: 'Forbidden' });
-+             return res.status(404).json({ error: 'Task not found' });
-+        }
-+
-+        // Requirement: Cancel pending reminders
-+        await pool.query(
-+            "UPDATE reminders SET status = 'canceled', updated_at = NOW() WHERE task_id = $1 AND status = 'pending'",
-+            [req.params.id]
-+        );
-+
-+        res.json(result.rows[0]);
-+    } catch (err) {
-+        res.status(500).json({ error: (err as Error).message });
-+    }
-+});
-+
-+// Delete Task (Hard)
-+app.delete('/tasks/:id', async (req, res) => {
++app.patch("/tasks/:id/cancel", async (req, res) => {
 +  // @ts-ignore
 +  const userId = req.user.id;
 +  try {
-+    const result = await pool.query('DELETE FROM tasks WHERE id = $1 AND owner_id = $2', [req.params.id, userId]);
++    const result = await pool.query(
++      "UPDATE tasks SET status = 'canceled' WHERE id = $1 AND owner_id = $2 RETURNING *",
++      [req.params.id, userId]
++    );
++
 +    if (result.rowCount === 0) {
-+        const check = await pool.query('SELECT owner_id FROM tasks WHERE id = $1', [req.params.id]);
-+        if (check.rowCount && check.rowCount > 0 && check.rows[0].owner_id !== userId) return res.status(403).json({ error: 'Forbidden' });
-+        // Assuming 404 if not found
++      const check = await pool.query(
++        "SELECT owner_id FROM tasks WHERE id = $1",
++        [req.params.id]
++      );
++      if (
++        check.rowCount &&
++        check.rowCount > 0 &&
++        check.rows[0].owner_id !== userId
++      )
++        return res.status(403).json({ error: "Forbidden" });
++      return res.status(404).json({ error: "Task not found" });
++    }
++
++    // Requirement: Cancel pending reminders
++    await pool.query(
++      "UPDATE reminders SET status = 'canceled', updated_at = NOW() WHERE task_id = $1 AND status = 'pending'",
++      [req.params.id]
++    );
++
++    res.json(result.rows[0]);
++  } catch (err) {
++    res.status(500).json({ error: (err as Error).message });
++  }
++});
++
++// Delete Task (Hard)
++app.delete("/tasks/:id", async (req, res) => {
++  // @ts-ignore
++  const userId = req.user.id;
++  try {
++    const result = await pool.query(
++      "DELETE FROM tasks WHERE id = $1 AND owner_id = $2",
++      [req.params.id, userId]
++    );
++    if (result.rowCount === 0) {
++      const check = await pool.query(
++        "SELECT owner_id FROM tasks WHERE id = $1",
++        [req.params.id]
++      );
++      if (
++        check.rowCount &&
++        check.rowCount > 0 &&
++        check.rows[0].owner_id !== userId
++      )
++        return res.status(403).json({ error: "Forbidden" });
++      // Assuming 404 if not found
 +    }
 +    res.status(204).send();
 +  } catch (err) {
@@ -6797,16 +6582,16 @@ index 0000000..a562611
 +if (require.main === module) {
 +  startServer();
 +}
-\ No newline at end of file
 diff --git a/repository_after/src/scheduler.ts b/repository_after/src/scheduler.ts
 new file mode 100644
-index 0000000..82bb61a
+index 0000000..5f02446
 --- /dev/null
 +++ b/repository_after/src/scheduler.ts
-@@ -0,0 +1,102 @@
-+import { pool } from './db';
+@@ -0,0 +1,129 @@
++import { pool } from "./db";
 +
-+const POLL_INTERVAL_MS = 10000;
++const DEFAULT_POLL_INTERVAL_MS = 10000;
++let pollIntervalMs = DEFAULT_POLL_INTERVAL_MS;
 +let isRunning = false;
 +let stopSignal = false;
 +
@@ -6814,21 +6599,29 @@ index 0000000..82bb61a
 +const scheduleNextRun = () => {
 +  if (stopSignal) {
 +    isRunning = false;
-+    console.log('Scheduler stopped.');
++    console.log("Scheduler stopped.");
 +    return;
 +  }
 +
 +  setTimeout(async () => {
 +    await processReminders();
 +    scheduleNextRun();
-+  }, POLL_INTERVAL_MS);
++  }, pollIntervalMs);
 +};
 +
-+export const startScheduler = () => {
++export const startScheduler = (opts?: {
++  pollIntervalMs?: number;
++  runImmediately?: boolean;
++}) => {
 +  if (isRunning) return;
 +  isRunning = true;
 +  stopSignal = false;
-+  console.log('Starting scheduler worker...');
++  pollIntervalMs = opts?.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
++  console.log("Starting scheduler worker...");
++
++  if (opts?.runImmediately) {
++    void processReminders();
++  }
 +  scheduleNextRun();
 +};
 +
@@ -6836,12 +6629,27 @@ index 0000000..82bb61a
 +  stopSignal = true;
 +};
 +
-+export const processReminders = async () => {
++export type ReminderRow = { id: number; task_id: number; trigger_at: string };
++
++export const processReminders = async (opts?: {
++  batchSize?: number;
++  notify?: (reminder: ReminderRow) => Promise<void>;
++}) => {
 +  const client = await pool.connect();
-+  let remindersToProcess: any[] = [];
++  let remindersToProcess: ReminderRow[] = [];
++  const batchSize = Math.max(1, Math.min(1000, opts?.batchSize ?? 100));
++  const notify =
++    opts?.notify ??
++    (async (reminder: ReminderRow) => {
++      console.log(
++        `[NOTIFICATION SENT] Task: ${
++          reminder.task_id
++        }, Time: ${new Date().toISOString()}`
++      );
++    });
 +
 +  try {
-+    await client.query('BEGIN');
++    await client.query("BEGIN");
 +
 +    // FETCH BATCH
 +    // Uses SKIP LOCKED to allow multiple worker instances if needed
@@ -6859,18 +6667,19 @@ index 0000000..82bb61a
 +        )
 +        AND r.trigger_at <= NOW()
 +        AND t.status = 'active'
++        AND (t.deadline IS NULL OR t.deadline >= NOW())
 +        FOR UPDATE SKIP LOCKED
-+        LIMIT 100
++        LIMIT ${batchSize}
 +      )
 +      RETURNING id, task_id, trigger_at;
 +    `;
 +
 +    const result = await client.query(query);
 +    remindersToProcess = result.rows;
-+    await client.query('COMMIT');
++    await client.query("COMMIT");
 +  } catch (error) {
-+    await client.query('ROLLBACK');
-+    console.error('Scheduler DB Error:', error);
++    await client.query("ROLLBACK");
++    console.error("Scheduler DB Error:", error);
 +    client.release();
 +    return;
 +  }
@@ -6879,34 +6688,35 @@ index 0000000..82bb61a
 +
 +  if (remindersToProcess.length === 0) return;
 +
-+  console.log(`[Scheduler] Processing batch of ${remindersToProcess.length} reminders...`);
++  console.log(
++    `[Scheduler] Processing batch of ${remindersToProcess.length} reminders...`
++  );
 +
 +  // PROCESS BATCH
-+  // We use Promise.allSettled to ensure one failure doesn't crash the whole batch
-+  // But strictly, we do not block the event loop for too long.
-+  await Promise.allSettled(remindersToProcess.map(async (reminder) => {
-+    try {
-+      // ----------------------------------------
-+      // EXTERNAL NOTIFICATION LOGIC GOES HERE
-+      // ----------------------------------------
-+      console.log(`[NOTIFICATION SENT] Task: ${reminder.task_id}, Time: ${new Date().toISOString()}`);
++  // We use Promise.allSettled to ensure one failure doesn't crash the whole batch.
++  await Promise.allSettled(
++    remindersToProcess.map(async (reminder) => {
++      try {
++        await notify(reminder);
 +
-+      // Mark as processed only on success
-+      await pool.query(`
++        // Mark as processed only on success
++        await pool.query(
++          `
 +        UPDATE reminders
 +        SET status = 'processed', updated_at = NOW()
 +        WHERE id = $1
-+      `, [reminder.id]);
-+
-+    } catch (err) {
-+      console.error(`Failed to send reminder ${reminder.id}`, err);
-+      // We do NOT update status here.
-+      // It stays 'processing' and 'updated_at' gets old.
-+      // The Zombie logic in the SELECT query will pick it up again in 5 minutes.
-+    }
-+  }));
++      `,
++          [reminder.id]
++        );
++      } catch (err) {
++        console.error(`Failed to send reminder ${reminder.id}`, err);
++        // We do NOT update status here.
++        // It stays 'processing' and 'updated_at' gets old.
++        // The Zombie logic in the SELECT query will pick it up again in 5 minutes.
++      }
++    })
++  );
 +};
-\ No newline at end of file
 diff --git a/repository_after/tsconfig.json b/repository_after/tsconfig.json
 new file mode 100644
 index 0000000..bc3961d
