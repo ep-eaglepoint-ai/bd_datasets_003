@@ -8,6 +8,13 @@ import React, {
   startTransition,
 } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
+import {
+  createColumnHelper,
+  getCoreRowModel,
+  getSortedRowModel,
+  type SortingState,
+  useReactTable,
+} from '@tanstack/react-table';
 import { Transaction, ColumnDef, FilterState, SortState } from '../types';
 import { GridHeader } from './GridHeader';
 import { GridRow } from './GridRow';
@@ -34,10 +41,13 @@ const columns: ColumnDef[] = [
   { id: 'broker', header: 'Broker', accessor: 'broker', width: 120, sortable: true, filterable: true },
 ];
 
+const columnHelper = createColumnHelper<Transaction>();
+
 export const DataGrid: React.FC<DataGridProps> = ({ data, onLoadMore }) => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [filters, setFilters] = useState<FilterState[]>([]);
   const [sort, setSort] = useState<SortState | null>(null);
+  const [sorting, setSorting] = useState<SortingState>([]);
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>(
     () => columns.reduce((acc, col) => ({ ...acc, [col.id]: col.width }), {})
   );
@@ -69,20 +79,36 @@ export const DataGrid: React.FC<DataGridProps> = ({ data, onLoadMore }) => {
       );
     });
 
-    if (sort) {
-      result = [...result].sort((a, b) => {
-        const aVal = a[sort.column as keyof Transaction];
-        const bVal = b[sort.column as keyof Transaction];
-        const comparison = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
-        return sort.direction === 'asc' ? comparison : -comparison;
-      });
-    }
-
     return result;
   }, [data, searchTerm, filters, sort]);
 
+  const tableColumns = useMemo(
+    () =>
+      columns
+        .filter((col) => col.id !== 'select')
+        .map((col) =>
+          columnHelper.accessor(col.accessor, {
+            id: col.id,
+            header: col.header,
+            enableSorting: col.sortable,
+          })
+        ),
+    []
+  );
+
+  const table = useReactTable({
+    data: filteredData,
+    columns: tableColumns,
+    state: { sorting },
+    onSortingChange: setSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+  });
+
+  const tableRows = table.getRowModel().rows;
+
   const rowVirtualizer = useVirtualizer({
-    count: filteredData.length,
+    count: tableRows.length,
     getScrollElement: () => scrollContainerRef.current,
     estimateSize: () => ROW_HEIGHT,
     overscan: OVERSCAN,
@@ -117,7 +143,8 @@ export const DataGrid: React.FC<DataGridProps> = ({ data, onLoadMore }) => {
     startTransition(() => {
       setSort((prev) => {
         if (prev?.column === columnId) {
-          return { column: columnId, direction: prev.direction === 'asc' ? 'desc' : 'asc' };
+          const nextDirection = prev.direction === 'asc' ? 'desc' : 'asc';
+          return { column: columnId, direction: nextDirection };
         }
         return { column: columnId, direction: 'asc' as const };
       });
@@ -155,6 +182,19 @@ export const DataGrid: React.FC<DataGridProps> = ({ data, onLoadMore }) => {
       return () => cancelAnimationFrame(id);
     }
   }, [isSorting, sort]);
+
+  useEffect(() => {
+    if (!sort) {
+      setSorting([]);
+      return;
+    }
+    setSorting([
+      {
+        id: sort.column,
+        desc: sort.direction === 'desc',
+      },
+    ]);
+  }, [sort]);
 
   useLayoutEffect(() => {
     const pending = pendingScrollRestoreRef.current;
@@ -281,7 +321,8 @@ export const DataGrid: React.FC<DataGridProps> = ({ data, onLoadMore }) => {
               </tr>
             )}
             {virtualItems.map((virtualRow) => {
-              const row = filteredData[virtualRow.index];
+              const row = tableRows[virtualRow.index]?.original;
+              if (!row) return null;
               return (
                 <GridRow
                   key={row.id}

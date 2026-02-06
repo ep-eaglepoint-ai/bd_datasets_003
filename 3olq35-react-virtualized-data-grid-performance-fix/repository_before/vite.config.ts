@@ -7,14 +7,16 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
 
 export default defineConfig({
+  root: __dirname,
   plugins: [react()],
   resolve: {
     alias: {
       '@impl': path.join(__dirname, 'src'),
-      '@testing-library/react': path.join(projectRoot, 'node_modules', '@testing-library/react'),
-      '@testing-library/jest-dom': path.join(projectRoot, 'node_modules', '@testing-library/jest-dom'),
-      '@testing-library/user-event': path.join(projectRoot, 'node_modules', '@testing-library/user-event'),
+      '@testing-library/react': path.resolve(projectRoot, 'node_modules/@testing-library/react'),
+      '@testing-library/jest-dom': path.resolve(projectRoot, 'node_modules/@testing-library/jest-dom'),
+      '@testing-library/user-event': path.resolve(projectRoot, 'node_modules/@testing-library/user-event'),
     },
+    preserveSymlinks: false,
   },
   server: {
     fs: { allow: [projectRoot, __dirname] },
@@ -24,6 +26,6 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: [path.join(__dirname, 'tests', 'setup.ts')],
     include: ['../tests/**/*.{test,spec}.{ts,tsx}'],
-    pool: 'forks',
+    pool: 'threads',
   },
 });

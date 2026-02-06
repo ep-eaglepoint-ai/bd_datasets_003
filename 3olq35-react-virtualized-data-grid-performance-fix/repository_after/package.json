@@ -1,5 +1,5 @@
 {
-  "name": "trading-dashboard",
+  "name": "trading-dashboard-after",
   "version": "1.0.0",
   "type": "module",
   "scripts": {
@@ -10,6 +10,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@tanstack/react-table": "^8.20.0",
     "@tanstack/react-virtual": "^3.13.18",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
