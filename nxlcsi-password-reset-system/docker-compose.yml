@@ -1,0 +1,12 @@
+services:
+  evaluation:
+    build: .
+    working_dir: /app
+    command: ["python", "evaluation/evaluation.py"]
+    volumes:
+      - .:/host:rw
+  
+  test:
+    build: .
+    working_dir: /app
+    command: ["sh", "-c", "pytest tests/api/ && cd repository_after/client && npm test"]

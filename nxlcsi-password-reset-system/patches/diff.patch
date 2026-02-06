@@ -1,0 +1,1232 @@
+diff --git a/repository_before/.gitkeep b/repository_before/.gitkeep
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/repository_after/backend/backend.py b/repository_after/backend/backend.py
+new file mode 100644
+index 0000000..14bd4c9
+--- /dev/null
++++ b/repository_after/backend/backend.py
+@@ -0,0 +1,371 @@
++import asyncio
++import base64
++import hashlib
++import logging
++import os
++import secrets
++import time
++import uvicorn
++
++from collections import defaultdict, deque
++from dataclasses import dataclass, field
++from datetime import datetime, timedelta, timezone
++from typing import Deque, Dict, Optional
++
++import bcrypt
++from fastapi import FastAPI
++from fastapi.middleware.cors import CORSMiddleware
++from pydantic import BaseModel, EmailStr, Field
++
++
++UTC = timezone.utc
++
++
++def utcnow() -> datetime:
++	return datetime.now(tz=UTC)
++
++
++def sha256(data: bytes) -> bytes:
++	return hashlib.sha256(data).digest()
++
++
++def constant_time_compare(a: bytes, b: bytes) -> bool:
++	"""Timing-safe equality check.
++
++	No early returns based on content; runs in O(n).
++	"""
++	if not isinstance(a, (bytes, bytearray)) or not isinstance(b, (bytes, bytearray)):
++		return False
++	max_len = max(len(a), len(b))
++	diff = len(a) ^ len(b)
++	for i in range(max_len):
++		x = a[i] if i < len(a) else 0
++		y = b[i] if i < len(b) else 0
++		diff |= x ^ y
++	return diff == 0
++
++
++def b64url_encode(raw: bytes) -> str:
++	return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
++
++
++def b64url_decode(token: str) -> Optional[bytes]:
++	if not isinstance(token, str):
++		return None
++	token = token.strip()
++	if not token:
++		return None
++	# Pad to a multiple of 4.
++	padding = "=" * ((4 - (len(token) % 4)) % 4)
++	try:
++		return base64.urlsafe_b64decode(token + padding)
++	except Exception:
++		return None
++
++
++def normalize_email(email: str) -> str:
++	return (email or "").strip().lower()
++
++
++def password_meets_policy(password: str) -> bool:
++	if not isinstance(password, str):
++		return False
++	if len(password) < 12:
++		return False
++	has_upper = any(c.isupper() for c in password)
++	has_lower = any(c.islower() for c in password)
++	has_digit = any(c.isdigit() for c in password)
++	has_special = any(not c.isalnum() for c in password)
++	return has_upper and has_lower and has_digit and has_special
++
++
++async def sleep_to_min_duration(start_monotonic: float, min_duration_s: float) -> None:
++	elapsed = time.monotonic() - start_monotonic
++	remaining = min_duration_s - elapsed
++	if remaining > 0:
++		await asyncio.sleep(remaining)
++
++
++async def perform_dummy_work(rounds: int = 4) -> None:
++	"""Dummy work to help reduce account enumeration via timing."""
++	buf = secrets.token_bytes(32)
++	for _ in range(max(1, rounds)):
++		buf = sha256(buf)
++	await asyncio.sleep(0)
++
++
++@dataclass
++class User:
++	user_id: str
++	email: str
++	password_hash: bytes
++	session_version: int = 0
++
++
++@dataclass
++class ResetTokenRecord:
++	user_id: str
++	token_hash: bytes
++	created_at: datetime
++	expires_at: datetime
++	used: bool = False
++	lock: asyncio.Lock = field(default_factory=asyncio.Lock)
++
++
++@dataclass
++class EmailMessage:
++	to_email: str
++	subject: str
++	html_body: str
++	created_at: datetime
++
++
++class EmailSender:
++	"""Async email simulation.
++
++	Simulates SMTP asynchronously.
++
++	Security notes:
++	- Does not persist plaintext emails or tokens after "send".
++	- Logs do not include recipient addresses (avoids account-validity signals).
++	"""
++
++	def __init__(self) -> None:
++		self._queue: asyncio.Queue[EmailMessage] = asyncio.Queue()
++		self.delivered_count: int = 0
++		self._task: Optional[asyncio.Task] = None
++		self._debug_email = os.getenv("DEBUG_EMAIL", "0") == "1"
++
++	async def start(self) -> None:
++		if self._task is None or self._task.done():
++			self._task = asyncio.create_task(self._worker())
++
++	async def _worker(self) -> None:
++		while True:
++			msg = await self._queue.get()
++			try:
++				# Simulate send (do not log token or recipient).
++				self.delivered_count += 1
++				logging.info("email_delivery_simulated at=%s", msg.created_at.isoformat())
++
++				# DEV-ONLY: print the email HTML (contains the reset link + token).
++				# Keep disabled by default to meet the "no sensitive logs" requirement.
++				if self._debug_email:
++					print("\n--- DEBUG_EMAIL: simulated email begin ---")
++					print(f"timestamp: {msg.created_at.isoformat()}")
++					print(f"subject: {msg.subject}")
++					print(msg.html_body)
++					print("--- DEBUG_EMAIL: simulated email end ---\n")
++			finally:
++				self._queue.task_done()
++
++	async def enqueue(self, message: EmailMessage) -> None:
++		await self._queue.put(message)
++
++
++class PasswordResetService:
++	TOKEN_TTL = timedelta(minutes=15)
++	RATE_WINDOW = timedelta(minutes=15)
++	RATE_MAX = 3
++
++	def __init__(self, *, app_base_url: str, email_sender: EmailSender) -> None:
++		self._users_by_email: Dict[str, User] = {}
++		self._tokens: Dict[bytes, ResetTokenRecord] = {}
++		self._rate: Dict[str, Deque[datetime]] = defaultdict(deque)
++		self._lock = asyncio.Lock()
++		self._email_sender = email_sender
++		self._app_base_url = app_base_url.rstrip("/")
++
++	def seed_demo_user(self) -> None:
++		# Demo account for local testing. This does not get returned anywhere.
++		email = "user@example.com"
++		hashed = bcrypt.hashpw(b"CorrectHorseBatteryStaple!1", bcrypt.gensalt())
++		self._users_by_email[email] = User(user_id="user_1", email=email, password_hash=hashed)
++
++	async def _rate_limit_allowed(self, email: str, now: datetime) -> bool:
++		# Sliding window: keep timestamps within RATE_WINDOW.
++		window_start = now - self.RATE_WINDOW
++		dq = self._rate[email]
++		while dq and dq[0] < window_start:
++			dq.popleft()
++		if len(dq) >= self.RATE_MAX:
++			return False
++		dq.append(now)
++		return True
++
++	async def request_password_reset(self, email: str) -> None:
++		now = utcnow()
++		email_norm = normalize_email(email)
++
++		# Always do some work to reduce timing differences.
++		await perform_dummy_work(rounds=2)
++
++		async with self._lock:
++			allowed = await self._rate_limit_allowed(email_norm, now)
++			user = self._users_by_email.get(email_norm)
++
++			if allowed and user is not None:
++				token_raw = secrets.token_bytes(32)  # 256-bit entropy
++				token = b64url_encode(token_raw)
++				token_hash = sha256(token_raw)
++
++				record = ResetTokenRecord(
++					user_id=user.user_id,
++					token_hash=token_hash,
++					created_at=now,
++					expires_at=now + self.TOKEN_TTL,
++					used=False,
++				)
++				self._tokens[token_hash] = record
++
++				reset_link = f"{self._app_base_url}/reset-password?token={token}"
++				subject = "Password Reset Request"
++				html = (
++					"<div style=\"font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;line-height:1.4\">"
++					"<h2 style=\"margin:0 0 12px 0\">Password Reset Request</h2>"
++					"<p style=\"margin:0 0 12px 0\">We received a request to reset your password.</p>"
++					f"<p style=\"margin:0 0 12px 0\"><a href=\"{reset_link}\">Reset your password</a></p>"
++					"<p style=\"margin:0 0 12px 0\">This link expires in 15 minutes.</p>"
++					"<p style=\"margin:0\"><strong>Security notice:</strong> If you didn't request this, ignore this email.</p>"
++					"</div>"
++				)
++
++				await self._email_sender.enqueue(
++					EmailMessage(
++						to_email=email_norm,
++						subject=subject,
++						html_body=html,
++						created_at=now,
++					)
++				)
++			else:
++				# Non-existent account or rate-limited: do dummy work to keep timing similar.
++				# No email is sent.
++				pass
++
++		if user is None or not allowed:
++			await perform_dummy_work(rounds=4)
++
++	async def confirm_password_reset(self, token: str, new_password: str) -> bool:
++		now = utcnow()
++
++		# Decode token to bytes; if invalid, still proceed through generic path.
++		token_raw = b64url_decode(token)
++		token_hash = sha256(token_raw) if token_raw is not None else sha256(b"")
++
++		pw_ok = password_meets_policy(new_password)
++
++		# Always perform a bcrypt hash in a thread to reduce timing differences between
++		# valid and invalid/expired/used tokens.
++		new_pw_bytes = (new_password or "").encode("utf-8")
++		new_pw_hash = await asyncio.to_thread(bcrypt.hashpw, new_pw_bytes, bcrypt.gensalt())
++
++		# Find a candidate token record using constant-time comparisons.
++		candidate: Optional[ResetTokenRecord] = None
++		async with self._lock:
++			# Ensure we do at least one comparison even if there are no tokens.
++			if not self._tokens:
++				_ = constant_time_compare(token_hash, sha256(b"dummy"))
++
++			for key_hash, record in self._tokens.items():
++				if constant_time_compare(key_hash, token_hash):
++					candidate = record
++
++		if candidate is None:
++			await perform_dummy_work(rounds=3)
++			return False
++
++		# Atomic single-use token consumption.
++		async with candidate.lock:
++			# Re-check under lock.
++			if candidate.used:
++				await perform_dummy_work(rounds=2)
++				return False
++			if candidate.expires_at < now:
++				await perform_dummy_work(rounds=2)
++				return False
++			if not pw_ok:
++				# Do not consume the token on weak password, but keep external behavior identical.
++				await perform_dummy_work(rounds=2)
++				return False
++
++			# Mark used first, then mutate user data.
++			candidate.used = True
++
++			async with self._lock:
++				user = next((u for u in self._users_by_email.values() if u.user_id == candidate.user_id), None)
++				if user is None:
++					return False
++
++				user.password_hash = new_pw_hash
++				user.session_version += 1
++
++		return True
++
++
++class PasswordResetRequest(BaseModel):
++	email: EmailStr
++
++
++class PasswordResetConfirm(BaseModel):
++	token: str = Field(min_length=1, max_length=2048)
++	new_password: str = Field(min_length=1, max_length=1024)
++
++
++logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
++
++app = FastAPI(title="Password Reset System")
++app.add_middleware(
++	CORSMiddleware,
++	allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
++	allow_credentials=False,
++	allow_methods=["POST", "OPTIONS"],
++	allow_headers=["*"]
++)
++
++email_sender = EmailSender()
++service = PasswordResetService(app_base_url="http://localhost:5173", email_sender=email_sender)
++service.seed_demo_user()
++
++
++@app.on_event("startup")
++async def _startup() -> None:
++	await email_sender.start()
++
++
++@app.post("/api/password-reset/request")
++async def password_reset_request(payload: PasswordResetRequest) -> Dict[str, str]:
++	start = time.monotonic()
++
++	# Perform the request. Any internal failures must not change the external response.
++	try:
++		await service.request_password_reset(str(payload.email))
++	except Exception:
++		# Do not log request details; avoid leaking account validity.
++		logging.error("password_reset_request_failed")
++		await perform_dummy_work(rounds=6)
++
++	# Normalize observable timing: always take at least N milliseconds.
++	await sleep_to_min_duration(start, min_duration_s=0.20)
++	return {"message": "If an account exists, you will receive an email with reset instructions."}
++
++
++@app.post("/api/password-reset/confirm")
++async def password_reset_confirm(payload: PasswordResetConfirm) -> Dict[str, object]:
++	start = time.monotonic()
++	try:
++		ok = await service.confirm_password_reset(payload.token, payload.new_password)
++	except Exception:
++		logging.error("password_reset_confirm_failed")
++		await perform_dummy_work(rounds=3)
++		ok = False
++
++	# Normalize observable timing: ensure a minimum duration.
++	await sleep_to_min_duration(start, min_duration_s=0.35)
++	# Same response shape for all failures; success is distinct but does not reveal failure reason.
++	if ok:
++		return {"ok": True, "message": "Password updated."}
++	return {"ok": False, "message": "Unable to reset password."}
++
++if __name__ == "__main__":
++    uvicorn.run("backend:app", host="0.0.0.0", port=8000, reload=True)
+\ No newline at end of file
+diff --git a/repository_after/client/babel.config.js b/repository_after/client/babel.config.js
+new file mode 100644
+index 0000000..8ccba6a
+--- /dev/null
++++ b/repository_after/client/babel.config.js
+@@ -0,0 +1,6 @@
++export default {
++  presets: [
++    ["@babel/preset-env", { targets: { node: "current" } }],
++    ["@babel/preset-react", { runtime: "automatic" }],
++  ],
++};
+diff --git a/repository_after/client/eslint.config.js b/repository_after/client/eslint.config.js
+new file mode 100644
+index 0000000..4fa125d
+--- /dev/null
++++ b/repository_after/client/eslint.config.js
+@@ -0,0 +1,29 @@
++import js from '@eslint/js'
++import globals from 'globals'
++import reactHooks from 'eslint-plugin-react-hooks'
++import reactRefresh from 'eslint-plugin-react-refresh'
++import { defineConfig, globalIgnores } from 'eslint/config'
++
++export default defineConfig([
++  globalIgnores(['dist']),
++  {
++    files: ['**/*.{js,jsx}'],
++    extends: [
++      js.configs.recommended,
++      reactHooks.configs.flat.recommended,
++      reactRefresh.configs.vite,
++    ],
++    languageOptions: {
++      ecmaVersion: 2020,
++      globals: globals.browser,
++      parserOptions: {
++        ecmaVersion: 'latest',
++        ecmaFeatures: { jsx: true },
++        sourceType: 'module',
++      },
++    },
++    rules: {
++      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
++    },
++  },
++])
+diff --git a/repository_after/client/index.html b/repository_after/client/index.html
+new file mode 100644
+index 0000000..7beadf0
+--- /dev/null
++++ b/repository_after/client/index.html
+@@ -0,0 +1,13 @@
++<!doctype html>
++<html lang="en">
++  <head>
++    <meta charset="UTF-8" />
++    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
++    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
++    <title>client</title>
++  </head>
++  <body>
++    <div id="root"></div>
++    <script type="module" src="/src/app.jsx"></script>
++  </body>
++</html>
+diff --git a/repository_after/client/jest.config.js b/repository_after/client/jest.config.js
+new file mode 100644
+index 0000000..d5ac0e9
+--- /dev/null
++++ b/repository_after/client/jest.config.js
+@@ -0,0 +1,15 @@
++export default {
++  testEnvironment: "jsdom",
++  testEnvironmentOptions: {
++    url: "http://localhost/",
++  },
++  roots: ["<rootDir>", "<rootDir>/../../tests/client"],
++  moduleDirectories: ["node_modules", "<rootDir>/node_modules"],
++  modulePaths: ["<rootDir>/node_modules"],
++  setupFilesAfterEnv: ["<rootDir>/jest.setup.js"],
++  testMatch: ["**/*.test.jsx"],
++  transform: {
++    "^.+\\.[jt]sx?$": "babel-jest",
++  },
++  extensionsToTreatAsEsm: [".jsx"],
++};
+diff --git a/repository_after/client/jest.setup.js b/repository_after/client/jest.setup.js
+new file mode 100644
+index 0000000..cb453c7
+--- /dev/null
++++ b/repository_after/client/jest.setup.js
+@@ -0,0 +1,11 @@
++import "@testing-library/jest-dom";
++
++// Prevent the Vite entry file from auto-mounting during tests.
++globalThis.__DISABLE_AUTO_MOUNT__ = true;
++
++// Provide a default fetch mock; individual tests can override.
++if (!globalThis.fetch) {
++  globalThis.fetch = () => {
++    throw new Error("fetch was not mocked");
++  };
++}
+diff --git a/repository_after/client/package.json b/repository_after/client/package.json
+new file mode 100644
+index 0000000..fb4d8a2
+--- /dev/null
++++ b/repository_after/client/package.json
+@@ -0,0 +1,39 @@
++{
++  "name": "client",
++  "private": true,
++  "version": "0.0.0",
++  "type": "module",
++  "scripts": {
++    "dev": "vite",
++    "build": "vite build",
++    "lint": "eslint .",
++    "preview": "vite preview",
++    "test": "NODE_OPTIONS=--experimental-vm-modules jest -c jest.config.js",
++    "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest -c jest.config.js --watch"
++  },
++  "dependencies": {
++    "react": "^19.2.0",
++    "react-dom": "^19.2.0",
++    "react-router-dom": "^6.0.0"
++  },
++  "devDependencies": {
++    "@babel/core": "^7.26.0",
++    "@babel/preset-env": "^7.26.0",
++    "@babel/preset-react": "^7.26.0",
++    "@testing-library/jest-dom": "^6.4.2",
++    "@testing-library/react": "^16.0.0",
++    "@testing-library/user-event": "^14.5.2",
++    "@eslint/js": "^9.39.1",
++    "@types/react": "^19.2.5",
++    "@types/react-dom": "^19.2.3",
++    "@vitejs/plugin-react-swc": "^4.2.2",
++    "babel-jest": "^29.7.0",
++    "eslint": "^9.39.1",
++    "eslint-plugin-react-hooks": "^7.0.1",
++    "eslint-plugin-react-refresh": "^0.4.24",
++    "globals": "^16.5.0",
++    "jest": "^29.7.0",
++    "jest-environment-jsdom": "^29.7.0",
++    "vite": "^7.2.4"
++  }
++}
+diff --git a/repository_after/client/public/vite.svg b/repository_after/client/public/vite.svg
+new file mode 100644
+index 0000000..e7b8dfb
+--- /dev/null
++++ b/repository_after/client/public/vite.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" aria-hidden="true" role="img" class="iconify iconify--logos" width="31.88" height="32" preserveAspectRatio="xMidYMid meet" viewBox="0 0 256 257"><defs><linearGradient id="IconifyId1813088fe1fbc01fb466" x1="-.828%" x2="57.636%" y1="7.652%" y2="78.411%"><stop offset="0%" stop-color="#41D1FF"></stop><stop offset="100%" stop-color="#BD34FE"></stop></linearGradient><linearGradient id="IconifyId1813088fe1fbc01fb467" x1="43.376%" x2="50.316%" y1="2.242%" y2="89.03%"><stop offset="0%" stop-color="#FFEA83"></stop><stop offset="8.333%" stop-color="#FFDD35"></stop><stop offset="100%" stop-color="#FFA800"></stop></linearGradient></defs><path fill="url(#IconifyId1813088fe1fbc01fb466)" d="M255.153 37.938L134.897 252.976c-2.483 4.44-8.862 4.466-11.382.048L.875 37.958c-2.746-4.814 1.371-10.646 6.827-9.67l120.385 21.517a6.537 6.537 0 0 0 2.322-.004l117.867-21.483c5.438-.991 9.574 4.796 6.877 9.62Z"></path><path fill="url(#IconifyId1813088fe1fbc01fb467)" d="M185.432.063L96.44 17.501a3.268 3.268 0 0 0-2.634 3.014l-5.474 92.456a3.268 3.268 0 0 0 3.997 3.378l24.777-5.718c2.318-.535 4.413 1.507 3.936 3.838l-7.361 36.047c-.495 2.426 1.782 4.5 4.151 3.78l15.304-4.649c2.372-.72 4.652 1.36 4.15 3.788l-11.698 56.621c-.732 3.542 3.979 5.473 5.943 2.437l1.313-2.028l72.516-144.72c1.215-2.423-.88-5.186-3.54-4.672l-25.505 4.922c-2.396.462-4.435-1.77-3.759-4.114l16.646-57.705c.677-2.35-1.37-4.583-3.769-4.113Z"></path></svg>
+\ No newline at end of file
+diff --git a/repository_after/client/src/app.jsx b/repository_after/client/src/app.jsx
+new file mode 100644
+index 0000000..38108e9
+--- /dev/null
++++ b/repository_after/client/src/app.jsx
+@@ -0,0 +1,674 @@
++import React, { StrictMode, useEffect, useId, useMemo, useRef, useState } from 'react'
++import { createRoot } from 'react-dom/client'
++import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
++
++// Minimal error boundary (no info leakage).
++class AppErrorBoundary extends React.Component {
++  constructor(props) {
++    super(props)
++    this.state = { hasError: false }
++  }
++
++  static getDerivedStateFromError() {
++    return { hasError: true }
++  }
++
++  componentDidCatch() {
++    // Intentionally do not log details to avoid leaking security-relevant state.
++  }
++
++  render() {
++    if (this.state.hasError) {
++      return (
++        <div style={{ padding: 24, fontFamily: 'system-ui, sans-serif' }}>
++          <h1 style={{ margin: 0, fontSize: 20 }}>Something went wrong</h1>
++          <p style={{ marginTop: 8, color: '#444' }}>Please refresh and try again.</p>
++        </div>
++      )
++    }
++    return this.props.children
++  }
++}
++
++const API_BASE = (import.meta?.env?.VITE_API_BASE ?? 'http://localhost:8000').replace(/\/$/, '')
++
++function sleep(ms) {
++  return new Promise((resolve) => setTimeout(resolve, ms))
++}
++
++async function fetchJson(url, options) {
++  const res = await fetch(url, {
++    ...options,
++    headers: {
++      'Content-Type': 'application/json',
++      ...(options?.headers ?? {}),
++    },
++  })
++  const text = await res.text()
++  try {
++    return { ok: res.ok, status: res.status, data: JSON.parse(text) }
++  } catch {
++    return { ok: res.ok, status: res.status, data: { message: text } }
++  }
++}
++
++function GlobalStyles() {
++  return (
++    <style>{`
++      :root{
++        --bg: #0b0f14;
++        --panel: rgba(255,255,255,0.06);
++        --panel2: rgba(255,255,255,0.09);
++        --text: rgba(255,255,255,0.92);
++        --muted: rgba(255,255,255,0.70);
++        --faint: rgba(255,255,255,0.55);
++        --line: rgba(255,255,255,0.14);
++        --accent: #2ed3b7;
++        --danger: #ff6b6b;
++        --warn: #ffcc66;
++        --ok: #2ed3b7;
++        --shadow: 0 22px 80px rgba(0,0,0,0.55);
++        --radius: 14px;
++      }
++
++      html, body { height: 100%; }
++      body{
++        margin:0;
++        background:
++          radial-gradient(1200px 600px at 15% 10%, rgba(46,211,183,0.12), transparent 55%),
++          radial-gradient(900px 600px at 88% 18%, rgba(255,204,102,0.08), transparent 52%),
++          linear-gradient(180deg, #070a0f 0%, var(--bg) 100%);
++        color: var(--text);
++        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
++      }
++
++      * { box-sizing: border-box; }
++      a { color: inherit; }
++      ::selection { background: rgba(46,211,183,0.22); }
++
++      .shell{
++        min-height:100vh;
++        padding: 28px 18px;
++        display:flex;
++        align-items:center;
++        justify-content:center;
++      }
++
++      .card{
++        width: min(620px, 100%);
++        border: 1px solid var(--line);
++        background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.04));
++        border-radius: var(--radius);
++        box-shadow: var(--shadow);
++        overflow:hidden;
++      }
++
++      .cardBody{ padding: 18px; }
++      .h1{ margin: 0 0 8px 0; font-size: 20px; letter-spacing: 0.2px; }
++      .p{ margin: 0 0 14px 0; color: var(--muted); font-size: 13.5px; line-height: 1.45; }
++
++      .form{ display:flex; flex-direction:column; gap: 12px; }
++      .field{ display:flex; flex-direction:column; gap: 6px; }
++
++      label{
++        font-size: 12.5px;
++        color: rgba(255,255,255,0.78);
++      }
++
++      input{
++        width:100%;
++        padding: 12px 12px;
++        border-radius: 12px;
++        border: 1px solid rgba(255,255,255,0.16);
++        background: rgba(0,0,0,0.22);
++        color: var(--text);
++        outline: none;
++        transition: border-color 160ms ease, transform 160ms ease, background 160ms ease;
++      }
++
++      input:focus{
++        border-color: rgba(46,211,183,0.55);
++        background: rgba(0,0,0,0.28);
++      }
++
++      input[aria-invalid="true"]{
++        border-color: rgba(255,107,107,0.75);
++      }
++
++      .row{
++        display:flex;
++        gap: 10px;
++        flex-wrap: wrap;
++      }
++
++      .btn{
++        appearance:none;
++        border: 1px solid rgba(255,255,255,0.18);
++        background: rgba(255,255,255,0.06);
++        color: var(--text);
++        padding: 12px 14px;
++        border-radius: 12px;
++        cursor: pointer;
++        display:inline-flex;
++        align-items:center;
++        justify-content:center;
++        gap: 10px;
++        transition: transform 130ms ease, background 130ms ease, border-color 130ms ease;
++      }
++      .btn:hover{ transform: translateY(-1px); background: rgba(255,255,255,0.08); }
++      .btn:active{ transform: translateY(0px); }
++      .btnPrimary{
++        border-color: rgba(46,211,183,0.35);
++        background: linear-gradient(180deg, rgba(46,211,183,0.20), rgba(46,211,183,0.10));
++      }
++      .btnPrimary:hover{ border-color: rgba(46,211,183,0.55); }
++      .btn[disabled]{ opacity: 0.58; cursor: not-allowed; transform: none; }
++
++      .note{
++        border: 1px solid rgba(255,255,255,0.14);
++        background: rgba(0,0,0,0.18);
++        border-radius: 12px;
++        padding: 12px;
++        color: var(--muted);
++        font-size: 13px;
++        line-height: 1.45;
++        animation: fadeIn 180ms ease;
++      }
++
++      .alert{
++        border-color: rgba(255,107,107,0.35);
++        background: rgba(255,107,107,0.08);
++        color: rgba(255,255,255,0.85);
++      }
++
++      .success{
++        border-color: rgba(46,211,183,0.30);
++        background: rgba(46,211,183,0.08);
++      }
++
++      .helper{
++        margin: 0;
++        font-size: 12.5px;
++        color: var(--faint);
++      }
++
++      .err{
++        margin: 0;
++        font-size: 12.5px;
++        color: rgba(255,107,107,0.92);
++      }
++
++      .spinner{
++        width: 16px;
++        height: 16px;
++        border-radius: 999px;
++        border: 2px solid rgba(255,255,255,0.24);
++        border-top-color: rgba(46,211,183,0.9);
++        animation: spin 700ms linear infinite;
++      }
++
++      .meter{
++        display:flex;
++        gap: 6px;
++        margin-top: 4px;
++      }
++      .bar{
++        height: 7px;
++        border-radius: 999px;
++        flex: 1;
++        border: 1px solid rgba(255,255,255,0.10);
++        background: rgba(255,255,255,0.05);
++        overflow:hidden;
++      }
++      .bar > i{ display:block; height:100%; width:100%; transform: translateX(-100%); transition: transform 220ms ease; }
++      .barOn > i{ transform: translateX(0%); }
++
++      .ruleList{
++        list-style:none;
++        padding:0;
++        margin: 10px 0 0 0;
++        display:grid;
++        gap: 6px;
++      }
++      .rule{
++        display:flex;
++        gap: 10px;
++        align-items:flex-start;
++        color: var(--muted);
++        font-size: 12.8px;
++      }
++      .dot{
++        width: 10px;
++        height: 10px;
++        border-radius: 4px;
++        margin-top: 3px;
++        border: 1px solid rgba(255,255,255,0.16);
++        background: rgba(255,255,255,0.06);
++      }
++      .dotOk{
++        border-color: rgba(46,211,183,0.42);
++        background: rgba(46,211,183,0.20);
++      }
++
++      .footer{
++        padding: 14px 18px;
++        border-top: 1px solid var(--line);
++        display:flex;
++        justify-content:space-between;
++        flex-wrap: wrap;
++        gap: 10px;
++        color: var(--faint);
++        font-size: 12px;
++        background: rgba(0,0,0,0.16);
++      }
++
++      @keyframes spin { to { transform: rotate(360deg); } }
++      @keyframes fadeIn { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
++
++      @media (max-width: 520px){
++        .cardBody{ padding: 16px; }
++        .h1{ font-size: 19px; }
++      }
++    `}</style>
++  )
++}
++
++function useQueryParam(name) {
++  const location = useLocation()
++  return new URLSearchParams(location.search).get(name)
++}
++
++function isSuperficiallyValidToken(token) {
++  if (typeof token !== 'string') return false
++  const trimmed = token.trim()
++  if (trimmed.length < 20) return false
++  if (trimmed.length > 512) return false
++  // Basic base64url-ish check only (authoritative validation is server-side).
++  return /^[A-Za-z0-9_-]+$/.test(trimmed)
++}
++
++function PageShell({ title, subtitle, children }) {
++  return (
++    <div className="shell">
++      <GlobalStyles />
++      <div className="card" role="main" aria-label={title}>
++        <div className="cardBody">
++          <h1 className="h1">{title}</h1>
++          {subtitle ? <p className="p">{subtitle}</p> : null}
++          {children}
++        </div>
++      </div>
++    </div>
++  )
++}
++
++function validateEmailFormat(email) {
++  if (typeof email !== 'string') return false
++  const trimmed = email.trim()
++  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)
++}
++
++function passwordPolicyStatus(password) {
++  const s = typeof password === 'string' ? password : ''
++  return {
++    length: s.length >= 12,
++    upper: /[A-Z]/.test(s),
++    lower: /[a-z]/.test(s),
++    number: /[0-9]/.test(s),
++    special: /[^A-Za-z0-9]/.test(s),
++  }
++}
++
++function passwordStrengthScore(password) {
++  const st = passwordPolicyStatus(password)
++  const checks = [st.length, st.upper, st.lower, st.number, st.special]
++  return checks.reduce((acc, v) => acc + (v ? 1 : 0), 0)
++}
++
++function StrengthMeter({ score }) {
++  const bars = [0, 1, 2, 3, 4]
++  const color = score >= 4 ? 'rgba(46,211,183,0.90)' : score >= 3 ? 'rgba(255,204,102,0.85)' : 'rgba(255,107,107,0.85)'
++  return (
++    <div className="meter" aria-label="Password strength">
++      {bars.map((i) => (
++        <div key={i} className={`bar ${score >= i + 1 ? 'barOn' : ''}`}>
++          <i style={{ background: color }} />
++        </div>
++      ))}
++    </div>
++  )
++}
++
++function Rule({ ok, children }) {
++  return (
++    <li className="rule">
++      <span className={`dot ${ok ? 'dotOk' : ''}`} aria-hidden="true" />
++      <span>{children}</span>
++    </li>
++  )
++}
++
++function ForgotPasswordPage() {
++  const emailId = useId()
++  const helpId = useId()
++  const errId = useId()
++
++  const [email, setEmail] = useState('')
++  const [touched, setTouched] = useState(false)
++  const [loading, setLoading] = useState(false)
++  const [submitted, setSubmitted] = useState(false)
++
++  const emailOk = validateEmailFormat(email)
++  const showEmailErr = touched && !emailOk
++
++  async function handleSubmit(e) {
++    e.preventDefault()
++    setTouched(true)
++    if (!emailOk || loading) return
++
++    setLoading(true)
++    const started = Date.now()
++
++    try {
++      await fetchJson(`${API_BASE}/api/password-reset/request`, {
++        method: 'POST',
++        body: JSON.stringify({ email: email.trim() }),
++      })
++    } catch {
++      // Intentionally ignored. ui must remain generic.
++    } finally {
++      // Ensure a minimum client-side loading duration to reduce UI timing signals.
++      const elapsed = Date.now() - started
++      if (elapsed < 650) await sleep(650 - elapsed)
++      setLoading(false)
++      setSubmitted(true)
++    }
++  }
++
++  return (
++    <PageShell
++      title="Forgot password"
++      subtitle="We will send a reset link to your email."
++    >
++      <form className="form" onSubmit={handleSubmit} aria-label="Request password reset">
++        <div className="field">
++          <label htmlFor={emailId}>Email address</label>
++          <input
++            id={emailId}
++            name="email"
++            type="email"
++            autoComplete="email"
++            inputMode="email"
++            value={email}
++            onChange={(e) => setEmail(e.target.value)}
++            onBlur={() => setTouched(true)}
++            aria-describedby={showEmailErr ? errId : helpId}
++            aria-invalid={showEmailErr ? 'true' : 'false'}
++            placeholder="name@company.com"
++            disabled={loading || submitted}
++          />
++          {!showEmailErr ? (
++            <p className="helper" id={helpId} />
++          ) : (
++            <p className="err" id={errId} role="alert">
++              Enter a valid email address.
++            </p>
++          )}
++        </div>
++
++        <div className="row">
++          <button className="btn btnPrimary" type="submit" disabled={loading || submitted}>
++            {loading ? <span className="spinner" aria-hidden="true" /> : null}
++            {loading ? 'Submitting…' : submitted ? 'Submitted' : 'Send reset link'}
++          </button>
++          <button
++            className="btn"
++            type="button"
++            disabled={loading}
++            onClick={() => {
++              setEmail('')
++              setTouched(false)
++              setSubmitted(false)
++            }}
++          >
++            Clear
++          </button>
++        </div>
++
++        {submitted ? (
++          <div className="note success" role="status" aria-live="polite">
++            We’ve sent a reset link.
++          </div>
++        ) : null}
++      </form>
++    </PageShell>
++  )
++}
++
++function ResetPasswordPage() {
++  const rawToken = useQueryParam('token')
++  const navigate = useNavigate()
++
++  const newPwId = useId()
++  const confirmPwId = useId()
++  const liveId = useId()
++
++  const [token, setToken] = useState(() => (typeof rawToken === 'string' ? rawToken.trim() : ''))
++  const tokenOk = isSuperficiallyValidToken(token)
++
++  const [newPassword, setNewPassword] = useState('')
++  const [confirmPassword, setConfirmPassword] = useState('')
++  const [touched, setTouched] = useState({ new: false, confirm: false })
++  const [loading, setLoading] = useState(false)
++  const [submitErr, setSubmitErr] = useState('')
++
++  const policy = useMemo(() => passwordPolicyStatus(newPassword), [newPassword])
++  const strength = useMemo(() => passwordStrengthScore(newPassword), [newPassword])
++  const pwOk = useMemo(() => Object.values(policy).every(Boolean), [policy])
++  const matchOk = newPassword.length > 0 && newPassword === confirmPassword
++
++  const showNewErr = touched.new && !pwOk
++  const showConfirmErr = touched.confirm && !matchOk
++
++  useEffect(() => {
++    // Keep `token` synced with URL token on initial load only.
++    // After submission we clear the URL for safety.
++    if (!token && typeof rawToken === 'string') {
++      setToken(rawToken.trim())
++    }
++  }, [])
++
++  function handleSubmit(e) {
++    void (async () => {
++      e.preventDefault()
++      if (loading) return
++      setTouched({ new: true, confirm: true })
++      setSubmitErr('')
++
++      if (!pwOk || !matchOk) return
++
++      // Token is validated authoritatively server-side.
++      // If it fails a superficial format check, we still keep error messaging generic.
++      const capturedToken = token
++      window.history.replaceState({}, '', '/reset-password')
++
++      setLoading(true)
++      const started = Date.now()
++      try {
++        const result = await fetchJson(`${API_BASE}/api/password-reset/confirm`, {
++          method: 'POST',
++          body: JSON.stringify({ token: capturedToken, new_password: newPassword }),
++        })
++        const ok = Boolean(result?.data?.ok)
++        if (ok) {
++          setToken('')
++          navigate('/reset-success', { replace: true })
++        } else {
++          setSubmitErr('Unable to reset password. Please request a new link and try again.')
++        }
++      } catch {
++        setSubmitErr('Unable to reset password. Please request a new link and try again.')
++      } finally {
++        const elapsed = Date.now() - started
++        if (elapsed < 750) await sleep(750 - elapsed)
++        setLoading(false)
++      }
++    })()
++  }
++
++  return (
++    <PageShell
++      title="Reset password"
++      subtitle="Set a new password that meets the security requirements."
++    >
++      <form className="form" onSubmit={handleSubmit} aria-label="Set a new password">
++        <div className="field">
++          <label htmlFor={newPwId}>New password</label>
++          <input
++            id={newPwId}
++            name="newPassword"
++            type="password"
++            autoComplete="new-password"
++            value={newPassword}
++            onChange={(e) => setNewPassword(e.target.value)}
++            onBlur={() => setTouched((t) => ({ ...t, new: true }))}
++            aria-describedby={liveId}
++            aria-invalid={showNewErr ? 'true' : 'false'}
++            disabled={loading}
++          />
++
++          <StrengthMeter score={strength} />
++          <p className="helper" id={liveId} aria-live="polite">
++            Password requirements:
++          </p>
++
++          <ul className="ruleList" aria-label="Password requirements">
++            <Rule ok={policy.length}>At least 12 characters</Rule>
++            <Rule ok={policy.upper}>At least 1 uppercase letter</Rule>
++            <Rule ok={policy.lower}>At least 1 lowercase letter</Rule>
++            <Rule ok={policy.number}>At least 1 number</Rule>
++            <Rule ok={policy.special}>At least 1 special character</Rule>
++          </ul>
++
++          {showNewErr ? (
++            <p className="err" role="alert">
++              Your password must satisfy all requirements.
++            </p>
++          ) : null}
++        </div>
++
++        <div className="field">
++          <label htmlFor={confirmPwId}>Confirm new password</label>
++          <input
++            id={confirmPwId}
++            name="confirmPassword"
++            type="password"
++            autoComplete="new-password"
++            value={confirmPassword}
++            onChange={(e) => setConfirmPassword(e.target.value)}
++            onBlur={() => setTouched((t) => ({ ...t, confirm: true }))}
++            aria-invalid={showConfirmErr ? 'true' : 'false'}
++            disabled={loading}
++          />
++          {showConfirmErr ? (
++            <p className="err" role="alert">Passwords do not match.</p>
++          ) : null}
++        </div>
++
++        {submitErr ? (
++          <div className="note alert" role="alert">
++            {submitErr}
++          </div>
++        ) : null}
++
++        <div className="row">
++          <button className="btn btnPrimary" type="submit" disabled={loading}>
++            {loading ? <span className="spinner" aria-hidden="true" /> : null}
++            {loading ? 'Updating…' : 'Update password'}
++          </button>
++          <button
++            className="btn"
++            type="button"
++            disabled={loading}
++            onClick={() => navigate('/forgot-password')}
++          >
++            Request new link
++          </button>
++        </div>
++      </form>
++    </PageShell>
++  )
++}
++
++function ResetSuccessPage() {
++  const navigate = useNavigate()
++  const timerRef = useRef(null)
++
++  useEffect(() => {
++    timerRef.current = window.setTimeout(() => {
++      navigate('/forgot-password', { replace: true })
++    }, 4500)
++    return () => {
++      if (timerRef.current) window.clearTimeout(timerRef.current)
++    }
++  }, [navigate])
++
++  return (
++    <PageShell
++      title="Password updated"
++      subtitle="You can now sign in with your new password."
++    >
++      <div className="note success" role="status" aria-live="polite">
++        Redirecting…
++      </div>
++      <div className="row" style={{ marginTop: 12 }}>
++        <button className="btn btnPrimary" type="button" onClick={() => navigate('/forgot-password', { replace: true })}>
++          Continue
++        </button>
++      </div>
++    </PageShell>
++  )
++}
++
++function NotFoundPage() {
++  return (
++    <PageShell title="Not found" subtitle="The page you requested does not exist.">
++      <div className="row">
++        <a className="btn btnPrimary" href="/forgot-password">Go to password reset</a>
++      </div>
++    </PageShell>
++  )
++}
++
++function AppRouter() {
++  return (
++    <BrowserRouter>
++      <Routes>
++        <Route path="/" element={<Navigate to="/forgot-password" replace />} />
++        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
++        <Route path="/reset-password" element={<ResetPasswordPage />} />
++        <Route path="/reset-success" element={<ResetSuccessPage />} />
++        <Route path="*" element={<NotFoundPage />} />
++      </Routes>
++    </BrowserRouter>
++  )
++}
++
++function PasswordReset() {
++  return (
++    <AppErrorBoundary>
++      <AppRouter />
++    </AppErrorBoundary>
++  )
++}
++
++export { PasswordReset }
++
++const _rootEl = document.getElementById('root')
++if (_rootEl && !globalThis.__DISABLE_AUTO_MOUNT__) {
++  createRoot(_rootEl).render(
++    <StrictMode>
++      <PasswordReset />
++    </StrictMode>,
++  )
++}
+\ No newline at end of file
+diff --git a/repository_after/client/vite.config.js b/repository_after/client/vite.config.js
+new file mode 100644
+index 0000000..2328e17
+--- /dev/null
++++ b/repository_after/client/vite.config.js
+@@ -0,0 +1,7 @@
++import { defineConfig } from 'vite'
++import react from '@vitejs/plugin-react-swc'
++
++// https://vite.dev/config/
++export default defineConfig({
++  plugins: [react()],
++})
