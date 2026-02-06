@@ -1,0 +1,365 @@
+diff --git a/repository_before/.gitkeep b/repository_before/.gitkeep
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/repository_after/consistent_hash.go b/repository_after/consistent_hash.go
+new file mode 100644
+index 0000000..c32cd66
+--- /dev/null
++++ b/repository_after/consistent_hash.go
+@@ -0,0 +1,117 @@
++package consistenthash
++
++import (
++	"errors"
++	"sync"
++	"sync/atomic"
++)
++
++// Engine manages the consistent hash ring with support for atomic updates and rebalancing.
++type Engine struct {
++	ringVal atomic.Pointer[Ring]
++
++	mu    sync.Mutex
++	nodes map[Node]bool
++
++	config Config
++}
++
++// Config holds configuration for the Engine.
++type Config struct {
++	ReplicationFactor int
++	Hasher            Hasher
++}
++
++// NewEngine creates a new consistent hashing engine.
++func NewEngine(cfg Config) *Engine {
++	if cfg.ReplicationFactor <= 0 {
++		cfg.ReplicationFactor = 20 // Default value
++	}
++	if cfg.Hasher == nil {
++		cfg.Hasher = CRC32Hasher{}
++	}
++
++	e := &Engine{
++		nodes:  make(map[Node]bool),
++		config: cfg,
++	}
++
++	// Initialize with an empty ring
++	emptyRing := NewRing(nil, cfg.ReplicationFactor, cfg.Hasher)
++	e.ringVal.Store(emptyRing)
++
++	return e
++}
++
++// GetNode returns the node responsible for the given key.
++// This operation is wait-free and thread-safe.
++func (e *Engine) GetNode(key string) Node {
++	ring := e.ringVal.Load()
++	if ring == nil {
++		return ""
++	}
++	return ring.GetNode(key)
++}
++
++// AddNode adds a physical node to the ring and returns the migration plan.
++func (e *Engine) AddNode(node string) (RebalancePlan, error) {
++	e.mu.Lock()
++	defer e.mu.Unlock()
++
++	n := Node(node)
++	if e.nodes[n] {
++		return nil, errors.New("node already exists")
++	}
++
++	// Create new node list
++	newNodes := make([]Node, 0, len(e.nodes)+1)
++	for existing := range e.nodes {
++		newNodes = append(newNodes, existing)
++	}
++	newNodes = append(newNodes, n)
++
++	// Build new ring
++	oldRing := e.ringVal.Load()
++	newRing := NewRing(newNodes, e.config.ReplicationFactor, e.config.Hasher)
++
++	// Calculate migrations
++	plan := calculateMigrationsForAdd(oldRing, newRing)
++
++	// Update state
++	e.nodes[n] = true
++	e.ringVal.Store(newRing)
++
++	return plan, nil
++}
++
++// RemoveNode removes a physical node from the ring and returns the migration plan.
++func (e *Engine) RemoveNode(node string) (RebalancePlan, error) {
++	e.mu.Lock()
++	defer e.mu.Unlock()
++
++	n := Node(node)
++	if !e.nodes[n] {
++		return nil, errors.New("node does not exist")
++	}
++
++	// Create new node list
++	newNodes := make([]Node, 0, len(e.nodes)-1)
++	for existing := range e.nodes {
++		if existing != n {
++			newNodes = append(newNodes, existing)
++		}
++	}
++
++	// Build new ring
++	oldRing := e.ringVal.Load()
++	newRing := NewRing(newNodes, e.config.ReplicationFactor, e.config.Hasher)
++
++	// Calculate migrations
++	plan := calculateMigrationsForRemove(oldRing, newRing)
++
++	// Update state
++	delete(e.nodes, n)
++	e.ringVal.Store(newRing)
++
++	return plan, nil
++}
+diff --git a/repository_after/go.mod b/repository_after/go.mod
+new file mode 100644
+index 0000000..2419031
+--- /dev/null
++++ b/repository_after/go.mod
+@@ -0,0 +1,3 @@
++module consistenthash
++
++go 1.21
+diff --git a/repository_after/hasher.go b/repository_after/hasher.go
+new file mode 100644
+index 0000000..901d161
+--- /dev/null
++++ b/repository_after/hasher.go
+@@ -0,0 +1,17 @@
++package consistenthash
++
++import (
++	"hash/crc32"
++)
++
++// Hasher is the interface used to hash keys to uint32 values on the ring.
++type Hasher interface {
++	Hash(data []byte) uint32
++}
++
++// CRC32Hasher implements Hasher using the IEEE polynomial.
++type CRC32Hasher struct{}
++
++func (h CRC32Hasher) Hash(data []byte) uint32 {
++	return crc32.ChecksumIEEE(data)
++}
+diff --git a/repository_after/rebalance.go b/repository_after/rebalance.go
+new file mode 100644
+index 0000000..ae896e1
+--- /dev/null
++++ b/repository_after/rebalance.go
+@@ -0,0 +1,98 @@
++package consistenthash
++
++import (
++	"fmt"
++)
++
++// Migration represents a data migration task.
++type Migration struct {
++	StartHash  uint32
++	EndHash    uint32
++	SourceNode Node
++	TargetNode Node
++}
++
++// RebalancePlan is a list of migrations required to transition between ring states.
++type RebalancePlan []Migration
++
++// calculateMigrationsForAdd calculates the migrations when a node is ADDED.
++// We iterate the NEW ring (superset).
++// For each vnode in the new ring, we check who owned that range in the old ring.
++func calculateMigrationsForAdd(oldRing, newRing *Ring) RebalancePlan {
++	var migrations RebalancePlan
++	if oldRing == nil || len(oldRing.vnodes) == 0 {
++		return migrations // No migrations if starting from empty
++	}
++
++	for i, vnode := range newRing.vnodes {
++		// Calculate range (prevHash, currHash]
++		var prevHash uint32
++		if i == 0 {
++			prevHash = newRing.vnodes[len(newRing.vnodes)-1].HashID
++		} else {
++			prevHash = newRing.vnodes[i-1].HashID
++		}
++
++		currHash := vnode.HashID
++		newOwner := vnode.Node
++
++		// In the old ring, who owned 'currHash'?
++		// oldRing.GetNode(currHash) returns the owner of the range ending at currHash
++		// because if currHash was not a vnode in oldRing, it searched for the next one.
++		// Wait, if currHash IS a new vnode, it wasn't in oldRing.
++		// oldRing.GetNode(currHash) returns the node responsible for currHash.
++		oldOwner := oldRing.GetNode(fmt.Sprintf("%d", currHash))
++		// Wait, GetNode takes a string Key and hashes it.
++		// We already have the Hash. We need an internal GetNodeByHash.
++
++		// We'll trust the logic helper below.
++		oldOwner = oldRing.getNodeByHash(currHash)
++
++		if oldOwner != newOwner {
++			migrations = append(migrations, Migration{
++				StartHash:  prevHash,
++				EndHash:    currHash,
++				SourceNode: oldOwner,
++				TargetNode: newOwner,
++			})
++		}
++	}
++	return migrations
++}
++
++// calculateMigrationsForRemove calculates the migrations when a node is REMOVED.
++// We iterate the OLD ring (superset).
++func calculateMigrationsForRemove(oldRing, newRing *Ring) RebalancePlan {
++	var migrations RebalancePlan
++	if newRing == nil || len(newRing.vnodes) == 0 {
++		// Everything seems lost or we are clearing the ring.
++		// This might be large, but let's assume we just dump everything?
++		return migrations
++	}
++
++	for i, vnode := range oldRing.vnodes {
++		// Range (prev, curr]
++		var prevHash uint32
++		if i == 0 {
++			prevHash = oldRing.vnodes[len(oldRing.vnodes)-1].HashID
++		} else {
++			prevHash = oldRing.vnodes[i-1].HashID
++		}
++
++		currHash := vnode.HashID
++		oldOwner := vnode.Node
++
++		// Who owns this range in the new ring?
++		newOwner := newRing.getNodeByHash(currHash)
++
++		if oldOwner != newOwner {
++			migrations = append(migrations, Migration{
++				StartHash:  prevHash,
++				EndHash:    currHash,
++				SourceNode: oldOwner,
++				TargetNode: newOwner,
++			})
++		}
++	}
++	return migrations
++}
+diff --git a/repository_after/ring.go b/repository_after/ring.go
+new file mode 100644
+index 0000000..d2b8802
+--- /dev/null
++++ b/repository_after/ring.go
+@@ -0,0 +1,97 @@
++package consistenthash
++
++import (
++	"sort"
++	"strconv"
++)
++
++// Node represents a physical node in the cluster.
++type Node string
++
++// VNode represents a virtual node on the hash ring.
++type VNode struct {
++	HashID uint32
++	Node   Node
++}
++
++// Ring represents an immutable snapshot of the consistent hash ring.
++type Ring struct {
++	vnodes []VNode
++	hasher Hasher
++}
++
++// NewRing creates a new immutable Ring from a list of nodes.
++func NewRing(nodes []Node, replicationFactor int, hasher Hasher) *Ring {
++	if hasher == nil {
++		hasher = CRC32Hasher{}
++	}
++
++	totalVNodes := len(nodes) * replicationFactor
++	vnodes := make([]VNode, 0, totalVNodes)
++
++	for _, node := range nodes {
++		for i := 0; i < replicationFactor; i++ {
++			// Create a virtual node key: "NodeID#Index"
++			vKey := string(node) + "#" + strconv.Itoa(i)
++			hash := hasher.Hash([]byte(vKey))
++			vnodes = append(vnodes, VNode{
++				HashID: hash,
++				Node:   node,
++			})
++		}
++	}
++
++	// Sort vnodes by HashID to enable binary search (O(log N))
++	sort.Slice(vnodes, func(i, j int) bool {
++		return vnodes[i].HashID < vnodes[j].HashID
++	})
++
++	return &Ring{
++		vnodes: vnodes,
++		hasher: hasher,
++	}
++}
++
++// GetNode returns the physical node responsible for the given key.
++// It performs a binary search O(log N).
++func (r *Ring) GetNode(key string) Node {
++	if len(r.vnodes) == 0 {
++		return ""
++	}
++
++	hash := r.hasher.Hash([]byte(key))
++
++	// Binary search for the first vnode with HashID >= hash
++	idx := sort.Search(len(r.vnodes), func(i int) bool {
++		return r.vnodes[i].HashID >= hash
++	})
++
++	// If we went past the end, wrap around to the first vnode
++	if idx == len(r.vnodes) {
++		idx = 0
++	}
++
++	return r.vnodes[idx].Node
++}
++
++// NodeCount returns the number of physical nodes (calculated for convenience, though this is cheap).
++func (r *Ring) Len() int {
++	return len(r.vnodes)
++}
++
++// getNodeByHash finds the node responsible for a given raw hash value.
++func (r *Ring) getNodeByHash(hash uint32) Node {
++	if len(r.vnodes) == 0 {
++		return ""
++	}
++
++	idx := sort.Search(len(r.vnodes), func(i int) bool {
++		return r.vnodes[i].HashID >= hash
++	})
++
++	if idx == len(r.vnodes) {
++		idx = 0
++	}
++
++	return r.vnodes[idx].Node
++}
