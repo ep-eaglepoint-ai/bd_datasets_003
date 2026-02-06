@@ -10,6 +10,6 @@ node_modules/
 # OS
 .DS_Store
 evaluation/*.json
-
+evaluation/reports
 repository_after/target/
 **/target/
