@@ -1,0 +1,11 @@
+{
+            "instance_id": "KW5TNW",
+            "problem_statement": "Develop a rigorous, high-concurrency test suite in Go to verify the correctness of a provided Lock-Free Ring Buffer implementation. The verification must detect race conditions, ensure strict FIFO ordering per-producer, validate data integrity (no lost writes, no duplicate reads), and stress-test the system under high contention without using time.Sleep for synchronization.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/kw5tnw-concurrent-safe-ring-buffer-test-suite",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
