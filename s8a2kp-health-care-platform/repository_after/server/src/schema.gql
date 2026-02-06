@@ -1,0 +1,261 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+type User {
+  id: ID!
+  email: String!
+  role: String!
+  mfaEnabled: Boolean!
+  lastLoginAt: DateTime
+}
+
+"""
+A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
+"""
+scalar DateTime
+
+type AuthPayload {
+  token: String!
+  requiresMfa: Boolean!
+  mfaSessionToken: String
+  user: User
+}
+
+type MfaSetupPayload {
+  secret: String!
+  qrCodeUrl: String!
+}
+
+type Patient {
+  id: ID!
+  email: String!
+  firstName: String!
+  lastName: String!
+  isVerified: Boolean!
+  docScanUrl: String
+  insuranceProvider: String
+  insurancePolicyNumber: String
+  insuranceData: String!
+  medicalHistory: String
+  dependents: [Patient]!
+  guardian: Patient
+  consentSignature: String
+}
+
+type Schedule {
+  id: ID!
+  provider: Provider!
+  dayOfWeek: Int!
+  startTime: String!
+  endTime: String!
+  recurrenceRule: String
+  isOverbookable: Boolean
+  maxOverBooking: Int!
+  bufferMinutesBefore: Int!
+  bufferMinutesAfter: Int!
+  lunchStart: String
+  lunchEnd: String
+  defaultSlotDurationMinutes: Int!
+}
+
+type Provider {
+  id: ID!
+  name: String!
+  specialty: String!
+  schedules: [Schedule]!
+}
+
+type Appointment {
+  id: ID!
+  providerId: String!
+  patientId: String!
+  startTime: DateTime!
+  endTime: DateTime!
+  status: AppointmentStatus!
+  type: AppointmentType!
+  videoRoomSid: String
+  copayAmount: Float
+  copayCollected: Boolean!
+  copayTransactionId: String
+  durationMinutes: Float
+  reasonForVisit: String
+  notes: String
+}
+
+enum AppointmentStatus {
+  BOOKED
+  CANCELLED
+  COMPLETED
+  WAITLIST
+  NO_SHOW
+}
+
+enum AppointmentType {
+  IN_PERSON
+  TELEHEALTH
+  FOLLOW_UP
+  URGENT
+  ANNUAL_CHECKUP
+}
+
+type AvailableSlot {
+  startTime: DateTime!
+  endTime: DateTime!
+  available: Boolean!
+}
+
+type ProviderAvailability {
+  providerId: String!
+  date: String!
+  slots: [AvailableSlot!]!
+}
+
+type Prescription {
+  id: ID!
+  patientId: String!
+  providerId: String!
+  medicationName: String!
+  dosage: String!
+  status: PrescriptionStatus!
+  isControlledSubstance: Boolean!
+  refillsRemaining: Int!
+  pharmacyId: String
+  prescribedAt: DateTime
+  lastRefillAt: DateTime
+}
+
+enum PrescriptionStatus {
+  PENDING
+  SENT_TO_PHARMACY
+  FILLED
+  REFILL_REQUESTED
+  CANCELLED
+}
+
+type MedicalRecord {
+  id: ID!
+  patientId: String!
+  recordType: String!
+  data: String!
+  date: DateTime!
+}
+
+type Message {
+  id: ID!
+  senderId: String!
+  recipientId: String!
+  content: String!
+  category: MessageCategory!
+  sentAt: DateTime
+  respondedAt: DateTime
+  responseTimeMinutes: Int
+  attachmentUrl: String
+  attachmentType: String
+  parentMessageId: String
+  isRead: Boolean!
+  isArchived: Boolean!
+}
+
+enum MessageCategory {
+  MEDICAL_QUESTION
+  APPOINTMENT_REQUEST
+  PRESCRIPTION_REFILL
+  LAB_RESULTS
+  BILLING
+  GENERAL
+}
+
+type Invoice {
+  id: ID!
+  appointmentId: String!
+  patientId: String!
+  description: String!
+  amount: Float!
+  status: String!
+  date: DateTime!
+  insuranceClaimId: String
+}
+
+type AdminAuditLog {
+  id: ID!
+  action: String!
+  adminId: String!
+  timestamp: DateTime!
+  details: String
+}
+
+type DashboardStats {
+  activePatients: Float!
+  upcomingAppointments: Float!
+  revenue: Float!
+}
+
+type Query {
+  patients: [Patient!]!
+  patient(id: ID!): Patient!
+  providers: [Provider!]!
+  provider(id: ID!): Provider!
+  appointments: [Appointment!]!
+  patientAppointments(patientId: String!): [Appointment!]!
+  providerAppointments(providerId: String!): [Appointment!]!
+  getAvailableSlots(providerId: String!, date: String!): ProviderAvailability!
+  prescriptions: [Prescription!]!
+  medicationHistory(patientId: String!): [Prescription!]!
+  medicalRecords: [MedicalRecord!]!
+  messages: [Message!]!
+  inbox(recipientId: String!): [Message!]!
+  invoices: [Invoice!]!
+  adminStats: DashboardStats!
+  auditLogs: [AdminAuditLog!]!
+}
+
+type Mutation {
+  login(email: String!, password: String!): AuthPayload!
+  verifyMfa(mfaSessionToken: String!, code: String!): AuthPayload!
+  enableMfa(userId: String!): MfaSetupPayload!
+  confirmMfa(userId: String!, code: String!): Boolean!
+  disableMfa(userId: String!, password: String!): Boolean!
+  logout(userId: String!): Boolean!
+  createPatient(createPatientInput: CreatePatientInput!): Patient!
+  addDependent(guardianId: String!, dependentId: String!): Patient!
+  signConsent(patientId: String!, signature: String!): Patient!
+  createProvider(createProviderInput: CreateProviderInput!): Provider!
+  addSchedule(addScheduleInput: AddScheduleInput!): Schedule!
+  createAppointment(createAppointmentInput: CreateAppointmentInput!): Appointment!
+  cancelAppointment(appointmentId: String!): Appointment!
+  joinVideoRoom(roomName: String!, identity: String!): String!
+  createPrescription(medicationName: String!, dosage: String!, isControlledSubstance: Boolean!, patientId: String = "patient-uuid", providerId: String = "provider-uuid", pharmacyId: String): Prescription!
+  requestRefill(prescriptionId: String!, patientId: String!): Prescription!
+  sendMessage(content: String!, senderId: String!, recipientId: String = "care-team", category: String = "GENERAL"): Message!
+  createInvoice(patientId: String!, amount: Float!, description: String!): Invoice!
+}
+
+input CreatePatientInput {
+  email: String!
+  firstName: String!
+  lastName: String!
+  docScanUrl: String
+  insuranceData: String
+}
+
+input CreateProviderInput {
+  name: String!
+  specialty: String!
+}
+
+input AddScheduleInput {
+  providerId: String!
+  dayOfWeek: Int!
+  startTime: String!
+  endTime: String!
+  maxOverBooking: Int = 0
+}
+
+input CreateAppointmentInput {
+  providerId: String!
+  patientId: String!
+  startTime: DateTime!
+  endTime: DateTime!
+  type: AppointmentType!
+}
