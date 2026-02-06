@@ -1,0 +1,11 @@
+{
+            "instance_id": "L3UUNQ",
+            "problem_statement": "The image sharing platform's upload endpoint reads entire files into Python memory via read() before writing to disk, causing memory spikes proportional to file size and out-of-memory crashes under concurrent load. Thumbnail generation runs synchronously inside the request handler, blocking responses while four sizes are each decoded independently from the full original image buffer. The gallery listing triggers separate database queries per image for the uploader's username and thumbnails, files with valid extensions but malicious content bypass validation and get stored on the server, and failed thumbnail generation leaves orphaned database records and partial files on disk. Core logic is in images/views.py, images/services.py, and images/serializers.py.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/l3uunq-image-upload-pipeline-memory-optimization-and-async-thumbnail-processing",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
