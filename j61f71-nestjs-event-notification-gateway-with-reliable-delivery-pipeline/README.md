@@ -7,7 +7,7 @@
 ## After Test Docker Command
 
 ```bash
-docker compose run --rm --build app
+docker compose run --rm app
 ```
 
 ## Evaluation Docker Command
