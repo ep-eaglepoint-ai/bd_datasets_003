@@ -1,0 +1,11 @@
+{
+            "instance_id": "CG4OJI",
+            "problem_statement": "An embedded systems team needs a lightweight JSON parser for their IoT devices that cannot use external libraries due to firmware size constraints. The devices receive configuration updates as JSON strings over a network connection and need to extract values to update sensor thresholds and reporting intervals. They previously used a regex-based approach but it failed on nested objects and escaped characters. The parser must handle the full JSON specification including nested objects, arrays, escaped strings, and all primitive types. Memory efficiency matters since devices have limited RAM, and the team prefers an in-place parsing approach that does not create many heap allocations.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/cg4oji-cpp-json-parse",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
