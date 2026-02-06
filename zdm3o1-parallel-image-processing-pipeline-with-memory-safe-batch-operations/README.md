@@ -1,11 +1,19 @@
 # ZDM3O1 - Parallel Image Processing Pipeline with Memory Safe Batch Operations
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Before Test
 
-    ## After Test Docker Command
-    <docker after command here>
+```bash
+docker compose run --rm -e PYTHONPATH=/app/repository_before app pytest -q || true
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## After Test
+
+```bash
+docker compose run --rm -e PYTHONPATH=/app/repository_after app pytest -q
+```
+
+## Evaluation
+
+```bash
+docker compose run --rm app python evaluation/evaluate.py
+```
