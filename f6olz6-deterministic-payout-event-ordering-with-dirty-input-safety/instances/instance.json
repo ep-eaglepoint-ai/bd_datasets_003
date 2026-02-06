@@ -1,0 +1,12 @@
+{
+            "instance_id": "F6OLZ6",
+            "problem_statement": "We need to build a payout ordering module that consumes payout events from multiple upstream systems where data quality cannot be trusted. Events may be malformed, missing fields, or be non-dict values entirely. The module must never crash, must produce deterministic output for the same input, and must order events according to strict business rules around priority, settlement time, payment rail, amount, and payout ID. The function must operate fully in memory, avoid mutating inputs, compute derived values efficiently, and preserve stable ordering when required. This module is intended for reconciliation, settlement sequencing, and audit-safe processing in backend systems.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/f6olz6-deterministic-payout-event-ordering-with-dirty-input-safety",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
