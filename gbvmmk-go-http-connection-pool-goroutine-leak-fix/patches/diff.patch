@@ -1,0 +1,601 @@
+diff --git a/repository_before/health.go b/repository_after/health.go
+index ae72975..da6f942 100644
+--- a/repository_before/health.go
++++ b/repository_after/health.go
+@@ -3,6 +3,7 @@ package pool
+ import (
+ 	"context"
+ 	"net/http"
++	"sync"
+ 	"time"
+ )
+ 
+@@ -10,6 +11,7 @@ type HealthChecker struct {
+ 	pool     *Pool
+ 	interval time.Duration
+ 	stopCh   chan struct{}
++	once     sync.Once
+ }
+ 
+ func NewHealthChecker(pool *Pool, interval time.Duration) *HealthChecker {
+@@ -21,7 +23,9 @@ func NewHealthChecker(pool *Pool, interval time.Duration) *HealthChecker {
+ }
+ 
+ func (h *HealthChecker) Start() {
++	h.pool.wg.Add(1)
+ 	go func() {
++		defer h.pool.wg.Done()
+ 		ticker := time.NewTicker(h.interval)
+ 		defer ticker.Stop()
+ 
+@@ -31,30 +35,67 @@ func (h *HealthChecker) Start() {
+ 				h.CheckAllConnections()
+ 			case <-h.stopCh:
+ 				return
++			case <-h.pool.ctx.Done():
++				return
+ 			}
+ 		}
+ 	}()
+ }
+ 
+ func (h *HealthChecker) Stop() {
+-	close(h.stopCh)
++	h.once.Do(func() {
++		close(h.stopCh)
++	})
+ }
+ 
+ func (h *HealthChecker) CheckAllConnections() {
+ 	h.pool.mu.Lock()
+-	connections := make([]*Conn, 0)
++	var allConns []*Conn
+ 	for _, conns := range h.pool.connections {
+-		connections = append(connections, conns...)
++		allConns = append(allConns, conns...)
+ 	}
+ 	h.pool.mu.Unlock()
+ 
+-	for _, conn := range connections {
+-		go h.CheckConnection(conn)
++	if len(allConns) == 0 {
++		return
++	}
++
++	jobs := make(chan *Conn, len(allConns))
++	for _, conn := range allConns {
++		jobs <- conn
++	}
++	close(jobs)
++
++	numWorkers := 10
++	if len(allConns) < numWorkers {
++		numWorkers = len(allConns)
+ 	}
++
++	var wg sync.WaitGroup
++	for i := 0; i < numWorkers; i++ {
++		wg.Add(1)
++		h.pool.wg.Add(1)
++		go func() {
++			defer wg.Done()
++			defer h.pool.wg.Done()
++			for conn := range jobs {
++				h.CheckConnection(conn)
++			}
++		}()
++	}
++
++	// Use a separate goroutine to wait for checks and then purge,
++	// so CheckAllConnections doesn't block the ticker loop for too long,
++	// BUT wait, CheckAllConnections is called by the ticker. 
++	// If it's slow, tickers might stack up.
++	// We should wait here or ensure only one CheckAllConnections runs at a time.
++	// Ticker doesn't stack if the block takes longer than interval.
++	wg.Wait()
++	h.pool.PurgeUnhealthy()
+ }
+ 
+ func (h *HealthChecker) CheckConnection(conn *Conn) {
+-	ctx, cancel := context.WithTimeout(context.Background(), h.pool.config.ConnectTimeout)
++	ctx, cancel := context.WithTimeout(h.pool.ctx, h.pool.config.ConnectTimeout)
+ 	defer cancel()
+ 
+ 	req, err := http.NewRequestWithContext(ctx, "HEAD", "http://"+conn.host+"/health", nil)
+@@ -63,11 +104,7 @@ func (h *HealthChecker) CheckConnection(conn *Conn) {
+ 		return
+ 	}
+ 
+-	client := &http.Client{
+-		Timeout: h.pool.config.ConnectTimeout,
+-	}
+-
+-	resp, err := client.Do(req)
++	resp, err := conn.client.Do(req)
+ 	if err != nil {
+ 		conn.healthy = false
+ 		return
+diff --git a/repository_before/metrics.go b/repository_after/metrics.go
+index 245cbc7..163cc16 100644
+--- a/repository_before/metrics.go
++++ b/repository_after/metrics.go
+@@ -1,8 +1,11 @@
+ package pool
+ 
+-import "sync/atomic"
++import (
++	"sync"
++)
+ 
+ type Stats struct {
++	mu          sync.RWMutex
+ 	TotalConns  int64
+ 	ActiveConns int64
+ 	IdleConns   int64
+@@ -10,41 +13,66 @@ type Stats struct {
+ }
+ 
+ func (s *Stats) GetTotal() int64 {
+-	return atomic.LoadInt64(&s.TotalConns)
++	s.mu.RLock()
++	defer s.mu.RUnlock()
++	return s.TotalConns
+ }
+ 
+ func (s *Stats) GetActive() int64 {
+-	return atomic.LoadInt64(&s.ActiveConns)
++	s.mu.RLock()
++	defer s.mu.RUnlock()
++	return s.ActiveConns
+ }
+ 
+ func (s *Stats) GetIdle() int64 {
+-	return atomic.LoadInt64(&s.IdleConns)
++	s.mu.RLock()
++	defer s.mu.RUnlock()
++	return s.IdleConns
+ }
+ 
+ func (s *Stats) GetFailed() int64 {
+-	return atomic.LoadInt64(&s.FailedConns)
++	s.mu.RLock()
++	defer s.mu.RUnlock()
++	return s.FailedConns
+ }
+ 
+-func (s *Stats) IncrementTotal() {
+-	atomic.AddInt64(&s.TotalConns, 1)
++func (s *Stats) IncrementFailed() {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	s.FailedConns++
+ }
+ 
+-func (s *Stats) IncrementActive() {
+-	atomic.AddInt64(&s.ActiveConns, 1)
++func (s *Stats) NewConnection() {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	s.TotalConns++
++	s.ActiveConns++
+ }
+ 
+-func (s *Stats) DecrementActive() {
+-	atomic.AddInt64(&s.ActiveConns, -1)
++func (s *Stats) ReuseIdle() {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	s.IdleConns--
++	s.ActiveConns++
+ }
+ 
+-func (s *Stats) IncrementIdle() {
+-	atomic.AddInt64(&s.IdleConns, 1)
++func (s *Stats) ReleaseHealthy() {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	s.ActiveConns--
++	s.IdleConns++
+ }
+ 
+-func (s *Stats) DecrementIdle() {
+-	atomic.AddInt64(&s.IdleConns, -1)
++func (s *Stats) ReleaseUnhealthy() {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	s.ActiveConns--
++	s.TotalConns--
+ }
+ 
+-func (s *Stats) IncrementFailed() {
+-	atomic.AddInt64(&s.FailedConns, 1)
++func (s *Stats) EvictIdle() {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	s.IdleConns--
++	s.TotalConns--
+ }
+diff --git a/repository_before/pool.go b/repository_after/pool.go
+index 3c62278..ccba5cb 100644
+--- a/repository_before/pool.go
++++ b/repository_after/pool.go
+@@ -16,6 +16,7 @@ type Conn struct {
+ 	lastUsed  time.Time
+ 	healthy   bool
+ 	inUse     bool
++	ip        string
+ }
+ 
+ type Pool struct {
+@@ -25,6 +26,15 @@ type Pool struct {
+ 	stats         *Stats
+ 	healthChecker *HealthChecker
+ 	closed        bool
++	ctx           context.Context
++	cancel        context.CancelFunc
++	wg            sync.WaitGroup
++	once          sync.Once
++	hostCounts    map[string]int
++	waiters       map[string][]chan struct{}
++	Resolver      interface {
++		LookupIPAddr(context.Context, string) ([]net.IPAddr, error)
++	}
+ }
+ 
+ func NewPool(config *Config) *Pool {
+@@ -32,16 +42,25 @@ func NewPool(config *Config) *Pool {
+ 		config = DefaultConfig()
+ 	}
+ 
++	ctx, cancel := context.WithCancel(context.Background())
++
+ 	p := &Pool{
+ 		config:      config,
+ 		connections: make(map[string][]*Conn),
+ 		stats:       &Stats{},
++		ctx:         ctx,
++		cancel:      cancel,
++		hostCounts:  make(map[string]int),
++		waiters:     make(map[string][]chan struct{}),
++		Resolver:    net.DefaultResolver,
+ 	}
+ 
+ 	p.healthChecker = NewHealthChecker(p, config.HealthCheckPeriod)
+ 	p.healthChecker.Start()
+ 
++	p.wg.Add(1)
+ 	go p.startIdleEvictor()
++	p.wg.Add(1)
+ 	go p.startDNSRefresher()
+ 
+ 	return p
+@@ -49,45 +68,79 @@ func NewPool(config *Config) *Pool {
+ 
+ func (p *Pool) Get(ctx context.Context, host string) (*Conn, error) {
+ 	p.mu.Lock()
+-	defer p.mu.Unlock()
+ 
+-	if p.closed {
+-		return nil, errors.New("pool is closed")
+-	}
++	for {
++		if p.closed {
++			p.mu.Unlock()
++			return nil, errors.New("pool is closed")
++		}
+ 
+-	conns := p.connections[host]
+-	for i, conn := range conns {
+-		if conn.healthy && !conn.inUse {
++		conns := p.connections[host]
++		for i, conn := range conns {
++			if conn.healthy && !conn.inUse {
++				conn.inUse = true
++				conn.lastUsed = time.Now()
++				p.connections[host] = append(conns[:i], conns[i+1:]...)
++				p.stats.ReuseIdle()
++				p.mu.Unlock()
++				return conn, nil
++			}
++		}
++
++		if p.hostCounts[host] < p.config.MaxConnsPerHost {
++			p.hostCounts[host]++
++			p.mu.Unlock()
++			conn, err := p.CreateConnection(ctx, host)
++			if err != nil {
++				p.mu.Lock()
++				p.hostCounts[host]--
++				p.stats.IncrementFailed()
++				p.signalWaiter(host)
++				p.mu.Unlock()
++				return nil, err
++			}
+ 			conn.inUse = true
+-			conn.lastUsed = time.Now()
+-			p.connections[host] = append(conns[:i], conns[i+1:]...)
+-			p.stats.IncrementActive()
++			p.stats.NewConnection()
+ 			return conn, nil
+ 		}
+-	}
+ 
+-	totalConns := p.getActiveConnCount(host)
+-	if totalConns >= p.config.MaxConnsPerHost {
+-		return nil, errors.New("max connections reached")
+-	}
++		waitCh := make(chan struct{}, 1)
++		p.waiters[host] = append(p.waiters[host], waitCh)
++		p.mu.Unlock()
+ 
+-	conn, err := p.CreateConnection(ctx, host)
+-	if err != nil {
+-		p.stats.IncrementFailed()
+-		return nil, err
++		select {
++		case <-ctx.Done():
++			p.mu.Lock()
++			for i, ch := range p.waiters[host] {
++				if ch == waitCh {
++					p.waiters[host] = append(p.waiters[host][:i], p.waiters[host][i+1:]...)
++					break
++				}
++			}
++			p.mu.Unlock()
++			return nil, ctx.Err()
++		case <-waitCh:
++			p.mu.Lock()
++		}
+ 	}
++}
+ 
+-	conn.inUse = true
+-	p.stats.IncrementTotal()
+-	p.stats.IncrementActive()
+-	return conn, nil
++func (p *Pool) signalWaiter(host string) {
++	if len(p.waiters[host]) > 0 {
++		ch := p.waiters[host][0]
++		p.waiters[host] = p.waiters[host][1:]
++		close(ch)
++	}
+ }
+ 
+ func (p *Pool) getActiveConnCount(host string) int {
+-	return 0
++	return p.hostCounts[host]
+ }
+ 
+ func (p *Pool) Release(conn *Conn) {
++	if conn == nil {
++		return
++	}
+ 	p.mu.Lock()
+ 	defer p.mu.Unlock()
+ 
+@@ -96,21 +149,42 @@ func (p *Pool) Release(conn *Conn) {
+ 
+ 	if conn.healthy {
+ 		p.connections[conn.host] = append(p.connections[conn.host], conn)
+-		p.stats.DecrementActive()
+-		p.stats.IncrementIdle()
++		p.stats.ReleaseHealthy()
+ 	} else {
+-		p.stats.DecrementActive()
++		p.hostCounts[conn.host]--
++		p.stats.ReleaseUnhealthy()
+ 	}
++	p.signalWaiter(conn.host)
+ }
+ 
+ func (p *Pool) CreateConnection(ctx context.Context, host string) (*Conn, error) {
++	hostname, _, err := net.SplitHostPort(host)
++	if err != nil {
++		hostname = host // Assume no port
++	}
++
++	ips, err := p.Resolver.LookupIPAddr(ctx, hostname)
++	if err != nil {
++		return nil, err
++	}
++	if len(ips) == 0 {
++		return nil, errors.New("no IPs found for host")
++	}
++	ip := ips[0].IP.String()
++
+ 	dialer := &net.Dialer{
+ 		Timeout:   p.config.ConnectTimeout,
+ 		KeepAlive: 30 * time.Second,
+ 	}
+ 
+ 	transport := &http.Transport{
+-		DialContext:         dialer.DialContext,
++		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
++			_, port, err := net.SplitHostPort(addr)
++			if err != nil {
++				return nil, err
++			}
++			return dialer.DialContext(ctx, network, net.JoinHostPort(ip, port))
++		},
+ 		MaxIdleConns:        p.config.MaxIdleConns,
+ 		MaxIdleConnsPerHost: p.config.MaxIdleConns,
+ 		IdleConnTimeout:     p.config.IdleTimeout,
+@@ -127,6 +201,7 @@ func (p *Pool) CreateConnection(ctx context.Context, host string) (*Conn, error)
+ 		createdAt: time.Now(),
+ 		lastUsed:  time.Now(),
+ 		healthy:   true,
++		ip:        ip,
+ 	}, nil
+ }
+ 
+@@ -137,6 +212,9 @@ func (p *Pool) Do(ctx context.Context, req *http.Request) (*http.Response, error
+ 	}
+ 	defer p.Release(conn)
+ 
++	// Create a new request with the provided context to ensure cancellation propagates
++	req = req.WithContext(ctx)
++
+ 	resp, err := conn.client.Do(req)
+ 	if err != nil {
+ 		conn.healthy = false
+@@ -152,11 +230,17 @@ func (p *Pool) Do(ctx context.Context, req *http.Request) (*http.Response, error
+ }
+ 
+ func (p *Pool) startIdleEvictor() {
++	defer p.wg.Done()
+ 	ticker := time.NewTicker(p.config.IdleTimeout)
+ 	defer ticker.Stop()
+ 
+-	for range ticker.C {
+-		p.evictIdleConnections()
++	for {
++		select {
++		case <-ticker.C:
++			p.evictIdleConnections()
++		case <-p.ctx.Done():
++			return
++		}
+ 	}
+ }
+ 
+@@ -169,7 +253,15 @@ func (p *Pool) evictIdleConnections() {
+ 		var activeConns []*Conn
+ 		for _, conn := range conns {
+ 			if now.Sub(conn.lastUsed) > p.config.IdleTimeout {
+-				p.stats.DecrementIdle()
++				p.stats.EvictIdle()
++				p.hostCounts[host]--
++				
++				// Explicitly close the connection
++				if t, ok := conn.client.Transport.(*http.Transport); ok {
++					t.CloseIdleConnections()
++				}
++				
++				p.signalWaiter(host)
+ 			} else {
+ 				activeConns = append(activeConns, conn)
+ 			}
+@@ -179,11 +271,17 @@ func (p *Pool) evictIdleConnections() {
+ }
+ 
+ func (p *Pool) startDNSRefresher() {
++	defer p.wg.Done()
+ 	ticker := time.NewTicker(p.config.DNSRefreshPeriod)
+ 	defer ticker.Stop()
+ 
+-	for range ticker.C {
+-		p.refreshDNS()
++	for {
++		select {
++		case <-ticker.C:
++			p.refreshDNS()
++		case <-p.ctx.Done():
++			return
++		}
+ 	}
+ }
+ 
+@@ -196,34 +294,60 @@ func (p *Pool) refreshDNS() {
+ 	p.mu.Unlock()
+ 
+ 	for _, host := range hosts {
+-		ctx, cancel := context.WithTimeout(context.Background(), p.config.ConnectTimeout)
+-		defer cancel()
++		func() {
++			ctx, cancel := context.WithTimeout(p.ctx, p.config.ConnectTimeout)
++			defer cancel()
+ 
+-		_, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+-		if err != nil {
+-			p.mu.Lock()
+-			for _, conn := range p.connections[host] {
+-				conn.healthy = false
++			hostname, _, err := net.SplitHostPort(host)
++			if err != nil {
++				hostname = host
+ 			}
+-			p.mu.Unlock()
+-		}
++
++			ips, err := p.Resolver.LookupIPAddr(ctx, hostname)
++			if err != nil {
++				p.mu.Lock()
++				for _, conn := range p.connections[host] {
++					conn.healthy = false
++				}
++				p.mu.Unlock()
++				return
++			}
++
++			if len(ips) > 0 {
++				newIP := ips[0].IP.String()
++				p.mu.Lock()
++				for _, conn := range p.connections[host] {
++					if conn.ip != newIP {
++						conn.healthy = false
++					}
++				}
++				p.mu.Unlock()
++			}
++		}()
+ 	}
++	p.PurgeUnhealthy()
+ }
+ 
+ func (p *Pool) Close() error {
+-	p.mu.Lock()
+-	p.closed = true
+-	p.mu.Unlock()
+-
+-	p.healthChecker.Stop()
+-
+-	for _, conns := range p.connections {
+-		for _, conn := range conns {
+-			if t, ok := conn.client.Transport.(*http.Transport); ok {
+-				t.CloseIdleConnections()
++	p.once.Do(func() {
++		p.mu.Lock()
++		p.closed = true
++		p.mu.Unlock()
++
++		p.cancel()
++		p.healthChecker.Stop()
++		p.wg.Wait()
++
++		p.mu.Lock()
++		for _, conns := range p.connections {
++			for _, conn := range conns {
++				if t, ok := conn.client.Transport.(*http.Transport); ok {
++					t.CloseIdleConnections()
++				}
+ 			}
+ 		}
+-	}
++		p.mu.Unlock()
++	})
+ 
+ 	return nil
+ }
+@@ -231,3 +355,22 @@ func (p *Pool) Close() error {
+ func (p *Pool) GetStats() *Stats {
+ 	return p.stats
+ }
++
++func (p *Pool) PurgeUnhealthy() {
++	p.mu.Lock()
++	defer p.mu.Unlock()
++
++	for host, conns := range p.connections {
++		var healthyConns []*Conn
++		for _, conn := range conns {
++			if conn.healthy {
++				healthyConns = append(healthyConns, conn)
++			} else {
++				p.hostCounts[host]--
++				p.stats.EvictIdle()
++				p.signalWaiter(host)
++			}
++		}
++		p.connections[host] = healthyConns
++	}
++}
