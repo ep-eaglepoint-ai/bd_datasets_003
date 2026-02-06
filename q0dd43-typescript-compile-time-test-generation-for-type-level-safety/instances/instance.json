@@ -1,0 +1,13 @@
+{
+            "instance_id": "Q0DD43",
+            "problem_statement": "You are given a TypeScript library whose correctness depends heavily on compile-time guarantees such as branded types, discriminated unions, conditional types, and exhaustiveness checks. Past test suites validated runtime behavior but failed to enforce these compile-time contracts, allowing unsafe code to compile silently.
+
+The task is to generate a complete test suite that proves both runtime behavior and compile-time type safety. The tests must ensure that invalid usage fails at compile time, that exhaustiveness is enforced when unions evolve, and that common TypeScript pitfalls (unanchored type assertions, incorrect @ts-expect-error usage, meaningless generic checks, and shallow union tests) are explicitly caught. The output must be deterministic, in-repo friendly, and runnable using standard TypeScript and test-runner tooling.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/q0dd43-typescript-compile-time-test-generation-for-type-level-safety",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
