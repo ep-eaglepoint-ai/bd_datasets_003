@@ -13,10 +13,10 @@ index 0000000..3b07b53
 +
 diff --git a/repository_after/windowagg.go b/repository_after/windowagg.go
 new file mode 100644
-index 0000000..abf2bec
+index 0000000..d65b2dc
 --- /dev/null
 +++ b/repository_after/windowagg.go
-@@ -0,0 +1,206 @@
+@@ -0,0 +1,221 @@
 +package windowagg
 +
 +import (
@@ -41,6 +41,7 @@ index 0000000..abf2bec
 +	windowKeys           map[int64]map[string]struct{}    // windowStart -> keys present
 +	maxObservedTs        int64
 +	watermark            int64 // monotonically increasing
++	hasObserved          bool
 +	winMeta              map[int64]int64                  // windowStart -> windowEnd
 +	winHeap              windowHeap                       // min-heap by windowEnd
 +	emit                 EmitFunc
@@ -87,13 +88,16 @@ index 0000000..abf2bec
 +
 +	// (2,10) compute candidate watermark and advance monotonically
 +	candWm := wa.maxObservedTs - wa.allowedLatenessSec
-+	if candWm > wa.watermark {
++	if !wa.hasObserved {
++		wa.watermark = candWm
++		wa.hasObserved = true
++	} else if candWm > wa.watermark {
 +		wa.watermark = candWm
 +	}
 +	wm := wa.watermark
 +
 +	// (1) window assignment is by event time
-+	wStart := (ts / wa.windowSizeSec) * wa.windowSizeSec
++	wStart := floorWindowStart(ts, wa.windowSizeSec)
 +	wEnd := wStart + wa.windowSizeSec
 +
 +	// (3,7) drop event if window already closed: closed iff watermark > windowEnd
@@ -195,6 +199,17 @@ index 0000000..abf2bec
 +}
 +
 +func toUnixSeconds(ts int64) int64 { return ts }
++
++func floorWindowStart(ts int64, windowSizeSec int64) int64 {
++	if windowSizeSec <= 0 {
++		return 0
++	}
++	q := ts / windowSizeSec
++	if ts < 0 && ts%windowSizeSec != 0 {
++		q--
++	}
++	return q * windowSizeSec
++}
 +
 +type emitRecord struct {
 +	key         string
