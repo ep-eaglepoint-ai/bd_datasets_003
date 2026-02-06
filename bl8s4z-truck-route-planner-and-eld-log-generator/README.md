@@ -1,11 +1,13 @@
 # BL8S4Z - Truck Route Planner and ELD Log Generator
+## Run tests
 
-    ## Before Test Docker Command
-    <docker before command here>
+```bash
+docker compose run --rm tests
+```
 
-    ## After Test Docker Command
-    <docker after command here>
+## Run evaluations
 
-    ## Evaluation Docker Command
-    <evaluation command here>
+```bash
+docker compose run --rm evaluation
+```
     

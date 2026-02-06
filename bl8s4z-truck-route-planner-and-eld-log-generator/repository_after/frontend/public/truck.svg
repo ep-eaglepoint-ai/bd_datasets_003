@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="truckGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1"/>
+      <stop offset="100%" style="stop-color:#4f46e5"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="24" width="40" height="20" rx="4" fill="url(#truckGrad)"/>
+  <rect x="44" y="28" width="16" height="16" rx="2" fill="#818cf8"/>
+  <rect x="48" y="30" width="8" height="8" rx="1" fill="#c7d2fe" opacity="0.8"/>
+  <circle cx="16" cy="48" r="6" fill="#1e1b4b"/>
+  <circle cx="16" cy="48" r="3" fill="#c7d2fe"/>
+  <circle cx="48" cy="48" r="6" fill="#1e1b4b"/>
+  <circle cx="48" cy="48" r="3" fill="#c7d2fe"/>
+</svg>

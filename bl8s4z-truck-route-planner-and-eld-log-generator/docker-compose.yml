@@ -1,9 +1,48 @@
-
-        # Docker Compose file for running tests. You should customize this as needed.
-
-        services:
-  app:
-    build: .
-    command: pytest -q tests
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=True
+      - DJANGO_SECRET_KEY=dev-secret-key-change-in-production
     volumes:
-      - .:/app
+      - ./repository_after/backend:/app
+    command: python manage.py runserver 0.0.0.0:8000
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: frontend-build
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./repository_after/frontend:/app/frontend
+      - /app/frontend/node_modules
+    command: npm run dev
+    depends_on:
+      - backend
+
+  tests:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: test
+    environment:
+      - CI=true
+
+  evaluation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: test
+    volumes:
+      - ./evaluation:/app/evaluation
+      - ./tests:/app/tests
+    command: node /app/evaluation/evaluation.cjs
+    environment:
+      - CI=true
