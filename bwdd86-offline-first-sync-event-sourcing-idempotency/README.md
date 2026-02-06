@@ -1,11 +1,13 @@
-# BWDD86 - Offline-First Sync: Event Sourcing & Idempotency
+# Offline-First Sync Engine (Event Sourcing + Idempotency)
 
-    ## Before Test Docker Command
-    <docker before command here>
+### Run tests for repository_after
 
-    ## After Test Docker Command
-    <docker after command here>
+```bash
+docker compose run --rm app go run -tags tools tests/runner.go
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+### Run evaluation (generate report.json)
+
+```bash
+docker compose run --rm app go run evaluation/evaluation.go
+```
