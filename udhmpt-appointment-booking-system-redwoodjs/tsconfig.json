@@ -8,7 +8,21 @@
     "moduleResolution": "node",
     "skipLibCheck": true,
     "outDir": "dist",
-    "rootDir": "."
+    "rootDir": ".",
+    "baseUrl": ".",
+    "paths": {
+      "@redwoodjs/graphql-server": [
+        "tests/mocks/redwood.ts"
+      ],
+      "@redwoodjs/api": [
+        "tests/mocks/redwood.ts"
+      ]
+    }
   },
-  "include": ["repository_after/**/*.ts", "repository_after/**/*.tsx", "tests/**/*.ts", "tests/**/*.tsx"]
+  "include": [
+    "repository_after/**/*.ts",
+    "repository_after/**/*.tsx",
+    "tests/**/*.ts",
+    "tests/**/*.tsx"
+  ]
 }

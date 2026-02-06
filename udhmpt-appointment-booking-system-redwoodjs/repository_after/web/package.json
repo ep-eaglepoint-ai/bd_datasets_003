@@ -1,23 +1,17 @@
 {
-  "name": "appointment-booking-web",
+  "name": "web",
   "version": "1.0.0",
-  "description": "Frontend for appointment booking system",
-  "main": "src/index.tsx",
-  "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview"
-  },
+  "private": true,
   "dependencies": {
+    "@redwoodjs/forms": "6.0.7",
+    "@redwoodjs/router": "6.0.7",
+    "@redwoodjs/web": "6.0.7",
+    "graphql-tag": "^2.12.6",
+    "luxon": "^3.4.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "luxon": "^3.4.0"
+    "react-dom": "^18.2.0"
   },
   "devDependencies": {
-    "@types/react": "^18.2.0",
-    "@types/react-dom": "^18.2.0",
-    "@vitejs/plugin-react": "^4.0.0",
-    "typescript": "^5.0.0",
     "vite": "^4.4.0"
   }
 }

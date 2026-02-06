@@ -3,21 +3,21 @@ import { DateTime } from 'luxon';
 
 describe('One-off overrides and manual blocks', () => {
   test('Override adds availability (custom day present)', () => {
-    const rules = [ { weekday: 3, startLocal: '09:00', endLocal: '10:00', tz: 'UTC' } ];
+    const rules = [{ weekday: 3, startLocal: '09:00', endLocal: '10:00', tz: 'UTC' }];
     const expanded = expandWeeklyRules(rules, '2021-11-01');
 
-    const customDays = [ { dateISO: '2021-11-03', startUtcISO: DateTime.fromISO('2021-11-03T13:00', { zone: 'UTC' }).toISO()!, endUtcISO: DateTime.fromISO('2021-11-03T14:00', { zone: 'UTC' }).toISO()!, tz: 'UTC' } ];
+    const customDays = [{ dateISO: '2021-11-03', startUtcISO: DateTime.fromISO('2021-11-03T13:00', { zone: 'UTC' }).toISO()!, endUtcISO: DateTime.fromISO('2021-11-03T14:00', { zone: 'UTC' }).toISO()!, tz: 'UTC' }];
 
-    const merged = mergeOverrides(expanded, customDays, '2021-11-01');
+    const merged = mergeOverrides(expanded as any, customDays as any);
     const resolved = resolveAvailability(merged, [], []);
     // Should include the custom availability
     expect(resolved.some(r => r.startUtcISO.includes('13:00'))).toBe(true);
   });
 
   test('Override removes availability (exception)', () => {
-    const rules = [ { weekday: 4, startLocal: '09:00', endLocal: '11:00', tz: 'UTC' } ];
+    const rules = [{ weekday: 4, startLocal: '09:00', endLocal: '11:00', tz: 'UTC' }];
     const expanded = expandWeeklyRules(rules, '2021-11-01');
-    const merged = mergeOverrides(expanded, [], '2021-11-01');
+    const merged = mergeOverrides(expanded as any, []);
 
     // Exception removes 09:30-10:30
     const excStart = DateTime.fromISO('2021-11-04T09:30', { zone: 'UTC' }).toISO()!;
@@ -29,9 +29,9 @@ describe('One-off overrides and manual blocks', () => {
   });
 
   test('Manual block always hides availability', () => {
-    const rules = [ { weekday: 5, startLocal: '08:00', endLocal: '12:00', tz: 'UTC' } ];
+    const rules = [{ weekday: 5, startLocal: '08:00', endLocal: '12:00', tz: 'UTC' }];
     const expanded = expandWeeklyRules(rules, '2021-11-01');
-    const merged = mergeOverrides(expanded, [], '2021-11-01');
+    const merged = mergeOverrides(expanded as any, []);
 
     // Block 09:00-11:00
     const blockStart = DateTime.fromISO('2021-11-05T09:00', { zone: 'UTC' }).toISO()!;
@@ -52,7 +52,7 @@ describe('One-off overrides and manual blocks', () => {
       { dateISO: '2021-11-06', startUtcISO: DateTime.fromISO('2021-11-06T10:30', { zone: 'UTC' }).toISO()!, endUtcISO: DateTime.fromISO('2021-11-06T12:00', { zone: 'UTC' }).toISO()!, tz: 'UTC' },
     ];
 
-    const merged = mergeOverrides(expanded, customDays, '2021-11-01');
+    const merged = mergeOverrides(expanded as any, customDays as any);
     const resolved = resolveAvailability(merged, [], []);
     // Expect single merged interval 09:00-12:00
     expect(resolved.length).toBe(1);

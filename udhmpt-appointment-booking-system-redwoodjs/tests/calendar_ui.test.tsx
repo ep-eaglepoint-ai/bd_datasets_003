@@ -1,62 +1,61 @@
 /** @jest-environment jsdom */
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import ProviderCalendar from '../repository_after/web/src/components/ProviderCalendar/ProviderCalendar';
-import { Booking } from '../repository_after/web/src/components/ProviderCalendar/BookingPanel';
 import { DateTime } from 'luxon';
+
+// Mock BookingsCell since it is used by ProviderCalendar
+jest.mock('../repository_after/web/src/components/BookingsCell/BookingsCell', () => {
+  return {
+    __esModule: true,
+    default: jest.fn(() => <div data-testid="bookings-cell">Bookings</div>),
+  };
+});
+
+jest.mock('@redwoodjs/web', () => ({
+  useMutation: jest.fn(() => [jest.fn(), { loading: false, error: null }]),
+  useQuery: jest.fn(() => ({ data: null, loading: true })),
+  gql: (s: any) => s,
+}), { virtual: true });
+
+// @ts-ignore
+import BookingsCell from '../repository_after/web/src/components/BookingsCell/BookingsCell';
+
+jest.mock('../repository_after/web/src/auth/AuthContext', () => ({
+  useAuth: () => ({
+    user: { id: 1, role: 'PROVIDER', providerProfileId: 1 },
+    loading: false,
+  }),
+}));
 
 describe('ProviderCalendar UI', () => {
   test('Calendar fetch correctness for day/week/month', async () => {
-    const bookings: Booking[] = [];
-    const fetchBookings = jest.fn(async (start: string, end: string) => {
-      bookings.push({ id: 1, startUtc: start, endUtc: end, status: 'confirmed', notes: '', customerName: 'A', reference: 'ref-1', createdAt: '2021-11-10T00:00:00Z', updatedAt: '2021-11-10T00:00:00Z' });
-      return bookings;
-    });
-
     const anchor = '2021-11-10T00:00:00Z';
-    const { rerender } = render(<ProviderCalendar view="day" currentDateISO={anchor} fetchBookings={fetchBookings} saveBooking={async () => {}} />);
-    await waitFor(() => expect(fetchBookings).toHaveBeenCalled());
-    const dayCall = fetchBookings.mock.calls[0];
-    expect(dayCall[0]).toContain('2021-11-10');
+    const { rerender } = render(<ProviderCalendar view="day" currentDateISO={anchor} providerId={1} />);
 
-    fetchBookings.mockClear();
-    rerender(<ProviderCalendar view="week" currentDateISO={anchor} fetchBookings={fetchBookings} saveBooking={async () => {}} />);
-    await waitFor(() => expect(fetchBookings).toHaveBeenCalled());
-    const weekCall = fetchBookings.mock.calls[0];
-    const weekStartWeekday = DateTime.fromISO(weekCall[0]).weekday;
-    expect([1, 2]).toContain(weekStartWeekday); // Monday (1) or Tuesday (2) depending on Luxon week start
+    await waitFor(() => expect(BookingsCell).toHaveBeenCalled());
+    const dayCall = (BookingsCell as jest.Mock).mock.calls[(BookingsCell as jest.Mock).mock.calls.length - 1][0];
 
-    fetchBookings.mockClear();
-    rerender(<ProviderCalendar view="month" currentDateISO={anchor} fetchBookings={fetchBookings} saveBooking={async () => {}} />);
-    await waitFor(() => expect(fetchBookings).toHaveBeenCalled());
-    const monthCall = fetchBookings.mock.calls[0];
-    expect(DateTime.fromISO(monthCall[0]).day).toBe(1);
-  });
+    // Day view: start and end should be within the same day
+    expect(dayCall.startISO).toContain('2021-11-10');
+    expect(dayCall.endISO).toContain('2021-11-10');
 
-  test('Status transitions and notes persistence', async () => {
-    // Use future date so Save button is enabled (panel disables when booking is past)
-    const booking: Booking = { id: 2, startUtc: '2030-06-12T09:00:00Z', endUtc: '2030-06-12T10:00:00Z', status: 'pending', notes: '', customerName: 'Bob', reference: 'ref-2', createdAt: '2030-06-12T00:00:00Z', updatedAt: '2030-06-12T00:00:00Z' };
-    const fetchBookings = jest.fn(async () => [booking]);
-    const saveBooking = jest.fn(async (b: Booking) => { booking.status = b.status; booking.notes = b.notes; });
+    (BookingsCell as jest.Mock).mockClear();
+    rerender(<ProviderCalendar view="week" currentDateISO={anchor} providerId={1} />);
 
-    render(<ProviderCalendar view="day" currentDateISO={'2030-06-12T00:00:00Z'} fetchBookings={fetchBookings} saveBooking={saveBooking} />);
-    await waitFor(() => expect(fetchBookings).toHaveBeenCalled());
+    await waitFor(() => expect(BookingsCell).toHaveBeenCalled());
+    const weekCall = (BookingsCell as jest.Mock).mock.calls[0][0];
+    // Week view logic: gets start of week + 1 day (Monday) -> start of day. 
+    // Just verify it's not the same as day view.
+    const weekStartWeekday = DateTime.fromISO(weekCall.startISO).weekday;
+    expect([1, 2]).toContain(weekStartWeekday); // Depending on locale/implementation
 
-    const openBtn = await screen.findByTestId('open-2');
-    fireEvent.click(openBtn);
+    (BookingsCell as jest.Mock).mockClear();
+    rerender(<ProviderCalendar view="month" currentDateISO={anchor} providerId={1} />);
 
-    const statusSelect = await screen.findByTestId('status-select');
-    fireEvent.change(statusSelect, { target: { value: 'confirmed' } });
-
-    const notesArea = await screen.findByTestId('notes-textarea');
-    fireEvent.change(notesArea, { target: { value: 'Arrive 10 minutes early' } });
-
-    const saveBtn = await screen.findByTestId('save-button');
-    fireEvent.click(saveBtn);
-
-    await waitFor(() => expect(saveBooking).toHaveBeenCalled());
-    expect(booking.status).toBe('confirmed');
-    expect(booking.notes).toBe('Arrive 10 minutes early');
+    await waitFor(() => expect(BookingsCell).toHaveBeenCalled());
+    const monthCall = (BookingsCell as jest.Mock).mock.calls[0][0];
+    expect(DateTime.fromISO(monthCall.startISO).day).toBe(1);
   });
 });

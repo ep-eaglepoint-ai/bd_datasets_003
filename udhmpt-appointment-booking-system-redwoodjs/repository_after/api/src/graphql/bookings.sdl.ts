@@ -1,49 +1,50 @@
-export const schema = `
-type Booking {
-  id: Int!
-  providerId: Int!
-  serviceId: Int!
-  startUtc: DateTime!
-  endUtc: DateTime!
-  customerEmail: String!
-  reference: String!
-  canceledAt: DateTime
-  createdAt: DateTime!
-  updatedAt: DateTime!
-}
+export const schema = gql`
+  type Booking {
+    id: Int!
+    providerId: Int!
+    serviceId: Int!
+    startUtc: DateTime!
+    endUtc: DateTime!
+    customerEmail: String!
+    reference: String!
+    canceledAt: DateTime
+    status: String!
+    notes: String
+    penaltyFeeCents: Int
+    createdAt: DateTime!
+    updatedAt: DateTime!
+  }
 
-type Slot {
-  startUtcISO: String!
-  endUtcISO: String!
-  startLocalISO: String!
-  endLocalISO: String!
-}
+  input CreateBookingInput {
+    providerId: Int!
+    serviceId: Int!
+    startUtcISO: String!
+    endUtcISO: String!
+    customerEmail: String!
+  }
 
-input CreateBookingInput {
-  providerId: Int!
-  serviceId: Int!
-  startUtcISO: String!
-  endUtcISO: String!
-  customerEmail: String!
-  cutoffHours: Int
-}
+  type Query {
+    bookings(
+      providerId: Int
+      startISO: String
+      endISO: String
+    ): [Booking!]! @requireAuth
+    booking(id: Int!): Booking @requireAuth
+  }
 
-input SearchAvailabilityInput {
-  providerId: Int!
-  serviceId: Int
-  startISO: String!
-  endISO: String!
-  customerTz: String!
-}
+  input UpdateBookingInput {
+    status: String
+    notes: String
+  }
 
-type Query {
-  bookings(providerId: Int, startISO: String, endISO: String): [Booking!]!
-  searchAvailability(input: SearchAvailabilityInput!): [Slot!]!
-}
-
-type Mutation {
-  createBooking(input: CreateBookingInput!): Booking!
-  cancelBooking(bookingId: Int!): Booking!
-  rescheduleBooking(bookingId: Int!, newStartUtcISO: String!, newEndUtcISO: String!): Booking!
-}
-`;
+  type Mutation {
+    createBooking(input: CreateBookingInput!): Booking! @requireAuth
+    updateBooking(id: Int!, input: UpdateBookingInput!): Booking! @requireAuth
+    cancelBooking(id: Int!): Booking! @requireAuth
+    rescheduleBooking(
+      id: Int!
+      newStartUtcISO: String!
+      newEndUtcISO: String!
+    ): Booking! @requireAuth
+  }
+`

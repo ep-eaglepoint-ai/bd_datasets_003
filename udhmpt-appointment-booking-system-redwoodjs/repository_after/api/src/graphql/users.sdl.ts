@@ -3,14 +3,23 @@
   No business logic implemented here — scaffold only.
 */
 
-export const schema = `
-type Query {
-  _empty: String
-}
+export const schema = gql`
+  type User {
+    id: Int!
+    email: String!
+    name: String
+    role: String!
+    createdAt: DateTime!
+    updatedAt: DateTime!
+  }
 
-enum Role {
-  PROVIDER
-  CUSTOMER
-  ADMIN
-}
-`;
+  enum Role {
+    PROVIDER
+    CUSTOMER
+    ADMIN
+  }
+
+  type Query {
+    currentUser: User @requireAuth
+  }
+`

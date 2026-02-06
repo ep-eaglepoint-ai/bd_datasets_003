@@ -1,53 +1,32 @@
 // Jest setup file
 import 'jest-environment-jsdom';
 
-// Mock luxon for consistent testing
-jest.mock('luxon', () => ({
-  DateTime: {
-    fromISO: jest.fn((iso: string, opts?: any) => {
-      const date = new Date(iso);
-      return {
-        toISO: () => iso,
-        toUTC: () => ({ toISO: () => iso, toFormat: () => 'UTC' }),
-        setZone: (tz: string) => ({ toISO: () => iso, toFormat: () => tz }),
-        toFormat: (fmt: string) => date.toLocaleString(),
-        plus: (obj: any) => ({ toISO: () => iso }),
-        minus: (obj: any) => ({ toISO: () => iso }),
-        diff: (other: any) => ({ as: () => 0 }),
-        startOf: () => ({ toISODate: () => iso.split('T')[0] }),
-        endOf: () => ({ toISO: () => iso }),
-        isValid: true,
-        offset: 0,
-        offsetNameLong: null,
-        isOffsetFixed: false,
-        hour: date.getHours(),
-        minute: date.getMinutes(),
-        day: date.getDate(),
-        month: date.getMonth() + 1,
-        year: date.getFullYear(),
-        weekday: date.getDay() || 7
-      };
-    }),
-    utc: () => ({
-      toISO: () => new Date().toISOString(),
-      toFormat: () => 'UTC'
-    }),
-    local: () => ({
-      toISO: () => new Date().toISOString(),
-      toFormat: () => 'Local'
-    }),
-    now: () => ({
-      toISO: () => new Date().toISOString(),
-      toFormat: () => 'Now'
-    })
+// Define Redwood global env
+(global as any).RWJS_ENV = {};
+
+// Real luxon is used to allow DST/timezone validation
+jest.mock('@redwoodjs/graphql-server', () => ({
+  context: {
+    currentUser: { id: 1, email: 'provider@test.com', role: 'PROVIDER' },
+    pubSub: {
+      publish: () => { },
+      subscribe: () => { },
+    }
   }
 }));
 
-// Mock React components for testing
-jest.mock('react', () => ({
-  ...jest.requireActual('react'),
-  useState: jest.fn(),
-  useEffect: jest.fn(),
-  useCallback: jest.fn(),
-  useMemo: jest.fn()
-}));
+// React components should NOT be mocked globally as it breaks hooks
+
+// Global test utilities
+const originalError = console.error;
+global.console = {
+  ...console,
+  error: (...args: any[]) => {
+    const msg = args[0]?.toString() || '';
+    // Silence expected error boundary noise
+    if (msg.includes('ErrorBoundary') || msg.includes('The above error occurred')) {
+      return;
+    }
+    originalError(...args);
+  },
+};

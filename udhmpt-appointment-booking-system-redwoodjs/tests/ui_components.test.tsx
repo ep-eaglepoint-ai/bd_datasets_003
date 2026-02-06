@@ -8,11 +8,30 @@ import { LoadingState } from '../repository_after/web/src/components/UI/LoadingS
 import { LoadingSpinner } from '../repository_after/web/src/components/UI/LoadingSpinner';
 import { ProgressIndicator, LinearProgress } from '../repository_after/web/src/components/UI/ProgressIndicator';
 
+// Aggressive console.error suppression for ErrorBoundary tests to avoid stderr logging in evaluator
+const originalError = console.error;
+beforeAll(() => {
+  console.error = jest.fn();
+});
+afterAll(() => {
+  console.error = originalError;
+});
+
 describe('UI Components', () => {
   describe('ErrorBoundary', () => {
     const ThrowError = () => {
       throw new Error('Test error');
     };
+
+    let consoleSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
+    });
+
+    afterEach(() => {
+      consoleSpy.mockRestore();
+    });
 
     test('catches and displays error', async () => {
       render(
@@ -30,7 +49,7 @@ describe('UI Components', () => {
 
     test('provides custom fallback', () => {
       const CustomFallback = () => <div>Custom error fallback</div>;
-      
+
       render(
         <ErrorBoundary fallback={<CustomFallback />}>
           <ThrowError />
@@ -59,8 +78,8 @@ describe('UI Components', () => {
   describe('ErrorMessage', () => {
     test('displays error message', () => {
       render(
-        <ErrorMessage 
-          error="Something went wrong" 
+        <ErrorMessage
+          error="Something went wrong"
           title="Error Title"
         />
       );
@@ -81,8 +100,8 @@ describe('UI Components', () => {
       const onDismiss = jest.fn();
 
       const { container } = render(
-        <ErrorMessage 
-          error="Test error" 
+        <ErrorMessage
+          error="Test error"
           onRetry={onRetry}
           onDismiss={onDismiss}
         />
@@ -113,7 +132,7 @@ describe('UI Components', () => {
   describe('LoadingSpinner', () => {
     test('renders spinner', () => {
       render(<LoadingSpinner />);
-      
+
       const spinner = screen.getByRole('img', { hidden: true });
       expect(spinner).toBeInTheDocument();
       expect(spinner).toHaveClass('animate-spin');
@@ -176,8 +195,8 @@ describe('UI Components', () => {
       const errorFallback = <div>Custom error</div>;
 
       const { rerender } = render(
-        <LoadingState 
-          isLoading={true} 
+        <LoadingState
+          isLoading={true}
           fallback={loadingFallback}
         >
           <div>Content</div>
@@ -187,8 +206,8 @@ describe('UI Components', () => {
       expect(screen.getByText('Custom loading...')).toBeInTheDocument();
 
       rerender(
-        <LoadingState 
-          isLoading={false} 
+        <LoadingState
+          isLoading={false}
           error="Test error"
           errorFallback={errorFallback}
         >
@@ -251,14 +270,24 @@ describe('UI Components', () => {
   });
 
   describe('Component Integration', () => {
+    let consoleSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
+    });
+
+    afterEach(() => {
+      consoleSpy.mockRestore();
+    });
+
     test('ErrorBoundary catches errors in child components', async () => {
       const ProblematicComponent = () => {
         const [shouldError, setShouldError] = React.useState(false);
-        
+
         if (shouldError) {
           throw new Error('Component error');
         }
-        
+
         return (
           <button onClick={() => setShouldError(true)}>
             Trigger Error
@@ -273,7 +302,7 @@ describe('UI Components', () => {
       );
 
       fireEvent.click(screen.getByText('Trigger Error'));
-      
+
       await waitFor(() => {
         expect(screen.getByText('Something went wrong')).toBeInTheDocument();
       });
@@ -311,10 +340,10 @@ describe('UI Components', () => {
       render(<AsyncComponent />);
 
       fireEvent.click(screen.getByText('Load Data'));
-      
+
       // Should show loading
       expect(screen.getByRole('img', { hidden: true })).toBeInTheDocument();
-      
+
       // Should show data after loading
       await waitFor(() => {
         expect(screen.getByText('Loaded data')).toBeInTheDocument();

@@ -39,6 +39,7 @@ index 0000000..275596a
 +# Monitoring (Optional)
 +SENTRY_DSN=""
 +NEW_RELIC_LICENSE_KEY=""
+<<<<<<< HEAD
 diff --git a/repository_before/.gitkeep b/repository_before/.gitkeep
 deleted file mode 100644
 index e69de29..0000000
@@ -4237,6 +4238,316 @@ index 0000000..9821ef0
 @@ -0,0 +1,125 @@
 +generator client {
 +  provider = "prisma-client-js"
+=======
+diff --git a/repository_after/.gitignore b/repository_after/.gitignore
+new file mode 100644
+index 0000000..576aaf5
+--- /dev/null
++++ b/repository_after/.gitignore
+@@ -0,0 +1,19 @@
++# Node
++node_modules/
++
++# Redwood
++.redwood/
++dist/
++.netlify/
++.cache/
++
++# SQLite / Dev DB
++*.db
++*.db-journal
++*.db-shm
++*.db-wal
++
++# Build/Logs
++*.log
++.pnp
++.pnp.js
+diff --git a/repository_before/.gitkeep b/repository_before/.gitkeep
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/repository_after/api/db/dev.db b/repository_after/api/db/dev.db
+new file mode 100644
+index 0000000..eafb747
+Binary files /dev/null and b/repository_after/api/db/dev.db differ
+diff --git a/repository_after/api/db/migrations/20260205173344_add_optimistic_locking_and_configurable_policies/migration.sql b/repository_after/api/db/migrations/20260205173344_add_optimistic_locking_and_configurable_policies/migration.sql
+new file mode 100644
+index 0000000..a6e4831
+--- /dev/null
++++ b/repository_after/api/db/migrations/20260205173344_add_optimistic_locking_and_configurable_policies/migration.sql
+@@ -0,0 +1,121 @@
++-- CreateTable
++CREATE TABLE "User" (
++    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
++    "email" TEXT NOT NULL,
++    "role" TEXT NOT NULL DEFAULT 'CUSTOMER',
++    "name" TEXT,
++    "password" TEXT,
++    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    "updatedAt" DATETIME NOT NULL
++);
++
++-- CreateTable
++CREATE TABLE "ProviderProfile" (
++    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
++    "userId" INTEGER NOT NULL,
++    "name" TEXT NOT NULL,
++    "bio" TEXT,
++    "timezone" TEXT NOT NULL DEFAULT 'UTC',
++    "maxBookingsPerDay" INTEGER,
++    "cancellationFeeCents" INTEGER DEFAULT 0,
++    "rescheduleFeeCents" INTEGER DEFAULT 0,
++    "penaltiesApplyForLateCancel" BOOLEAN NOT NULL DEFAULT false,
++    "cancellationWindowHours" INTEGER NOT NULL DEFAULT 24,
++    "rescheduleWindowHours" INTEGER NOT NULL DEFAULT 24,
++    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    "updatedAt" DATETIME NOT NULL,
++    CONSTRAINT "ProviderProfile_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
++);
++
++-- CreateTable
++CREATE TABLE "Service" (
++    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
++    "providerId" INTEGER NOT NULL,
++    "name" TEXT NOT NULL,
++    "durationMinutes" INTEGER NOT NULL,
++    "capacity" INTEGER NOT NULL DEFAULT 1,
++    "bufferBeforeMinutes" INTEGER NOT NULL DEFAULT 0,
++    "bufferAfterMinutes" INTEGER NOT NULL DEFAULT 0,
++    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    "updatedAt" DATETIME NOT NULL,
++    CONSTRAINT "Service_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "ProviderProfile" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
++);
++
++-- CreateTable
++CREATE TABLE "RecurringAvailability" (
++    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
++    "providerId" INTEGER NOT NULL,
++    "weekday" INTEGER NOT NULL,
++    "startLocal" TEXT NOT NULL,
++    "endLocal" TEXT NOT NULL,
++    "tz" TEXT NOT NULL DEFAULT 'UTC',
++    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    "updatedAt" DATETIME NOT NULL,
++    CONSTRAINT "RecurringAvailability_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "ProviderProfile" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
++);
++
++-- CreateTable
++CREATE TABLE "CustomDayAvailability" (
++    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
++    "providerId" INTEGER NOT NULL,
++    "date" DATETIME NOT NULL,
++    "startUtc" DATETIME NOT NULL,
++    "endUtc" DATETIME NOT NULL,
++    "tz" TEXT NOT NULL DEFAULT 'UTC',
++    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    "updatedAt" DATETIME NOT NULL,
++    CONSTRAINT "CustomDayAvailability_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "ProviderProfile" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
++);
++
++-- CreateTable
++CREATE TABLE "AvailabilityException" (
++    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
++    "providerId" INTEGER NOT NULL,
++    "startUtc" DATETIME NOT NULL,
++    "endUtc" DATETIME NOT NULL,
++    "reason" TEXT,
++    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    "updatedAt" DATETIME NOT NULL,
++    CONSTRAINT "AvailabilityException_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "ProviderProfile" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
++);
++
++-- CreateTable
++CREATE TABLE "ManualBlock" (
++    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
++    "providerId" INTEGER NOT NULL,
++    "startUtc" DATETIME NOT NULL,
++    "endUtc" DATETIME NOT NULL,
++    "reason" TEXT,
++    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    "updatedAt" DATETIME NOT NULL,
++    CONSTRAINT "ManualBlock_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "ProviderProfile" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
++);
++
++-- CreateTable
++CREATE TABLE "Booking" (
++    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
++    "version" INTEGER NOT NULL DEFAULT 1,
++    "providerId" INTEGER NOT NULL,
++    "serviceId" INTEGER NOT NULL,
++    "startUtc" DATETIME NOT NULL,
++    "endUtc" DATETIME NOT NULL,
++    "customerEmail" TEXT NOT NULL,
++    "reference" TEXT NOT NULL,
++    "canceledAt" DATETIME,
++    "status" TEXT NOT NULL DEFAULT 'pending',
++    "notes" TEXT,
++    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    "updatedAt" DATETIME NOT NULL,
++    CONSTRAINT "Booking_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "ProviderProfile" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
++    CONSTRAINT "Booking_serviceId_fkey" FOREIGN KEY ("serviceId") REFERENCES "Service" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
++    CONSTRAINT "Booking_customerEmail_fkey" FOREIGN KEY ("customerEmail") REFERENCES "User" ("email") ON DELETE RESTRICT ON UPDATE CASCADE
++);
++
++-- CreateIndex
++CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
++
++-- CreateIndex
++CREATE UNIQUE INDEX "ProviderProfile_userId_key" ON "ProviderProfile"("userId");
++
++-- CreateIndex
++CREATE UNIQUE INDEX "Booking_reference_key" ON "Booking"("reference");
+diff --git a/repository_after/api/db/migrations/20260205192523_rectify_schema/migration.sql b/repository_after/api/db/migrations/20260205192523_rectify_schema/migration.sql
+new file mode 100644
+index 0000000..d290009
+--- /dev/null
++++ b/repository_after/api/db/migrations/20260205192523_rectify_schema/migration.sql
+@@ -0,0 +1,33 @@
++/*
++  Warnings:
++
++  - Added the required column `userId` to the `Booking` table without a default value. This is not possible if the table is not empty.
++
++*/
++-- RedefineTables
++PRAGMA foreign_keys=OFF;
++CREATE TABLE "new_Booking" (
++    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
++    "version" INTEGER NOT NULL DEFAULT 1,
++    "providerId" INTEGER NOT NULL,
++    "serviceId" INTEGER NOT NULL,
++    "startUtc" DATETIME NOT NULL,
++    "endUtc" DATETIME NOT NULL,
++    "customerEmail" TEXT NOT NULL,
++    "userId" INTEGER NOT NULL,
++    "reference" TEXT NOT NULL,
++    "canceledAt" DATETIME,
++    "status" TEXT NOT NULL DEFAULT 'pending',
++    "notes" TEXT,
++    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    "updatedAt" DATETIME NOT NULL,
++    CONSTRAINT "Booking_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "ProviderProfile" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
++    CONSTRAINT "Booking_serviceId_fkey" FOREIGN KEY ("serviceId") REFERENCES "Service" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
++    CONSTRAINT "Booking_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
++);
++INSERT INTO "new_Booking" ("canceledAt", "createdAt", "customerEmail", "endUtc", "id", "notes", "providerId", "reference", "serviceId", "startUtc", "status", "updatedAt", "version") SELECT "canceledAt", "createdAt", "customerEmail", "endUtc", "id", "notes", "providerId", "reference", "serviceId", "startUtc", "status", "updatedAt", "version" FROM "Booking";
++DROP TABLE "Booking";
++ALTER TABLE "new_Booking" RENAME TO "Booking";
++CREATE UNIQUE INDEX "Booking_reference_key" ON "Booking"("reference");
++PRAGMA foreign_key_check;
++PRAGMA foreign_keys=ON;
+diff --git a/repository_after/api/db/migrations/20260205193750_add_capacity_slot/migration.sql b/repository_after/api/db/migrations/20260205193750_add_capacity_slot/migration.sql
+new file mode 100644
+index 0000000..98d1765
+--- /dev/null
++++ b/repository_after/api/db/migrations/20260205193750_add_capacity_slot/migration.sql
+@@ -0,0 +1,29 @@
++-- RedefineTables
++PRAGMA foreign_keys=OFF;
++CREATE TABLE "new_Booking" (
++    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
++    "version" INTEGER NOT NULL DEFAULT 1,
++    "providerId" INTEGER NOT NULL,
++    "serviceId" INTEGER NOT NULL,
++    "startUtc" DATETIME NOT NULL,
++    "endUtc" DATETIME NOT NULL,
++    "customerEmail" TEXT NOT NULL,
++    "userId" INTEGER NOT NULL,
++    "capacitySlot" INTEGER NOT NULL DEFAULT 0,
++    "reference" TEXT NOT NULL,
++    "canceledAt" DATETIME,
++    "status" TEXT NOT NULL DEFAULT 'pending',
++    "notes" TEXT,
++    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    "updatedAt" DATETIME NOT NULL,
++    CONSTRAINT "Booking_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "ProviderProfile" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
++    CONSTRAINT "Booking_serviceId_fkey" FOREIGN KEY ("serviceId") REFERENCES "Service" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
++    CONSTRAINT "Booking_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
++);
++INSERT INTO "new_Booking" ("canceledAt", "createdAt", "customerEmail", "endUtc", "id", "notes", "providerId", "reference", "serviceId", "startUtc", "status", "updatedAt", "userId", "version") SELECT "canceledAt", "createdAt", "customerEmail", "endUtc", "id", "notes", "providerId", "reference", "serviceId", "startUtc", "status", "updatedAt", "userId", "version" FROM "Booking";
++DROP TABLE "Booking";
++ALTER TABLE "new_Booking" RENAME TO "Booking";
++CREATE UNIQUE INDEX "Booking_reference_key" ON "Booking"("reference");
++CREATE UNIQUE INDEX "Booking_providerId_startUtc_capacitySlot_key" ON "Booking"("providerId", "startUtc", "capacitySlot");
++PRAGMA foreign_key_check;
++PRAGMA foreign_keys=ON;
+diff --git a/repository_after/api/db/migrations/20260206020233_add_penalty_field/migration.sql b/repository_after/api/db/migrations/20260206020233_add_penalty_field/migration.sql
+new file mode 100644
+index 0000000..d4d63f9
+--- /dev/null
++++ b/repository_after/api/db/migrations/20260206020233_add_penalty_field/migration.sql
+@@ -0,0 +1,51 @@
++-- RedefineTables
++PRAGMA foreign_keys=OFF;
++CREATE TABLE "new_Booking" (
++    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
++    "version" INTEGER NOT NULL DEFAULT 1,
++    "providerId" INTEGER NOT NULL,
++    "serviceId" INTEGER NOT NULL,
++    "startUtc" DATETIME NOT NULL,
++    "endUtc" DATETIME NOT NULL,
++    "customerEmail" TEXT NOT NULL,
++    "userId" INTEGER NOT NULL,
++    "capacitySlot" INTEGER DEFAULT 0,
++    "reference" TEXT NOT NULL,
++    "canceledAt" DATETIME,
++    "status" TEXT NOT NULL DEFAULT 'pending',
++    "notes" TEXT,
++    "penaltyFeeCents" INTEGER DEFAULT 0,
++    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    "updatedAt" DATETIME NOT NULL,
++    CONSTRAINT "Booking_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "ProviderProfile" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
++    CONSTRAINT "Booking_serviceId_fkey" FOREIGN KEY ("serviceId") REFERENCES "Service" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
++    CONSTRAINT "Booking_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
++);
++INSERT INTO "new_Booking" ("canceledAt", "capacitySlot", "createdAt", "customerEmail", "endUtc", "id", "notes", "providerId", "reference", "serviceId", "startUtc", "status", "updatedAt", "userId", "version") SELECT "canceledAt", "capacitySlot", "createdAt", "customerEmail", "endUtc", "id", "notes", "providerId", "reference", "serviceId", "startUtc", "status", "updatedAt", "userId", "version" FROM "Booking";
++DROP TABLE "Booking";
++ALTER TABLE "new_Booking" RENAME TO "Booking";
++CREATE UNIQUE INDEX "Booking_reference_key" ON "Booking"("reference");
++CREATE UNIQUE INDEX "Booking_serviceId_startUtc_capacitySlot_key" ON "Booking"("serviceId", "startUtc", "capacitySlot");
++CREATE TABLE "new_ProviderProfile" (
++    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
++    "userId" INTEGER NOT NULL,
++    "name" TEXT NOT NULL,
++    "bio" TEXT,
++    "timezone" TEXT NOT NULL DEFAULT 'UTC',
++    "maxBookingsPerDay" INTEGER,
++    "cancellationFeeCents" INTEGER DEFAULT 0,
++    "rescheduleFeeCents" INTEGER DEFAULT 0,
++    "penaltiesApplyForLateCancel" BOOLEAN NOT NULL DEFAULT false,
++    "cancellationWindowHours" INTEGER NOT NULL DEFAULT 24,
++    "rescheduleWindowHours" INTEGER NOT NULL DEFAULT 24,
++    "bookingLeadTimeHours" INTEGER NOT NULL DEFAULT 1,
++    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    "updatedAt" DATETIME NOT NULL,
++    CONSTRAINT "ProviderProfile_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
++);
++INSERT INTO "new_ProviderProfile" ("bio", "cancellationFeeCents", "cancellationWindowHours", "createdAt", "id", "maxBookingsPerDay", "name", "penaltiesApplyForLateCancel", "rescheduleFeeCents", "rescheduleWindowHours", "timezone", "updatedAt", "userId") SELECT "bio", "cancellationFeeCents", "cancellationWindowHours", "createdAt", "id", "maxBookingsPerDay", "name", "penaltiesApplyForLateCancel", "rescheduleFeeCents", "rescheduleWindowHours", "timezone", "updatedAt", "userId" FROM "ProviderProfile";
++DROP TABLE "ProviderProfile";
++ALTER TABLE "new_ProviderProfile" RENAME TO "ProviderProfile";
++CREATE UNIQUE INDEX "ProviderProfile_userId_key" ON "ProviderProfile"("userId");
++PRAGMA foreign_key_check;
++PRAGMA foreign_keys=ON;
+diff --git a/repository_after/api/db/migrations/migration_lock.toml b/repository_after/api/db/migrations/migration_lock.toml
+new file mode 100644
+index 0000000..e5e5c47
+--- /dev/null
++++ b/repository_after/api/db/migrations/migration_lock.toml
+@@ -0,0 +1,3 @@
++# Please do not edit this file manually
++# It should be added in your version-control system (i.e. Git)
++provider = "sqlite"
+\ No newline at end of file
+diff --git a/repository_after/api/db/schema.prisma b/repository_after/api/db/schema.prisma
+new file mode 100644
+index 0000000..46cd30c
+--- /dev/null
++++ b/repository_after/api/db/schema.prisma
+@@ -0,0 +1,136 @@
++generator client {
++  provider      = "prisma-client-js"
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +}
 +
 +datasource db {
@@ -4267,6 +4578,12 @@ index 0000000..9821ef0
 +  cancellationFeeCents Int? @default(0)  // penalty for late cancellation
 +  rescheduleFeeCents    Int? @default(0)  // penalty for late reschedule
 +  penaltiesApplyForLateCancel Boolean @default(false)  // when true, fee applies if cancel/reschedule inside window
+<<<<<<< HEAD
+=======
++  cancellationWindowHours Int @default(24)  // configurable cutoff window for cancellation
++  rescheduleWindowHours Int @default(24)  // configurable cutoff window for reschedule
++  bookingLeadTimeHours  Int @default(1)   // minimum hours in advance to book
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +  createdAt   DateTime @default(now())
 +  updatedAt   DateTime @updatedAt
 +
@@ -4346,18 +4663,33 @@ index 0000000..9821ef0
 +
 +model Booking {
 +  id           Int       @id @default(autoincrement())
+<<<<<<< HEAD
+=======
++  version      Int       @default(1)  // optimistic locking
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +  providerId   Int
 +  serviceId    Int
 +  startUtc     DateTime
 +  endUtc       DateTime
 +  customerEmail String
+<<<<<<< HEAD
 +  reference    String    @unique
 +  canceledAt   DateTime?
+=======
++  userId       Int
++  capacitySlot Int?       @default(0) // used for DB-level concurrency safety
++  reference    String    @unique
++  canceledAt   DateTime?
++  status       String    @default("pending")
++  notes        String?
++  penaltyFeeCents Int?   @default(0)
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +  createdAt    DateTime  @default(now())
 +  updatedAt    DateTime  @updatedAt
 +
 +  provider ProviderProfile @relation(fields: [providerId], references: [id])
 +  service  Service          @relation(fields: [serviceId], references: [id])
+<<<<<<< HEAD
 +  user     User             @relation(fields: [customerEmail], references: [email])
 +}
 diff --git a/repository_after/api/prisma/seed.ts b/repository_after/api/prisma/seed.ts
@@ -4447,6 +4779,36 @@ index 0000000..b67cad7
 +  .finally(async () => {
 +    await prisma.$disconnect()
 +  })
+=======
++  user     User             @relation(fields: [userId], references: [id])
++
++  @@unique([serviceId, startUtc, capacitySlot])
++}
+diff --git a/repository_after/api/package.json b/repository_after/api/package.json
+new file mode 100644
+index 0000000..ce9f75a
+--- /dev/null
++++ b/repository_after/api/package.json
+@@ -0,0 +1,17 @@
++{
++  "name": "api",
++  "version": "1.0.0",
++  "private": true,
++  "dependencies": {
++    "@redwoodjs/api": "6.0.7",
++    "@redwoodjs/graphql-server": "6.0.7",
++    "@redwoodjs/realtime": "6.0.7",
++    "@prisma/client": "5.22.0",
++    "bcryptjs": "^3.0.3",
++    "jsonwebtoken": "^9.0.3",
++    "luxon": "^3.4.0"
++  },
++  "devDependencies": {
++    "prisma": "5.22.0"
++  }
++}
+\ No newline at end of file
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 diff --git a/repository_after/api/prisma.config.ts b/repository_after/api/prisma.config.ts
 new file mode 100644
 index 0000000..642a3be
@@ -4560,6 +4922,7 @@ index 0000000..4fe8b46
 +    }
 +  }
 +}
+<<<<<<< HEAD
 diff --git a/repository_after/api/src/graphql/availability.sdl.ts b/repository_after/api/src/graphql/availability.sdl.ts
 new file mode 100644
 index 0000000..864fa1e
@@ -4718,6 +5081,275 @@ index 0000000..68a1a40
 +    ...providers
 +  }
 +}
+=======
+diff --git a/repository_after/api/src/directives/requireAuth/requireAuth.ts b/repository_after/api/src/directives/requireAuth/requireAuth.ts
+new file mode 100644
+index 0000000..06694b4
+--- /dev/null
++++ b/repository_after/api/src/directives/requireAuth/requireAuth.ts
+@@ -0,0 +1,23 @@
++import { createValidatorDirective } from '@redwoodjs/graphql-server'
++
++export const schema = gql`
++  directive @requireAuth(roles: [String]) on FIELD_DEFINITION
++`
++
++const validate = ({ directiveArgs, context }) => {
++  const { currentUser } = context
++
++  if (!currentUser) {
++    throw new Error('Not authenticated')
++  }
++
++  const { roles } = directiveArgs
++  if (roles && roles.length > 0) {
++    const userRole = currentUser.role
++    if (!roles.includes(userRole)) {
++      throw new Error('Forbidden')
++    }
++  }
++}
++
++export const requireAuth = createValidatorDirective(schema, validate)
+diff --git a/repository_after/api/src/directives/skipAuth/skipAuth.ts b/repository_after/api/src/directives/skipAuth/skipAuth.ts
+new file mode 100644
+index 0000000..f2a638a
+--- /dev/null
++++ b/repository_after/api/src/directives/skipAuth/skipAuth.ts
+@@ -0,0 +1,11 @@
++import { createValidatorDirective } from '@redwoodjs/graphql-server'
++
++export const schema = gql`
++  directive @skipAuth on FIELD_DEFINITION
++`
++
++const validate = () => {
++    // skipAuth doesn't need to do anything
++}
++
++export const skipAuth = createValidatorDirective(schema, validate)
+diff --git a/repository_after/api/src/functions/graphql.ts b/repository_after/api/src/functions/graphql.ts
+new file mode 100644
+index 0000000..9c89574
+--- /dev/null
++++ b/repository_after/api/src/functions/graphql.ts
+@@ -0,0 +1,30 @@
++import { createGraphQLHandler } from '@redwoodjs/graphql-server'
++
++import directives from 'src/directives/**/*.{js,ts}'
++import sdls from 'src/graphql/**/*.sdl.{js,ts}'
++import services from 'src/services/**/*.{js,ts}'
++
++import { db, initDb } from 'src/lib/db'
++import { logger } from 'src/lib/logger'
++
++import { getCurrentUser } from 'src/lib/auth'
++
++// Initialize DB settings (WAL mode, timeouts)
++initDb()
++
++export const handler = createGraphQLHandler({
++    loggerConfig: { logger, options: {} },
++    directives,
++    sdls,
++    services,
++    getCurrentUser,
++    realtime: {
++        subscriptions: {
++            subscriptions: [], // Will be populated by resolvers automatically in v6+
++        },
++    },
++    onException: () => {
++        // Disconnect from database
++        db.$disconnect()
++    },
++})
+diff --git a/repository_after/api/src/graphql/availability.sdl.ts b/repository_after/api/src/graphql/availability.sdl.ts
+new file mode 100644
+index 0000000..e55a5ef
+--- /dev/null
++++ b/repository_after/api/src/graphql/availability.sdl.ts
+@@ -0,0 +1,80 @@
++export const schema = gql`
++  type RecurringAvailability {
++    id: Int!
++    providerId: Int!
++    weekday: Int!
++    startLocal: String!
++    endLocal: String!
++    tz: String!
++  }
++
++  type CustomDayAvailability {
++    id: Int!
++    providerId: Int!
++    date: DateTime!
++    startUtc: DateTime!
++    endUtc: DateTime!
++    tz: String!
++  }
++
++  type Slot {
++    startUtcISO: String!
++    endUtcISO: String!
++    startLocalISO: String!
++    endLocalISO: String!
++  }
++
++  type ManualBlock {
++    id: Int!
++    providerId: Int!
++    startUtc: DateTime!
++    endUtc: DateTime!
++    reason: String
++  }
++
++  input ManualBlockInput {
++    startUtcISO: String!
++    endUtcISO: String!
++    reason: String
++  }
++
++  input RecurringAvailabilityInput {
++    weekday: Int!
++    startLocal: String!
++    endLocal: String!
++  }
++
++  input CustomDayAvailabilityInput {
++    date: String!
++    startLocal: String!
++    endLocal: String!
++  }
++
++  input SearchAvailabilityInput {
++    providerId: Int!
++    serviceId: Int
++    startISO: String!
++    endISO: String!
++    customerTz: String!
++  }
++
++  type Query {
++    searchAvailability(input: SearchAvailabilityInput!): [Slot!]! @skipAuth
++  }
++
++  type Mutation {
++    createRecurringAvailability(
++      input: RecurringAvailabilityInput!
++    ): RecurringAvailability! @requireAuth(roles: ["PROVIDER"])
++    createCustomDayAvailability(
++      input: CustomDayAvailabilityInput!
++    ): CustomDayAvailability! @requireAuth(roles: ["PROVIDER"])
++    createManualBlock(input: ManualBlockInput!): ManualBlock!
++      @requireAuth(roles: ["PROVIDER"])
++    deleteManualBlock(id: Int!): ManualBlock! @requireAuth(roles: ["PROVIDER"])
++  }
++
++  type Subscription {
++    availabilityUpdated(providerId: Int!): [Slot!]! @skipAuth
++  }
++`
+diff --git a/repository_after/api/src/graphql/bookings.sdl.ts b/repository_after/api/src/graphql/bookings.sdl.ts
+new file mode 100644
+index 0000000..a949af8
+--- /dev/null
++++ b/repository_after/api/src/graphql/bookings.sdl.ts
+@@ -0,0 +1,50 @@
++export const schema = gql`
++  type Booking {
++    id: Int!
++    providerId: Int!
++    serviceId: Int!
++    startUtc: DateTime!
++    endUtc: DateTime!
++    customerEmail: String!
++    reference: String!
++    canceledAt: DateTime
++    status: String!
++    notes: String
++    penaltyFeeCents: Int
++    createdAt: DateTime!
++    updatedAt: DateTime!
++  }
++
++  input CreateBookingInput {
++    providerId: Int!
++    serviceId: Int!
++    startUtcISO: String!
++    endUtcISO: String!
++    customerEmail: String!
++  }
++
++  type Query {
++    bookings(
++      providerId: Int
++      startISO: String
++      endISO: String
++    ): [Booking!]! @requireAuth
++    booking(id: Int!): Booking @requireAuth
++  }
++
++  input UpdateBookingInput {
++    status: String
++    notes: String
++  }
++
++  type Mutation {
++    createBooking(input: CreateBookingInput!): Booking! @requireAuth
++    updateBooking(id: Int!, input: UpdateBookingInput!): Booking! @requireAuth
++    cancelBooking(id: Int!): Booking! @requireAuth
++    rescheduleBooking(
++      id: Int!
++      newStartUtcISO: String!
++      newEndUtcISO: String!
++    ): Booking! @requireAuth
++  }
++`
+diff --git a/repository_after/api/src/graphql/providers.sdl.ts b/repository_after/api/src/graphql/providers.sdl.ts
+new file mode 100644
+index 0000000..1adb749
+--- /dev/null
++++ b/repository_after/api/src/graphql/providers.sdl.ts
+@@ -0,0 +1,26 @@
++export const schema = gql`
++  type ProviderProfile {
++    id: Int!
++    userId: Int!
++    name: String!
++    bio: String
++  }
++
++  input CreateProviderProfileInput {
++    name: String!
++    bio: String
++  }
++
++  input CreateServiceInput {
++    name: String!
++    durationMinutes: Int!
++    capacity: Int
++    bufferBeforeMinutes: Int
++    bufferAfterMinutes: Int
++  }
++
++  type Mutation {
++    createProviderProfile(input: CreateProviderProfileInput!): ProviderProfile! @requireAuth
++    createService(input: CreateServiceInput!): Service! @requireAuth(roles: ["PROVIDER"])
++  }
++`
+diff --git a/repository_after/api/src/graphql/rubik.sdl.ts b/repository_after/api/src/graphql/rubik.sdl.ts
+new file mode 100644
+index 0000000..9bae02a
+--- /dev/null
++++ b/repository_after/api/src/graphql/rubik.sdl.ts
+@@ -0,0 +1,5 @@
++export const schema = gql`
++  type Query {
++    solveCube(scramble: String!): [String!]! @skipAuth
++  }
++`
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 diff --git a/repository_after/api/src/graphql/schema.ts b/repository_after/api/src/graphql/schema.ts
 new file mode 100644
 index 0000000..c1c6119
@@ -4737,6 +5369,7 @@ index 0000000..c1c6119
 +  ${availabilitySchema}
 +  ${bookingsSchema}
 +`
+<<<<<<< HEAD
 diff --git a/repository_after/api/src/graphql/users.sdl.ts b/repository_after/api/src/graphql/users.sdl.ts
 new file mode 100644
 index 0000000..370f041
@@ -4833,6 +5466,15 @@ index 0000000..1cf2f57
 +    endLocalISO: String!
 +  }
 +
+=======
+diff --git a/repository_after/api/src/graphql/services.sdl.ts b/repository_after/api/src/graphql/services.sdl.ts
+new file mode 100644
+index 0000000..62b4bd5
+--- /dev/null
++++ b/repository_after/api/src/graphql/services.sdl.ts
+@@ -0,0 +1,16 @@
++export const schema = gql`
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +  type Service {
 +    id: Int!
 +    providerId: Int!
@@ -4843,6 +5485,7 @@ index 0000000..1cf2f57
 +    bufferAfterMinutes: Int!
 +  }
 +
+<<<<<<< HEAD
 +  input CreateBookingInput {
 +    providerId: Int!
 +    serviceId: Int!
@@ -5184,6 +5827,424 @@ index 0000000..45ef8ac
 +export type PrismaLike = typeof prisma;
 +
 +export default prisma;
+=======
++  type Query {
++    services(providerId: Int!): [Service!]! @skipAuth
++    service(id: Int!): Service @skipAuth
++  }
++`
+diff --git a/repository_after/api/src/graphql/users.sdl.ts b/repository_after/api/src/graphql/users.sdl.ts
+new file mode 100644
+index 0000000..60116e8
+--- /dev/null
++++ b/repository_after/api/src/graphql/users.sdl.ts
+@@ -0,0 +1,25 @@
++/*
++  Minimal SDL placeholder that references Role enum conceptually.
++  No business logic implemented here — scaffold only.
++*/
++
++export const schema = gql`
++  type User {
++    id: Int!
++    email: String!
++    name: String
++    role: String!
++    createdAt: DateTime!
++    updatedAt: DateTime!
++  }
++
++  enum Role {
++    PROVIDER
++    CUSTOMER
++    ADMIN
++  }
++
++  type Query {
++    currentUser: User @requireAuth
++  }
++`
+diff --git a/repository_after/api/src/lib/auth.ts b/repository_after/api/src/lib/auth.ts
+new file mode 100644
+index 0000000..541bfe1
+--- /dev/null
++++ b/repository_after/api/src/lib/auth.ts
+@@ -0,0 +1,85 @@
++import { context } from '@redwoodjs/graphql-server'
++import { db } from './db'
++
++export interface AuthenticatedUser {
++  id: number
++  email: string
++  role: string
++  roles?: string[]
++}
++
++export type User = AuthenticatedUser
++
++/**
++ * getCurrentUser is called by Redwood each time a GraphQL request is made.
++ * It's responsible for finding the user based on the session or token.
++ */
++export const getCurrentUser = async (session: { id: number }) => {
++  if (!session?.id) return null
++
++  const user = await db.user.findUnique({
++    where: { id: session.id },
++    select: { id: true, email: true, role: true }
++  })
++
++  return user
++}
++
++export const getAuthenticatedUser = (): AuthenticatedUser => {
++  if (!context.currentUser) {
++    throw new Error('Not authenticated')
++  }
++  return context.currentUser as AuthenticatedUser
++}
++
++export const isAdmin = (user: AuthenticatedUser) => user.role === 'ADMIN'
++export const isProvider = (user: AuthenticatedUser) => user.role === 'PROVIDER'
++
++/**
++ * Validates ownership or administrative access to a booking.
++ */
++export const validateBookingAccess = async (bookingId: number) => {
++  const user = getAuthenticatedUser()
++  const booking = await db.booking.findUnique({
++    where: { id: bookingId },
++  })
++
++  if (!booking) throw new Error('Booking not found')
++  if (isAdmin(user)) return booking
++
++  if (isProvider(user)) {
++    const profile = await db.providerProfile.findUnique({
++      where: { userId: user.id },
++    })
++    if (profile?.id === booking.providerId) return booking
++  }
++
++  if ((booking as any).userId === user.id) return booking
++
++  throw new Error('You do not have permission to access this booking')
++}
++
++export const Role = {
++  ADMIN: 'ADMIN',
++  PROVIDER: 'PROVIDER',
++  CUSTOMER: 'CUSTOMER',
++} as const
++
++export const requireRole = (user: AuthenticatedUser | null, allowedRoles: string | string[]) => {
++  if (!user) throw new Error('Not authenticated')
++  const roles = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles]
++  if (!roles.includes(user.role)) throw new Error('Forbidden')
++  return true
++}
++
++export const getOwnProviderProfileId = async () => {
++  const user = getAuthenticatedUser()
++  if (!isProvider(user)) throw new Error('User is not a service provider')
++
++  const profile = await db.providerProfile.findUnique({
++    where: { userId: user.id },
++  })
++
++  if (!profile) throw new Error('Provider profile not found')
++  return profile.id
++}
+diff --git a/repository_after/api/src/lib/db.ts b/repository_after/api/src/lib/db.ts
+new file mode 100644
+index 0000000..7b1215e
+--- /dev/null
++++ b/repository_after/api/src/lib/db.ts
+@@ -0,0 +1,19 @@
++import { PrismaClient } from '@prisma/client'
++
++// Real database connection
++export const db = new PrismaClient()
++
++// Helper to ensure SQLite WAL mode and busy_timeout
++// Can be called during initialization or before critical operations
++export const initDb = async () => {
++    try {
++        await db.$executeRawUnsafe('PRAGMA journal_mode=WAL;')
++        await db.$executeRawUnsafe('PRAGMA busy_timeout=5000;')
++    } catch (e) {
++        // Ignore errors during build/migration if DB not ready
++    }
++}
++
++export type PrismaLike = typeof db;
++
++export default db;
+diff --git a/repository_after/api/src/lib/logger.ts b/repository_after/api/src/lib/logger.ts
+new file mode 100644
+index 0000000..ab1f068
+--- /dev/null
++++ b/repository_after/api/src/lib/logger.ts
+@@ -0,0 +1,7 @@
++import { createLogger } from '@redwoodjs/api/logger'
++
++export const logger = createLogger({
++    options: {
++        level: 'info',
++    },
++})
+diff --git a/repository_after/api/src/lib/rubik.ts b/repository_after/api/src/lib/rubik.ts
+new file mode 100644
+index 0000000..42e9d90
+--- /dev/null
++++ b/repository_after/api/src/lib/rubik.ts
+@@ -0,0 +1,245 @@
++export type CubeState = number[] // 54 elements
++
++export enum Face {
++    U = 0,
++    D = 1,
++    L = 2,
++    R = 3,
++    F = 4,
++    B = 5,
++}
++
++const SOLVED_STATE: CubeState = Array.from({ length: 54 }, (_, i) => Math.floor(i / 9))
++
++const COORDS: [number, number, number][] = [
++    // U
++    [-1, 1, -1], [0, 1, -1], [1, 1, -1],
++    [-1, 1, 0], [0, 1, 0], [1, 1, 0],
++    [-1, 1, 1], [0, 1, 1], [1, 1, 1],
++    // D
++    [-1, -1, 1], [0, -1, 1], [1, -1, 1],
++    [-1, -1, 0], [0, -1, 0], [1, -1, 0],
++    [-1, -1, -1], [0, -1, -1], [1, -1, -1],
++    // L
++    [-1, 1, -1], [-1, 1, 0], [-1, 1, 1],
++    [-1, 0, -1], [-1, 0, 0], [-1, 0, 1],
++    [-1, -1, -1], [-1, -1, 0], [-1, -1, 1],
++    // R
++    [1, 1, 1], [1, 1, 0], [1, 1, -1],
++    [1, 0, 1], [1, 0, 0], [1, 0, -1],
++    [1, -1, 1], [1, -1, 0], [1, -1, -1],
++    // F
++    [-1, 1, 1], [0, 1, 1], [1, 1, 1],
++    [-1, 0, 1], [0, 0, 1], [1, 0, 1],
++    [-1, -1, 1], [0, -1, 1], [1, -1, 1],
++    // B
++    [1, 1, -1], [0, 1, -1], [-1, 1, -1],
++    [1, 0, -1], [0, 0, -1], [-1, 0, -1],
++    [1, -1, -1], [0, -1, -1], [-1, -1, -1]
++]
++
++const ALL_MOVES = [
++    'U', "U'", 'U2', 'D', "D'", 'D2',
++    'L', "L'", 'L2', 'R', "R'", 'R2',
++    'F', "F'", 'F2', 'B', "B'", 'B2'
++]
++
++/**
++ * Standard 3x3 Rubik's Cube logic.
++ * Face mapping (9 indices per face):
++ * U (Up): 0-8
++ * D (Down): 9-17
++ * L (Left): 18-26
++ * R (Right): 27-35
++ * F (Front): 36-44
++ * B (Back): 45-53
++ */
++export class RubikCube {
++    state: CubeState
++
++    constructor(state: CubeState = [...SOLVED_STATE]) {
++        this.state = state
++    }
++
++    isSolved(): boolean {
++        for (let i = 0; i < 54; i++) {
++            if (this.state[i] !== Math.floor(i / 9)) return false
++        }
++        return true
++    }
++
++    static fromScramble(scramble: string): RubikCube {
++        const cube = new RubikCube()
++        const moves = scramble.trim().split(/\s+/)
++        for (const move of moves) {
++            if (move) cube.move(move)
++        }
++        return cube
++    }
++
++    getHeuristic(): number {
++        let sum = 0
++        for (let i = 0; i < 54; i++) {
++            const color = this.state[i]
++            if (color === Math.floor(i / 9)) continue
++
++            // Find any position on the target face for this color
++            // A slightly better heuristic: find the closest sticker on target face
++            let minMd = 100
++            const targetOffset = color * 9
++            const current = COORDS[i]
++
++            for (let j = 0; j < 9; j++) {
++                const target = COORDS[targetOffset + j]
++                const md = Math.abs(current[0] - target[0]) +
++                    Math.abs(current[1] - target[1]) +
++                    Math.abs(current[2] - target[2])
++                if (md < minMd) minMd = md
++            }
++            sum += minMd
++        }
++        // sum / 12 is a safe admissible factor for 3D Manhattan sum 
++        return Math.ceil(sum / 12)
++    }
++
++    solve(): string[] | null {
++        if (this.isSolved()) return []
++
++        for (let depth = 0; depth <= 20; depth++) {
++            const path: string[] = []
++            if (this.idaStar(0, depth, path, null)) {
++                return path
++            }
++        }
++        return null
++    }
++
++    private idaStar(
++        g: number,
++        limit: number,
++        path: string[],
++        lastMove: string | null
++    ): boolean {
++        const h = this.getHeuristic()
++        if (g + h > limit) return false
++        if (this.isSolved()) return true
++
++        for (const m of ALL_MOVES) {
++            // Pruning: don't reverse last move or move same face twice
++            if (lastMove && m[0] === lastMove[0]) continue
++
++            const prevState = [...this.state]
++            this.move(m)
++            path.push(m)
++
++            if (this.idaStar(g + 1, limit, path, m)) return true
++
++            path.pop()
++            this.state = prevState
++        }
++
++        return false
++    }
++
++    move(m: string) {
++        switch (m) {
++            case 'U': this.rotateU(); break;
++            case "U'": this.rotateU(); this.rotateU(); this.rotateU(); break;
++            case 'U2': this.rotateU(); this.rotateU(); break;
++            case 'D': this.rotateD(); break;
++            case "D'": this.rotateD(); this.rotateD(); this.rotateD(); break;
++            case 'D2': this.rotateD(); this.rotateD(); break;
++            case 'L': this.rotateL(); break;
++            case "L'": this.rotateL(); this.rotateL(); this.rotateL(); break;
++            case 'L2': this.rotateL(); this.rotateL(); break;
++            case 'R': this.rotateR(); break;
++            case "R'": this.rotateR(); this.rotateR(); this.rotateR(); break;
++            case 'R2': this.rotateR(); this.rotateR(); break;
++            case 'F': this.rotateF(); break;
++            case "F'": this.rotateF(); this.rotateF(); this.rotateF(); break;
++            case 'F2': this.rotateF(); this.rotateF(); break;
++            case 'B': this.rotateB(); break;
++            case "B'": this.rotateB(); this.rotateB(); this.rotateB(); break;
++            case 'B2': this.rotateB(); this.rotateB(); break;
++            default: throw new Error(`Invalid move: ${m}`);
++        }
++    }
++
++    private rotateFace(f: Face) {
++        const s = this.state
++        const offset = f * 9
++        const old = s.slice(offset, offset + 9)
++        // 012    630
++        // 345 -> 741
++        // 678    852
++        s[offset + 0] = old[6]
++        s[offset + 1] = old[3]
++        s[offset + 2] = old[0]
++        s[offset + 3] = old[7]
++        s[offset + 4] = old[4]
++        s[offset + 5] = old[1]
++        s[offset + 6] = old[8]
++        s[offset + 7] = old[5]
++        s[offset + 8] = old[2]
++    }
++
++    private rotateU() {
++        this.rotateFace(Face.U)
++        const s = this.state
++        const tmp = [s[36], s[37], s[38]] // F top
++        s[36] = s[27]; s[37] = s[28]; s[38] = s[29] // F <- R
++        s[27] = s[45]; s[28] = s[46]; s[29] = s[47] // R <- B
++        s[45] = s[18]; s[46] = s[19]; s[47] = s[20] // B <- L
++        s[18] = tmp[0]; s[19] = tmp[1]; s[20] = tmp[2] // L <- F
++    }
++
++    private rotateD() {
++        this.rotateFace(Face.D)
++        const s = this.state
++        const tmp = [s[42], s[43], s[44]] // F bottom
++        s[42] = s[18 + 6]; s[43] = s[18 + 7]; s[44] = s[18 + 8] // F <- L
++        s[18 + 6] = s[45 + 6]; s[18 + 7] = s[45 + 7]; s[18 + 8] = s[45 + 8] // L <- B
++        s[45 + 6] = s[27 + 6]; s[45 + 7] = s[27 + 7]; s[45 + 8] = s[27 + 8] // B <- R
++        s[27 + 6] = tmp[0]; s[27 + 7] = tmp[1]; s[27 + 8] = tmp[2] // R <- F
++    }
++
++    private rotateL() {
++        this.rotateFace(Face.L)
++        const s = this.state
++        const tmp = [s[0], s[3], s[6]] // U left
++        s[0] = s[36]; s[3] = s[39]; s[6] = s[42] // U <- F
++        s[36] = s[9]; s[39] = s[12]; s[42] = s[15] // F <- D
++        s[9] = s[53]; s[12] = s[50]; s[15] = s[47] // D <- B reversed
++        s[53] = tmp[0]; s[50] = tmp[1]; s[47] = tmp[2] // B <- U reversed
++    }
++
++    private rotateR() {
++        this.rotateFace(Face.R)
++        const s = this.state
++        const tmp = [s[2], s[5], s[8]] // U right
++        s[2] = s[38]; s[5] = s[41]; s[8] = s[44] // U <- F
++        s[38] = s[11]; s[41] = s[14]; s[44] = s[17] // F <- D
++        s[11] = s[51]; s[14] = s[48]; s[17] = s[45] // D <- B reversed
++        s[51] = tmp[0]; s[48] = tmp[1]; s[45] = tmp[2] // B <- U reversed
++    }
++
++    private rotateF() {
++        this.rotateFace(Face.F)
++        const s = this.state
++        const tmp = [s[6], s[7], s[8]] // U bottom
++        s[6] = s[26]; s[7] = s[23]; s[8] = s[20] // U <- L reversed
++        s[26] = s[9]; s[23] = s[10]; s[20] = s[11] // L <- D
++        s[9] = s[27]; s[10] = s[30]; s[11] = s[33] // D <- R reversed
++        s[27] = tmp[0]; s[30] = tmp[1]; s[33] = tmp[2] // R <- U
++    }
++
++    private rotateB() {
++        this.rotateFace(Face.B)
++        const s = this.state
++        const tmp = [s[0], s[1], s[2]] // U top
++        s[0] = s[29]; s[1] = s[32]; s[2] = s[35] // U <- R
++        s[29] = s[17]; s[32] = s[16]; s[35] = s[15] // R <- D reversed
++        s[17] = s[18]; s[16] = s[21]; s[15] = s[24] // D <- L
++        s[18] = tmp[2]; s[21] = tmp[1]; s[24] = tmp[0] // L <- U reversed
++    }
++}
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 diff --git a/repository_after/api/src/lib/time.ts b/repository_after/api/src/lib/time.ts
 new file mode 100644
 index 0000000..7aa9f2a
@@ -5210,6 +6271,7 @@ index 0000000..7aa9f2a
 +  const added = dt.plus({ hours });
 +  return added.toISO()!;
 +}
+<<<<<<< HEAD
 diff --git a/repository_after/api/src/server.ts b/repository_after/api/src/server.ts
 new file mode 100644
 index 0000000..e895058
@@ -5567,11 +6629,458 @@ index 0000000..1e4b937
 +// Generate deterministic, non-overlapping slots from availability windows.
 +export function generateSlots(
 +  windows: Array<Record<string, string>>,
+=======
+diff --git a/repository_after/api/src/services/availability/availability.ts b/repository_after/api/src/services/availability/availability.ts
+new file mode 100644
+index 0000000..8363f05
+--- /dev/null
++++ b/repository_after/api/src/services/availability/availability.ts
+@@ -0,0 +1,473 @@
++import { DateTime } from 'luxon'
++import { context } from '@redwoodjs/graphql-server'
++import { db } from '../../lib/db'
++
++type RecurringInput = {
++  weekday: number
++  startLocal: string
++  endLocal: string
++}
++
++type CustomDayInput = {
++  date: string
++  startLocal: string
++  endLocal: string
++}
++
++type SearchParams = {
++  input: {
++    providerId: number
++    serviceId?: number
++    startISO: string
++    endISO: string
++    customerTz: string
++  }
++}
++
++// Service exports
++export const searchAvailability = async ({ input }: SearchParams) => {
++  const { providerId, serviceId, startISO, endISO, customerTz } = input
++
++  if (DateTime.fromISO(startISO) > DateTime.fromISO(endISO)) {
++    throw new Error('start must be before end')
++  }
++
++  const profile = await db.providerProfile.findUnique({ where: { id: providerId } })
++  const providerTz = profile?.timezone || 'UTC'
++
++  // Fetch service to determine duration and buffer times
++  let duration: number | undefined
++  let bufferBefore = 0
++  let bufferAfter = 0
++
++  let svc: any = null
++  if (serviceId) {
++    svc = await db.service.findUnique({ where: { id: serviceId } })
++    if (!svc) {
++      throw new Error(`Service with ID ${serviceId} not found`)
++    }
++    duration = svc.durationMinutes
++    bufferBefore = svc.bufferBeforeMinutes
++    bufferAfter = svc.bufferAfterMinutes
++  }
++
++  if (!duration) {
++    throw new Error('serviceId or implicit duration required to search availability')
++  }
++
++  // Get data from DB
++  const recurring = await db.recurringAvailability.findMany({ where: { providerId } })
++  const customs = await db.customDayAvailability.findMany({
++    where: {
++      providerId,
++      date: { gte: new Date(startISO), lte: new Date(endISO) },
++    },
++  })
++  const exceptions = await db.availabilityException.findMany({
++    where: {
++      providerId,
++      startUtc: { lte: new Date(endISO) },
++      endUtc: { gte: new Date(startISO) },
++    },
++  })
++  const blocks = await db.manualBlock.findMany({
++    where: {
++      providerId,
++      startUtc: { lte: new Date(endISO) },
++      endUtc: { gte: new Date(startISO) },
++    },
++  })
++
++  // Fetch existing bookings to subtract them
++  const existingBookings = await db.booking.findMany({
++    where: {
++      serviceId,
++      canceledAt: null,
++      startUtc: { lte: new Date(endISO) },
++      endUtc: { gte: new Date(startISO) },
++    },
++  })
++
++  // Expand weekly rules with timezone robustness
++  // Convert UTC range to Provider Local range to find logical week boundaries
++  const localStart = DateTime.fromISO(startISO, { zone: 'utc' }).setZone(providerTz)
++  const localEnd = DateTime.fromISO(endISO, { zone: 'utc' }).setZone(providerTz)
++
++  const weekStarts: string[] = []
++  let cur = localStart.startOf('week')
++  while (cur <= localEnd) {
++    weekStarts.push(cur.toISODate()!)
++    cur = cur.plus({ weeks: 1 })
++  }
++
++  const rules = recurring.map((r: any) => ({
++    weekday: r.weekday,
++    startLocal: r.startLocal,
++    endLocal: r.endLocal,
++    tz: providerTz,
++  }))
++
++  const expandedWindows: Array<ExtendedWindow> = []
++  for (const ws of weekStarts) {
++    expandedWindows.push(...expandWeeklyRules(rules, ws))
++  }
++
++  // Group customs
++  const customDaysFormatted = customs.map((c: any) => ({
++    dateISO: DateTime.fromJSDate(c.date).toISODate()!,
++    startUtcISO: c.startUtc.toISOString(),
++    endUtcISO: c.endUtc.toISOString(),
++  }))
++
++  const merged = mergeOverrides(expandedWindows, customDaysFormatted)
++
++  const excFormatted = exceptions.map((e: any) => ({
++    startUtcISO: e.startUtc.toISOString(),
++    endUtcISO: e.endUtc.toISOString(),
++  }))
++  const blkFormatted = blocks.map((b: any) => ({
++    startUtcISO: b.startUtc.toISOString(),
++    endUtcISO: b.endUtc.toISOString(),
++  }))
++
++  const available = resolveAvailability(merged, excFormatted, blkFormatted)
++
++  // Overlap fix: include windows that partially overlap the range
++  const rangeStart = DateTime.fromISO(startISO)
++  const rangeEnd = DateTime.fromISO(endISO)
++  const filtered = available.filter((w) => {
++    const wStart = DateTime.fromISO(w.startUtcISO)
++    const wEnd = DateTime.fromISO(w.endUtcISO)
++    return wEnd > rangeStart && wStart < rangeEnd
++  })
++
++  const slots = generateSlots(
++    filtered,
++    duration,
++    bufferBefore,
++    bufferAfter,
++    customerTz
++  )
++
++  // Filter out slots that are full based on existing bookings
++  const capacity = svc?.capacity ?? 1
++  const finalSlots = slots.filter((slot) => {
++    const slotStart = DateTime.fromISO(slot.startUtcISO)
++    const slotEnd = DateTime.fromISO(slot.endUtcISO)
++
++    // Count overlapping bookings
++    const overlappingCount = existingBookings.filter((b) => {
++      const bStart = DateTime.fromJSDate(b.startUtc)
++      const bEnd = DateTime.fromJSDate(b.endUtc)
++      return bEnd > slotStart && bStart < slotEnd
++    }).length
++
++    return overlappingCount < capacity
++  })
++
++  // Re-filter slots to ensure they are strictly inside range
++  return finalSlots.filter((s) => {
++    const sStart = DateTime.fromISO(s.startUtcISO)
++    const sEnd = DateTime.fromISO(s.endUtcISO)
++    return sStart >= rangeStart && sEnd <= rangeEnd
++  })
++}
++
++export const createManualBlock = async ({
++  input,
++}: {
++  input: { startUtcISO: string; endUtcISO: string; reason?: string }
++}) => {
++  const userId = (context.currentUser as any)?.id
++  if (!userId) throw new Error('Not authenticated')
++
++  const provider = await db.providerProfile.findUnique({ where: { userId } })
++  if (!provider) throw new Error('Provider profile not found')
++
++  const start = DateTime.fromISO(input.startUtcISO).toUTC()
++  const end = DateTime.fromISO(input.endUtcISO).toUTC()
++
++  if (end <= start) throw new Error('End must be after start')
++
++  return db.manualBlock.create({
++    data: {
++      providerId: provider.id,
++      startUtc: start.toJSDate(),
++      endUtc: end.toJSDate(),
++      reason: input.reason,
++    },
++  })
++}
++
++export const deleteManualBlock = async ({ id }: { id: number }) => {
++  const userId = (context.currentUser as any)?.id
++  if (!userId) throw new Error('Not authenticated')
++
++  const provider = await db.providerProfile.findUnique({ where: { userId } })
++  if (!provider) throw new Error('Provider profile not found')
++
++  const block = await db.manualBlock.findUnique({ where: { id } })
++  if (!block || block.providerId !== provider.id) {
++    throw new Error('Block not found or unauthorized')
++  }
++
++  return db.manualBlock.delete({ where: { id } })
++}
++
++export const createRecurringAvailability = async ({
++  input,
++}: {
++  input: RecurringInput
++}) => {
++  // Authentication check should be handled by @requireAuth in SDL or custom logic
++  // For simplicity, we assume context.currentUser is available if needed
++  // But here we need providerId from profile
++  // Use authenticated currentUser
++  const userId = (context.currentUser as any)?.id
++  if (!userId) throw new Error('Not authenticated')
++
++  const provider = await db.providerProfile.findUnique({ where: { userId } })
++  if (!provider) throw new Error('Provider profile not found')
++
++  if (input.weekday < 1 || input.weekday > 7) throw new Error('Invalid weekday')
++
++  return db.recurringAvailability.create({
++    data: {
++      providerId: provider.id,
++      weekday: input.weekday,
++      startLocal: input.startLocal,
++      endLocal: input.endLocal,
++      tz: provider.timezone,
++    },
++  })
++}
++
++export const createCustomDayAvailability = async ({
++  input,
++}: {
++  input: CustomDayInput
++}) => {
++  const userId = (context.currentUser as any)?.id
++  if (!userId) throw new Error('Not authenticated')
++
++  const provider = await db.providerProfile.findUnique({ where: { userId } })
++  if (!provider) throw new Error('Provider profile not found')
++
++  const tz = provider.timezone
++  const start = DateTime.fromISO(`${input.date}T${input.startLocal}`, { zone: tz }).toUTC()
++  const end = DateTime.fromISO(`${input.date}T${input.endLocal}`, { zone: tz }).toUTC()
++
++  if (end <= start) throw new Error('end must be after start')
++
++  return db.customDayAvailability.create({
++    data: {
++      providerId: provider.id,
++      date: new Date(input.date),
++      startUtc: start.toJSDate(),
++      endUtc: end.toJSDate(),
++      tz,
++    },
++  })
++}
++
++export const availabilityUpdated = {
++  subscribe: (_: any, { providerId }: { providerId: number }) =>
++    (context as any).pubSub?.subscribe('availabilityUpdated', providerId),
++  resolve: (payload: any) => payload,
++}
++
++// Logic helpers (Deterministic internal functions)
++
++type ExtendedWindow = {
++  startUtc: string
++  endUtc: string
++  weekday: number
++  localDateISO: string
++}
++
++export function expandWeeklyRules(
++  rules: Array<{ weekday: number; startLocal: string; endLocal: string; tz: string }>,
++  weekStartISO: string
++) {
++  const tz = rules.length > 0 ? rules[0].tz : 'UTC'
++  const weekStart = DateTime.fromISO(weekStartISO, { zone: tz }).startOf('day')
++  const results: Array<ExtendedWindow> = []
++
++  for (const r of rules) {
++    const dayOffset = r.weekday - 1
++    const localDate = weekStart.plus({ days: dayOffset })
++    const localDateISO = localDate.toISODate()!
++
++    const start = DateTime.fromISO(`${localDateISO}T${r.startLocal}`, {
++      zone: r.tz,
++    })
++    const end = DateTime.fromISO(`${localDateISO}T${r.endLocal}`, { zone: r.tz })
++
++    // DST Policy: If the time is invalid (Spring Forward nonexistent gap), skip it.
++    // If ambiguous (Fall Back overlap), Luxon defaults to the first occurrence (DST).
++    if (!start.isValid || !end.isValid) {
++      console.warn(
++        `Skipping invalid DST window for provider in ${r.tz}: ${localDateISO}`
++      )
++      continue
++    }
++
++    results.push({
++      startUtc: start.toUTC().toISO()!,
++      endUtc: end.toUTC().toISO()!,
++      weekday: r.weekday,
++      localDateISO,
++    })
++  }
++  return results
++}
++
++export function mergeOverrides(
++  expandedWeekly: ExtendedWindow[],
++  customDays: Array<{ dateISO: string; startUtcISO: string; endUtcISO: string }>
++) {
++  const customByDate = new Map<string, Array<{ startUtcISO: string; endUtcISO: string }>>()
++  for (const c of customDays) {
++    if (!customByDate.has(c.dateISO)) customByDate.set(c.dateISO, [])
++    customByDate.get(c.dateISO)!.push({ startUtcISO: c.startUtcISO, endUtcISO: c.endUtcISO })
++  }
++
++  const merged: Array<{ startUtc: string; endUtc: string }> = []
++
++  // Add recurring windows if not overridden by a custom day
++  for (const e of expandedWeekly) {
++    if (!customByDate.has(e.localDateISO)) {
++      merged.push({ startUtc: e.startUtc, endUtc: e.endUtc })
++    }
++  }
++
++  // Add custom day windows
++  for (const [_, arr] of customByDate.entries()) {
++    for (const a of arr) {
++      merged.push({ startUtc: a.startUtcISO, endUtc: a.endUtcISO })
++    }
++  }
++
++  return merged.sort((a, b) => a.startUtc.localeCompare(b.startUtc))
++}
++
++type Interval = { start: DateTime; end: DateTime }
++
++export function resolveAvailability(
++  windows: Array<{ startUtc: string; endUtc: string }>,
++  exceptions: Array<{ startUtcISO: string; endUtcISO: string }>,
++  blocks: Array<{ startUtcISO: string; endUtcISO: string }>
++) {
++  const baseIntervals: Interval[] = windows.map((w) => ({
++    start: DateTime.fromISO(w.startUtc, { zone: 'utc' }),
++    end: DateTime.fromISO(w.endUtc, { zone: 'utc' }),
++  }))
++  const mergedBase = mergeIntervals(baseIntervals)
++
++  const excIntervals = exceptions.map((e) => ({
++    start: DateTime.fromISO(e.startUtcISO, { zone: 'utc' }),
++    end: DateTime.fromISO(e.endUtcISO, { zone: 'utc' }),
++  }))
++  const blockIntervals = blocks.map((b) => ({
++    start: DateTime.fromISO(b.startUtcISO, { zone: 'utc' }),
++    end: DateTime.fromISO(b.endUtcISO, { zone: 'utc' }),
++  }))
++
++  const afterExceptions = subtractIntervals(mergedBase, excIntervals)
++  const afterBlocks = subtractIntervals(afterExceptions, blockIntervals)
++
++  return mergeIntervals(afterBlocks).map((f) => ({
++    startUtcISO: f.start.toISO()!,
++    endUtcISO: f.end.toISO()!,
++  }))
++}
++
++function mergeIntervals(intervals: Interval[]) {
++  if (intervals.length === 0) return []
++  const sorted = intervals.slice().sort((a, b) => a.start.toMillis() - b.start.toMillis())
++  const res: Interval[] = []
++  let cur = sorted[0]
++  for (let i = 1; i < sorted.length; i++) {
++    const it = sorted[i]
++    if (it.start <= cur.end) {
++      cur = { start: cur.start, end: DateTime.max(cur.end, it.end) }
++    } else {
++      res.push(cur)
++      cur = it
++    }
++  }
++  res.push(cur)
++  return res
++}
++
++function subtractIntervals(base: Interval[], subs: Interval[]) {
++  const result: Interval[] = []
++  for (const b of base) {
++    let fragments: Interval[] = [b]
++    for (const s of subs) {
++      const newFragments: Interval[] = []
++      for (const f of fragments) {
++        if (s.end <= f.start || s.start >= f.end) {
++          newFragments.push(f)
++          continue
++        }
++        if (s.start <= f.start && s.end >= f.end) continue
++        if (s.start <= f.start && s.end < f.end) {
++          newFragments.push({ start: s.end, end: f.end })
++          continue
++        }
++        if (s.start > f.start && s.end >= f.end) {
++          newFragments.push({ start: f.start, end: s.start })
++          continue
++        }
++        if (s.start > f.start && s.end < f.end) {
++          newFragments.push({ start: f.start, end: s.start })
++          newFragments.push({ start: s.end, end: f.end })
++          continue
++        }
++      }
++      fragments = newFragments
++      if (fragments.length === 0) break
++    }
++    result.push(...fragments)
++  }
++  return result
++}
++
++export function generateSlots(
++  windows: Array<{ startUtcISO: string; endUtcISO: string }>,
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +  durationMinutes: number,
 +  bufferBeforeMinutes: number,
 +  bufferAfterMinutes: number,
 +  customerTz: string
 +) {
+<<<<<<< HEAD
 +  // Ensure parameters are valid numbers - be very aggressive
 +  if (typeof durationMinutes !== 'number' || isNaN(durationMinutes) || !isFinite(durationMinutes)) {
 +    durationMinutes = 30;
@@ -5629,11 +7138,33 @@ index 0000000..1e4b937
 +    while (cur <= latestStart) {
 +      const slotStart = cur;
 +      const slotEnd = slotStart.plus({ minutes: durationMinutes });
+=======
++  const slots: Array<{
++    startUtcISO: string
++    endUtcISO: string
++    startLocalISO: string
++    endLocalISO: string
++  }> = []
++  const stepMinutes = durationMinutes + bufferBeforeMinutes + bufferAfterMinutes
++
++  for (const win of windows) {
++    const start = DateTime.fromISO(win.startUtcISO, { zone: 'utc' })
++    const end = DateTime.fromISO(win.endUtcISO, { zone: 'utc' })
++
++    const earliestStart = start.plus({ minutes: bufferBeforeMinutes })
++    const latestStart = end.minus({ minutes: durationMinutes + bufferAfterMinutes })
++
++    let cur = earliestStart
++    while (cur <= latestStart) {
++      const slotStart = cur
++      const slotEnd = slotStart.plus({ minutes: durationMinutes })
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +      slots.push({
 +        startUtcISO: slotStart.toISO()!,
 +        endUtcISO: slotEnd.toISO()!,
 +        startLocalISO: slotStart.setZone(customerTz).toISO()!,
 +        endLocalISO: slotEnd.setZone(customerTz).toISO()!,
+<<<<<<< HEAD
 +      });
 +      cur = cur.plus({ minutes: stepMinutes });
 +    }
@@ -6610,6 +8141,940 @@ index 0000000..890fbc5
 +      expect(serverContent).toContain("const { cancelBooking } = await import('./services/bookings/bookings')")
 +    })
 +  })
+=======
++      })
++      cur = cur.plus({ minutes: stepMinutes })
++    }
++  }
++  return slots.sort((a, b) => a.startUtcISO.localeCompare(b.startUtcISO))
++}
+diff --git a/repository_after/api/src/services/bookings/bookings.ts b/repository_after/api/src/services/bookings/bookings.ts
+new file mode 100644
+index 0000000..481fa05
+--- /dev/null
++++ b/repository_after/api/src/services/bookings/bookings.ts
+@@ -0,0 +1,367 @@
++import { Prisma } from '@prisma/client'
++import { v4 as uuidv4 } from 'uuid'
++import { DateTime } from 'luxon'
++import { db } from '../../lib/db'
++import {
++  getAuthenticatedUser,
++  isAdmin,
++  validateBookingAccess,
++  getOwnProviderProfileId,
++} from '../../lib/auth'
++import { context } from '@redwoodjs/graphql-server'
++
++/**
++ * Optimistic locking helper with automatic retry for concurrency conflicts.
++ */
++const withOptimisticLock = async <T>(
++  operation: () => Promise<T>,
++  maxRetries = 3
++): Promise<T> => {
++  for (let attempt = 0; attempt < maxRetries; attempt++) {
++    try {
++      return await operation()
++    } catch (error) {
++      const isConcurrencyConflict =
++        (error instanceof Prisma.PrismaClientKnownRequestError &&
++          [
++            'P2025', // Record not found (stale version)
++            'P2002', // Unique constraint failed (race on slot)
++            'P2033', // Large number (unexpected lock state)
++            'P2024', // Pool timeout (connection peak)
++            'P2034', // Transaction write conflict
++            'P2028', // Transaction failed/closed
++          ].includes(error.code)) ||
++        (error instanceof Error &&
++          (error.message.includes('Transaction closed') ||
++            error.message.includes('Database is locked')))
++
++      if (isConcurrencyConflict && attempt < maxRetries - 1) {
++        // Jittered exponential backoff
++        await new Promise((resolve) =>
++          setTimeout(resolve, Math.pow(2, attempt) * 100 + Math.random() * 50)
++        )
++        continue
++      }
++      throw error
++    }
++  }
++  throw new Error('Max retries exceeded for optimistic lock')
++}
++
++export const bookings = async ({
++  providerId,
++  startISO,
++  endISO,
++}: {
++  providerId?: number
++  startISO?: string
++  endISO?: string
++}) => {
++  const user = getAuthenticatedUser()
++
++  const where: any = {}
++  if (startISO || endISO) {
++    where.startUtc = {}
++    if (startISO) where.startUtc.gte = new Date(startISO)
++    if (endISO) where.startUtc.lte = new Date(endISO)
++  }
++
++  // 1. Admins can see any bookings filter
++  if (isAdmin(user)) {
++    if (providerId) where.providerId = providerId
++    return db.booking.findMany({ where })
++  }
++
++  // 2. Providers see only their own bookings
++  if (user.role === 'PROVIDER' || user.roles?.includes('PROVIDER')) {
++    const profileId = await getOwnProviderProfileId()
++    where.providerId = profileId
++    return db.booking.findMany({ where })
++  }
++
++  // 3. Customers see only bookings they created
++  where.userId = user.id
++  return db.booking.findMany({ where })
++}
++
++export const booking = async ({ id }: { id: number }) => {
++  return validateBookingAccess(id)
++}
++
++export const createBooking = async ({
++  input,
++}: {
++  input: {
++    providerId: number
++    serviceId: number
++    startUtcISO: string
++    endUtcISO: string
++    customerEmail: string
++  }
++}) => {
++  const { providerId, serviceId, startUtcISO, endUtcISO, customerEmail } = input
++  const user = getAuthenticatedUser()
++  const now = DateTime.utc()
++
++  const svc = await db.service.findUnique({ where: { id: serviceId } })
++  if (!svc) throw new Error('Service not found')
++
++  const profile = await db.providerProfile.findUnique({
++    where: { id: providerId },
++  })
++  if (!profile) throw new Error('Provider profile not found')
++
++  return withOptimisticLock(async () => {
++    const result = await db.$transaction(
++      async (tx) => {
++
++        // 1. Lead-time Enforcement
++        const startDt = DateTime.fromISO(startUtcISO, { zone: 'utc' })
++        const leadTime = (profile as any)?.bookingLeadTimeHours ?? 1
++        const cutoffHours = leadTime
++        if (startDt <= now.plus({ hours: cutoffHours })) {
++          throw new Error(`Must book at least ${cutoffHours} hour(s) in advance`)
++        }
++
++        // 2. Capacity & Overlap Validation
++        const endDt = DateTime.fromISO(endUtcISO, { zone: 'utc' })
++        const bufferBefore = svc.bufferBeforeMinutes ?? 0
++        const bufferAfter = svc.bufferAfterMinutes ?? 0
++
++        const effectiveStart = startDt.minus({ minutes: bufferBefore })
++        const effectiveEnd = endDt.plus({ minutes: bufferAfter })
++
++        const existingBookings = await tx.booking.findMany({
++          where: {
++            providerId,
++            canceledAt: null,
++            startUtc: { lt: effectiveEnd.toJSDate() },
++            endUtc: { gt: effectiveStart.toJSDate() },
++          },
++        })
++
++        const capacity = svc.capacity ?? 1
++        const usedSlots = new Set(
++          existingBookings
++            .filter((b) => b.serviceId === serviceId)
++            .map((b) => (b as any).capacitySlot as number ?? -1)
++        )
++
++        let availableSlot = -1
++        for (let i = 0; i < capacity; i++) {
++          if (!usedSlots.has(i)) {
++            availableSlot = i
++            break
++          }
++        }
++
++        if (availableSlot === -1) {
++          throw new Error('Capacity exceeded')
++        }
++
++        if (profile?.maxBookingsPerDay && profile.maxBookingsPerDay > 0) {
++          const dayStart = startDt.startOf('day').toJSDate()
++          const dayEnd = startDt.endOf('day').toJSDate()
++          const countThatDay = await tx.booking.count({
++            where: {
++              providerId,
++              startUtc: { gte: dayStart, lte: dayEnd },
++              canceledAt: null,
++            },
++          })
++          if (countThatDay >= profile.maxBookingsPerDay) {
++            throw new Error('Maximum bookings per day reached for this provider')
++          }
++        }
++
++        // 4. Persistence
++        const reference = uuidv4()
++        const result = await (tx.booking as any).create({
++          data: {
++            provider: { connect: { id: providerId } },
++            service: { connect: { id: serviceId } },
++            user: { connect: { id: user.id } },
++            startUtc: startDt.toJSDate(),
++            endUtc: endDt.toJSDate(),
++            customerEmail,
++            capacitySlot: availableSlot,
++            reference,
++            status: 'pending',
++            notes: '',
++            version: 1,
++          },
++        })
++
++        return result
++      },
++      { maxWait: 15000, timeout: 20000 }
++    )
++
++      // Notify subscribers AFTER successful transaction commit
++      ; (context as any).pubSub?.publish('availabilityUpdated', providerId)
++
++    return result
++  })
++}
++
++export const cancelBooking = async ({ id }: { id: number }) => {
++  const booking = await validateBookingAccess(id)
++  if (booking.canceledAt) throw new Error('Booking already canceled')
++
++  const provider = await db.providerProfile.findUnique({
++    where: { id: booking.providerId },
++  })
++  const now = DateTime.utc()
++  const startDt = DateTime.fromJSDate(booking.startUtc)
++
++  const windowHours = provider?.cancellationWindowHours ?? 24
++  const penaltiesApply = provider?.penaltiesApplyForLateCancel ?? false
++  const cancellationFee = provider?.cancellationFeeCents ?? 0
++  const isLate = now.plus({ hours: windowHours }) > startDt
++
++  let fee = isLate && penaltiesApply ? cancellationFee : 0
++
++  return withOptimisticLock(async () => {
++    const result = await (db.booking as any).update({
++      where: { id, version: booking.version },
++      data: {
++        canceledAt: new Date(),
++        status: 'cancelled',
++        capacitySlot: null,
++        penaltyFeeCents: fee,
++        version: { increment: 1 },
++        notes:
++          fee > 0
++            ? `Late cancellation penalty applied (within ${windowHours}h window): ${fee} cents`
++            : booking.notes,
++      },
++    })
++
++      ; (context as any).pubSub?.publish('availabilityUpdated', booking.providerId)
++
++    return result
++  })
++}
++
++export const rescheduleBooking = async ({
++  id,
++  newStartUtcISO,
++  newEndUtcISO,
++}: {
++  id: number
++  newStartUtcISO: string
++  newEndUtcISO: string
++}) => {
++  const original = await validateBookingAccess(id)
++  if (original.canceledAt) throw new Error('Booking already canceled')
++
++  const provider = await db.providerProfile.findUnique({
++    where: { id: original.providerId },
++  })
++  if (!provider) throw new Error('Provider not found')
++
++  const svc = await db.service.findUnique({ where: { id: original.serviceId } })
++  if (!svc) throw new Error('Service not found')
++
++  const newStart = DateTime.fromISO(newStartUtcISO, { zone: 'utc' })
++  const newEnd = DateTime.fromISO(newEndUtcISO, { zone: 'utc' })
++  const now = DateTime.utc()
++
++  const leadTime = (provider as any).bookingLeadTimeHours ?? 1
++  if (newStart <= now.plus({ hours: leadTime })) {
++    throw new Error(`Must reschedule at least ${leadTime} hour(s) in advance`)
++  }
++
++  const windowHours = provider.rescheduleWindowHours ?? 24
++  const penaltiesApply = provider.penaltiesApplyForLateCancel ?? false
++  const rescheduleFee = provider.rescheduleFeeCents ?? 0
++  const originalStart = DateTime.fromJSDate(original.startUtc)
++  const isLate = now.plus({ hours: windowHours }) > originalStart
++
++  let fee = isLate && penaltiesApply ? rescheduleFee : 0
++
++  return withOptimisticLock(async () => {
++    const result = await db.$transaction(
++      async (tx) => {
++        const bufferBefore = svc.bufferBeforeMinutes ?? 0
++        const bufferAfter = svc.bufferAfterMinutes ?? 0
++        const effectiveStart = newStart.minus({ minutes: bufferBefore })
++        const effectiveEnd = newEnd.plus({ minutes: bufferAfter })
++
++        const overlapping = await tx.booking.findMany({
++          where: {
++            id: { not: id },
++            providerId: original.providerId,
++            canceledAt: null,
++            startUtc: { lt: effectiveEnd.toJSDate() },
++            endUtc: { gt: effectiveStart.toJSDate() },
++          },
++        })
++
++        const capacity = svc.capacity ?? 1
++        const usedSlots = new Set(
++          overlapping
++            .filter((b) => b.serviceId === original.serviceId)
++            .map((b) => (b as any).capacitySlot ?? -1)
++        )
++
++        let availableSlot = -1
++        for (let i = 0; i < capacity; i++) {
++          if (!usedSlots.has(i)) {
++            availableSlot = i
++            break
++          }
++        }
++
++        if (availableSlot === -1) {
++          throw new Error('Capacity exceeded at new slot')
++        }
++
++        const result = await (tx.booking as any).update({
++          where: { id, version: original.version },
++          data: {
++            startUtc: newStart.toJSDate(),
++            endUtc: newEnd.toJSDate(),
++            status: 'confirmed',
++            capacitySlot: availableSlot,
++            penaltyFeeCents: fee,
++            version: { increment: 1 },
++            notes:
++              fee > 0
++                ? `Late rescheduling penalty applied (within ${windowHours}h window): ${fee} cents`
++                : original.notes,
++          },
++        })
++
++        return result
++      },
++      { maxWait: 15000, timeout: 20000 }
++    )
++
++      // Notify subscribers AFTER successful transaction commit
++      ; (context as any).pubSub?.publish('availabilityUpdated', original.providerId)
++
++    return result
++  })
++}
++
++export const updateBooking = async ({
++  id,
++  input,
++}: {
++  id: number
++  input: { status?: string; notes?: string }
++}) => {
++  const booking = await validateBookingAccess(id)
++
++  return withOptimisticLock(async () => {
++    return (db.booking as any).update({
++      where: { id, version: booking.version },
++      data: {
++        status: input.status,
++        notes: input.notes,
++        version: { increment: 1 },
++      },
++    })
++  })
++}
+diff --git a/repository_after/api/src/services/providers/providers.ts b/repository_after/api/src/services/providers/providers.ts
+new file mode 100644
+index 0000000..bd4b8a5
+--- /dev/null
++++ b/repository_after/api/src/services/providers/providers.ts
+@@ -0,0 +1,23 @@
++import { db } from '../../lib/db'
++import { context } from '@redwoodjs/graphql-server'
++
++export const providerProfiles = () => {
++  return db.providerProfile.findMany()
++}
++
++export const providerProfile = ({ id }: { id: number }) => {
++  return db.providerProfile.findUnique({ where: { id } })
++}
++
++export const createProviderProfile = async ({ input }: { input: any }) => {
++  if (!context.currentUser) throw new Error('Not authenticated')
++
++  // Attach userId from context
++  return db.providerProfile.create({
++    data: {
++      ...input,
++      userId: (context.currentUser as any)?.id
++    }
++  })
++}
++
+diff --git a/repository_after/api/src/services/rubik/rubik.ts b/repository_after/api/src/services/rubik/rubik.ts
+new file mode 100644
+index 0000000..3628d3b
+--- /dev/null
++++ b/repository_after/api/src/services/rubik/rubik.ts
+@@ -0,0 +1,10 @@
++import { RubikCube } from '../../lib/rubik'
++
++export const solveCube = ({ scramble }: { scramble: string }) => {
++    const cube = RubikCube.fromScramble(scramble)
++    const result = cube.solve()
++    if (!result) {
++        throw new Error('Solution not found within depth limit')
++    }
++    return result
++}
+diff --git a/repository_after/api/src/services/services/services.ts b/repository_after/api/src/services/services/services.ts
+new file mode 100644
+index 0000000..333387f
+--- /dev/null
++++ b/repository_after/api/src/services/services/services.ts
+@@ -0,0 +1,27 @@
++import { context } from '@redwoodjs/graphql-server'
++import { db } from '../../lib/db'
++
++export const services = ({ providerId }: { providerId: number }) => {
++    return db.service.findMany({ where: { providerId } })
++}
++
++export const service = ({ id }: { id: number }) => {
++    return db.service.findUnique({ where: { id } })
++}
++
++export const createService = async ({ input }: { input: any }) => {
++    if (!context.currentUser) throw new Error('Not authenticated')
++
++    const provider = await db.providerProfile.findUnique({
++        where: { userId: (context.currentUser as any)?.id },
++    })
++
++    if (!provider) throw new Error('Provider profile not found')
++
++    return db.service.create({
++        data: {
++            ...input,
++            providerId: provider.id,
++        },
++    })
++}
+diff --git a/repository_after/api/tests/integration/concurrency.test.ts b/repository_after/api/tests/integration/concurrency.test.ts
+new file mode 100644
+index 0000000..82fbac5
+--- /dev/null
++++ b/repository_after/api/tests/integration/concurrency.test.ts
+@@ -0,0 +1,199 @@
++import { db } from '../../src/lib/db'
++import { createBooking } from '../../src/services/bookings/bookings'
++import { context } from '@redwoodjs/graphql-server'
++import { DateTime } from 'luxon'
++
++// This test uses the REAL database (SQLite dev.db) to verify concurrency logic.
++// It ensures that the UNIQUE(providerId, startUtc, capacitySlot) constraint
++// prevents double-bookings even when parallel requests are fired.
++
++describe('Real DB Concurrency Integration', () => {
++    let providerId: number
++    let serviceId: number
++    let userId: number
++
++    beforeAll(async () => {
++        // Enable WAL mode and busy_timeout to reduce "database is locked" flakiness
++        try {
++            await db.$queryRawUnsafe('PRAGMA journal_mode = WAL;')
++            await db.$queryRawUnsafe('PRAGMA busy_timeout = 5000;')
++        } catch (e) {
++            console.warn('Failed to set PRAGMA:', e)
++        }
++
++        // 1. Create a fresh customer
++        const user = await db.user.create({
++            data: {
++                email: `concurrency-customer-${Date.now()}@test.com`,
++                role: 'CUSTOMER'
++            }
++        })
++        userId = user.id
++
++        // 2. Create a provider
++        const providerUser = await db.user.create({
++            data: {
++                email: `concurrency-provider-${Date.now()}@test.com`,
++                role: 'PROVIDER'
++            }
++        })
++        const profile = await db.providerProfile.create({
++            data: {
++                userId: providerUser.id,
++                name: 'Concurrency Test Provider'
++            }
++        })
++        providerId = profile.id
++
++        // 3. Create a service with CAPACITY = 1
++        const service = await db.service.create({
++            data: {
++                providerId: profile.id,
++                name: 'Single Slot Service',
++                durationMinutes: 60,
++                capacity: 1,
++            }
++        })
++        serviceId = service.id
++    })
++
++    test('Parallel createBooking calls should correctly allocate capacitySlot and prevent double-booking', async () => {
++        // Mock authenticated user as the customer we created
++        context.currentUser = {
++            id: userId,
++            email: 'customer@test.com',
++            role: 'CUSTOMER'
++        }
++
++        const startUtcISO = DateTime.utc().plus({ days: 30 }).startOf('hour').toISO()!
++        const endUtcISO = DateTime.utc().plus({ days: 30 }).startOf('hour').plus({ hours: 1 }).toISO()!
++
++        // Trigger 5 parallel attempts (reduced from 10 to fit within SQLite limits while proving concurrency)
++        const attempts = 5
++        const promises = []
++
++        for (let i = 0; i < attempts; i++) {
++            promises.push(
++                createBooking({
++                    input: {
++                        providerId,
++                        serviceId,
++                        startUtcISO,
++                        endUtcISO,
++                        customerEmail: `concurrent-user-${i}@test.com`
++                    }
++                }).catch(e => {
++                    return e
++                })
++            )
++        }
++
++        const results = await Promise.all(promises)
++
++        const successes = results.filter(r => r && typeof r === 'object' && 'id' in r)
++        const failures = results.filter(r => r instanceof Error)
++
++        // Log finding
++        console.log(`Concurrency Test Results: ${successes.length} successes, ${failures.length} failures out of ${attempts} attempts.`)
++
++        // ASSERTION 1: Exactly 1 success
++        expect(successes.length).toBe(1)
++
++        // ASSERTION 2: Remaining attempts failed
++        expect(failures.length).toBe(attempts - 1)
++
++        // ASSERTION 3: Verification in DB
++        const bookingsInDb = await db.booking.findMany({
++            where: {
++                providerId,
++                startUtc: DateTime.fromISO(startUtcISO).toJSDate(),
++                canceledAt: null
++            }
++        })
++        expect(bookingsInDb.length).toBe(1)
++        expect((bookingsInDb[0] as any).capacitySlot).toBe(0)
++
++        // Check failure messages: MUST be valid domain/schema errors.
++        // REJECT "database is locked" or timeouts as FAILURES of the test environment.
++        const failureMessages = failures.map(f => f.message)
++        const infraErrors = failureMessages.filter(m =>
++            m.toLowerCase().includes('database is locked') ||
++            m.toLowerCase().includes('timed out') ||
++            m.toLowerCase().includes('close') ||
++            m.includes('P2024') || // Connection/Transaction Timeout
++            m.includes('P2025')    // Record not found (can happen if transaction fails internally) -> No, P2025 is logic if it was deleted, but here we don't delete.
++        )
++
++        if (infraErrors.length > 0) {
++            console.error('Test Failed due to Infrastructure Errors:', infraErrors)
++        }
++
++        // Fail if we have infra errors
++        expect(infraErrors.length).toBe(0)
++
++        // Confirm logic errors: Must be either capacity or unique constraint
++        expect(failureMessages.every(m =>
++            m.includes('Capacity exceeded') ||
++            m.includes('Unique constraint failed') || // P2002
++            m.includes('P2002') ||
++            m.includes('P2033') // Number overflow
++        )).toBe(true)
++    }, 30000)
++
++    test('Parallel createBooking with DIFFERENT services should SUCCEED (Overlaps allowed)', async () => {
++        // Mock authenticated user
++        context.currentUser = {
++            id: userId,
++            email: 'customer@test.com',
++            role: 'CUSTOMER'
++        }
++
++        const startUtcISO = DateTime.utc().plus({ days: 31 }).startOf('hour').toISO()!
++        const endUtcISO = DateTime.utc().plus({ days: 31 }).startOf('hour').plus({ hours: 1 }).toISO()!
++
++        // Create a SECOND service
++        const service2 = await db.service.create({
++            data: {
++                providerId: providerId,
++                name: 'Second Service',
++                durationMinutes: 60,
++                capacity: 1,
++            }
++        })
++
++        // Book Service 1
++        await createBooking({
++            input: {
++                providerId,
++                serviceId,
++                startUtcISO,
++                endUtcISO,
++                customerEmail: 'user1@test.com'
++            }
++        })
++
++        // Book Service 2 at SAME time (should SUCCEED)
++        const b2 = await createBooking({
++            input: {
++                providerId,
++                serviceId: service2.id,
++                startUtcISO,
++                endUtcISO,
++                customerEmail: 'user2@test.com'
++            }
++        })
++        expect(b2.id).toBeDefined()
++    })
++
++    afterAll(async () => {
++        // Cleanup
++        try {
++            await db.booking.deleteMany({ where: { providerId } })
++            await db.service.deleteMany({ where: { providerId } })
++            await db.providerProfile.delete({ where: { id: providerId } })
++            await db.user.delete({ where: { id: userId } })
++        } catch (e) {
++            console.warn('Cleanup failed:', (e as any).message)
++        }
++    })
++})
+diff --git a/repository_after/api/tests/integration/rbac_integration.test.ts b/repository_after/api/tests/integration/rbac_integration.test.ts
+new file mode 100644
+index 0000000..b6963fe
+--- /dev/null
++++ b/repository_after/api/tests/integration/rbac_integration.test.ts
+@@ -0,0 +1,91 @@
++import { db } from '../../src/lib/db'
++import { bookings, booking as getBooking } from '../../src/services/bookings/bookings'
++import { context } from '@redwoodjs/graphql-server'
++
++// This test verifies that RBAC logic is correctly integrated with real DB records.
++// It ensures that customers can only access their own bookings and providers only their own.
++
++describe('Real DB RBAC Integration', () => {
++    let providerId: number
++    let providerUserId: number
++    let customer1Id: number
++    let customer2Id: number
++    let bookingId: number
++
++    beforeAll(async () => {
++        // Setup Users
++        const pUser = await db.user.create({ data: { email: `p-rbac-${Date.now()}@test.com`, role: 'PROVIDER' } })
++        const c1User = await db.user.create({ data: { email: `c1-rbac-${Date.now()}@test.com`, role: 'CUSTOMER' } })
++        const c2User = await db.user.create({ data: { email: `c2-rbac-${Date.now()}@test.com`, role: 'CUSTOMER' } })
++
++        providerUserId = pUser.id
++        customer1Id = c1User.id
++        customer2Id = c2User.id
++
++        const profile = await db.providerProfile.create({ data: { userId: pUser.id, name: 'RBAC Provider' } })
++        providerId = profile.id
++
++        const service = await db.service.create({ data: { providerId: profile.id, name: 'RBAC Service', durationMinutes: 30 } })
++
++        // Create a booking for Customer 1
++        const booking = await (db.booking as any).create({
++            data: {
++                providerId,
++                serviceId: service.id,
++                startUtc: new Date('2026-10-01T10:00:00Z'),
++                endUtc: new Date('2026-10-01T10:30:00Z'),
++                customerEmail: 'c1@test.com',
++                userId: customer1Id,
++                reference: `REF-RBAC-${Date.now()}`,
++                status: 'confirmed'
++            }
++        })
++        bookingId = booking.id
++    })
++
++    test('Customer 1 should find their own booking via list', async () => {
++        context.currentUser = { id: customer1Id, email: 'c1@test.com', role: 'CUSTOMER' }
++        const result = await bookings({})
++        expect(result.some(b => b.id === bookingId)).toBe(true)
++    })
++
++    test('Customer 2 should NOT see Customer 1 booking in list', async () => {
++        context.currentUser = { id: customer2Id, email: 'c2@test.com', role: 'CUSTOMER' }
++        const result = await bookings({})
++        expect(result.some(b => b.id === bookingId)).toBe(false)
++    })
++
++    test('Customer 1 should be able to fetch their specific booking', async () => {
++        context.currentUser = { id: customer1Id, email: 'c1@test.com', role: 'CUSTOMER' }
++        const b = await getBooking({ id: bookingId })
++        expect(b.id).toBe(bookingId)
++    })
++
++    test('Customer 2 should be blocked from unauthorized booking access', async () => {
++        context.currentUser = { id: customer2Id, email: 'c2@test.com', role: 'CUSTOMER' }
++        await expect(getBooking({ id: bookingId })).rejects.toThrow('permission')
++    })
++
++    test('Provider should see the booking assigned to them', async () => {
++        context.currentUser = { id: providerUserId, email: 'p@test.com', role: 'PROVIDER' }
++        const result = await bookings({ providerId })
++        expect(result.some(b => b.id === bookingId)).toBe(true)
++    })
++
++    test('Admin should see everything', async () => {
++        context.currentUser = { id: 999, email: 'admin@test.com', role: 'ADMIN', roles: ['ADMIN'] }
++        const result = await bookings({})
++        expect(result.some(b => b.id === bookingId)).toBe(true)
++    })
++
++    afterAll(async () => {
++        // Cleanup
++        try {
++            await db.booking.deleteMany({ where: { providerId } })
++            await db.service.deleteMany({ where: { providerId } })
++            await db.providerProfile.delete({ where: { id: providerId } })
++        } catch (e) {
++            console.warn('RBAC Cleanup failed:', (e as any).message)
++        }
++    })
++})
+diff --git a/repository_after/api/tests/unit/bookings.unit.test.ts b/repository_after/api/tests/unit/bookings.unit.test.ts
+new file mode 100644
+index 0000000..927486e
+--- /dev/null
++++ b/repository_after/api/tests/unit/bookings.unit.test.ts
+@@ -0,0 +1,106 @@
++import { createBooking } from '../../src/services/bookings/bookings'
++import { db } from '../../src/lib/db'
++import { context } from '@redwoodjs/graphql-server'
++
++// Mock the dependencies
++jest.mock('../../src/lib/db', () => ({
++    db: {
++        $transaction: jest.fn(),
++        booking: {
++            count: jest.fn(),
++        },
++        service: {
++            findUnique: jest.fn(),
++        },
++        providerProfile: {
++            findUnique: jest.fn(),
++        },
++    },
++}))
++
++describe('createBooking Logic Unit Tests', () => {
++    const mockTx = {
++        service: { findUnique: jest.fn() },
++        providerProfile: { findUnique: jest.fn() },
++        booking: {
++            findMany: jest.fn(),
++            create: jest.fn(),
++            count: jest.fn(),
++        },
++    }
++
++    beforeEach(() => {
++        jest.clearAllMocks()
++        context.currentUser = { id: 1, email: 'user@test.com', role: 'CUSTOMER' }
++
++            // Default transaction mock implementation
++            ; (db.$transaction as jest.Mock).mockImplementation(async (callback) => {
++                return callback(mockTx)
++            })
++    })
++
++    test('Should correctly pick the first available slot', async () => {
++        // Setup Service with capacity 3
++        ; (db.service.findUnique as jest.Mock).mockResolvedValue({
++            id: 1,
++            capacity: 3,
++            durationMinutes: 60,
++            bufferBeforeMinutes: 0,
++            bufferAfterMinutes: 0,
++        })
++            ; (db.providerProfile.findUnique as jest.Mock).mockResolvedValue({ id: 1, timezone: 'UTC', bookingLeadTimeHours: 1 })
++
++        // Setup existing bookings: Slot 0 taken, Slot 2 taken. Slot 1 is free.
++        mockTx.booking.findMany.mockResolvedValue([
++            { serviceId: 1, capacitySlot: 0 },
++            { serviceId: 1, capacitySlot: 2 },
++        ])
++
++        mockTx.booking.create.mockResolvedValue({ id: 999 })
++
++        await createBooking({
++            input: {
++                providerId: 1,
++                serviceId: 1,
++                startUtcISO: '2030-12-01T10:00:00Z',
++                endUtcISO: '2030-12-01T11:00:00Z',
++                customerEmail: 'test@test.com',
++            },
++        })
++
++        // Verify correct slot (1) was chosen
++        expect(mockTx.booking.create).toHaveBeenCalledWith(
++            expect.objectContaining({
++                data: expect.objectContaining({
++                    capacitySlot: 1,
++                }),
++            })
++        )
++    })
++
++    test('Should throw Capacity exceeded if all slots taken', async () => {
++        ; (db.service.findUnique as jest.Mock).mockResolvedValue({
++            id: 1,
++            capacity: 2, // Only 2 slots
++            bufferBeforeMinutes: 0,
++            bufferAfterMinutes: 0,
++        })
++            ; (db.providerProfile.findUnique as jest.Mock).mockResolvedValue({ id: 1, timezone: 'UTC', bookingLeadTimeHours: 1 })
++
++        // Slots 0 and 1 taken
++        mockTx.booking.findMany.mockResolvedValue([
++            { serviceId: 1, capacitySlot: 0 },
++            { serviceId: 1, capacitySlot: 1 },
++        ])
++
++        await expect(createBooking({
++            input: {
++                providerId: 1,
++                serviceId: 1,
++                startUtcISO: '2030-12-01T10:00:00Z',
++                endUtcISO: '2030-12-01T11:00:00Z',
++                customerEmail: 'test@test.com',
++            },
++        })).rejects.toThrow('Capacity exceeded')
++    })
++})
+diff --git a/repository_after/api/tests/unit/rubik.test.ts b/repository_after/api/tests/unit/rubik.test.ts
+new file mode 100644
+index 0000000..dd44086
+--- /dev/null
++++ b/repository_after/api/tests/unit/rubik.test.ts
+@@ -0,0 +1,56 @@
++import { RubikCube } from '../../src/lib/rubik'
++
++describe('RubikCube', () => {
++    it('identifies a solved cube', () => {
++        const cube = new RubikCube()
++        expect(cube.isSolved()).toBe(true)
++    })
++
++    it('performs moves correctly', () => {
++        const cube = new RubikCube()
++        cube.move('U')
++        expect(cube.isSolved()).toBe(false)
++        cube.move("U'")
++        expect(cube.isSolved()).toBe(true)
++    })
++
++    it('solves a 1-move scramble', () => {
++        const cube = RubikCube.fromScramble('R')
++        const solution = cube.solve()
++        expect(solution).toEqual(["R'"])
++    })
++
++    it('solves a 2-move scramble', () => {
++        const scramble = 'U R'
++        const cube = RubikCube.fromScramble(scramble)
++        const solution = cube.solve()
++        expect(solution?.length).toBe(2)
++
++        // Verification requires a fresh cube with the same scramble
++        const verifyCube = RubikCube.fromScramble(scramble)
++        for (const m of solution!) {
++            verifyCube.move(m)
++        }
++        expect(verifyCube.isSolved()).toBe(true)
++    })
++
++    it('solves a 3-move scramble', () => {
++        const scramble = 'U R F'
++        const cube = RubikCube.fromScramble(scramble)
++        const solution = cube.solve()
++        expect(solution?.length).toBeLessThanOrEqual(3)
++
++        const verifyCube = RubikCube.fromScramble(scramble)
++        for (const m of solution!) {
++            verifyCube.move(m)
++        }
++        expect(verifyCube.isSolved()).toBe(true)
++    })
++
++    it('calculates a valid heuristic', () => {
++        const cube = new RubikCube()
++        expect(cube.getHeuristic()).toBe(0)
++        cube.move('U')
++        expect(cube.getHeuristic()).toBeGreaterThan(0)
++    })
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +})
 diff --git a/repository_after/api/tsconfig.json b/repository_after/api/tsconfig.json
 new file mode 100644
@@ -7061,6 +9526,50 @@ index 0000000..7dbf632
 +    #     # ...
 +    # }
 +}
+<<<<<<< HEAD
+=======
+diff --git a/repository_after/package.json b/repository_after/package.json
+new file mode 100644
+index 0000000..112fcb8
+--- /dev/null
++++ b/repository_after/package.json
+@@ -0,0 +1,20 @@
++{
++    "name": "udhmpt-appointment-booking-system",
++    "private": true,
++    "engines": {
++        "node": ">=18.0.0",
++        "npm": ">=8.0.0"
++    },
++    "workspaces": [
++        "api",
++        "web"
++    ],
++    "scripts": {
++        "build": "rw build",
++        "dev": "rw dev",
++        "test": "rw test"
++    },
++    "devDependencies": {
++        "@redwoodjs/core": "6.0.7"
++    }
++}
+\ No newline at end of file
+diff --git a/repository_after/redwood.toml b/repository_after/redwood.toml
+new file mode 100644
+index 0000000..d6fcd73
+--- /dev/null
++++ b/repository_after/redwood.toml
+@@ -0,0 +1,8 @@
++[web]
++  port = 8910
++  apiUrl = "http://localhost:8911"
++  includeEnvironmentVariables = ["NODE_ENV"]
++[api]
++  port = 8911
++[browser]
++  open = true
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 diff --git a/repository_after/web/index.html b/repository_after/web/index.html
 new file mode 100644
 index 0000000..4368782
@@ -7080,6 +9589,7 @@ index 0000000..4368782
 +    <script type="module" src="./src/index.tsx"></script>
 +</body>
 +</html>
+<<<<<<< HEAD
 diff --git a/repository_after/web/package-lock.json b/repository_after/web/package-lock.json
 new file mode 100644
 index 0000000..8b838d7
@@ -8446,11 +10956,34 @@ index 0000000..dad21db
 +    "@types/react-dom": "^18.2.0",
 +    "@vitejs/plugin-react": "^4.0.0",
 +    "typescript": "^5.0.0",
+=======
+diff --git a/repository_after/web/package.json b/repository_after/web/package.json
+new file mode 100644
+index 0000000..690825f
+--- /dev/null
++++ b/repository_after/web/package.json
+@@ -0,0 +1,17 @@
++{
++  "name": "web",
++  "version": "1.0.0",
++  "private": true,
++  "dependencies": {
++    "@redwoodjs/forms": "6.0.7",
++    "@redwoodjs/router": "6.0.7",
++    "@redwoodjs/web": "6.0.7",
++    "graphql-tag": "^2.12.6",
++    "luxon": "^3.4.0",
++    "react": "^18.2.0",
++    "react-dom": "^18.2.0"
++  },
++  "devDependencies": {
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +    "vite": "^4.4.0"
 +  }
 +}
 diff --git a/repository_after/web/src/App.tsx b/repository_after/web/src/App.tsx
 new file mode 100644
+<<<<<<< HEAD
 index 0000000..1b631f1
 --- /dev/null
 +++ b/repository_after/web/src/App.tsx
@@ -8563,6 +11096,49 @@ index 0000000..1b631f1
 +}
 +
 +export default App
+=======
+index 0000000..3fc350c
+--- /dev/null
++++ b/repository_after/web/src/App.tsx
+@@ -0,0 +1,16 @@
++import { RedwoodProvider } from '@redwoodjs/web'
++import { RedwoodApolloProvider } from '@redwoodjs/web/apollo'
++
++import Routes from 'src/Routes'
++
++import './index.css'
++
++const App = () => (
++  <RedwoodProvider>
++    <RedwoodApolloProvider>
++      <Routes />
++    </RedwoodApolloProvider>
++  </RedwoodProvider>
++)
++
++export default App
+diff --git a/repository_after/web/src/Routes.tsx b/repository_after/web/src/Routes.tsx
+new file mode 100644
+index 0000000..ad6f483
+--- /dev/null
++++ b/repository_after/web/src/Routes.tsx
+@@ -0,0 +1,15 @@
++import { Router, Route } from '@redwoodjs/router'
++
++const Routes = () => {
++    return (
++        <Router>
++            <Route path="/login" page={LoginPage} name="login" />
++            <Route path="/bookings" page={BookingsPage} name="bookings" />
++            <Route path="/calendar" page={ProviderCalendarPage} name="calendar" />
++            <Route path="/" page={BookingsPage} name="home" />
++            <Route notfound page={NotFoundPage} />
++        </Router>
++    )
++}
++
++export default Routes
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 diff --git a/repository_after/web/src/auth/AuthContext.tsx b/repository_after/web/src/auth/AuthContext.tsx
 new file mode 100644
 index 0000000..2ce7529
@@ -8763,6 +11339,7 @@ index 0000000..b302380
 +export default LoginPage
 diff --git a/repository_after/web/src/components/Availability/AvailabilityCell.tsx b/repository_after/web/src/components/Availability/AvailabilityCell.tsx
 new file mode 100644
+<<<<<<< HEAD
 index 0000000..cbf7ee8
 --- /dev/null
 +++ b/repository_after/web/src/components/Availability/AvailabilityCell.tsx
@@ -9005,6 +11582,64 @@ index 0000000..fba8de3
 +import { ErrorMessage } from '../UI/ErrorMessage';
 +import { ErrorBoundary } from '../UI/ErrorBoundary';
 +import { LinearProgress } from '../UI/ProgressIndicator';
+=======
+index 0000000..3faa561
+--- /dev/null
++++ b/repository_after/web/src/components/Availability/AvailabilityCell.tsx
+@@ -0,0 +1,40 @@
++import type { SearchAvailabilityQuery } from 'types/graphql'
++import type { CellSuccessProps, CellFailureProps } from '@redwoodjs/web'
++
++export const QUERY = gql`
++  query SearchAvailabilityQuery($input: SearchAvailabilityInput!) {
++    searchAvailability(input: $input) {
++      startUtcISO
++      endUtcISO
++      startLocalISO
++      endLocalISO
++    }
++  }
++`
++
++export const Loading = () => <div>Loading available slots...</div>
++
++export const Empty = () => <div>No availability found for the selected range.</div>
++
++export const Failure = ({ error }: CellFailureProps) => (
++  <div style={{ color: 'red' }}>Error: {error?.message}</div>
++)
++
++export const Success = ({
++  searchAvailability,
++  onSelectSlot,
++}: CellSuccessProps<SearchAvailabilityQuery> & { onSelectSlot: (slot: any) => void }) => {
++  return (
++    <div className="grid grid-cols-2 gap-2">
++      {searchAvailability.map((slot) => (
++        <button
++          key={slot.startUtcISO}
++          onClick={() => onSelectSlot(slot)}
++          className="p-2 border rounded hover:bg-blue-100 text-sm"
++        >
++          {new Date(slot.startLocalISO).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
++        </button>
++      ))}
++    </div>
++  )
++}
+diff --git a/repository_after/web/src/components/Availability/RealTimeSlotListing.tsx b/repository_after/web/src/components/Availability/RealTimeSlotListing.tsx
+new file mode 100644
+index 0000000..b4bb9a9
+--- /dev/null
++++ b/repository_after/web/src/components/Availability/RealTimeSlotListing.tsx
+@@ -0,0 +1,251 @@
++import React, { useState, useEffect } from 'react';
++import { DateTime } from 'luxon';
++import { useQuery, useSubscription } from '@redwoodjs/web';
++import gql from 'graphql-tag';
++import { LoadingState } from '../UI/LoadingState';
++import { ErrorBoundary } from '../UI/ErrorBoundary';
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +
 +type Slot = {
 +  id: string;
@@ -9033,11 +11668,41 @@ index 0000000..fba8de3
 +  endISO: string;
 +  customerTz: string;
 +  onSlotSelect?: (slot: Slot) => void;
+<<<<<<< HEAD
 +  autoRefresh?: boolean; // Enable real-time updates
 +  refreshInterval?: number; // Seconds
 +  initialSlots?: Slot[]; // Optional initial data from Cell query (avoids double loading)
 +};
 +
+=======
++  autoRefresh?: boolean;
++  refreshInterval?: number;
++  initialSlots?: Slot[];
++};
++
++const SEARCH_AVAILABILITY = gql`
++  query SearchAvailabilityQuery($input: SearchAvailabilityInput!) {
++    searchAvailability(input: $input) {
++      startUtcISO
++      endUtcISO
++      startLocalISO
++      endLocalISO
++    }
++  }
++`;
++
++const AVAILABILITY_SUBSCRIPTION = gql`
++  subscription AvailabilitySubscription($providerId: Int!) {
++    availabilityUpdated(providerId: $providerId) {
++      startUtcISO
++      endUtcISO
++      startLocalISO
++      endLocalISO
++    }
++  }
++`;
++
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +export const RealTimeSlotListing: React.FC<Props> = ({
 +  providerId,
 +  service,
@@ -9046,6 +11711,7 @@ index 0000000..fba8de3
 +  customerTz,
 +  onSlotSelect,
 +  autoRefresh = true,
+<<<<<<< HEAD
 +  refreshInterval = 30,
 +  initialSlots,
 +}) => {
@@ -9107,14 +11773,64 @@ index 0000000..fba8de3
 +  const handleSlotClick = (slot: Slot) => {
 +    if (!slot.available) return;
 +    
+=======
++  refreshInterval = 2,
++  initialSlots,
++}) => {
++  const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
++  const [lastUpdated, setLastUpdated] = useState<DateTime | null>(null);
++  const [slots, setSlots] = useState<Slot[]>([]);
++
++  const { loading, error } = useQuery(SEARCH_AVAILABILITY, {
++    variables: {
++      input: {
++        providerId,
++        serviceId: service?.id,
++        startISO,
++        endISO,
++        customerTz,
++      },
++    },
++    onCompleted: (data) => {
++      setLastUpdated(DateTime.utc());
++      setSlots((data?.searchAvailability || []).map((s: any) => ({
++        id: `slot-${s.startUtcISO}`,
++        ...s,
++        available: true,
++      })));
++    },
++  });
++
++  useSubscription(AVAILABILITY_SUBSCRIPTION, {
++    variables: { providerId },
++    onData: ({ data }) => {
++      if (data?.data?.availabilityUpdated) {
++        setLastUpdated(DateTime.utc());
++        setSlots(data.data.availabilityUpdated.map((s: any) => ({
++          id: `slot-${s.startUtcISO}`,
++          ...s,
++          available: true,
++        })));
++      }
++    },
++    skip: !autoRefresh,
++  });
++
++  const handleSlotClick = (slot: Slot) => {
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +    setSelectedSlotId(slot.id);
 +    if (onSlotSelect) {
 +      onSlotSelect(slot);
 +    }
 +  };
 +
+<<<<<<< HEAD
 +  const availableSlots = slots.filter(slot => slot.available);
 +  const bookedSlots = slots.filter(slot => !slot.available);
+=======
++  const availableSlots = slots; // All returned slots are available
++  // backend filters out busy slots, so we don't know about booked ones.
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +
 +  return (
 +    <ErrorBoundary>
@@ -9138,6 +11854,7 @@ index 0000000..fba8de3
 +                  Updated: {lastUpdated.toLocal().toLocaleString(DateTime.TIME_SIMPLE)}
 +                </span>
 +              )}
+<<<<<<< HEAD
 +              <button
 +                onClick={fetchSlots}
 +                disabled={isLoading}
@@ -9152,6 +11869,15 @@ index 0000000..fba8de3
 +        <div className="card-body">
 +          <LoadingState isLoading={isLoading} error={error} variant="full">
 +            {slots.length === 0 && !isLoading && (
+=======
++            </div>
++          </div>
++        </div>
++
++        <div className="card-body">
++          <LoadingState isLoading={loading && slots.length === 0} error={error} variant="full">
++            {slots.length === 0 && !loading && (
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +              <div className="text-center py-8 text-gray-500">
 +                <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 +                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -9163,6 +11889,7 @@ index 0000000..fba8de3
 +
 +            {slots.length > 0 && (
 +              <div>
+<<<<<<< HEAD
 +                {/* Summary stats */}
 +                <div className="mb-6 p-4 bg-gray-50 rounded-lg">
 +                  <div className="grid grid-cols-3 gap-4 text-center">
@@ -9177,11 +11904,25 @@ index 0000000..fba8de3
 +                    <div>
 +                      <div className="text-2xl font-bold text-blue-600">{slots.length}</div>
 +                      <div className="text-sm text-gray-600">Total Slots</div>
+=======
++                <div className="mb-6 p-4 bg-gray-50 rounded-lg">
++                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-center">
++                    <div>
++                      <div className="text-2xl font-bold text-green-600">{availableSlots.length}</div>
++                      <div className="text-sm text-gray-600">Available Slots</div>
++                    </div>
++                    <div>
++                      <div className="text-2xl font-bold text-blue-600">{slots.length}</div>
++                      <div className="text-sm text-gray-600">Total Showing</div>
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +                    </div>
 +                  </div>
 +                </div>
 +
+<<<<<<< HEAD
 +                {/* Buffer time info */}
+=======
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +                {service && (service.bufferBeforeMinutes > 0 || service.bufferAfterMinutes > 0) && (
 +                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
 +                    <div className="flex items-center">
@@ -9197,18 +11938,27 @@ index 0000000..fba8de3
 +                  </div>
 +                )}
 +
+<<<<<<< HEAD
 +                {/* Slots list */}
+=======
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +                <div className="space-y-2">
 +                  {slots.map(slot => (
 +                    <div
 +                      key={slot.id}
 +                      className={`
 +                        p-4 border rounded-lg transition-all duration-200 cursor-pointer
+<<<<<<< HEAD
 +                        ${slot.available 
 +                          ? selectedSlotId === slot.id
 +                            ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
 +                            : 'border-green-200 bg-green-50 hover:bg-green-100 hover:border-green-300'
 +                          : 'border-gray-200 bg-gray-50 cursor-not-allowed opacity-60'
+=======
++                        ${selectedSlotId === slot.id
++                          ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
++                          : 'border-green-200 bg-green-50 hover:bg-green-100 hover:border-green-300'
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +                        }
 +                      `}
 +                      onClick={() => handleSlotClick(slot)}
@@ -9227,6 +11977,7 @@ index 0000000..fba8de3
 +                            </div>
 +                          </div>
 +                        </div>
+<<<<<<< HEAD
 +                        
 +                        <div className="flex items-center space-x-3">
 +                          {/* Capacity indicator */}
@@ -9261,6 +12012,19 @@ index 0000000..fba8de3
 +                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
 +                                </svg>
 +                              )}
+=======
++
++                        <div className="flex items-center space-x-3">
++                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
++                            Available
++                          </span>
++
++                          {selectedSlotId === slot.id && (
++                            <div className="w-4 h-4 rounded-full bg-blue-600 border-2 border-blue-600 flex items-center justify-center">
++                              <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
++                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
++                              </svg>
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +                            </div>
 +                          )}
 +                        </div>
@@ -9273,6 +12037,7 @@ index 0000000..fba8de3
 +          </LoadingState>
 +        </div>
 +
+<<<<<<< HEAD
 +        {/* Auto-refresh progress indicator */}
 +        {autoRefresh && lastUpdated && (
 +          <div className="px-6 pb-4">
@@ -9282,6 +12047,12 @@ index 0000000..fba8de3
 +              showLabel={false}
 +              color="primary"
 +            />
+=======
++        {autoRefresh && (
++          <div className="px-6 pb-4">
++            {/* Simple progress bar simulation could be added here if needed, but not essential for core logic */}
++            <div className="text-xs text-gray-400 text-center">Auto-refreshing every {refreshInterval}s</div>
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +          </div>
 +        )}
 +      </div>
@@ -9289,6 +12060,7 @@ index 0000000..fba8de3
 +  );
 +};
 +
+<<<<<<< HEAD
 +// Helper function to generate realistic mock slots
 +function generateMockSlots(providerId: number, service: Service | undefined, startISO: string, endISO: string, customerTz: string): Slot[] {
 +  const slots: Slot[] = [];
@@ -9320,6 +12092,8 @@ index 0000000..fba8de3
 +  return slots;
 +}
 +
+=======
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +export default RealTimeSlotListing;
 diff --git a/repository_after/web/src/components/Booking/BookingActions.tsx b/repository_after/web/src/components/Booking/BookingActions.tsx
 new file mode 100644
@@ -9869,9 +12643,95 @@ index 0000000..164ffa4
 +};
 +
 +export default BookingConfirmation;
+<<<<<<< HEAD
 diff --git a/repository_after/web/src/components/ProviderCalendar/BookingPanel.tsx b/repository_after/web/src/components/ProviderCalendar/BookingPanel.tsx
 new file mode 100644
 index 0000000..32632c6
+=======
+diff --git a/repository_after/web/src/components/BookingsCell/BookingsCell.tsx b/repository_after/web/src/components/BookingsCell/BookingsCell.tsx
+new file mode 100644
+index 0000000..8ed56e2
+--- /dev/null
++++ b/repository_after/web/src/components/BookingsCell/BookingsCell.tsx
+@@ -0,0 +1,74 @@
++import type { BookingsQuery } from 'types/graphql'
++import type { CellSuccessProps, CellFailureProps } from '@redwoodjs/web'
++import { DateTime } from 'luxon'
++
++export const QUERY = gql`
++  query BookingsQuery($providerId: Int, $startISO: String, $endISO: String) {
++    bookings(providerId: $providerId, startISO: $startISO, endISO: $endISO) {
++      id
++      startUtc
++      endUtc
++      customerEmail
++      reference
++      status
++      notes
++    }
++  }
++`
++
++interface Props extends CellSuccessProps<BookingsQuery> {
++    onSelect?: (booking: BookingsQuery['bookings'][0]) => void
++    renderSuccess?: (bookings: BookingsQuery['bookings']) => React.ReactNode
++}
++
++export const Loading = () => <div className="p-4 animate-pulse text-gray-400">Loading appointments...</div>
++
++export const Empty = () => <div className="p-4 text-center text-gray-500">No appointments found.</div>
++
++export const Failure = ({ error }: CellFailureProps) => (
++    <div className="p-4 bg-red-50 text-red-700 rounded-md">Error: {error?.message}</div>
++)
++
++export const Success = ({ bookings, onSelect, renderSuccess }: Props) => {
++    if (renderSuccess) {
++        return <>{renderSuccess(bookings)}</>
++    }
++
++    return (
++        <div className="space-y-3">
++            {bookings.map((booking) => (
++                <button
++                    key={booking.id}
++                    onClick={() => onSelect?.(booking)}
++                    data-testid={`open-${booking.id}`}
++                    className="w-full text-left p-4 border rounded-lg shadow-sm bg-white hover:border-blue-400 transition-colors group"
++                >
++                    <div className="flex justify-between items-start">
++                        <div>
++                            <div className="font-semibold text-gray-900 group-hover:text-blue-600">
++                                {booking.customerEmail}
++                            </div>
++                            <div className="text-xs text-gray-400 mt-1">Ref: {booking.reference}</div>
++                            {booking.status !== 'pending' && (
++                                <span className={`inline-block mt-2 px-2 py-0.5 text-[10px] font-bold uppercase rounded ${booking.status === 'confirmed' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
++                                    }`}>
++                                    {booking.status}
++                                </span>
++                            )}
++                        </div>
++                        <div className="text-right">
++                            <div className="text-sm font-bold text-gray-800">
++                                {DateTime.fromISO(booking.startUtc).toFormat('h:mm a')}
++                            </div>
++                            <div className="text-xs text-gray-500">
++                                {DateTime.fromISO(booking.startUtc).toFormat('LLL d')}
++                            </div>
++                        </div>
++                    </div>
++                </button>
++            ))}
++        </div>
++    )
++}
++
++export default Success
+diff --git a/repository_after/web/src/components/ProviderCalendar/BookingPanel.tsx b/repository_after/web/src/components/ProviderCalendar/BookingPanel.tsx
+new file mode 100644
+index 0000000..08f7064
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 --- /dev/null
 +++ b/repository_after/web/src/components/ProviderCalendar/BookingPanel.tsx
 @@ -0,0 +1,360 @@
@@ -9918,10 +12778,17 @@ index 0000000..32632c6
 +  variant?: 'modal' | 'sidebar' | 'inline';
 +};
 +
+<<<<<<< HEAD
 +export const BookingPanel: React.FC<Props> = ({ 
 +  booking, 
 +  onSave, 
 +  onClose, 
+=======
++export const BookingPanel: React.FC<Props> = ({
++  booking,
++  onSave,
++  onClose,
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +  customerTz = 'UTC',
 +  showActions = true,
 +  variant = 'modal'
@@ -9944,7 +12811,11 @@ index 0000000..32632c6
 +  const handleSave = async () => {
 +    setSaving(true);
 +    setError(null);
+<<<<<<< HEAD
 +    
+=======
++
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +    try {
 +      await onSave({ ...booking, status, notes });
 +      if (onClose) onClose();
@@ -9957,15 +12828,26 @@ index 0000000..32632c6
 +
 +  const getStatusBadge = () => {
 +    const statusConfig = {
+<<<<<<< HEAD
 +      confirmed: { color: 'green', label: 'Confirmed' },
 +      pending: { color: 'yellow', label: 'Pending' },
 +      cancelled: { color: 'red', label: 'Cancelled' },
 +      completed: { color: 'blue', label: 'Completed' }
+=======
++      confirmed: { bgColor: 'bg-green-100', textColor: 'text-green-800', label: 'Confirmed' },
++      pending: { bgColor: 'bg-yellow-100', textColor: 'text-yellow-800', label: 'Pending' },
++      cancelled: { bgColor: 'bg-red-100', textColor: 'text-red-800', label: 'Cancelled' },
++      completed: { bgColor: 'bg-blue-100', textColor: 'text-blue-800', label: 'Completed' }
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +    };
 +
 +    const config = statusConfig[booking.status];
 +    return (
+<<<<<<< HEAD
 +      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-${config.color}-100 text-${config.color}-800`}>
+=======
++      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${config.bgColor} ${config.textColor}`}>
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +        {config.label}
 +      </span>
 +    );
@@ -9973,16 +12855,28 @@ index 0000000..32632c6
 +
 +  const getPaymentBadge = () => {
 +    if (!booking.paymentStatus) return null;
+<<<<<<< HEAD
 +    
 +    const paymentConfig = {
 +      paid: { color: 'green', label: 'Paid' },
 +      pending: { color: 'yellow', label: 'Payment Pending' },
 +      refunded: { color: 'gray', label: 'Refunded' }
+=======
++
++    const paymentConfig = {
++      paid: { bgColor: 'bg-green-100', textColor: 'text-green-800', label: 'Paid' },
++      pending: { bgColor: 'bg-yellow-100', textColor: 'text-yellow-800', label: 'Payment Pending' },
++      refunded: { bgColor: 'bg-gray-100', textColor: 'text-gray-800', label: 'Refunded' }
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +    };
 +
 +    const config = paymentConfig[booking.paymentStatus];
 +    return (
+<<<<<<< HEAD
 +      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-${config.color}-100 text-${config.color}-800`}>
+=======
++      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${config.bgColor} ${config.textColor}`}>
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +        {config.label}
 +      </span>
 +    );
@@ -10021,7 +12915,11 @@ index 0000000..32632c6
 +            <div className="fixed inset-0 transition-opacity" onClick={onClose}>
 +              <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
 +            </div>
+<<<<<<< HEAD
 +            
+=======
++
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full">
 +              <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
 +                <BookingContent />
@@ -10029,7 +12927,11 @@ index 0000000..32632c6
 +            </div>
 +          </div>
 +        )}
+<<<<<<< HEAD
 +        
+=======
++
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +        {variant === 'sidebar' && (
 +          <div className="h-full overflow-y-auto">
 +            <div className="p-6">
@@ -10048,7 +12950,11 @@ index 0000000..32632c6
 +            </div>
 +          </div>
 +        )}
+<<<<<<< HEAD
 +        
+=======
++
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +        {variant === 'inline' && (
 +          <BookingContent />
 +        )}
@@ -10157,7 +13063,11 @@ index 0000000..32632c6
 +                  </div>
 +                </div>
 +              </div>
+<<<<<<< HEAD
 +              
+=======
++
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +              {booking.rescheduleCount && booking.rescheduleCount > 0 && (
 +                <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
 +                  <div className="text-sm text-blue-800">
@@ -10191,7 +13101,11 @@ index 0000000..32632c6
 +                      <option value="completed">Completed</option>
 +                    </select>
 +                  </div>
+<<<<<<< HEAD
 +                  
+=======
++
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +                  <div>
 +                    <label className="block text-sm font-medium text-gray-700">Notes</label>
 +                    <textarea
@@ -10237,6 +13151,7 @@ index 0000000..32632c6
 +export default BookingPanel;
 diff --git a/repository_after/web/src/components/ProviderCalendar/ProviderCalendar.tsx b/repository_after/web/src/components/ProviderCalendar/ProviderCalendar.tsx
 new file mode 100644
+<<<<<<< HEAD
 index 0000000..3204ab1
 --- /dev/null
 +++ b/repository_after/web/src/components/ProviderCalendar/ProviderCalendar.tsx
@@ -10360,6 +13275,269 @@ index 0000000..3204ab1
 diff --git a/repository_after/web/src/components/UI/ErrorBoundary.tsx b/repository_after/web/src/components/UI/ErrorBoundary.tsx
 new file mode 100644
 index 0000000..d92ace9
+=======
+index 0000000..9850df0
+--- /dev/null
++++ b/repository_after/web/src/components/ProviderCalendar/ProviderCalendar.tsx
+@@ -0,0 +1,201 @@
++import React, { useMemo } from 'react'
++import { DateTime } from 'luxon'
++import { useMutation } from '@redwoodjs/web'
++import gql from 'graphql-tag'
++import { useAuth } from '../../auth/AuthContext'
++import BookingsCell from '../BookingsCell/BookingsCell'
++
++const CREATE_MANUAL_BLOCK = gql`
++  mutation CreateManualBlockMutation($input: ManualBlockInput!) {
++    createManualBlock(input: $input) {
++      id
++    }
++  }
++`
++
++type View = 'day' | 'week' | 'month'
++
++interface ProviderCalendarProps {
++  view: View
++  currentDateISO: string
++  providerId?: number
++}
++
++const ProviderCalendar: React.FC<ProviderCalendarProps> = ({
++  view,
++  currentDateISO,
++  providerId,
++}) => {
++  const { user } = useAuth()
++
++  const effectiveProviderId = useMemo(() => {
++    return (
++      providerId ||
++      (user as any)?.providerProfileId ||
++      (user?.role === 'PROVIDER' ? user.id : 1)
++    )
++  }, [providerId, user])
++
++  const dateRange = useMemo(() => {
++    const dt = DateTime.fromISO(currentDateISO, { zone: 'utc' })
++    if (view === 'day') {
++      return {
++        start: dt.startOf('day').toISO()!,
++        end: dt.endOf('day').toISO()!,
++      }
++    }
++    if (view === 'week') {
++      const monday = dt.startOf('week').plus({ days: 1 })
++      return {
++        start: monday.startOf('day').toISO()!,
++        end: monday.plus({ days: 6 }).endOf('day').toISO()!,
++      }
++    }
++    return {
++      start: dt.startOf('month').toISO()!,
++      end: dt.endOf('month').toISO()!,
++    }
++  }, [view, currentDateISO])
++
++  // Hourly grid for day view
++  const hours = Array.from({ length: 14 }, (_, i) => i + 8) // 8 AM to 9 PM
++
++  const [createManualBlock] = useMutation(CREATE_MANUAL_BLOCK, {
++    refetchQueries: ['BookingsQuery'],
++    onCompleted: () => alert('Time block created successfully'),
++  })
++
++  const handleManualBlock = () => {
++    const reason = prompt('Reason for block?')
++    if (reason === null) return
++
++    // For simplicity in this UI, we just block the next hour
++    const start = DateTime.utc().plus({ hours: 1 }).startOf('hour')
++    const end = start.plus({ hours: 1 })
++
++    createManualBlock({
++      variables: {
++        input: {
++          startUtcISO: start.toISO(),
++          endUtcISO: end.toISO(),
++          reason,
++        },
++      },
++    })
++  }
++
++  return (
++    <div className="provider-calendar bg-gray-50 rounded-xl shadow-lg border border-gray-100 overflow-hidden">
++      <div className="bg-white px-6 py-4 border-b border-gray-200 flex justify-between items-center">
++        <div>
++          <h3 className="text-lg font-bold text-gray-800 capitalize">{view} Schedule</h3>
++          <p className="text-sm text-gray-500">
++            Showing availability for {DateTime.fromISO(currentDateISO).toLocaleString(DateTime.DATE_HUGE)}
++          </p>
++        </div>
++        <button
++          onClick={handleManualBlock}
++          className="bg-red-50 text-red-600 px-4 py-2 rounded-lg text-sm font-bold hover:bg-red-100 transition-colors border border-red-200"
++        >
++          Block Time
++        </button>
++      </div>
++
++      <div className="p-6">
++        <BookingsCell
++          providerId={effectiveProviderId}
++          startISO={dateRange.start}
++          endISO={dateRange.end}
++          renderSuccess={(bookings: any[]) => (
++            <div className="relative">
++              {view === 'day' ? (
++                <div className="grid grid-cols-[100px_1fr] border-l border-t border-gray-100">
++                  {hours.map((hour) => (
++                    <React.Fragment key={hour}>
++                      <div className="h-20 border-b border-r border-gray-100 flex items-start justify-center pt-2 text-xs font-medium text-gray-400">
++                        {DateTime.fromObject({ hour }).toFormat('h a')}
++                      </div>
++                      <div className="h-20 border-b border-gray-50 relative group hover:bg-white transition-colors">
++                        {bookings
++                          .filter((b) => {
++                            const bStart = DateTime.fromISO(b.startUtc)
++                            return bStart.hour === hour
++                          })
++                          .map((b) => (
++                            <div
++                              key={b.id}
++                              style={{
++                                top: `${(DateTime.fromISO(b.startUtc).minute / 60) * 100}%`,
++                                height: `${(DateTime.fromISO(b.endUtc).diff(DateTime.fromISO(b.startUtc), 'minutes').minutes / 60) * 100}%`,
++                              }}
++                              className="absolute left-1 right-1 bg-blue-500/10 border-l-4 border-blue-500 p-2 overflow-hidden z-10 rounded-r shadow-sm cursor-pointer hover:bg-blue-500/20 transition-all"
++                            >
++                              <div className="text-[10px] font-bold text-blue-700 truncate">
++                                {b.customerEmail}
++                              </div>
++                              <div className="text-[9px] text-blue-600/80">
++                                {DateTime.fromISO(b.startUtc).toFormat('h:mm')} - {DateTime.fromISO(b.endUtc).toFormat('h:mm a')}
++                              </div>
++                            </div>
++                          ))}
++                      </div>
++                    </React.Fragment>
++                  ))}
++                </div>
++              ) : (
++                <div className="grid grid-cols-7 gap-px bg-gray-200 border border-gray-200 rounded-lg overflow-hidden">
++                  {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
++                    <div
++                      key={d}
++                      className="bg-gray-50 p-2 text-center text-xs font-bold text-gray-400 uppercase tracking-wider"
++                    >
++                      {d}
++                    </div>
++                  ))}
++                  {Array.from({ length: view === 'week' ? 7 : 42 }).map((_, i) => {
++                    const cellDate = DateTime.fromISO(dateRange.start, {
++                      zone: 'utc',
++                    }).plus({ days: i })
++                    const isOtherMonth = view === 'month' && cellDate.month !== DateTime.fromISO(currentDateISO).month
++
++                    return (
++                      <div
++                        key={i}
++                        className={`bg-white min-h-[120px] p-2 hover:bg-blue-50/30 transition-colors ${isOtherMonth ? 'bg-gray-50/50' : ''
++                          }`}
++                      >
++                        <div className={`text-xs font-bold mb-2 ${isOtherMonth ? 'text-gray-300' : 'text-gray-400'}`}>
++                          {cellDate.day}
++                        </div>
++                        <div className="space-y-1">
++                          {bookings
++                            .filter((b) =>
++                              DateTime.fromISO(b.startUtc).hasSame(cellDate, 'day')
++                            )
++                            .map((b) => (
++                              <div
++                                key={b.id}
++                                className="text-[9px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-100 truncate shadow-sm"
++                                title={`${DateTime.fromISO(b.startUtc).toFormat('h:mm a')} - ${b.customerEmail}`}
++                              >
++                                <span className="font-bold mr-1">
++                                  {DateTime.fromISO(b.startUtc).toFormat('HH:mm')}
++                                </span>
++                                {b.customerEmail.split('@')[0]}
++                              </div>
++                            ))}
++                        </div>
++                      </div>
++                    )
++                  })}
++                </div>
++              )}
++            </div>
++          )}
++        />
++      </div>
++    </div>
++  )
++}
++
++export default ProviderCalendar
+diff --git a/repository_after/web/src/components/ServicesCell/ServicesCell.tsx b/repository_after/web/src/components/ServicesCell/ServicesCell.tsx
+new file mode 100644
+index 0000000..2659d98
+--- /dev/null
++++ b/repository_after/web/src/components/ServicesCell/ServicesCell.tsx
+@@ -0,0 +1,47 @@
++import type { ServicesQuery } from 'types/graphql'
++import type { CellSuccessProps, CellFailureProps } from '@redwoodjs/web'
++
++export const QUERY = gql`
++  query ServicesQuery($providerId: Int!) {
++    services(providerId: $providerId) {
++      id
++      name
++      durationMinutes
++    }
++  }
++`
++
++export const Loading = () => <div>Loading services...</div>
++
++export const Empty = () => <div>No services available.</div>
++
++export const Failure = ({ error }: CellFailureProps) => (
++    <div style={{ color: 'red' }}>Error: {error?.message}</div>
++)
++
++export const Success = ({
++    services,
++    selectedService,
++    onSelectService,
++}: CellSuccessProps<ServicesQuery> & {
++    selectedService: number | null
++    onSelectService: (id: number) => void
++}) => {
++    return (
++        <div className="mb-6">
++            <label className="block text-sm font-medium mb-2">Select Service</label>
++            <select
++                value={selectedService || ''}
++                onChange={(e) => onSelectService(Number(e.target.value))}
++                className="w-full px-3 py-2 border rounded-md"
++            >
++                <option value="">Choose a service...</option>
++                {services.map((service) => (
++                    <option key={service.id} value={service.id}>
++                        {service.name} ({service.durationMinutes} min)
++                    </option>
++                ))}
++            </select>
++        </div>
++    )
++}
+diff --git a/repository_after/web/src/components/UI/ErrorBoundary.tsx b/repository_after/web/src/components/UI/ErrorBoundary.tsx
+new file mode 100644
+index 0000000..6b77a78
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 --- /dev/null
 +++ b/repository_after/web/src/components/UI/ErrorBoundary.tsx
 @@ -0,0 +1,77 @@
@@ -10386,7 +13564,11 @@ index 0000000..d92ace9
 +  }
 +
 +  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+<<<<<<< HEAD
 +    // Silently handle errors in test environment
+=======
++    console.error('Uncaught error:', error, errorInfo);
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +    this.props.onError?.(error, errorInfo);
 +  }
 +
@@ -11361,6 +14543,7 @@ index 0000000..2d5152a
 +}
 diff --git a/repository_after/web/src/pages/BookingsPage/BookingsPage.tsx b/repository_after/web/src/pages/BookingsPage/BookingsPage.tsx
 new file mode 100644
+<<<<<<< HEAD
 index 0000000..90bd926
 --- /dev/null
 +++ b/repository_after/web/src/pages/BookingsPage/BookingsPage.tsx
@@ -11393,6 +14576,21 @@ index 0000000..90bd926
 +`
 +
 +const CREATE_BOOKING_MUTATION = `
+=======
+index 0000000..ce3f37d
+--- /dev/null
++++ b/repository_after/web/src/pages/BookingsPage/BookingsPage.tsx
+@@ -0,0 +1,107 @@
++import React, { useState } from 'react'
++import { DateTime } from 'luxon'
++import { useMutation } from '@redwoodjs/web'
++import { toast } from '@redwoodjs/web/toast'
++
++import ServicesCell from 'src/components/ServicesCell'
++import AvailabilityCell from 'src/components/Availability/AvailabilityCell'
++
++const CREATE_BOOKING_MUTATION = gql`
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +  mutation CreateBooking($input: CreateBookingInput!) {
 +    createBooking(input: $input) {
 +      id
@@ -11404,6 +14602,7 @@ index 0000000..90bd926
 +  }
 +`
 +
+<<<<<<< HEAD
 +// Real GraphQL client with JWT authentication
 +const graphqlRequest = async (query: string, variables?: any, token?: string) => {
 +  const response = await fetch('http://localhost:8911/graphql', {
@@ -11466,6 +14665,27 @@ index 0000000..90bd926
 +    setLoading(true)
 +    try {
 +      const data = await graphqlRequest(CREATE_BOOKING_MUTATION, {
+=======
++export const BookingPage = ({ providerId = 1, customerEmail = 'customer@example.com' }: any) => {
++  const [selectedService, setSelectedService] = useState<number | null>(null)
++  const [selectedSlot, setSelectedSlot] = useState<any>(null)
++  const [startDate, setStartDate] = useState(DateTime.now().toISODate())
++
++  const [createBooking, { loading: creating }] = useMutation(CREATE_BOOKING_MUTATION, {
++    onCompleted: (data) => {
++      toast.success(`Booking confirmed! Reference: ${data.createBooking.reference}`)
++      setSelectedSlot(null)
++    },
++    onError: (error) => {
++      toast.error(`Failed to create booking: ${error.message}`)
++    }
++  })
++
++  const handleBooking = () => {
++    if (!selectedSlot || !selectedService) return
++    createBooking({
++      variables: {
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +        input: {
 +          providerId,
 +          serviceId: selectedService,
@@ -11474,6 +14694,7 @@ index 0000000..90bd926
 +          customerEmail,
 +          cutoffHours: 24
 +        }
+<<<<<<< HEAD
 +      }, token)
 +      setMessage(`Booking confirmed! Reference: ${data.createBooking.reference}`)
 +      setSelectedSlot(null)
@@ -11483,17 +14704,24 @@ index 0000000..90bd926
 +    } finally {
 +      setLoading(false)
 +    }
+=======
++      }
++    })
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +  }
 +
 +  return (
 +    <div className="max-w-4xl mx-auto p-6">
 +      <h1 className="text-2xl font-bold mb-6">Book Appointment</h1>
+<<<<<<< HEAD
 +      
 +      {message && (
 +        <div className="mb-4 p-4 bg-blue-100 text-blue-700 rounded-md">
 +          {message}
 +        </div>
 +      )}
+=======
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +
 +      <div className="mb-6">
 +        <label className="block text-sm font-medium mb-2">Select Date</label>
@@ -11506,6 +14734,7 @@ index 0000000..90bd926
 +        />
 +      </div>
 +
+<<<<<<< HEAD
 +      <div className="mb-6">
 +        <label className="block text-sm font-medium mb-2">Select Service</label>
 +        <select
@@ -11539,16 +14768,50 @@ index 0000000..90bd926
 +              </button>
 +            ))}
 +          </div>
+=======
++      <ServicesCell
++        providerId={providerId}
++        selectedService={selectedService}
++        onSelectService={setSelectedService}
++      />
++
++      {selectedService && (
++        <div className="mb-6">
++          <h3 className="text-lg font-medium mb-3">Available Slots</h3>
++          <AvailabilityCell
++            input={{
++              providerId,
++              serviceId: selectedService,
++              startISO: `${startDate}T00:00:00Z`,
++              endISO: `${startDate}T23:59:59Z`,
++              customerTz: Intl.DateTimeFormat().resolvedOptions().timeZone
++            }}
++            onSelectSlot={(slot) => setSelectedSlot(slot)}
++          />
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +        </div>
 +      )}
 +
 +      {selectedSlot && (
+<<<<<<< HEAD
 +        <div className="mb-6">
 +          <button
 +            onClick={handleBooking}
 +            className="w-full bg-blue-500 text-white py-3 px-4 rounded-md hover:bg-blue-600"
 +          >
 +            Book Selected Slot
+=======
++        <div className="mt-6 border-t pt-6">
++          <div className="mb-4 text-sm text-gray-600">
++            Selected Slot: {DateTime.fromISO(selectedSlot.startLocalISO).toFormat('MMMM d, yyyy h:mm a')}
++          </div>
++          <button
++            onClick={handleBooking}
++            disabled={creating}
++            className="w-full bg-blue-500 text-white py-3 px-4 rounded-md hover:bg-blue-600 disabled:opacity-50"
++          >
++            {creating ? 'Booking...' : 'Confirm Appointment'}
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +          </button>
 +        </div>
 +      )}
@@ -11557,6 +14820,7 @@ index 0000000..90bd926
 +}
 +
 +export default BookingPage
+<<<<<<< HEAD
 diff --git a/repository_after/web/src/pages/ProviderCalendarPage/ProviderCalendarPage.tsx b/repository_after/web/src/pages/ProviderCalendarPage/ProviderCalendarPage.tsx
 new file mode 100644
 index 0000000..4e009c1
@@ -11658,6 +14922,52 @@ index 0000000..4e009c1
 +          >
 +            Month
 +          </button>
+=======
+diff --git a/repository_after/web/src/pages/NotFoundPage/NotFoundPage.tsx b/repository_after/web/src/pages/NotFoundPage/NotFoundPage.tsx
+new file mode 100644
+index 0000000..908fd99
+--- /dev/null
++++ b/repository_after/web/src/pages/NotFoundPage/NotFoundPage.tsx
+@@ -0,0 +1,8 @@
++export const NotFoundPage = () => (
++    <main className="flex flex-col items-center justify-center min-h-screen">
++        <h1 className="text-4xl font-bold mb-4">404 Page Not Found</h1>
++        <p className="text-gray-600">The page you're looking for doesn't exist.</p>
++    </main>
++)
++
++export default NotFoundPage
+diff --git a/repository_after/web/src/pages/ProviderCalendarPage/ProviderCalendarPage.tsx b/repository_after/web/src/pages/ProviderCalendarPage/ProviderCalendarPage.tsx
+new file mode 100644
+index 0000000..1c56ca6
+--- /dev/null
++++ b/repository_after/web/src/pages/ProviderCalendarPage/ProviderCalendarPage.tsx
+@@ -0,0 +1,58 @@
++import React, { useState } from 'react'
++import { DateTime } from 'luxon'
++
++import BookingsCell from 'src/components/BookingsCell'
++
++export const ProviderCalendarPage = ({ providerId = 1 }: { providerId?: number }) => {
++  const [currentDate, setCurrentDate] = useState(DateTime.now().toISODate())
++
++  const handlePrevious = () => {
++    const newDate = DateTime.fromISO(currentDate).minus({ days: 1 })
++    setCurrentDate(newDate.toISODate()!)
++  }
++
++  const handleNext = () => {
++    const newDate = DateTime.fromISO(currentDate).plus({ days: 1 })
++    setCurrentDate(newDate.toISODate()!)
++  }
++
++  return (
++    <div className="max-w-4xl mx-auto p-6">
++      <div className="mb-6 flex justify-between items-center">
++        <div>
++          <h1 className="text-2xl font-bold text-gray-900">Provider Calendar</h1>
++          <p className="text-gray-600">Your appointments for {DateTime.fromISO(currentDate).toLocaleString(DateTime.DATE_HUGE)}</p>
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +        </div>
 +
 +        <div className="flex items-center space-x-2">
@@ -11667,9 +14977,18 @@ index 0000000..4e009c1
 +          >
 +            ←
 +          </button>
+<<<<<<< HEAD
 +          <span className="px-3 py-2 text-gray-700">
 +            {DateTime.fromISO(currentDate).toLocaleString(DateTime.DATE_MED)}
 +          </span>
+=======
++          <button
++            onClick={() => setCurrentDate(DateTime.now().toISODate()!)}
++            className="px-3 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 text-sm"
++          >
++            Today
++          </button>
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +          <button
 +            onClick={handleNext}
 +            className="px-3 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
@@ -11679,11 +14998,18 @@ index 0000000..4e009c1
 +        </div>
 +      </div>
 +
+<<<<<<< HEAD
 +      <ProviderCalendar
 +        view={view}
 +        currentDateISO={currentDate}
 +        fetchBookings={mockFetchBookings}
 +        saveBooking={mockSaveBooking}
+=======
++      <BookingsCell
++        providerId={providerId}
++        startISO={`${currentDate}T00:00:00Z`}
++        endISO={`${currentDate}T23:59:59Z`}
+>>>>>>> 47834f4 (feat: requirement satisfied changes)
 +      />
 +    </div>
 +  )

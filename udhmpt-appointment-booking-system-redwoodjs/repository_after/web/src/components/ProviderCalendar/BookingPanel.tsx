@@ -41,10 +41,10 @@ type Props = {
   variant?: 'modal' | 'sidebar' | 'inline';
 };
 
-export const BookingPanel: React.FC<Props> = ({ 
-  booking, 
-  onSave, 
-  onClose, 
+export const BookingPanel: React.FC<Props> = ({
+  booking,
+  onSave,
+  onClose,
   customerTz = 'UTC',
   showActions = true,
   variant = 'modal'
@@ -67,7 +67,7 @@ export const BookingPanel: React.FC<Props> = ({
   const handleSave = async () => {
     setSaving(true);
     setError(null);
-    
+
     try {
       await onSave({ ...booking, status, notes });
       if (onClose) onClose();
@@ -80,15 +80,15 @@ export const BookingPanel: React.FC<Props> = ({
 
   const getStatusBadge = () => {
     const statusConfig = {
-      confirmed: { color: 'green', label: 'Confirmed' },
-      pending: { color: 'yellow', label: 'Pending' },
-      cancelled: { color: 'red', label: 'Cancelled' },
-      completed: { color: 'blue', label: 'Completed' }
+      confirmed: { bgColor: 'bg-green-100', textColor: 'text-green-800', label: 'Confirmed' },
+      pending: { bgColor: 'bg-yellow-100', textColor: 'text-yellow-800', label: 'Pending' },
+      cancelled: { bgColor: 'bg-red-100', textColor: 'text-red-800', label: 'Cancelled' },
+      completed: { bgColor: 'bg-blue-100', textColor: 'text-blue-800', label: 'Completed' }
     };
 
     const config = statusConfig[booking.status];
     return (
-      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-${config.color}-100 text-${config.color}-800`}>
+      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${config.bgColor} ${config.textColor}`}>
         {config.label}
       </span>
     );
@@ -96,16 +96,16 @@ export const BookingPanel: React.FC<Props> = ({
 
   const getPaymentBadge = () => {
     if (!booking.paymentStatus) return null;
-    
+
     const paymentConfig = {
-      paid: { color: 'green', label: 'Paid' },
-      pending: { color: 'yellow', label: 'Payment Pending' },
-      refunded: { color: 'gray', label: 'Refunded' }
+      paid: { bgColor: 'bg-green-100', textColor: 'text-green-800', label: 'Paid' },
+      pending: { bgColor: 'bg-yellow-100', textColor: 'text-yellow-800', label: 'Payment Pending' },
+      refunded: { bgColor: 'bg-gray-100', textColor: 'text-gray-800', label: 'Refunded' }
     };
 
     const config = paymentConfig[booking.paymentStatus];
     return (
-      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-${config.color}-100 text-${config.color}-800`}>
+      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${config.bgColor} ${config.textColor}`}>
         {config.label}
       </span>
     );
@@ -144,7 +144,7 @@ export const BookingPanel: React.FC<Props> = ({
             <div className="fixed inset-0 transition-opacity" onClick={onClose}>
               <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
             </div>
-            
+
             <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full">
               <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                 <BookingContent />
@@ -152,7 +152,7 @@ export const BookingPanel: React.FC<Props> = ({
             </div>
           </div>
         )}
-        
+
         {variant === 'sidebar' && (
           <div className="h-full overflow-y-auto">
             <div className="p-6">
@@ -171,7 +171,7 @@ export const BookingPanel: React.FC<Props> = ({
             </div>
           </div>
         )}
-        
+
         {variant === 'inline' && (
           <BookingContent />
         )}
@@ -280,7 +280,7 @@ export const BookingPanel: React.FC<Props> = ({
                   </div>
                 </div>
               </div>
-              
+
               {booking.rescheduleCount && booking.rescheduleCount > 0 && (
                 <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
                   <div className="text-sm text-blue-800">
@@ -314,7 +314,7 @@ export const BookingPanel: React.FC<Props> = ({
                       <option value="completed">Completed</option>
                     </select>
                   </div>
-                  
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Notes</label>
                     <textarea

@@ -1,31 +1,12 @@
 import React, { useState } from 'react'
 import { DateTime } from 'luxon'
+import { useMutation } from '@redwoodjs/web'
+import { toast } from '@redwoodjs/web/toast'
 
-// Simple auth context for working version
-const useAuth = () => {
-  const [user] = useState<any>({
-    id: 2,
-    email: 'customer@example.com',
-    role: 'CUSTOMER',
-    name: 'Jane Customer'
-  })
-  const [token] = useState('simple-token-2-123456789')
-  
-  return { user, token }
-}
+import ServicesCell from 'src/components/ServicesCell'
+import AvailabilityCell from 'src/components/Availability/AvailabilityCell'
 
-// Real GraphQL queries
-const SEARCH_AVAILABILITY_QUERY = `
-  query SearchAvailability($input: SearchAvailabilityInput!) {
-    searchAvailability(input: $input) {
-      startUtcISO
-      endUtcISO
-      startLocalISO
-    }
-  }
-`
-
-const CREATE_BOOKING_MUTATION = `
+const CREATE_BOOKING_MUTATION = gql`
   mutation CreateBooking($input: CreateBookingInput!) {
     createBooking(input: $input) {
       id
@@ -37,68 +18,25 @@ const CREATE_BOOKING_MUTATION = `
   }
 `
 
-// Real GraphQL client with JWT authentication
-const graphqlRequest = async (query: string, variables?: any, token?: string) => {
-  const response = await fetch('http://localhost:8911/graphql', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token && { 'Authorization': `Bearer ${token}` })
-    },
-    body: JSON.stringify({ query, variables }),
-  })
-
-  if (!response.ok) {
-    throw new Error(`GraphQL error: ${response.statusText}`)
-  }
-
-  const result = await response.json()
-  if (result.errors) {
-    throw new Error(result.errors[0].message)
-  }
-
-  return result.data
-}
-
-export const BookingPage = ({ providerId, customerEmail }: any) => {
+export const BookingPage = ({ providerId = 1, customerEmail = 'customer@example.com' }: any) => {
   const [selectedService, setSelectedService] = useState<number | null>(null)
   const [selectedSlot, setSelectedSlot] = useState<any>(null)
   const [startDate, setStartDate] = useState(DateTime.now().toISODate())
-  const [slots, setSlots] = useState<any[]>([])
-  const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState('')
-  const { token } = useAuth()
 
-  const loadSlots = async () => {
-    if (!selectedService || !token) return
-    setLoading(true)
-    try {
-      const data = await graphqlRequest(SEARCH_AVAILABILITY_QUERY, {
-        input: {
-          providerId,
-          serviceId: selectedService,
-          startISO: `${startDate}T00:00:00Z`,
-          endISO: `${startDate}T23:59:59Z`,
-          customerTz: Intl.DateTimeFormat().resolvedOptions().timeZone
-        }
-      }, token)
-      setSlots(data.searchAvailability)
-    } catch (error: any) {
-      setMessage(`Failed to load slots: ${error.message}`)
-    } finally {
-      setLoading(false)
+  const [createBooking, { loading: creating }] = useMutation(CREATE_BOOKING_MUTATION, {
+    onCompleted: (data) => {
+      toast.success(`Booking confirmed! Reference: ${data.createBooking.reference}`)
+      setSelectedSlot(null)
+    },
+    onError: (error) => {
+      toast.error(`Failed to create booking: ${error.message}`)
     }
-  }
+  })
 
-  React.useEffect(() => {
-    loadSlots()
-  }, [selectedService, startDate, token])
-
-  const handleBooking = async () => {
-    if (!selectedSlot || !selectedService || !token) return
-    setLoading(true)
-    try {
-      const data = await graphqlRequest(CREATE_BOOKING_MUTATION, {
+  const handleBooking = () => {
+    if (!selectedSlot || !selectedService) return
+    createBooking({
+      variables: {
         input: {
           providerId,
           serviceId: selectedService,
@@ -107,26 +45,13 @@ export const BookingPage = ({ providerId, customerEmail }: any) => {
           customerEmail,
           cutoffHours: 24
         }
-      }, token)
-      setMessage(`Booking confirmed! Reference: ${data.createBooking.reference}`)
-      setSelectedSlot(null)
-      setSlots([])
-    } catch (error: any) {
-      setMessage(`Failed to create booking: ${error.message}`)
-    } finally {
-      setLoading(false)
-    }
+      }
+    })
   }
 
   return (
     <div className="max-w-4xl mx-auto p-6">
       <h1 className="text-2xl font-bold mb-6">Book Appointment</h1>
-      
-      {message && (
-        <div className="mb-4 p-4 bg-blue-100 text-blue-700 rounded-md">
-          {message}
-        </div>
-      )}
 
       <div className="mb-6">
         <label className="block text-sm font-medium mb-2">Select Date</label>
@@ -139,49 +64,39 @@ export const BookingPage = ({ providerId, customerEmail }: any) => {
         />
       </div>
 
-      <div className="mb-6">
-        <label className="block text-sm font-medium mb-2">Select Service</label>
-        <select
-          value={selectedService || ''}
-          onChange={(e) => setSelectedService(Number(e.target.value))}
-          className="w-full px-3 py-2 border rounded-md"
-        >
-          <option value="">Choose a service...</option>
-          <option value="1">Consultation (30 min)</option>
-          <option value="2">Full Session (60 min)</option>
-        </select>
-      </div>
+      <ServicesCell
+        providerId={providerId}
+        selectedService={selectedService}
+        onSelectService={setSelectedService}
+      />
 
-      {loading && <div>Loading available slots...</div>}
-      
-      {slots.length > 0 && (
+      {selectedService && (
         <div className="mb-6">
           <h3 className="text-lg font-medium mb-3">Available Slots</h3>
-          <div className="grid grid-cols-3 gap-3">
-            {slots.map((slot, index) => (
-              <button
-                key={index}
-                onClick={() => setSelectedSlot(slot)}
-                className={`p-3 border rounded-md text-sm ${
-                  selectedSlot?.startUtcISO === slot.startUtcISO
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-white hover:bg-gray-50'
-                }`}
-              >
-                {DateTime.fromISO(slot.startLocalISO).toFormat('h:mm a')}
-              </button>
-            ))}
-          </div>
+          <AvailabilityCell
+            input={{
+              providerId,
+              serviceId: selectedService,
+              startISO: `${startDate}T00:00:00Z`,
+              endISO: `${startDate}T23:59:59Z`,
+              customerTz: Intl.DateTimeFormat().resolvedOptions().timeZone
+            }}
+            onSelectSlot={(slot) => setSelectedSlot(slot)}
+          />
         </div>
       )}
 
       {selectedSlot && (
-        <div className="mb-6">
+        <div className="mt-6 border-t pt-6">
+          <div className="mb-4 text-sm text-gray-600">
+            Selected Slot: {DateTime.fromISO(selectedSlot.startLocalISO).toFormat('MMMM d, yyyy h:mm a')}
+          </div>
           <button
             onClick={handleBooking}
-            className="w-full bg-blue-500 text-white py-3 px-4 rounded-md hover:bg-blue-600"
+            disabled={creating}
+            className="w-full bg-blue-500 text-white py-3 px-4 rounded-md hover:bg-blue-600 disabled:opacity-50"
           >
-            Book Selected Slot
+            {creating ? 'Booking...' : 'Confirm Appointment'}
           </button>
         </div>
       )}

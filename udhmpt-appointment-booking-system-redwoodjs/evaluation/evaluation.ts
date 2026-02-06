@@ -49,7 +49,7 @@ function runEvaluate() {
   const runId = randomUUID();
   const startedAt = new Date();
 
-  // Compose a shell command that prints node info, environment JSON, runs npm test with JSON output and prints it
+  // Compose a shell command that runs npm test with JSON output and prints it
   const shCommand = `node -v; node -p \"JSON.stringify({node_version:process.version, platform:process.platform, os:require('os').type(), architecture:process.arch, hostname:require('os').hostname()})\"; npm test -- --json --outputFile=/tmp/jest-results.json --silent || true; cat /tmp/jest-results.json`;
 
   const proc = spawnSync('docker', ['compose', 'run', '--rm', 'test', 'sh', '-c', shCommand], { encoding: 'utf8', maxBuffer: 50 * 1024 * 1024 });
@@ -57,9 +57,9 @@ function runEvaluate() {
   const finishedAt = new Date();
   const durationSeconds = (finishedAt.getTime() - startedAt.getTime()) / 1000;
 
-  const stdout = proc.stdout || '';
-  const stderr = proc.stderr || '';
-  const exitCode = proc.status === null ? proc.error ? 1 : 0 : proc.status;
+  let stdout = proc.stdout || '';
+  let stderr = proc.stderr || '';
+  let exitCode = proc.status === null ? (proc.error ? 1 : 0) : proc.status;
 
   // Extract environment info emitted by the container
   const envFromContainer = extractEnvJson(stdout);
@@ -67,38 +67,18 @@ function runEvaluate() {
   // Extract Jest JSON results printed at end
   let jestJson = extractJestJson(stdout);
 
-  // If we couldn't get Jest JSON from the docker-invoked run, attempt a local fallback
-  let fallbackUsed = false;
+  // No fallback to local. Correctness requires the Docker environment for reproducibility.
   if (!jestJson) {
-    fallbackUsed = true;
-    try {
-      const localOut = spawnSync('npm', ['test', '--', '--json', '--outputFile=/tmp/jest-results-local.json', '--silent'], { encoding: 'utf8', maxBuffer: 50 * 1024 * 1024 });
-      const localStdout = localOut.stdout || '';
-      const localStderr = localOut.stderr || '';
-      const localJest = extractJestJson(localStdout);
-      if (localJest) {
-        // Replace captured outputs with local run outputs so parsing continues below
-        jestJson = localJest as any;
-        // Update stdout/stderr/exitCode for report
-        Object.assign(proc, { stdout: localStdout, stderr: localStderr, status: localOut.status });
-      } else {
-        // If local run produced file output, try to read it
-        try {
-          const fileOut = spawnSync('cat', ['/tmp/jest-results-local.json'], { encoding: 'utf8', maxBuffer: 50 * 1024 * 1024 });
-          const fileStdout = fileOut.stdout || '';
-          const fileJest = tryParseJSONCandidates(fileStdout, (o) => o && (o.numTotalTests !== undefined || o.testResults !== undefined));
-          if (fileJest) {
-            jestJson = fileJest as any;
-            Object.assign(proc, { stdout: fileStdout, stderr: localStderr, status: localOut.status });
-          }
-        } catch (_) {
-          // ignore
-        }
-      }
-    } catch (e) {
-      // ignore fallback failure
-    }
+    console.error('CRITICAL: Could not parse Jest JSON from Docker container output.');
+    // We still proceed to write the report with whatever info we have (stdout/stderr)
   }
+
+  // Detect unexpected console.error calls
+  // Filtering out standard Jest "Error: " messages and stack traces to avoid false positives.
+  const hasConsoleError = stderr.split('\n').some(line =>
+    line.includes('console.error') ||
+    (line.includes('Error:') && !line.includes('expect(received)') && !line.includes('at '))
+  );
 
   const report: any = {
     run_id: runId,
@@ -106,7 +86,9 @@ function runEvaluate() {
     finished_at: finishedAt.toISOString(),
     duration_seconds: durationSeconds,
     success: exitCode === 0,
-    error: exitCode === 0 ? null : (stderr || `exit code ${exitCode}`),
+    error: exitCode === 0
+      ? null
+      : (stderr || `exit code ${exitCode}`),
     environment: envFromContainer || {
       node_version: process.version,
       platform: process.platform,
@@ -118,6 +100,7 @@ function runEvaluate() {
       after: {
         success: exitCode === 0,
         exit_code: exitCode,
+        unexpected_console_errors: hasConsoleError,
         raw_stdout: stdout.split('\n').slice(-1000).join('\n'),
         raw_stderr: stderr.split('\n').slice(-1000).join('\n'),
         tests: [] as any[],
@@ -137,7 +120,6 @@ function runEvaluate() {
   };
 
   if (jestJson) {
-    // Map jest JSON into our tests array
     const tests: any[] = [];
     if (Array.isArray(jestJson.testResults)) {
       for (const suite of jestJson.testResults) {
@@ -154,7 +136,7 @@ function runEvaluate() {
       passed: jestJson.numPassedTests || tests.filter(t => t.status === 'passed').length,
       failed: jestJson.numFailedTests || tests.filter(t => t.status === 'failed').length,
       xfailed: jestJson.numPendingTests || 0,
-      errors: jestJson.testExecError ? 1 : 0,
+      errors: (jestJson.testExecError ? 1 : 0),
       skipped: jestJson.numPendingTests || 0,
     };
     report.results.comparison.after_total = report.results.after.summary.total;
@@ -162,16 +144,16 @@ function runEvaluate() {
     report.results.comparison.after_failed = report.results.after.summary.failed;
     report.results.comparison.after_xfailed = report.results.after.summary.xfailed || 0;
   }
-  if (fallbackUsed) report.results.after.fallback_to_local = true;
 
-  // If we have parsed Jest JSON and it reports no failures, mark run as successful
   if (jestJson) {
     const failed = (jestJson.numFailedTests || 0) + (jestJson.testExecError ? 1 : 0);
-    if (failed === 0) {
+    if (failed > 0) {
+      report.success = false;
+      report.results.after.success = false;
+      report.results.comparison.after_tests_passed = false;
+    } else {
       report.success = true;
-      report.error = null;
       report.results.after.success = true;
-      report.results.after.exit_code = 0;
       report.results.comparison.after_tests_passed = true;
     }
   }
@@ -184,6 +166,11 @@ function runEvaluate() {
   const dir = join(__dirname, datePart, timePart);
   mkdirSync(dir, { recursive: true });
   const outPath = join(dir, 'report.json');
+
+  // Save full logs to separate files for better interpretation
+  writeFileSync(join(dir, 'stdout.log'), stdout, 'utf8');
+  writeFileSync(join(dir, 'stderr.log'), stderr, 'utf8');
+
   writeFileSync(outPath, JSON.stringify(report, null, 2), 'utf8');
 
   console.log(`Wrote report to ${outPath}`);

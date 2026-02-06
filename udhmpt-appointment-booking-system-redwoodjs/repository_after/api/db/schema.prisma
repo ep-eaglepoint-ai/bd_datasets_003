@@ -1,5 +1,5 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
 }
 
 datasource db {
@@ -30,6 +30,9 @@ model ProviderProfile {
   cancellationFeeCents Int? @default(0)  // penalty for late cancellation
   rescheduleFeeCents    Int? @default(0)  // penalty for late reschedule
   penaltiesApplyForLateCancel Boolean @default(false)  // when true, fee applies if cancel/reschedule inside window
+  cancellationWindowHours Int @default(24)  // configurable cutoff window for cancellation
+  rescheduleWindowHours Int @default(24)  // configurable cutoff window for reschedule
+  bookingLeadTimeHours  Int @default(1)   // minimum hours in advance to book
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -109,17 +112,25 @@ model ManualBlock {
 
 model Booking {
   id           Int       @id @default(autoincrement())
+  version      Int       @default(1)  // optimistic locking
   providerId   Int
   serviceId    Int
   startUtc     DateTime
   endUtc       DateTime
   customerEmail String
+  userId       Int
+  capacitySlot Int?       @default(0) // used for DB-level concurrency safety
   reference    String    @unique
   canceledAt   DateTime?
+  status       String    @default("pending")
+  notes        String?
+  penaltyFeeCents Int?   @default(0)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
   provider ProviderProfile @relation(fields: [providerId], references: [id])
   service  Service          @relation(fields: [serviceId], references: [id])
-  user     User             @relation(fields: [customerEmail], references: [email])
+  user     User             @relation(fields: [userId], references: [id])
+
+  @@unique([serviceId, startUtc, capacitySlot])
 }

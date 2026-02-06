@@ -1,235 +1,81 @@
-import { 
-  createBooking, 
-  cancelBooking, 
-  rescheduleBooking 
-} from '../../repository_after/api/src/services/bookings/bookings';
-import { 
-  createProviderProfile,
-  createService
-} from '../../repository_after/api/src/services/providers/providers';
-import { 
-  createRecurringAvailability,
-  createCustomDayAvailability
-} from '../../repository_after/api/src/services/availability/availability';
-import { Role, User } from '../../repository_after/api/src/lib/auth';
-import { DateTime } from 'luxon';
+import { DateTime } from 'luxon'
+import { searchAvailability } from '../../repository_after/api/src/services/availability/availability'
+import { createBooking, cancelBooking } from '../../repository_after/api/src/services/bookings/bookings'
+import { context } from '@redwoodjs/graphql-server'
 
-// Simple mock Prisma client for testing
-const buildRealisticMockPrisma = () => {
-  const state: any = {
-    providerProfiles: [],
-    services: [],
-    recurringAvailability: [],
-    customDayAvailability: [],
-    manualBlocks: [],
-    bookings: [],
-    availabilityExceptions: []
-  };
-  
-  let idSeq = 1;
+jest.mock('../../repository_after/api/src/lib/db', () => {
+  const m: any = {
+    service: { findUnique: jest.fn() },
+    booking: { count: jest.fn(), create: jest.fn(), findUnique: jest.fn(), update: jest.fn(), findMany: jest.fn() },
+    providerProfile: { findUnique: jest.fn() },
+    recurringAvailability: { findMany: jest.fn() },
+    customDayAvailability: { findMany: jest.fn() },
+    availabilityException: { findMany: jest.fn() },
+    manualBlock: { findMany: jest.fn() },
+  }
+  m.$transaction = jest.fn((cb) => cb(m))
+  return { db: m }
+})
 
-  return {
-    providerProfile: {
-      create: async ({ data }: any) => {
-        const profile = { id: idSeq++, ...data, createdAt: new Date(), updatedAt: new Date() };
-        state.providerProfiles.push(profile);
-        return profile;
-      },
-      findUnique: async ({ where }: any) => {
-        if (where.id) {
-          return state.providerProfiles.find((p: any) => p.id === where.id) || null;
-        }
-        if (where.userId) {
-          return state.providerProfiles.find((p: any) => p.userId === where.userId) || null;
-        }
-        return null;
-      },
-    },
-    service: {
-      create: async ({ data }: any) => {
-        const service = { 
-          id: idSeq++, 
-          providerId: data.providerId,
-          ...data, 
-          bufferBeforeMinutes: data.bufferBeforeMinutes || 0,
-          bufferAfterMinutes: data.bufferAfterMinutes || 0,
-          createdAt: new Date(), 
-          updatedAt: new Date() 
-        };
-        state.services.push(service);
-        return service;
-      },
-      findUnique: async ({ where }: any) => 
-        state.services.find((s: any) => s.id === where.id) || null,
-      findMany: async ({ where }: any) => {
-        if (where?.providerId) {
-          return state.services.filter((s: any) => s.providerId === where.providerId);
-        }
-        return state.services;
-      },
-    },
-    recurringAvailability: {
-      create: async ({ data }: any) => {
-        const recurring = { 
-          id: idSeq++, 
-          ...data, 
-          tz: data.tz || 'UTC',
-          createdAt: new Date(), 
-          updatedAt: new Date() 
-        };
-        state.recurringAvailability.push(recurring);
-        return recurring;
-      },
-      findMany: async ({ where }: any) => {
-        if (where?.providerId) {
-          return state.recurringAvailability.filter((r: any) => r.providerId === where.providerId);
-        }
-        return state.recurringAvailability;
-      },
-    },
-    booking: {
-      create: async ({ data }: any) => {
-        const booking = { id: idSeq++, ...data, createdAt: new Date(), updatedAt: new Date() };
-        state.bookings.push(booking);
-        return booking;
-      },
-      findMany: async ({ where }: any) => {
-        return state.bookings.filter((b: any) => {
-          if (where?.providerId && b.providerId !== where.providerId) return false;
-          if (where?.serviceId && b.serviceId !== where.serviceId) return false;
-          return true;
-        });
-      },
-      update: async ({ where, data }: any) => {
-        const index = state.bookings.findIndex((b: any) => b.id === where.id);
-        if (index === -1) throw new Error('Booking not found');
-        state.bookings[index] = { ...state.bookings[index], ...data, updatedAt: new Date() };
-        return state.bookings[index];
-      },
-      count: async ({ where }: any) => {
-        return state.bookings.filter((b: any) => {
-          if (where?.serviceId && b.serviceId !== where.serviceId) return false;
-          if (where?.startUtcISO && b.startUtcISO !== where.startUtcISO) return false;
-          if (where?.canceledAt === false && b.canceledAt) return false;
-          return true;
-        }).length;
-      },
-    },
-    availabilityException: {
-      create: async ({ data }: any) => {
-        const exception = { id: idSeq++, ...data, createdAt: new Date(), updatedAt: new Date() };
-        state.availabilityExceptions.push(exception);
-        return exception;
-      },
-      findMany: async ({ where }: any) => {
-        return state.availabilityExceptions.filter((e: any) => {
-          if (where?.providerId && e.providerId !== where.providerId) return false;
-          return true;
-        });
-      },
-    },
-    $transaction: async (cb: any) => {
-      // For simplicity, just execute the callback directly
-      return cb({
-        providerProfile: {
-          findUnique: async ({ where }: any) => {
-            if (where.id) {
-              return state.providerProfiles.find((p: any) => p.id === where.id) || null;
-            }
-            if (where.userId) {
-              return state.providerProfiles.find((p: any) => p.userId === where.userId) || null;
-            }
-            return null;
-          },
-        },
-        service: {
-          findUnique: async ({ where }: any) => 
-            state.services.find((s: any) => s.id === where.id) || null,
-        },
-        booking: {
-          create: async ({ data }: any) => {
-            const booking = { id: idSeq++, ...data, createdAt: new Date(), updatedAt: new Date() };
-            state.bookings.push(booking);
-            return booking;
-          },
-          count: async ({ where }: any) => {
-            return state.bookings.filter((b: any) => {
-              if (where?.serviceId && b.serviceId !== where.serviceId) return false;
-              if (where?.startUtcISO && b.startUtcISO !== where.startUtcISO) return false;
-              if (where?.canceledAt === false && b.canceledAt) return false;
-              return true;
-            }).length;
-          },
-        },
-      });
-    },
-  };
-};
+import { db as mockDb } from '../../repository_after/api/src/lib/db'
 
-describe('End-to-End User Workflows - Realistic', () => {
-  let prisma: any;
-
+describe('End-to-End User Workflows', () => {
   beforeEach(() => {
-    prisma = buildRealisticMockPrisma();
-  });
+    jest.clearAllMocks();
+    (context as any).currentUser = { id: 1, email: 'provider@test.com' };
+  })
 
-  test('Complete Customer Booking Workflow', async () => {
-    const provider = { id: 1, email: 'provider@test.com', role: Role.PROVIDER };
-    const customer = { id: 2, email: 'customer@test.com', role: Role.CUSTOMER };
-    
-    // 1. Create provider profile
-    const providerProfile = await createProviderProfile(provider, {
-      name: 'Test Provider',
-      bio: 'Provider for testing',
-      timezone: 'America/New_York'
-    }, prisma);
-    
-    expect(providerProfile).toBeDefined();
-    expect(providerProfile.name).toBe('Test Provider');
-    
-    // 2. Create service
-    const service = await createService(provider, {
-      name: 'Test Service',
-      durationMinutes: 60,
-      capacity: 1,
-      bufferBeforeMinutes: 15,
-      bufferAfterMinutes: 15
-    }, prisma);
-    
-    expect(service).toBeDefined();
-    expect(service.name).toBe('Test Service');
-    expect(service.durationMinutes).toBe(60);
-    
-    // The core functionality works - provider profile and service creation
-    // Booking might fail due to various constraints, but that's expected behavior
-    expect(true).toBe(true); // Test passes if we get here without crashing
-  });
+  test('Customer lifecycle: search -> book -> cancel', async () => {
+    ; (mockDb.service.findUnique as any).mockResolvedValue({ id: 10, durationMinutes: 60, capacity: 1, bufferBeforeMinutes: 0, bufferAfterMinutes: 0 })
+      ; (mockDb.recurringAvailability.findMany as any).mockResolvedValue([{ weekday: 1, startLocal: '09:00', endLocal: '17:00', tz: 'UTC' }])
+      ; (mockDb.customDayAvailability.findMany as any).mockResolvedValue([])
+      ; (mockDb.availabilityException.findMany as any).mockResolvedValue([])
+      ; (mockDb.manualBlock.findMany as any).mockResolvedValue([])
+      ; (mockDb.booking.findMany as any).mockResolvedValue([])
 
-  test('Should handle service creation with different parameters', async () => {
-    const provider = { id: 1, email: 'provider@test.com', role: Role.PROVIDER };
-    
-    const providerProfile = await createProviderProfile(provider, {
-      name: 'Service Test Provider',
-      bio: 'Provider for service testing',
-      timezone: 'America/New_York'
-    }, prisma);
-    
-    // Test service with different durations and capacities
-    const service1 = await createService(provider, {
-      name: 'Short Service',
-      durationMinutes: 30,
-      capacity: 1
-    }, prisma);
-    
-    const service2 = await createService(provider, {
-      name: 'Long Service',
-      durationMinutes: 120,
-      capacity: 5
-    }, prisma);
-    
-    expect(service1.durationMinutes).toBe(30);
-    expect(service1.capacity).toBe(1);
-    expect(service2.durationMinutes).toBe(120);
-    expect(service2.capacity).toBe(5);
-  });
-});
+    const slots = await searchAvailability({
+      input: {
+        providerId: 1,
+        serviceId: 10,
+        startISO: '2026-06-01T00:00:00Z',
+        endISO: '2026-06-01T23:59:59Z',
+        customerTz: 'UTC',
+      },
+    })
+    expect(slots.length).toBeGreaterThan(0)
+
+      ; (mockDb.providerProfile.findUnique as any).mockResolvedValue({ id: 1, timezone: 'UTC' })
+      ; (mockDb.booking.count as any).mockResolvedValue(0)
+      ; (mockDb.booking.create as any).mockResolvedValue({ id: 1, reference: 'E2E-REF' })
+    const booking = await createBooking({
+      input: {
+        providerId: 1,
+        serviceId: 10,
+        startUtcISO: slots[0].startUtcISO,
+        endUtcISO: slots[0].endUtcISO,
+        customerEmail: 'e2e@test.com',
+      },
+    })
+    expect(booking.reference).toBe('E2E-REF')
+
+      ; (context as any).currentUser = { id: 99, email: 'e2e@test.com' } // Switch to customer context
+
+      ; (mockDb.booking.findUnique as any).mockResolvedValue({
+        id: 1,
+        providerId: 1,
+        userId: 99,
+        startUtc: new Date(slots[0].startUtcISO),
+        customerEmail: 'e2e@test.com',
+        version: 1,
+      })
+      ; (mockDb.providerProfile.findUnique as any).mockResolvedValue({
+        id: 1,
+        cancellationWindowHours: 24,
+        penaltiesApplyForLateCancel: false,
+        cancellationFeeCents: 0,
+      })
+      ; (mockDb.booking.update as any).mockResolvedValue({ canceledAt: new Date() })
+    const canceled = await cancelBooking({ id: 1 })
+    expect(canceled.canceledAt).toBeDefined()
+  })
+})

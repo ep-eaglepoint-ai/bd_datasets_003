@@ -6,6 +6,8 @@ module.exports = {
   moduleNameMapper: {
     '^react$': '<rootDir>/node_modules/react',
     '^react-dom$': '<rootDir>/node_modules/react-dom',
+    '^@redwoodjs/graphql-server$': '<rootDir>/tests/mocks/redwood.ts',
+    '^@redwoodjs/api$': '<rootDir>/tests/mocks/redwood.ts',
   },
   setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
   // Suppress console output for clean test runs

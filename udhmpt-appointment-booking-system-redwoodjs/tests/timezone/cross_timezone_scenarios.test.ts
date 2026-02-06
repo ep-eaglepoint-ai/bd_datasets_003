@@ -1,108 +1,48 @@
-import { DateTime } from 'luxon';
-import { createBooking } from '../../repository_after/api/src/services/bookings/bookings';
-import { createProviderProfile, createService } from '../../repository_after/api/src/services/providers/providers';
-import { createRecurringAvailability } from '../../repository_after/api/src/services/availability/availability';
-import { Role, User } from '../../repository_after/api/src/lib/auth';
+import { searchAvailability } from '../../repository_after/api/src/services/availability/availability'
 
-// Simple mock Prisma for testing
-const buildMockPrisma = () => {
-  const state: any = {
-    providerProfiles: [],
-    services: [],
-    recurringAvailability: [],
-    bookings: []
-  };
-  
-  let idSeq = 1;
+jest.mock('../../repository_after/api/src/lib/db', () => {
+  const m: any = {
+    service: { findUnique: jest.fn() },
+    booking: { count: jest.fn(), create: jest.fn(), findMany: jest.fn() },
+    providerProfile: { findUnique: jest.fn() },
+    recurringAvailability: { findMany: jest.fn() },
+    customDayAvailability: { findMany: jest.fn() },
+    availabilityException: { findMany: jest.fn() },
+    manualBlock: { findMany: jest.fn() },
+  }
+  m.$transaction = jest.fn((cb) => cb(m))
+  return { db: m }
+})
 
-  return {
-    providerProfile: {
-      create: async ({ data }: any) => {
-        const profile = { id: idSeq++, ...data, createdAt: new Date(), updatedAt: new Date() };
-        state.providerProfiles.push(profile);
-        return profile;
-      },
-      findUnique: async ({ where }: any) => {
-        if (where.id) {
-          return state.providerProfiles.find((p: any) => p.id === where.id) || null;
-        }
-        if (where.userId) {
-          return state.providerProfiles.find((p: any) => p.userId === where.userId) || null;
-        }
-        return null;
-      },
-    },
-    service: {
-      create: async ({ data }: any) => {
-        const service = { id: idSeq++, ...data, createdAt: new Date(), updatedAt: new Date() };
-        state.services.push(service);
-        return service;
-      },
-      findUnique: async ({ where }: any) => 
-        state.services.find((s: any) => s.id === where.id) || null,
-    },
-    recurringAvailability: {
-      create: async ({ data }: any) => {
-        const recurring = { id: idSeq++, ...data, createdAt: new Date(), updatedAt: new Date() };
-        state.recurringAvailability.push(recurring);
-        return recurring;
-      },
-      findMany: async () => state.recurringAvailability,
-    },
-    booking: {
-      create: async ({ data }: any) => {
-        const booking = { id: idSeq++, ...data, createdAt: new Date(), updatedAt: new Date() };
-        state.bookings.push(booking);
-        return booking;
-      },
-      count: async () => 0, // No existing bookings for testing
-    },
-    $transaction: async (cb: any) => cb(buildMockPrisma()),
-  };
-};
+import { db as mockDb } from '../../repository_after/api/src/lib/db'
 
-describe('Cross-Timezone Booking Scenarios - Simple', () => {
-  let prisma: any;
+describe('Cross-Timezone Scenarios', () => {
+  test('Search handles timezone conversions correctly', async () => {
+    ; (mockDb.service.findUnique as any).mockResolvedValue({
+      id: 1, durationMinutes: 60, capacity: 1, bufferBeforeMinutes: 0, bufferAfterMinutes: 0
+    })
+      ; (mockDb.recurringAvailability.findMany as any).mockResolvedValue([{
+        weekday: 1, startLocal: '09:00', endLocal: '17:00', tz: 'America/New_York'
+      }])
+      ; (mockDb.customDayAvailability.findMany as any).mockResolvedValue([])
+      ; (mockDb.availabilityException.findMany as any).mockResolvedValue([])
+      ; (mockDb.manualBlock.findMany as any).mockResolvedValue([])
+      ; (mockDb.booking.count as any).mockResolvedValue(0)
+      ; (mockDb.providerProfile.findUnique as any).mockResolvedValue({ id: 1, timezone: 'America/New_York' })
+      ; (mockDb.booking.findMany as any).mockResolvedValue([])
 
-  beforeEach(() => {
-    prisma = buildMockPrisma();
-  });
+    const slots = await searchAvailability({
+      input: {
+        providerId: 1,
+        serviceId: 1,
+        startISO: '2026-06-01T00:00:00Z',
+        endISO: '2026-06-01T23:59:59Z',
+        customerTz: 'Asia/Tokyo',
+      }
+    })
 
-  test('Basic timezone functionality', async () => {
-    const providerTz = 'America/New_York';
-    const customerTz = 'Asia/Tokyo';
-    
-    const provider = { id: 1, email: 'provider@ny.com', role: Role.PROVIDER };
-    const customer = { id: 2, email: 'customer@tokyo.com', role: Role.CUSTOMER };
-    
-    // Create provider profile
-    const profile = await createProviderProfile(provider, {
-      name: 'NY Provider',
-      bio: 'Provider in New York',
-      timezone: providerTz
-    }, prisma);
-    
-    // Create service
-    const service = await createService(provider, {
-      name: 'Consultation',
-      durationMinutes: 60
-    }, prisma);
-    
-    // Set availability: 9 AM - 5 PM New York time
-    await createRecurringAvailability(provider, {
-      weekday: 1, // Monday
-      startLocal: '09:00',
-      endLocal: '17:00'
-    }, prisma);
-    
-    // Basic test - just verify the profile and service were created
-    expect(profile).toBeDefined();
-    expect(profile.name).toBe('NY Provider');
-    expect(profile.timezone).toBe(providerTz);
-    expect(profile.userId).toBe(provider.id);
-    
-    expect(service).toBeDefined();
-    expect(service.name).toBe('Consultation');
-    expect(service.durationMinutes).toBe(60);
-  });
-});
+    expect(slots.length).toBeGreaterThan(0)
+    // 09:00 AM NY (EDT, UTC-4) is 10:00 PM Tokyo (JST, UTC+9)
+    expect(slots[0].startLocalISO).toContain('22:00')
+  })
+})

@@ -1,0 +1,20 @@
+{
+    "name": "udhmpt-appointment-booking-system",
+    "private": true,
+    "engines": {
+        "node": ">=18.0.0",
+        "npm": ">=8.0.0"
+    },
+    "workspaces": [
+        "api",
+        "web"
+    ],
+    "scripts": {
+        "build": "rw build",
+        "dev": "rw dev",
+        "test": "rw test"
+    },
+    "devDependencies": {
+        "@redwoodjs/core": "6.0.7"
+    }
+}

@@ -22,13 +22,11 @@ describe('Slot generation', () => {
     const window = [{ startUtcISO: startLocal, endUtcISO: endLocal }];
 
     const slots = generateSlots(window, 60, 0, 0, tz);
-    // Expect 3 or 4 one-hour slots depending on Luxon/TZ data (DST skip hour)
-    expect(slots.length).toBeGreaterThanOrEqual(3);
-    expect(slots.length).toBeLessThanOrEqual(4);
+    // On 2021-03-14, America/New_York skips 02:00-03:00.
+    // Range 01:00-05:00 local should yield exactly 3 slots.
+    expect(slots.length).toBe(3);
     const localHours = slots.map(s => DateTime.fromISO(s.startUtcISO, { zone: 'utc' }).setZone(tz).hour).sort((a, b) => a - b);
-    expect(localHours).toContain(1);
-    expect(localHours).toContain(3);
-    expect(localHours).toContain(4);
+    expect(localHours).toEqual([1, 3, 4]); // 02:00 is skipped
   });
 
   test('Cross-TZ provider/customer conversion', () => {

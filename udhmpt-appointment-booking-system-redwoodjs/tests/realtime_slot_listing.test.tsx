@@ -2,34 +2,52 @@
 import React from 'react';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
+const mockUseQuery = jest.fn()
+const mockUseSubscription = jest.fn()
+jest.mock('@redwoodjs/web', () => ({
+  useQuery: (...args: any[]) => mockUseQuery(...args),
+  useSubscription: (...args: any[]) => mockUseSubscription(...args),
+  gql: (s: any) => s,
+}), { virtual: true })
+
 import { RealTimeSlotListing } from '../repository_after/web/src/components/Availability/RealTimeSlotListing';
 
 describe('Real-time slot listing', () => {
   beforeEach(() => {
-    jest.useFakeTimers();
+    mockUseQuery.mockReset();
+    mockUseSubscription.mockReset();
+
+    // Default return values to prevent TypeErrors
+    mockUseQuery.mockReturnValue({
+      data: { searchAvailability: [] },
+      loading: false,
+      refetch: jest.fn(),
+    });
+    mockUseSubscription.mockReturnValue({});
   });
 
-  afterEach(() => {
-    jest.useRealTimers();
-  });
-
-  test('configures auto-refresh interval when autoRefresh is true', () => {
-    const setIntervalSpy = jest.spyOn(global, 'setInterval');
+  test('configures subscription when autoRefresh is true', () => {
+    mockUseQuery.mockReturnValue({
+      data: { searchAvailability: [] },
+      loading: false,
+      refetch: jest.fn(),
+    })
+    mockUseSubscription.mockReturnValue({});
 
     render(
       <RealTimeSlotListing
-        providerId={1}
+        providerId={123}
         startISO="2026-02-10T00:00:00Z"
         endISO="2026-02-10T23:59:59Z"
         customerTz="UTC"
         autoRefresh={true}
-        refreshInterval={30}
       />
     );
 
-    // Real-time listing should set an interval for periodic refresh (30s = 30000ms)
-    expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 30000);
-    setIntervalSpy.mockRestore();
+    expect(mockUseSubscription).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ variables: { providerId: 123 }, skip: false })
+    );
   });
 
   test('after initial load shows either slots list or empty state', async () => {
@@ -44,8 +62,10 @@ describe('Real-time slot listing', () => {
     );
 
     await act(async () => {
-      await jest.advanceTimersByTimeAsync(1000);
+      // Small delay for Apollo mock behavior
+      await new Promise(r => setTimeout(r, 100));
     });
+
     await waitFor(() => {
       const hasSlots = screen.queryByText('Total Slots');
       const hasEmpty = screen.queryByText('No available time slots found');

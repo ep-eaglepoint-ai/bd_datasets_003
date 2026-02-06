@@ -1,0 +1,8 @@
+[web]
+  port = 8910
+  apiUrl = "http://localhost:8911"
+  includeEnvironmentVariables = ["NODE_ENV"]
+[api]
+  port = 8911
+[browser]
+  open = true

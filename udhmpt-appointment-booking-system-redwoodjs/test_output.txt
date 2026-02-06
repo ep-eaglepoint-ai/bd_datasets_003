@@ -1,0 +1,54 @@
+  console.log
+    Concurrency Test Results: 1 successes, 9 failures out of 10 attempts.
+
+      at Object.<anonymous> (repository_after/api/tests/integration/concurrency.test.ts:91:17)
+
+  console.log
+    Concurrency Failure Messages: [
+      'Operations timed out after `N/A`. Context: The database failed to respond to a query within the configured timeout — see https://pris.ly/d/sqlite-connector for more details. Database: /Users/mac/my_django_project/bd_dataset_03/Day 2- Tuesday/Task 2 - Appointement Booking System/bd_datasets_003/udhmpt-appointment-booking-system-redwoodjs/repository_after/api/db/./dev.db',
+      'Operations timed out after `N/A`. Context: The database failed to respond to a query within the configured timeout — see https://pris.ly/d/sqlite-connector for more details. Database: /Users/mac/my_django_project/bd_dataset_03/Day 2- Tuesday/Task 2 - Appointement Booking System/bd_datasets_003/udhmpt-appointment-booking-system-redwoodjs/repository_after/api/db/./dev.db',
+      'Operations timed out after `N/A`. Context: The database failed to respond to a query within the configured timeout — see https://pris.ly/d/sqlite-connector for more details. Database: /Users/mac/my_django_project/bd_dataset_03/Day 2- Tuesday/Task 2 - Appointement Booking System/bd_datasets_003/udhmpt-appointment-booking-system-redwoodjs/repository_after/api/db/./dev.db',
+      'Operations timed out after `N/A`. Context: The database failed to respond to a query within the configured timeout — see https://pris.ly/d/sqlite-connector for more details. Database: /Users/mac/my_django_project/bd_dataset_03/Day 2- Tuesday/Task 2 - Appointement Booking System/bd_datasets_003/udhmpt-appointment-booking-system-redwoodjs/repository_after/api/db/./dev.db',
+      'Operations timed out after `N/A`. Context: The database failed to respond to a query within the configured timeout — see https://pris.ly/d/sqlite-connector for more details. Database: /Users/mac/my_django_project/bd_dataset_03/Day 2- Tuesday/Task 2 - Appointement Booking System/bd_datasets_003/udhmpt-appointment-booking-system-redwoodjs/repository_after/api/db/./dev.db',
+      'Operations timed out after `N/A`. Context: The database failed to respond to a query within the configured timeout — see https://pris.ly/d/sqlite-connector for more details. Database: /Users/mac/my_django_project/bd_dataset_03/Day 2- Tuesday/Task 2 - Appointement Booking System/bd_datasets_003/udhmpt-appointment-booking-system-redwoodjs/repository_after/api/db/./dev.db',
+      'Operations timed out after `N/A`. Context: The database failed to respond to a query within the configured timeout — see https://pris.ly/d/sqlite-connector for more details. Database: /Users/mac/my_django_project/bd_dataset_03/Day 2- Tuesday/Task 2 - Appointement Booking System/bd_datasets_003/udhmpt-appointment-booking-system-redwoodjs/repository_after/api/db/./dev.db',
+      '\n' +
+        'Invalid `tx.booking.findMany()` invocation in\n' +
+        '/Users/mac/my_django_project/bd_dataset_03/Day 2- Tuesday/Task 2 - Appointement Booking System/bd_datasets_003/udhmpt-appointment-booking-system-redwoodjs/repository_after/api/src/services/bookings/bookings.ts:159:49\n' +
+        '\n' +
+        '  156 const endJs = endDt.toJSDate()\n' +
+        '  157 \n' +
+        '  158 // 1. Check Provider-wide availability and find capacity slot\n' +
+        '→ 159 const existingBookings = await tx.booking.findMany(\n' +
+        'Transaction API error: Transaction already closed: A query cannot be executed on an expired transaction. The timeout for this transaction was 5000 ms, however 5172 ms passed since the start of the transaction. Consider increasing the interactive transaction timeout or doing less work in the transaction.',
+      'Operations timed out after `N/A`. Context: The database failed to respond to a query within the configured timeout — see https://pris.ly/d/sqlite-connector for more details. Database: /Users/mac/my_django_project/bd_dataset_03/Day 2- Tuesday/Task 2 - Appointement Booking System/bd_datasets_003/udhmpt-appointment-booking-system-redwoodjs/repository_after/api/db/./dev.db'
+    ]
+
+      at Object.<anonymous> (repository_after/api/tests/integration/concurrency.test.ts:112:17)
+
+FAIL repository_after/api/tests/integration/concurrency.test.ts (6.653 s)
+  Real DB Concurrency Integration
+    ✕ Parallel createBooking calls should correctly allocate capacitySlot and prevent double-booking (5254 ms)
+
+  ● Real DB Concurrency Integration › Parallel createBooking calls should correctly allocate capacitySlot and prevent double-booking
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      117 |             m.includes('P2002') ||
+      118 |             m.includes('P2033')
+    > 119 |         )).toBe(true)
+          |            ^
+      120 |     }, 30000) // Increase timeout for concurrency and retries
+      121 |
+      122 |     afterAll(async () => {
+
+      at Object.<anonymous> (repository_after/api/tests/integration/concurrency.test.ts:119:12)
+
+Test Suites: 1 failed, 1 total
+Tests:       1 failed, 1 total
+Snapshots:   0 total
+Time:        6.879 s, estimated 8 s
+Ran all test suites matching /repository_after\/api\/tests\/integration\/concurrency.test.ts/i.
