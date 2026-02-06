@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+redis
+pydantic
+websockets
+python-multipart
+pytest
+httpx
+pytest-asyncio
