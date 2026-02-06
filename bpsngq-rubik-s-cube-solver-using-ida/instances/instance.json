@@ -1,0 +1,12 @@
+{
+            "instance_id": "BPSNGQ",
+            "problem_statement": "The state space of a Rubik's Cube is approximately    
+4.3×10^19, making naive Breadth-First Search (BFS) computationally impossible due to memory exhaustion. The engineering challenge is to implement Iterative Deepening A* (IDA*) combined with an admissible heuristic function derived from pre-computed Pattern Databases (Manhattan distance of corners/edges) to prune the search tree. Mid-tier models frequently default to the "Human Layer-by-Layer" method, which produces suboptimal move counts (>50), or implement standard BFS, which hangs indefinitely on scrambles requiring more than 6 moves.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/bpsngq-rubik-s-cube-solver-using-ida",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        

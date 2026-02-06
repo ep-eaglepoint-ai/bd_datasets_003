@@ -1,0 +1,804 @@
+diff --git a/repository_before/.gitkeep b/repository_before/.gitkeep
+deleted file mode 100644
+index eb45c15..0000000
+--- a/repository_before/.gitkeep
++++ /dev/null
+@@ -1 +0,0 @@
+-# Required for git diff
+diff --git a/repository_after/__init__.py b/repository_after/__init__.py
+new file mode 100644
+index 0000000..4abcf7f
+--- /dev/null
++++ b/repository_after/__init__.py
+@@ -0,0 +1 @@
++# Package marker for repository_after
+diff --git a/repository_after/cube_state.py b/repository_after/cube_state.py
+new file mode 100644
+index 0000000..72a8c0b
+--- /dev/null
++++ b/repository_after/cube_state.py
+@@ -0,0 +1,40 @@
++class CubeState:
++    """
++    Represents the state of a Rubik's Cube using permutation and orientation vectors.
++    
++    cp: Corner Permutation (8 elements, 0-7)
++    co: Corner Orientation (8 elements, 0-2)
++    ep: Edge Permutation (12 elements, 0-11)
++    eo: Edge Orientation (12 elements, 0-1)
++    """
++    def __init__(self, cp, co, ep, eo):
++        self.cp = list(cp)
++        self.co = list(co)
++        self.ep = list(ep)
++        self.eo = list(eo)
++
++    @staticmethod
++    def solved_state():
++        """Returns a CubeState representing the solved cube."""
++        return CubeState(
++            cp=list(range(8)),
++            co=[0] * 8,
++            ep=list(range(12)),
++            eo=[0] * 12
++        )
++
++    def is_solved(self) -> bool:
++        """Returns True if the cube is in the solved state."""
++        return (self.cp == list(range(8)) and
++                self.co == [0] * 8 and
++                self.ep == list(range(12)) and
++                self.eo == [0] * 12)
++
++    def copy(self):
++        """Returns a deep copy of the current cube state."""
++        return CubeState(
++            cp=list(self.cp),
++            co=list(self.co),
++            ep=list(self.ep),
++            eo=list(self.eo)
++        )
+diff --git a/repository_after/heuristic.py b/repository_after/heuristic.py
+new file mode 100644
+index 0000000..0cd9d12
+--- /dev/null
++++ b/repository_after/heuristic.py
+@@ -0,0 +1,76 @@
++import pathlib
++from .moves import MOVE_DATA
++from .indices import get_cp_index, get_subset_rank
++from . import tables
++
++class Heuristic:
++    def __init__(self):
++        # We'll use 5 tables: CO, EO, CP, and two 6-edge subsets
++        self.data_dir = pathlib.Path(__file__).parent / "data"
++        
++        self.co_table = self._load_or_gen("co.bin", tables.gen_co_table)
++        self.eo_table = self._load_or_gen("eo.bin", tables.gen_eo_table)
++        self.cp_table = self._load_or_gen("cp.bin", tables.gen_cp_table)
++        
++        # Two 6-edge subsets track all 12 edges
++        self.e05_table = self._load_or_gen("edges_05.bin", lambda: tables.gen_edge_table([0,1,2,3,4,5]))
++        self.e611_table = self._load_or_gen("edges_611.bin", lambda: tables.gen_edge_table([6,7,8,9,10,11]))
++        
++
++    def _load_or_gen(self, filename, gen_func):
++        import os
++        path = self.data_dir / filename
++        if path.exists():
++            print(f"Loading PDB {filename} from disk...")
++            with open(path, "rb") as f:
++                return bytearray(f.read())
++        else:
++            # If in CI/Evaluation without PDBs, fail fast instead of 'hanging' on 15min gen
++            if os.environ.get("CI") or os.environ.get("EVALUATION"):
++                raise FileNotFoundError(
++                    f"CRITICAL: PDB {filename} missing in CI/Evaluation environment. "
++                    "Pre-generated tables are required for performance limits."
++                )
++            
++            print(f"PDB {filename} NOT found, generating (this may take several minutes)...")
++            table = gen_func()
++            path.parent.mkdir(parents=True, exist_ok=True)
++            with open(path, "wb") as f:
++                f.write(table)
++            return table
++
++    def get_h(self, state, p) -> int:
++        co = state.co
++        eo = state.eo
++        cp = state.cp
++        ep = state.ep
++        
++        # Inlined index calcs
++        idx_co = 0
++        for i in range(7): idx_co = idx_co * 3 + co[i]
++        h_co = self.co_table[idx_co]
++        
++        idx_eo = 0
++        for i in range(11): idx_eo = idx_eo * 2 + eo[i]
++        h_eo = self.eo_table[idx_eo]
++        
++        h_cp = self.cp_table[get_cp_index(cp)]
++        
++        # p is a pre-allocated buffer passed from the search to avoid allocation
++        for i in range(12):
++            p[ep[i]] = i
++            
++        # Subset [0,1,2,3,4,5]
++        idx_05 = get_subset_rank((p[0], p[1], p[2], p[3], p[4], p[5]), 12)
++        h_05 = self.e05_table[idx_05]
++        
++        # Subset [6,7,8,9,10,11]
++        idx_611 = get_subset_rank((p[6], p[7], p[8], p[9], p[10], p[11]), 12)
++        h_611 = self.e611_table[idx_611]
++        
++        res = h_co
++        if h_eo > res: res = h_eo
++        if h_cp > res: res = h_cp
++        if h_05 > res: res = h_05
++        if h_611 > res: res = h_611
++        return res
+diff --git a/repository_after/ida_star.py b/repository_after/ida_star.py
+new file mode 100644
+index 0000000..a8948a0
+--- /dev/null
++++ b/repository_after/ida_star.py
+@@ -0,0 +1,78 @@
++from .moves import apply_move, undo_move
++
++class IDAStar:
++    def __init__(self, heuristic):
++        self.heuristic = heuristic
++        self.moves = ["U", "U'", "U2", "D", "D'", "D2", "L", "L'", "L2", "R", "R'", "R2", "F", "F'", "F2", "B", "B'", "B2"]
++        
++        # Pre-calculate allowed moves for each previous move to avoid branch logic in hot loop
++        self.move_transitions = {}
++        # None case (start)
++        self.move_transitions[None] = self.moves
++        
++        for m1 in self.moves:
++            allowed = []
++            f1 = m1[0]
++            for m2 in self.moves:
++                f2 = m2[0]
++                # 1. Same-face Redundancy: m2 after m1 where face(m1) == face(m2) is equivalent 
++                #    to a single rotation of that face (e.g., U then U' is identity, U then U is U2).
++                #    In IDA*, these paths are suboptimal as they have higher 'g' for the same state.
++                if f1 == f2: continue
++                
++                # 2. Opposite-face Commutativity: Moves on opposite faces (U-D, L-R, F-B) commute.
++                #    The sequence [U, D] results in the same state as [D, U].
++                #    To prevent searching the same state multiple times, we enforce a canonical 
++                #    order by only allowing [FaceA, FaceB] where index(FaceA) < index(FaceB).
++                #    For the standard UDLRFB order, this means U follows D is blocked, L follows R is blocked, etc.
++                if (f1 == 'D' and f2 == 'U') or \
++                   (f1 == 'R' and f2 == 'L') or \
++                   (f1 == 'B' and f2 == 'F'):
++                    continue
++                allowed.append(m2)
++            self.move_transitions[m1] = allowed
++
++    def solve(self, state):
++        if state.is_solved():
++            return []
++
++        # Allocate once per solve (thread-safe local)
++        ep_buf = [0] * 12
++        threshold = self.heuristic.get_h(state, ep_buf)
++        
++        while True:
++            result, path = self._search(state, 0, threshold, None, [], ep_buf)
++            if result == "FOUND":
++                return path
++            if result == float('inf'):
++                return None
++            threshold = result
++
++    def _search(self, state, g, threshold, last_move, path, ep_buf):
++        h = self.heuristic.get_h(state, ep_buf)
++        f = g + h
++        
++        if f > threshold:
++            return f, None
++        
++        if h == 0:
++            return "FOUND", list(path)
++
++        min_new_threshold = float('inf')
++        
++        for move in self.move_transitions[last_move]:
++            apply_move(state, move)
++            path.append(move)
++            
++            result, found_path = self._search(state, g + 1, threshold, move, path, ep_buf)
++            
++            if result == "FOUND":
++                return "FOUND", found_path
++            
++            path.pop()
++            undo_move(state, move)
++            
++            if result < min_new_threshold:
++                min_new_threshold = result
++            
++        return min_new_threshold, None
+diff --git a/repository_after/indices.py b/repository_after/indices.py
+new file mode 100644
+index 0000000..e7d2a79
+--- /dev/null
++++ b/repository_after/indices.py
+@@ -0,0 +1,64 @@
++
++# Index calculation functions for Rubik's Cube heuristics
++
++def get_co_index(co):
++    idx = 0
++    for i in range(7):
++        idx = idx * 3 + co[i]
++    return idx
++
++def get_eo_index(eo):
++    idx = 0
++    for i in range(11):
++        idx = idx * 2 + eo[i]
++    return idx
++
++FACT = [1, 1, 2, 6, 24, 120, 720, 5040, 40320]
++def get_cp_index(cp):
++    idx = 0
++    for i in range(7):
++        less = 0
++        v = cp[i]
++        for j in range(i+1, 8):
++            if v > cp[j]: less += 1
++        idx += less * FACT[7-i]
++    return idx
++
++# Permutation ranking for P(n, k)
++# Number of ways to pick k items from n and arrange them
++def get_subset_rank(positions, n):
++    # positions: tuple of k distinct values in [0, n-1]
++    # The rank is based on the positions of labeled pieces.
++    rank = 0
++    k = len(positions)
++    
++    used = 0
++    for i in range(k):
++        val = positions[i]
++        count = 0
++        for v in range(val):
++            if not (used & (1 << v)):
++                count += 1
++        
++        # P(n-1-i, k-1-i)
++        p = 1
++        for j in range(k - 1 - i):
++            p *= (n - 1 - i - j)
++        
++        rank += count * p
++        used |= (1 << val)
++    return rank
++
++def get_edge_subset_index(ep, subset):
++    # ep: edge permutation array (12 elements)
++    # subset: list of piece values to track, in order.
++    # We need to find the position of each piece in 'subset'
++    k = len(subset)
++    positions = [0] * k
++    for i in range(12):
++        val = ep[i]
++        for j in range(k):
++            if val == subset[j]:
++                positions[j] = i
++                break
++    return get_subset_rank(positions, 12)
+diff --git a/repository_after/moves.py b/repository_after/moves.py
+new file mode 100644
+index 0000000..4819144
+--- /dev/null
++++ b/repository_after/moves.py
+@@ -0,0 +1,103 @@
++from .cube_state import CubeState
++
++# Pre-calculated move tables for piece permutations and orientations.
++MOVE_DATA = {
++    'U': {
++        'cp_p': [1, 2, 3, 0, 4, 5, 6, 7],
++        'co_i': [0, 0, 0, 0, 0, 0, 0, 0],
++        'ep_p': [1, 2, 3, 0, 4, 5, 6, 7, 8, 9, 10, 11],
++        'eo_i': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
++    },
++    'D': {
++        'cp_p': [0, 1, 2, 3, 7, 4, 5, 6],
++        'co_i': [0, 0, 0, 0, 0, 0, 0, 0],
++        'ep_p': [0, 1, 2, 3, 7, 4, 5, 6, 8, 9, 10, 11],
++        'eo_i': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
++    },
++    'L': {
++        'cp_p': [0, 1, 3, 5, 4, 6, 2, 7],
++        'co_i': [0, 0, 1, 2, 0, 1, 2, 0],
++        'ep_p': [0, 1, 9, 3, 4, 5, 11, 7, 8, 6, 10, 2],
++        'eo_i': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
++    },
++    'R': {
++        'cp_p': [1, 7, 2, 3, 0, 5, 6, 4],
++        'co_i': [2, 1, 0, 0, 1, 0, 0, 2],
++        'ep_p': [10, 1, 2, 3, 8, 5, 6, 7, 0, 9, 4, 11],
++        'eo_i': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
++    },
++    'F': {
++        'cp_p': [4, 1, 2, 0, 5, 3, 6, 7],
++        'co_i': [1, 0, 0, 2, 2, 1, 0, 0],
++        'ep_p': [0, 8, 2, 3, 4, 9, 6, 7, 5, 1, 10, 11],
++        'eo_i': [0, 1, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0]
++    },
++    'B': {
++        'cp_p': [0, 2, 6, 3, 4, 5, 7, 1],
++        'co_i': [0, 1, 2, 0, 0, 0, 1, 2],
++        'ep_p': [0, 1, 2, 11, 4, 5, 6, 10, 8, 9, 3, 7],
++        'eo_i': [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1]
++    }
++}
++
++# Derived moves (', 2)
++for face in 'UDFLRB':
++    m1 = MOVE_DATA[face]
++    # Double move (2)
++    m2 = {
++        'cp_p': [m1['cp_p'][m1['cp_p'][i]] for i in range(8)],
++        'co_i': [(m1['co_i'][i] + m1['co_i'][m1['cp_p'][i]]) % 3 for i in range(8)],
++        'ep_p': [m1['ep_p'][m1['ep_p'][i]] for i in range(12)],
++        'eo_i': [(m1['eo_i'][i] + m1['eo_i'][m1['ep_p'][i]]) % 2 for i in range(12)]
++    }
++    MOVE_DATA[face + '2'] = m2
++    # Inverse move (') = 3x CW
++    m3 = {
++        'cp_p': [m2['cp_p'][m1['cp_p'][i]] for i in range(8)],
++        'co_i': [(m2['co_i'][i] + m1['co_i'][m2['cp_p'][i]]) % 3 for i in range(8)],
++        'ep_p': [m2['ep_p'][m1['ep_p'][i]] for i in range(12)],
++        'eo_i': [(m2['eo_i'][i] + m1['eo_i'][m2['ep_p'][i]]) % 2 for i in range(12)]
++    }
++    MOVE_DATA[face + "'"] = m3
++
++# Inverse mapping for undoing moves
++INVERSE_MOVES = {}
++for face in 'UDFLRB':
++    INVERSE_MOVES[face] = face + "'"
++    INVERSE_MOVES[face + "'"] = face
++    INVERSE_MOVES[face + '2'] = face + '2'
++
++# Static buffers for interim piece states to ensure ZERO allocations in apply_move
++_BUFC_P = [0] * 8
++_BUFC_O = [0] * 8
++_BUFE_P = [0] * 12
++_BUFE_O = [0] * 12
++
++def apply_move(state, move):
++    """
++    Applies a Rubik's Cube move to the CubeState in-place with ZERO allocations.
++    """
++    m = MOVE_DATA[move]
++    p_cp, i_co = m['cp_p'], m['co_i']
++    p_ep, i_eo = m['ep_p'], m['eo_i']
++    
++    cp, co = state.cp, state.co
++    ep, eo = state.ep, state.eo
++
++    # Update corners in-place using buffers
++    for i in range(8):
++        _BUFC_P[i] = cp[p_cp[i]]
++        _BUFC_O[i] = (co[p_cp[i]] + i_co[i]) % 3
++    for i in range(8):
++        cp[i], co[i] = _BUFC_P[i], _BUFC_O[i]
++
++    # Update edges in-place using buffers
++    for i in range(12):
++        _BUFE_P[i] = ep[p_ep[i]]
++        _BUFE_O[i] = (eo[p_ep[i]] + i_eo[i]) % 2
++    for i in range(12):
++        ep[i], eo[i] = _BUFE_P[i], _BUFE_O[i]
++
++def undo_move(state, move):
++    """Undoes a move by applying its inverse in-place with ZERO allocations."""
++    apply_move(state, INVERSE_MOVES[move])
+diff --git a/repository_after/parser.py b/repository_after/parser.py
+new file mode 100644
+index 0000000..b6b90cc
+--- /dev/null
++++ b/repository_after/parser.py
+@@ -0,0 +1,214 @@
++from .cube_state import CubeState
++from collections import Counter
++
++# Indices in 54-char string (U, R, F, D, L, B)
++# Face: U(0-8), R(9-17), F(18-26), D(27-35), L(36-44), B(45-53)
++# Corners (Pos: Facelets)
++C_F = [
++    (8, 9, 20),   # 0: UFR (U9, R1, F3)
++    (2, 45, 11),  # 1: URB (U3, B1, R3)
++    (0, 36, 47),  # 2: UBL (U1, L1, B3)
++    (6, 18, 38),  # 3: ULF (U7, F1, L3)
++    (29, 26, 15), # 4: DRF (D3, F9, R7)
++    (27, 44, 24), # 5: DFL (D1, L9, F7)
++    (33, 53, 42), # 6: DLB (D7, B9, L7)
++    (35, 17, 51)  # 7: DBR (D9, R9, B7)
++]
++
++# Edges (Pos: Facelets)
++E_F = [
++    (5, 10),      # 0: UR (U6, R2)
++    (7, 19),      # 1: UF (U8, F2)
++    (3, 37),      # 2: UL (U4, L2)
++    (1, 46),      # 3: UB (U2, B2)
++    (32, 16),     # 4: DR (D6, R8)
++    (28, 25),     # 5: DF (D2, F8)
++    (30, 43),     # 6: DL (D4, L8)
++    (34, 52),     # 7: DB (D8, B8)
++    (23, 12),     # 8: FR (F6, R4)
++    (21, 39),     # 9: FL (F4, L6)
++    (48, 14),     # 10: BR (B4, R6)
++    (50, 41)      # 11: BL (B6, L4)
++]
++
++# Piece definitions (U, D facelets first for orientation logic)
++# Standard Color Scheme: U=White, D=Yellow, L=Green, R=Blue, F=Red, B=Orange
++# But parsing must support dynamic centers.
++# We define pieces by their sets of centers.
++
++def parse_singmaster(s: str) -> CubeState:
++    """Parses a 54-char Singmaster notation string into a CubeState."""
++    if len(s) != 54:
++        raise ValueError(f"String must be exactly 54 characters, got {len(s)}")
++    
++    valid_chars = set("URFDLB")
++    if not all(c.upper() in valid_chars for c in s):
++        raise ValueError("String contains invalid characters. Only U, R, F, D, L, B allowed.")
++
++    # Determine center mapping (what color is on what face)
++    # Singmaster standard: U:s[4], R:s[13], F:s[22], D:s[31], L:s[40], B:s[49]
++    centers = {
++        'U': s[4], 'R': s[13], 'F': s[22], 
++        'D': s[31], 'L': s[40], 'B': s[49]
++    }
++    
++    # Reverse map: Color -> Face Name
++    # Check for duplicate centers
++    raw_centers = list(centers.values())
++    if len(set(raw_centers)) != 6:
++        raise ValueError("Center facelets must be unique colors.")
++        
++    color_map = {v: k for k, v in centers.items()}
++
++    # Pieces definitions by standard Face Names
++    C_SET = [
++        {'U','R','F'}, {'U','R','B'}, {'U','L','B'}, {'U','L','F'},
++        {'D','R','F'}, {'D','L','F'}, {'D','L','B'}, {'D','R','B'}
++    ]
++    E_SET = [
++        {'U','R'}, {'U','F'}, {'U','L'}, {'U','B'},
++        {'D','R'}, {'D','F'}, {'D','L'}, {'D','B'},
++        {'F','R'}, {'F','L'}, {'B','R'}, {'B','L'}
++    ]
++
++    cp = [-1] * 8
++    co = [0] * 8
++    
++    # Track found pieces to ensure 1-to-1 mapping
++    found_corners = [False] * 8
++    
++    for i in range(8):
++        # Get colors at this corner position
++        try:
++            colors = [color_map[s[idx]] for idx in C_F[i]]
++        except KeyError as e:
++            raise ValueError(f"Invalid color char found at corner {i}: {e}")
++            
++        c_set = set(colors)
++        
++        # Identify which physical piece this is
++        match_idx = -1
++        for p_idx, p_set in enumerate(C_SET):
++            if c_set == p_set:
++                match_idx = p_idx
++                break
++        
++        if match_idx == -1:
++            raise ValueError(f"Invalid corner piece at position {i}: {c_set}")
++            
++        if found_corners[match_idx]:
++             raise ValueError(f"Duplicate corner piece found: {c_set}")
++        found_corners[match_idx] = True
++        cp[i] = match_idx
++        
++        # Orientation:
++        # 0: U/D color is on U/D face
++        # 1: U/D color is on R/L/F/B face (needs CW twist to be correct?) -> standard def
++        # Simple rule: index of U/D color in the tuple (U/D, F/B/L/R, R/L/F/B)
++        # Wait, our C_F tuples are specific.
++        # i=0 (UFR): U, R, F.
++        # If color[0] is U or D -> orient 0.
++        # If color[1] is U or D -> orient 1.
++        # If color[2] is U or D -> orient 2.
++        
++        # Check standard definitions for reference faces
++        # Corner 0 (UFR): U(0), R(1), F(2). 
++        # Ref faces for orientation are U and D.
++        found_ud = False
++        for orient, color in enumerate(colors):
++            if color in ('U', 'D'):
++                co[i] = orient
++                found_ud = True
++                break
++        if not found_ud:
++             raise ValueError(f"Corner piece {i} ({c_set}) lacks a U or D color.")
++
++    ep = [-1] * 12
++    eo = [0] * 12
++    found_edges = [False] * 12
++    
++    for i in range(12):
++        colors = [color_map[s[idx]] for idx in E_F[i]]
++        e_set = set(colors)
++        
++        match_idx = -1
++        for p_idx, p_set in enumerate(E_SET):
++            if e_set == p_set:
++                match_idx = p_idx
++                break
++        
++        if match_idx == -1:
++            raise ValueError(f"Invalid edge piece at position {i}: {e_set}")
++            
++        if found_edges[match_idx]:
++            raise ValueError(f"Duplicate edge piece found: {e_set}")
++        found_edges[match_idx] = True
++        ep[i] = match_idx
++        
++        # Edge Orientation
++        # 0 = Correct, 1 = Flipped
++        # Rule: Is U/D color on U/D face? Yes -> 0.
++        # If no U/D color, is F/B color on F/B face? Yes -> 0.
++        # Else 1.
++        # Ref faces for position i (from E_F definitions):
++        # 0 (UR): U, R. 
++        c1, c2 = colors
++        
++        # Determine strict EO
++        # This requires checking against the specific facelet mapping
++        # E_F[0] is (5, 10) which are U facelet and R facelet.
++        # If c1 in U/D: 0. 
++        # If c2 in U/D: 1.
++        # If piece is FR (F, R faces). No U/D.
++        # If c1 in F/B: 0.
++        # If c2 in F/B: 1.
++        
++        is_ud_piece = ('U' in e_set or 'D' in e_set)
++        
++        val = 1
++        if is_ud_piece:
++            if c1 in ('U', 'D'): val = 0
++        else:
++            # Side edge
++            if c1 in ('F', 'B'): val = 0
++            
++        eo[i] = val
++
++    # Verify Counts
++    if not all(found_corners): raise ValueError("Missing corner pieces.")
++    if not all(found_edges): raise ValueError("Missing edge pieces.")
++
++    # Verify Orientation Parity
++    if sum(co) % 3 != 0:
++        raise ValueError(f"Invalid Corner Orientation Sum: {sum(co)} (must be div by 3)")
++    if sum(eo) % 2 != 0:
++        raise ValueError(f"Invalid Edge Orientation Sum: {sum(eo)} (must be div by 2)")
++        
++    # Verify Permutation Parity
++    # Calculate number of swaps for CP and EP
++    def count_swaps(perm):
++        visited = [False] * len(perm)
++        swaps = 0
++        for i in range(len(perm)):
++            if not visited[i]:
++                cycle_len = 0
++                x = i
++                while not visited[x]:
++                    visited[x] = True
++                    x = perm[x]
++                    cycle_len += 1
++                if cycle_len > 1:
++                    swaps += (cycle_len - 1)
++        return swaps
++
++    cp_swaps = count_swaps(cp)
++    ep_swaps = count_swaps(ep)
++    
++    if (cp_swaps % 2) != (ep_swaps % 2):
++        raise ValueError("Invalid Permutation Parity (Corner and Edge swap parity mismatch).")
++
++    return CubeState(cp, co, ep, eo)
++
++def format_moves(move_list: list[str]) -> str:
++    """Converts a list of move names to a notation string."""
++    return " ".join(move_list)
+diff --git a/repository_after/solver.py b/repository_after/solver.py
+new file mode 100644
+index 0000000..4bb54c0
+--- /dev/null
++++ b/repository_after/solver.py
+@@ -0,0 +1,26 @@
++from .parser import parse_singmaster, format_moves
++from .heuristic import Heuristic
++from .ida_star import IDAStar
++
++class OptimalCubeSolver:
++    """
++    Principal Robotics Engineer implementation of a sub-second Rubik's Cube solver.
++    Uses IDA* search with pre-computed Pattern Database Heuristics.
++    """
++    def __init__(self):
++        # Initialize the modular search and heuristic engines
++        self.heuristic = Heuristic()
++        self.search_engine = IDAStar(self.heuristic)
++
++    def solve(self, scramble_string: str) -> str:
++        """
++        Accepts a 54-char Singmaster notation string and returns a move sequence solution.
++        """
++        # Parse the input string into internal permutation/orientation arrays
++        initial_state = parse_singmaster(scramble_string)
++        
++        # Execute the IDA* search (Iterative Deepening A*)
++        move_sequence = self.search_engine.solve(initial_state)
++        
++        # Format the internal move list back to standard notation
++        return format_moves(move_sequence)
+diff --git a/repository_after/tables.py b/repository_after/tables.py
+new file mode 100644
+index 0000000..cfd1756
+--- /dev/null
++++ b/repository_after/tables.py
+@@ -0,0 +1,141 @@
++import os
++import pathlib
++from .moves import MOVE_DATA
++from .indices import get_co_index, get_eo_index, get_cp_index, get_subset_rank
++
++# Table sizes
++CO_SIZE = 2187
++EO_SIZE = 2048
++CP_SIZE = 40320
++# P(12, 6) = 665280
++EDGE_POS_6_SIZE = 665280
++
++DATA_DIR = pathlib.Path(__file__).parent / "data"
++
++def gen_co_table():
++    print("Generating CO table...")
++    table = bytearray([255]) * CO_SIZE
++    start = (0,)*8
++    table[get_co_index(start)] = 0
++    queue = [start]
++    d = 0
++    while queue:
++        next_q = []
++        for s in queue:
++            for move_name, m in MOVE_DATA.items():
++                p, inc = m['cp_p'], m['co_i']
++                ns = tuple((s[p[i]] + inc[i]) % 3 for i in range(8))
++                idx = get_co_index(ns)
++                if table[idx] == 255:
++                    table[idx] = d + 1
++                    next_q.append(ns)
++        queue = next_q
++        d += 1
++    return table
++
++def gen_eo_table():
++    print("Generating EO table...")
++    table = bytearray([255]) * EO_SIZE
++    start = (0,)*12
++    table[get_eo_index(start)] = 0
++    queue = [start]
++    d = 0
++    while queue:
++        next_q = []
++        for s in queue:
++            for move_name, m in MOVE_DATA.items():
++                p, inc = m['ep_p'], m['eo_i']
++                ns = tuple((s[p[i]] + inc[i]) % 2 for i in range(12))
++                idx = get_eo_index(ns)
++                if table[idx] == 255:
++                    table[idx] = d + 1
++                    next_q.append(ns)
++        queue = next_q
++        d += 1
++    return table
++
++def gen_cp_table():
++    print("Generating CP table...")
++    table = bytearray([255]) * CP_SIZE
++    start = tuple(range(8))
++    table[get_cp_index(start)] = 0
++    queue = [start]
++    d = 0
++    while queue:
++        next_q = []
++        for s in queue:
++            for move_name, m in MOVE_DATA.items():
++                p = m['cp_p']
++                ns = tuple(s[p[i]] for i in range(8))
++                idx = get_cp_index(ns)
++                if table[idx] == 255:
++                    table[idx] = d + 1
++                    next_q.append(ns)
++        queue = next_q
++        d += 1
++    return table
++
++def gen_edge_table(subset):
++    """
++    BFS on the position tuples of the subset edges.
++    There are P(12, k) such states.
++    """
++    print(f"Generating Edge table for subset {subset}...")
++    table = bytearray([255]) * EDGE_POS_6_SIZE
++    
++    # Initial positions of pieces in 'subset'
++    # Start: piece subset[0] is at index subset[0], etc.
++    start = tuple(subset)
++    table[get_subset_rank(start, 12)] = 0
++    queue = [start]
++    
++    # Pre-calculate inverse EP transitions for each base move
++    # ep_p maps new_idx -> old_idx.
++    # To find the new_idx of a piece that was at old_idx, 
++    # we need the inverse map: old_idx -> new_idx.
++    ep_moves_inv = {}
++    for name, m in MOVE_DATA.items():
++        ep_p = m['ep_p']
++        inv = [0] * 12
++        for new_pos, old_pos in enumerate(ep_p):
++            inv[old_pos] = new_pos
++        ep_moves_inv[name] = tuple(inv)
++    
++    d = 0
++    while queue:
++        next_q = []
++        for pos_tuple in queue:
++            # pos_tuple[i] is the current position of piece subset[i]
++            for move_name, inv in ep_moves_inv.items():
++                # Direct O(1) lookup of new position using inverse permutation
++                new_pos = tuple(inv[p] for p in pos_tuple)
++                idx = get_subset_rank(new_pos, 12)
++                if table[idx] == 255:
++                    table[idx] = d + 1
++                    next_q.append(new_pos)
++        queue = next_q
++        d += 1
++    return table
++
++def generate_all_tables():
++    os.makedirs(DATA_DIR, exist_ok=True)
++    
++    co = gen_co_table()
++    with open(DATA_DIR / "co.bin", "wb") as f: f.write(co)
++    
++    eo = gen_eo_table()
++    with open(DATA_DIR / "eo.bin", "wb") as f: f.write(eo)
++    
++    cp = gen_cp_table()
++    with open(DATA_DIR / "cp.bin", "wb") as f: f.write(cp)
++    
++    e1 = gen_edge_table([0, 1, 2, 3, 4, 5])
++    with open(DATA_DIR / "edges_05.bin", "wb") as f: f.write(e1)
++    
++    e2 = gen_edge_table([6, 7, 8, 9, 10, 11])
++    with open(DATA_DIR / "edges_611.bin", "wb") as f: f.write(e2)
++    
++    print(f"All tables generated and saved to {DATA_DIR}")
++
++if __name__ == "__main__":
++    generate_all_tables()
