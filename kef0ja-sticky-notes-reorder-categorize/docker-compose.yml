@@ -1,7 +1,9 @@
 services:
   app:
     build: .
+    working_dir: /app
     environment:
       - REPO_PATH=repository_after
     volumes:
-      - ./evaluation:/app/evaluation
+      - .:/app
+      - /app/node_modules
