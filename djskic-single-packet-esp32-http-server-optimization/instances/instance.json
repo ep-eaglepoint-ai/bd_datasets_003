@@ -1,0 +1,11 @@
+{
+            "instance_id": "DJSKIC",
+            "problem_statement": "An industrial IoT team is deploying an ESP32-based gateway that must serve a critical monitoring dashboard over extremely high-latency satellite links. The dashboard must fully render within the first TCP congestion window to avoid multi-second delays. A previous implementation relied on generic HTTP servers and failed under real network conditions due to packet fragmentation, oversized headers, and unpredictable buffering behavior. The team now requires a purpose-built HTTP/1.1 static file server written in C that operates at the TCP buffer level, enforces a strict MTU-aware size limit on the entire response, and guarantees single-packet delivery when possible. The solution must be compatible with ESP32 networking constraints, avoid heap usage, and include byte-level asset minimization logic to ensure deterministic behavior under worst-case conditions.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/djskic-single-packet-esp32-http-server-optimization",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
