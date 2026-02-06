@@ -1,0 +1,27 @@
+{
+    "name": "websocket-virtual-waiting-room",
+    "version": "1.0.0",
+    "description": "WebSocket Virtual Waiting Room with Heartbeat Eviction",
+    "main": "server.js",
+    "scripts": {
+        "start": "node server.js",
+        "test": "jest --runInBand --detectOpenHandles --forceExit",
+        "test:watch": "jest --watch"
+    },
+    "keywords": [
+        "websocket",
+        "waiting-room",
+        "heartbeat",
+        "queue"
+    ],
+    "author": "",
+    "license": "ISC",
+    "dependencies": {
+        "ws": "^8.14.2",
+        "uuid": "^9.0.1"
+    },
+    "devDependencies": {
+        "jest": "^29.7.0",
+        "fast-check": "^3.15.0"
+    }
+}

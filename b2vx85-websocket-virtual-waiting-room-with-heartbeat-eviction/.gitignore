@@ -6,7 +6,12 @@ __pycache__/
 
 # Node
 node_modules/
+package-lock.json
+coverage/
 
 # OS
 .DS_Store
+
+# Evaluation reports
+evaluation/reports/
 evaluation/*.json
