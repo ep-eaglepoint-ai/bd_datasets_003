@@ -1,8 +1,10 @@
-# Docker Compose file for running tests. You should customize this as needed.
+version: '3.8'
 
 services:
   app:
     build: .
-    command: pytest -q tests
     volumes:
       - .:/app
+    environment:
+      - CGO_ENABLED=0
+      - REPO_PATH=${REPO_PATH:-repository_after}

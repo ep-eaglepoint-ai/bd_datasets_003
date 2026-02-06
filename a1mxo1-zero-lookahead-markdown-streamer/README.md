@@ -1,11 +1,7 @@
 # A1MXO1 - Zero-Lookahead-Markdown-Streamer
 
-    ## Before Test Docker Command
-    <docker before command here>
+    docker compose run --rm -e REPO_PATH=repository_after app go test -v ./tests/...
 
-    ## After Test Docker Command
-    <docker after command here>
-
-    ## Evaluation Docker Command
-    <evaluation command here>
+    docker compose run --rm app go run evaluation/evaluate.go
+    
     

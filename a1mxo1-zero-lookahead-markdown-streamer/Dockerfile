@@ -1,7 +1,16 @@
-# Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
+FROM golang:1.21-alpine
 
-FROM python:3.11-slim
+
+RUN apk add --no-cache bash
+
 WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+
+COPY go.mod ./
+RUN go mod download || true
+
+
+COPY . .
+
+
+CMD ["go", "test", "-v", "./tests/..."]
