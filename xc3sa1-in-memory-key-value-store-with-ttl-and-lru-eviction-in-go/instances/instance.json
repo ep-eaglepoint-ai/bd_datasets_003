@@ -1,0 +1,11 @@
+{
+            "instance_id": "XC3SA1",
+            "problem_statement": "The current in-memory key-value store only supports basic get, set, and delete operations. Keys live forever and accumulate without limit, eventually exhausting memory. There is no way to automatically expire stale data, no eviction policy when the store grows too large, and no way to search for keys by pattern. Batch operations require multiple round-trips, and there is no visibility into cache performance like hit rates or eviction counts. Core logic is in main.go.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/xc3sa1-in-memory-key-value-store-with-ttl-and-lru-eviction-in-go",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
