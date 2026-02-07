@@ -190,6 +190,24 @@ func (s *Service) processDelivery(ctx context.Context, item *models.QueueItem) {
 	delivery.ResponseBody = responseBody
 	delivery.ResponseTimeMs = responseTimeMs
 
+	// Store complete logs for this attempt
+	attempt := &models.DeliveryAttempt{
+		ID:             uuid.New().String(),
+		DeliveryID:     delivery.ID,
+		AttemptNumber:  delivery.AttemptNumber,
+		RequestHeaders: requestHeaders,
+		RequestBody:    requestBody,
+		ResponseStatus: responseStatus,
+		ResponseBody:   responseBody,
+		ResponseTimeMs: responseTimeMs,
+		Success:        success,
+		CreatedAt:      time.Now(),
+	}
+
+	if err := s.db.CreateDeliveryAttempt(ctx, attempt); err != nil {
+		log.Printf("Failed to create delivery attempt log: %v", err)
+	}
+
 	if success {
 		delivery.Status = models.DeliveryStatusSuccess
 		delivery.NextRetryAt = nil

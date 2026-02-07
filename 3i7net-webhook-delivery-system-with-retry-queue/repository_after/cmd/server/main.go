@@ -39,10 +39,11 @@ func main() {
 	}
 	defer redisQueue.Close()
 
-	// Validate Redis persistence configuration
+	// Validate Redis persistence configuration - REQUIRED for pending deliveries to survive restart
 	if err := redisQueue.ValidatePersistence(context.Background()); err != nil {
-		log.Printf("WARNING: %v", err)
+		log.Fatalf("Redis persistence is required: %v", err)
 	}
+	log.Printf("Redis persistence validation passed")
 
 	metricsCollector := metrics.New()
 	circuitBreaker := delivery.NewCircuitBreaker()

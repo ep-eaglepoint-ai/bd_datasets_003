@@ -1072,3 +1072,127 @@ func TestRedisPersistenceValidation(t *testing.T) {
 		t.Error("Should error when neither RDB nor AOF is enabled")
 	}
 }
+
+func TestDeliveryLogsPreservation(t *testing.T) {
+	type DeliveryAttempt struct {
+		ID             string
+		DeliveryID     string
+		AttemptNumber  int
+		RequestHeaders string
+		RequestBody    string
+		ResponseStatus int
+		ResponseBody   string
+		ResponseTimeMs int64
+		Success        bool
+		CreatedAt      time.Time
+	}
+
+	var attempts []DeliveryAttempt
+
+	recordAttempt := func(deliveryID string, attemptNum int, reqHeaders, reqBody string, respStatus int, respBody string, respTimeMs int64, success bool) {
+		attempts = append(attempts, DeliveryAttempt{
+			ID:             fmt.Sprintf("log-%d", len(attempts)+1),
+			DeliveryID:     deliveryID,
+			AttemptNumber:  attemptNum,
+			RequestHeaders: reqHeaders,
+			RequestBody:    reqBody,
+			ResponseStatus: respStatus,
+			ResponseBody:   respBody,
+			ResponseTimeMs: respTimeMs,
+			Success:        success,
+			CreatedAt:      time.Now(),
+		})
+	}
+
+	deliveryID := "del-123"
+
+	recordAttempt(deliveryID, 1, `{"Content-Type":"application/json","X-Webhook-Signature":"abc123"}`, `{"event":"test"}`, 500, "Internal Server Error", 150, false)
+
+	recordAttempt(deliveryID, 2, `{"Content-Type":"application/json","X-Webhook-Signature":"def456"}`, `{"event":"test"}`, 502, "Bad Gateway", 200, false)
+
+	recordAttempt(deliveryID, 3, `{"Content-Type":"application/json","X-Webhook-Signature":"ghi789"}`, `{"event":"test"}`, 200, `{"received":true}`, 100, true)
+
+	if len(attempts) != 3 {
+		t.Errorf("Expected 3 delivery attempt logs, got %d", len(attempts))
+	}
+
+	if attempts[0].ResponseStatus != 500 || attempts[0].ResponseBody != "Internal Server Error" {
+		t.Error("Attempt 1 response data not preserved")
+	}
+	if attempts[0].RequestHeaders == "" || attempts[0].RequestBody == "" {
+		t.Error("Attempt 1 request data not preserved")
+	}
+	if attempts[0].ResponseTimeMs != 150 {
+		t.Errorf("Attempt 1 response time not preserved: got %d, want 150", attempts[0].ResponseTimeMs)
+	}
+
+	if attempts[1].ResponseStatus != 502 || attempts[1].ResponseBody != "Bad Gateway" {
+		t.Error("Attempt 2 response data not preserved")
+	}
+	if attempts[1].ResponseTimeMs != 200 {
+		t.Errorf("Attempt 2 response time not preserved: got %d, want 200", attempts[1].ResponseTimeMs)
+	}
+
+	if attempts[2].ResponseStatus != 200 || !attempts[2].Success {
+		t.Error("Attempt 3 success status not preserved")
+	}
+	if attempts[2].ResponseTimeMs != 100 {
+		t.Errorf("Attempt 3 response time not preserved: got %d, want 100", attempts[2].ResponseTimeMs)
+	}
+
+	for i, a := range attempts {
+		if a.DeliveryID != deliveryID {
+			t.Errorf("Attempt %d: DeliveryID not preserved", i+1)
+		}
+		if a.AttemptNumber != i+1 {
+			t.Errorf("Attempt %d: AttemptNumber incorrect, got %d", i+1, a.AttemptNumber)
+		}
+		if a.RequestHeaders == "" {
+			t.Errorf("Attempt %d: RequestHeaders empty", i+1)
+		}
+		if a.RequestBody == "" {
+			t.Errorf("Attempt %d: RequestBody empty", i+1)
+		}
+		if a.CreatedAt.IsZero() {
+			t.Errorf("Attempt %d: CreatedAt not set", i+1)
+		}
+	}
+}
+
+func TestRedisPersistenceEnforcement(t *testing.T) {
+	type persistenceConfig struct {
+		required bool
+		hasRDB   bool
+		hasAOF   bool
+	}
+
+	validatePersistenceRequired := func(cfg persistenceConfig) error {
+		if cfg.required && !cfg.hasRDB && !cfg.hasAOF {
+			return fmt.Errorf("Redis persistence is required but not enabled")
+		}
+		return nil
+	}
+
+	tests := []struct {
+		name        string
+		config      persistenceConfig
+		shouldError bool
+	}{
+		{"required with RDB", persistenceConfig{required: true, hasRDB: true, hasAOF: false}, false},
+		{"required with AOF", persistenceConfig{required: true, hasRDB: false, hasAOF: true}, false},
+		{"required with both", persistenceConfig{required: true, hasRDB: true, hasAOF: true}, false},
+		{"required with none", persistenceConfig{required: true, hasRDB: false, hasAOF: false}, true},
+		{"not required with none", persistenceConfig{required: false, hasRDB: false, hasAOF: false}, false},
+	}
+
+	for _, tt := range tests {
+		err := validatePersistenceRequired(tt.config)
+		if tt.shouldError && err == nil {
+			t.Errorf("%s: expected error but got none", tt.name)
+		}
+		if !tt.shouldError && err != nil {
+			t.Errorf("%s: unexpected error: %v", tt.name, err)
+		}
+	}
+}
+

@@ -95,6 +95,22 @@ func (db *DB) Migrate() error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_dead_letters_delivery_id ON dead_letters(delivery_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_dead_letters_created_at ON dead_letters(created_at)`,
+		
+		// delivery_attempts table preserves complete per-attempt history for retries
+		`CREATE TABLE IF NOT EXISTS delivery_attempts (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			delivery_id UUID NOT NULL REFERENCES deliveries(id) ON DELETE CASCADE,
+			attempt_number INTEGER NOT NULL,
+			request_headers TEXT NOT NULL,
+			request_body TEXT NOT NULL,
+			response_status INTEGER,
+			response_body TEXT,
+			response_time_ms BIGINT NOT NULL,
+			success BOOLEAN NOT NULL DEFAULT false,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_delivery_attempts_delivery_id ON delivery_attempts(delivery_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_delivery_attempts_created_at ON delivery_attempts(created_at)`,
 	}
 
 	for _, migration := range migrations {
@@ -454,25 +470,39 @@ func (db *DB) GetDeliveryWithEventAndWebhook(ctx context.Context, deliveryID str
 type DeliveryLog struct {
 	DeliveryID     string    `json:"delivery_id"`
 	AttemptNumber  int       `json:"attempt_number"`
-	Status         string    `json:"status"`
 	RequestHeaders string    `json:"request_headers"`
 	RequestBody    string    `json:"request_body"`
 	ResponseStatus int       `json:"response_status"`
 	ResponseBody   string    `json:"response_body"`
 	ResponseTimeMs int64     `json:"response_time_ms"`
+	Success        bool      `json:"success"`
 	CreatedAt      time.Time `json:"created_at"`
 }
 
+// CreateDeliveryAttempt stores complete logs for each individual delivery attempt
+// This preserves per-attempt history for retry attempts in separate records
+func (db *DB) CreateDeliveryAttempt(ctx context.Context, attempt *models.DeliveryAttempt) error {
+	query := `
+		INSERT INTO delivery_attempts (id, delivery_id, attempt_number, request_headers, request_body,
+		                               response_status, response_body, response_time_ms, success, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	`
+	_, err := db.pool.Exec(ctx, query,
+		attempt.ID, attempt.DeliveryID, attempt.AttemptNumber,
+		attempt.RequestHeaders, attempt.RequestBody,
+		attempt.ResponseStatus, attempt.ResponseBody, attempt.ResponseTimeMs,
+		attempt.Success, attempt.CreatedAt)
+	return err
+}
+
+// GetDeliveryLogs retrieves all delivery attempts for a delivery, preserving per-attempt history
 func (db *DB) GetDeliveryLogs(ctx context.Context, deliveryID string) ([]DeliveryLog, error) {
 	query := `
-		SELECT id, attempt_number, status, 
-		       COALESCE(request_headers, '') as request_headers,
-		       COALESCE(request_body, '') as request_body,
+		SELECT id, delivery_id, attempt_number, request_headers, request_body,
 		       COALESCE(response_status, 0) as response_status,
 		       COALESCE(response_body, '') as response_body,
-		       COALESCE(response_time_ms, 0) as response_time_ms,
-		       created_at
-		FROM deliveries WHERE id = $1 OR event_id = (SELECT event_id FROM deliveries WHERE id = $1)
+		       response_time_ms, success, created_at
+		FROM delivery_attempts WHERE delivery_id = $1
 		ORDER BY attempt_number ASC
 	`
 	
@@ -485,9 +515,10 @@ func (db *DB) GetDeliveryLogs(ctx context.Context, deliveryID string) ([]Deliver
 	var logs []DeliveryLog
 	for rows.Next() {
 		var log DeliveryLog
-		if err := rows.Scan(&log.DeliveryID, &log.AttemptNumber, &log.Status,
+		var id string
+		if err := rows.Scan(&id, &log.DeliveryID, &log.AttemptNumber,
 			&log.RequestHeaders, &log.RequestBody, &log.ResponseStatus,
-			&log.ResponseBody, &log.ResponseTimeMs, &log.CreatedAt); err != nil {
+			&log.ResponseBody, &log.ResponseTimeMs, &log.Success, &log.CreatedAt); err != nil {
 			return nil, err
 		}
 		logs = append(logs, log)

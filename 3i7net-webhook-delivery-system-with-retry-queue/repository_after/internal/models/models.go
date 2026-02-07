@@ -51,6 +51,21 @@ type DeadLetter struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
+// DeliveryAttempt stores complete logs for each individual delivery attempt
+// This preserves per-attempt history for retry attempts in separate records
+type DeliveryAttempt struct {
+	ID             string    `json:"id"`
+	DeliveryID     string    `json:"delivery_id"`
+	AttemptNumber  int       `json:"attempt_number"`
+	RequestHeaders string    `json:"request_headers"`
+	RequestBody    string    `json:"request_body"`
+	ResponseStatus int       `json:"response_status"`
+	ResponseBody   string    `json:"response_body"`
+	ResponseTimeMs int64     `json:"response_time_ms"`
+	Success        bool      `json:"success"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
 type QueueItem struct {
 	DeliveryID string  `json:"delivery_id"`
 	EventID    string  `json:"event_id"`
