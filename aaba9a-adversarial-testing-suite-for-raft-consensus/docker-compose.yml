@@ -1,0 +1,22 @@
+services:
+  test-before:
+    build: .
+    environment:
+      - TARGET_REPO=repository_before
+    command: /bin/bash -c "python3 -m pytest tests/test_meta.py || true"
+    volumes:
+      - .:/app
+
+  test-after:
+    build: .
+    environment:
+      - TARGET_REPO=repository_after
+    command: python3 -m pytest tests/test_meta.py
+    volumes:
+      - .:/app
+
+  evaluation:
+    build: .
+    command: python3 evaluation/evaluation.py
+    volumes:
+      - .:/app
