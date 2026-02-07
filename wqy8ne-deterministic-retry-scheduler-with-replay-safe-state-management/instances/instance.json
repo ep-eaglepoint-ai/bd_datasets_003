@@ -1,0 +1,17 @@
+{
+            "instance_id": "WQY8NE",
+            "problem_statement": "You are building a deterministic retry scheduler for an internal job-execution system.
+The scheduler receives tasks, emits retry attempts when they become due, and records results for each attempt.
+
+The system must behave identically across runs: given the same inputs in the same order, it must emit the same attempts in the same sequence even after its state is snapshotted and restored.
+
+Task results may arrive late, out of order, or be repeated. The scheduler must remain correct and auditable under these conditions. No real time or external systems may be used; all behavior must be driven by explicit inputs.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/wqy8ne-deterministic-retry-scheduler-with-replay-safe-state-management",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
