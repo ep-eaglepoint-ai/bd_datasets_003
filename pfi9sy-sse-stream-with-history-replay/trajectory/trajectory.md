@@ -31,8 +31,6 @@ id: <id>
 data: <payload>
 ```
 
-This is required by the prompt and ensures the browser correctly updates `event.lastEventId`.
-
 ### 3) Recovery via `Last-Event-ID`
 
 When a client connects to `GET /events`, we check:

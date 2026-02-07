@@ -1,4 +1,7 @@
 FROM node:22-alpine
 WORKDIR /app
-COPY . /app
-CMD ["npm", "install"]
+
+COPY package*.json ./
+RUN npm install --omit=dev
+
+COPY . .
