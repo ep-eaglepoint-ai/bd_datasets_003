@@ -176,7 +176,17 @@ def run_evaluation():
 
     # 1. Test Before (Skipped/Simulated)
     print("\n  [1/2] Testing repository_before (skipped/empty)...")
-    before_result = None
+    before_result = {
+        "tests": {
+            "passed": False,
+            "return_code": 1,
+            "tests_passed": 0,
+            "tests_failed": 0,
+            "tests_skipped": 0,
+            "output": "repository_does not exists"
+        },
+        "metrics": {}
+    }
 
     # 2. Test After
     print("\n  [2/2] Testing repository_after...")
