@@ -29,6 +29,7 @@ RUN export GIT_CONFIG_GLOBAL=/tmp/gitconfig && \
 RUN --mount=type=secret,id=ssh_key \
     --mount=type=cache,target=/go/pkg/mod \
     ssh-keyscan github.com >> /etc/ssh/ssh_known_hosts && \
+    rm -rf /go/pkg/mod/cache/vcs/* && \
     GIT_CONFIG_GLOBAL=/tmp/gitconfig \
     GIT_CONFIG_NOSYSTEM=1 \
     GOPRIVATE=github.com/private \
