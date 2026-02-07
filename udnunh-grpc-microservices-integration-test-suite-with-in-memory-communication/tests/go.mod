@@ -4,6 +4,7 @@ go 1.21
 
 require (
 	github.com/stretchr/testify v1.8.4
+	go.uber.org/goleak v1.3.0
 	google.golang.org/grpc v1.59.0
 )
 
