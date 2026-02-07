@@ -1,0 +1,13 @@
+{
+            "instance_id": "SUUZM8",
+            "problem_statement": "A growing B2B startup needs to rebuild their customer dashboard as a multi-tenant platform where each organization has isolated data, role-based access control, and programmatic API access. The current monolithic dashboard has no tenant separation, causing data leakage between customers and making it impossible to offer tiered access levels. 
+
+Users report seeing projects from other companies, and there is no way for technical teams to integrate via API. The backend must use Django REST Framework with PostgreSQL, while the frontend requires React 18 with TypeScript. Core implementation files include models.py, views.py, permissions.py, serializers.py for backend and Dashboard.tsx, useOrganizations.ts, InviteUserModal.tsx for frontend.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/suuzm8-multi-tenant-saas-dashboard",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        

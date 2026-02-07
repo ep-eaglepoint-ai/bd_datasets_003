@@ -1,0 +1,45 @@
+# Docker Compose for running tests against repository_after.
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  redis:
+    image: redis:7
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  test:
+    build:
+      context: .
+      target: test
+    working_dir: /app
+    environment:
+      DJANGO_SETTINGS_MODULE: saas_dashboard.settings
+      DATABASE_URL: postgres://app:app@postgres:5432/app
+      REDIS_URL: redis://redis:6379/1
+      PYTHONPATH: /app/repository_after/server
+    command: >
+      sh -c "
+        pytest -q --cov=repository_after/server --cov-report=term-missing --cov-fail-under=80 tests && \
+        cd /app/repository_after/client && npm ci --silent --include=dev && ./node_modules/.bin/vitest run --config vitest.config.ts
+      "
+    volumes:
+      - .:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
