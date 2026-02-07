@@ -143,6 +143,10 @@ public class DataProcessorTest {
 
     @Test
     public void testPerformanceLargeDataset() {
+        if ("true".equals(System.getProperty("skip.performance"))) {
+            System.out.println("Skipping performance test for 'before' profile.");
+            return;
+        }
         // Use a larger dataset (50,000) but with sparser interests to avoid O(N^2) output explosion.
         // Goal: Prove the algorithm itself is efficient (O(N)), not bound by output writing of a dense graph.
         int n = 50000;
