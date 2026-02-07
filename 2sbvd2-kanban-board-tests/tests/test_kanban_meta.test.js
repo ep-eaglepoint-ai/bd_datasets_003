@@ -32,6 +32,7 @@ function listJsFilesRecursive(dir) {
 	return out
 }
 
+// Req 13
 function assertNoOnlyOrSkipInRepo(repoRoot) {
 	const files = listJsFilesRecursive(repoRoot).filter(
 		(p) =>
@@ -54,6 +55,7 @@ function assertNoOnlyOrSkipInRepo(repoRoot) {
 	expect(offenders).toEqual([])
 }
 
+// Req 14
 function assertNamingConvention(suiteText) {
 	const TEST_TITLE_RE = /\btest\s*\(\s*['"`]([^'"`]+)['"`]/g
 	const IT_TITLE_RE = /\bit\s*\(\s*['"`]([^'"`]+)['"`]/g
@@ -78,6 +80,7 @@ function assertNamingConvention(suiteText) {
 	}
 }
 
+// Req 15 + structure baseline
 function assertSuiteCoversMajorComponentsAndEdges(suiteText) {
 	expect(suiteText).toMatch(/describe\s*\(\s*['"`]Board/i)
 	expect(suiteText).toMatch(/describe\s*\(\s*['"`]Column/i)
@@ -87,23 +90,7 @@ function assertSuiteCoversMajorComponentsAndEdges(suiteText) {
 	expect(edgeCount).toBeGreaterThanOrEqual(2)
 }
 
-function assertSuiteIsDataDriven(suiteText) {
-	expect(suiteText).toMatch(
-		/import\s+data\s+from\s+['"`]\.\.\/data\.json['"`]/,
-	)
-
-	expect(suiteText).toMatch(/data\.boards\[0\]\.columns/)
-	expect(suiteText).toMatch(/forEach\s*\(\s*\(column\)/)
-	expect(suiteText).toMatch(/column\.cards\.forEach/)
-
-	expect(suiteText).toMatch(/getByText\s*\(\s*card\.title\s*\)/)
-	expect(suiteText).toMatch(/getByText\s*\(\s*card\.description\s*\)/)
-	expect(suiteText).toMatch(/getByText\s*\(\s*card\.assignee\s*\)/)
-	expect(suiteText).toMatch(/getByText\s*\(\s*card\.dueDate\s*\)/)
-
-	expect(suiteText).toMatch(/getByRole\s*\(\s*['"`]heading['"`]/)
-}
-
+// Req 17
 function assertSuiteHierarchyShape(suiteText) {
 	const boardIdx = suiteText.search(/describe\s*\(\s*['"`]Board/i)
 	const colIdx = suiteText.search(/describe\s*\(\s*['"`]Column/i)
@@ -115,6 +102,97 @@ function assertSuiteHierarchyShape(suiteText) {
 
 	expect(boardIdx).toBeLessThan(colIdx)
 	expect(colIdx).toBeLessThan(cardIdx)
+}
+
+function assertExportedComponentsHaveTests({ pageImplText, suiteText }) {
+	const exported = new Set()
+
+	for (const m of pageImplText.matchAll(
+		/\bfunction\s+([A-Z][A-Za-z0-9_]*)\s*\(/g,
+	)) {
+		exported.add(m[1])
+	}
+
+	for (const m of pageImplText.matchAll(
+		/\bconst\s+([A-Z][A-Za-z0-9_]*)\s*=\s*\(/g,
+	)) {
+		exported.add(m[1])
+	}
+
+	const mustCover = ['Card', 'Column'].filter((n) => exported.has(n))
+
+	for (const name of mustCover) {
+		const re = new RegExp(
+			`describe\\s*\\(\\s*['"\`][^'"\`]*\\b${name}\\b`,
+			'i',
+		)
+		expect(re.test(suiteText)).toBe(true)
+	}
+}
+
+// Req 16
+function assertSuiteAssertsAllUniqueDataValues({ suiteText, dataJsonText }) {
+	let data
+	try {
+		data = JSON.parse(dataJsonText)
+	} catch (e) {
+		throw new Error(`data.json is not valid JSON: ${e.message}`)
+	}
+
+	const board = data?.boards?.[0]
+	if (!board) throw new Error('data.json missing boards[0]')
+
+	const requiredStrings = new Set()
+
+	requiredStrings.add(board.name)
+
+	for (const col of board.columns || []) {
+		requiredStrings.add(col.title)
+		for (const card of col.cards || []) {
+			requiredStrings.add(card.title)
+			requiredStrings.add(card.description)
+			requiredStrings.add(card.assignee)
+			requiredStrings.add(card.dueDate)
+			requiredStrings.add(card.priority)
+		}
+	}
+
+	const requiredFieldPatterns = [
+		/card\.title/,
+		/card\.description/,
+		/card\.assignee/,
+		/card\.dueDate/,
+		/card\.priority/,
+		/col(?:umn)?\.title/,
+		/data\.boards\[0\]/,
+	]
+
+	for (const re of requiredFieldPatterns) {
+		expect(re.test(suiteText)).toBe(true)
+	}
+
+	// Also ensure it iterates data structure (so all unique values are hit at runtime)
+	expect(
+		/data\.boards\[0\]\.columns\.forEach/.test(suiteText) ||
+			/forEach\s*\(\s*\(column\)/.test(suiteText),
+	).toBe(true)
+	expect(/column\.cards\.forEach/.test(suiteText)).toBe(true)
+}
+
+function assertSuiteIsDataDriven(suiteText) {
+	expect(suiteText).toMatch(
+		/import\s+data\s+from\s+['"`]\.\.\/data\.json['"`]/,
+	)
+
+	expect(suiteText).toMatch(/data\.boards\[0\]\.columns/)
+	expect(suiteText).toMatch(/column\.cards\.forEach/)
+
+	expect(suiteText).toMatch(/getByText\s*\(\s*card\.title\s*\)/)
+	expect(suiteText).toMatch(/getByText\s*\(\s*card\.description\s*\)/)
+	expect(suiteText).toMatch(/getByText\s*\(\s*card\.assignee\s*\)/)
+	expect(suiteText).toMatch(/getByText\s*\(\s*card\.dueDate\s*\)/)
+
+	expect(suiteText).toMatch(/getByRole\s*\(\s*['"`]heading['"`]/)
 }
 
 function loadResource(filename) {
@@ -180,6 +258,7 @@ async function runWithLimit(limit, tasks) {
 describe('Kanban Meta Test Suite', () => {
 	const suiteText = loadSuiteText()
 	const dataJsonText = loadDataJson()
+	const pageImplTextForExportScan = loadResource('correct.page.js')
 
 	test('meta: suite quality gates (requirements 12–17)', () => {
 		const repoRoot = path.resolve(
@@ -189,11 +268,27 @@ describe('Kanban Meta Test Suite', () => {
 			'kanban_app',
 		)
 
+		// Req 13
 		assertNoOnlyOrSkipInRepo(repoRoot)
+
+		// Req 14
 		assertNamingConvention(suiteText)
+
+		// Req 15
 		assertSuiteCoversMajorComponentsAndEdges(suiteText)
+
+		// Req 16
 		assertSuiteIsDataDriven(suiteText)
+		assertSuiteAssertsAllUniqueDataValues({ suiteText, dataJsonText })
+
+		// Req 17
 		assertSuiteHierarchyShape(suiteText)
+
+		// Req 12
+		assertExportedComponentsHaveTests({
+			pageImplText: pageImplTextForExportScan,
+			suiteText,
+		})
 	})
 
 	const casesFail = [
@@ -264,6 +359,8 @@ describe('Kanban Meta Test Suite', () => {
 		},
 		5 * 60 * 1000,
 	)
+
+	// Req 18
 	test(
 		'meta: enforces >= 90% coverage on correct implementation (requirement 18)',
 		async () => {
