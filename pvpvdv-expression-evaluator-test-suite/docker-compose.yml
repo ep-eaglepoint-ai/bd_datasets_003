@@ -1,0 +1,21 @@
+services:
+  app-before:
+    build: .
+    working_dir: /app/repository_after
+    command: pytest tests -v
+    volumes:
+      - .:/app
+
+  app-after:
+    build: .
+    working_dir: /app
+    command: pytest tests -v
+    volumes:
+      - .:/app
+
+  evaluation:
+    build: .
+    working_dir: /app
+    command: python evaluation/evaluate.py
+    volumes:
+      - .:/app

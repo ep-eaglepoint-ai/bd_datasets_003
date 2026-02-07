@@ -1,0 +1,201 @@
+import pytest
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from main import ExpressionEvaluator
+
+
+class TestBasicArithmetic:
+    """Test basic arithmetic operations"""
+
+    def setup_method(self):
+        self.evaluator = ExpressionEvaluator()
+
+    def test_simple_addition(self):
+        assert self.evaluator.evaluate("5 + 3") == 8.0
+
+    def test_simple_subtraction(self):
+        assert self.evaluator.evaluate("10 - 4") == 6.0
+
+    def test_simple_multiplication(self):
+        assert self.evaluator.evaluate("6 * 7") == 42.0
+
+    def test_simple_division(self):
+        assert self.evaluator.evaluate("20 / 4") == 5.0
+
+    def test_addition_with_decimals(self):
+        assert self.evaluator.evaluate("3.5 + 2.5") == 6.0
+
+    def test_multiplication_with_decimals(self):
+        assert self.evaluator.evaluate("2.5 * 4") == 10.0
+
+
+class TestOperatorPrecedence:
+    """Test operator precedence rules"""
+
+    def setup_method(self):
+        self.evaluator = ExpressionEvaluator()
+
+    def test_multiplication_before_addition(self):
+        """Verify that 100 + 50 * 2 correctly evaluates to 200 (not 300)"""
+        assert self.evaluator.evaluate("100 + 50 * 2") == 200.0
+
+    def test_division_before_subtraction(self):
+        assert self.evaluator.evaluate("20 - 10 / 2") == 15.0
+
+    def test_multiple_operations_precedence(self):
+        assert self.evaluator.evaluate("2 + 3 * 4 - 5") == 9.0
+
+    def test_complex_precedence(self):
+        assert self.evaluator.evaluate("10 + 2 * 6 - 4 / 2") == 20.0
+
+
+class TestParentheses:
+    """Test parentheses for explicit grouping"""
+
+    def setup_method(self):
+        self.evaluator = ExpressionEvaluator()
+
+    def test_simple_parentheses(self):
+        assert self.evaluator.evaluate("(5 + 3) * 2") == 16.0
+
+    def test_nested_parentheses(self):
+        assert self.evaluator.evaluate("((2 + 3) * (4 + 1))") == 25.0
+
+    def test_parentheses_override_precedence(self):
+        assert self.evaluator.evaluate("(100 + 50) * 2") == 300.0
+
+    def test_multiple_parentheses_groups(self):
+        assert self.evaluator.evaluate("(10 + 5) * (3 - 1)") == 30.0
+
+    def test_deeply_nested_parentheses(self):
+        assert self.evaluator.evaluate("((10 + (5 * 2)) - 3)") == 17.0
+
+
+class TestDivisionByZero:
+    """Test division by zero error handling"""
+
+    def setup_method(self):
+        self.evaluator = ExpressionEvaluator()
+
+    def test_direct_division_by_zero(self):
+        """Verify division by zero raises ZeroDivisionError"""
+        with pytest.raises(ZeroDivisionError, match="Division by zero"):
+            self.evaluator.evaluate("10 / 0")
+
+    def test_division_by_zero_in_expression(self):
+        with pytest.raises(ZeroDivisionError, match="Division by zero"):
+            self.evaluator.evaluate("5 + 10 / 0")
+
+    def test_division_by_zero_with_parentheses(self):
+        with pytest.raises(ZeroDivisionError, match="Division by zero"):
+            self.evaluator.evaluate("(20 - 20) / (10 - 10)")
+
+
+class TestMalformedExpressions:
+    """Test malformed expression error handling"""
+
+    def setup_method(self):
+        self.evaluator = ExpressionEvaluator()
+
+    def test_unclosed_opening_parenthesis(self):
+        """Verify (10 + 5 raises error and doesn't hang"""
+        with pytest.raises(ValueError, match="Mismatched parentheses"):
+            self.evaluator.evaluate("(10 + 5")
+
+    def test_unclosed_nested_parenthesis(self):
+        with pytest.raises(ValueError, match="Mismatched parentheses"):
+            self.evaluator.evaluate("((10 + 5) * 2")
+
+    def test_extra_closing_parenthesis(self):
+        with pytest.raises(ValueError, match="Mismatched parentheses"):
+            self.evaluator.evaluate("10 + 5)")
+
+    def test_mismatched_multiple_parentheses(self):
+        with pytest.raises(ValueError, match="Mismatched parentheses"):
+            self.evaluator.evaluate("(10 + (5 * 2)")
+
+    def test_invalid_characters(self):
+        with pytest.raises(ValueError, match="Invalid characters"):
+            self.evaluator.evaluate("10 + 5a")
+
+    def test_invalid_special_characters(self):
+        with pytest.raises(ValueError, match="Invalid characters"):
+            self.evaluator.evaluate("10 $ 5")
+
+
+class TestEdgeCases:
+    """Test edge cases and special scenarios"""
+
+    def setup_method(self):
+        self.evaluator = ExpressionEvaluator()
+
+    def test_single_number(self):
+        assert self.evaluator.evaluate("42") == 42.0
+
+    def test_single_decimal(self):
+        assert self.evaluator.evaluate("3.14") == 3.14
+
+    def test_expression_with_spaces(self):
+        assert self.evaluator.evaluate("  10  +  20  ") == 30.0
+
+    def test_empty_expression(self):
+        assert self.evaluator.evaluate("") == 0.0
+
+    def test_only_spaces(self):
+        assert self.evaluator.evaluate("   ") == 0.0
+
+    def test_negative_result(self):
+        assert self.evaluator.evaluate("5 - 10") == -5.0
+
+    def test_zero_result(self):
+        assert self.evaluator.evaluate("10 - 10") == 0.0
+
+    def test_large_numbers(self):
+        assert self.evaluator.evaluate("1000000 + 2000000") == 3000000.0
+
+    def test_very_small_decimals(self):
+        result = self.evaluator.evaluate("0.1 + 0.2")
+        assert abs(result - 0.3) < 0.0001
+
+
+class TestComplexExpressions:
+    """Test complex real-world expressions"""
+
+    def setup_method(self):
+        self.evaluator = ExpressionEvaluator()
+
+    def test_financial_formula_basic(self):
+        """Test: revenue - expenses * tax_rate"""
+        # Example: 1000 - 200 * 0.15 = 1000 - 30 = 970
+        assert self.evaluator.evaluate("1000 - 200 * 0.15") == 970.0
+
+    def test_financial_formula_with_parentheses(self):
+        """Test: (revenue - expenses) * margin"""
+        assert self.evaluator.evaluate("(1000 - 200) * 0.20") == 160.0
+
+    def test_complex_nested_calculation(self):
+        assert self.evaluator.evaluate("100 + (50 * 2) - (30 / 3)") == 190.0
+
+    def test_multiple_operations_chain(self):
+        assert self.evaluator.evaluate("2 * 3 + 4 * 5 - 6 / 2") == 23.0
+
+    def test_deeply_nested_with_all_operators(self):
+        result = self.evaluator.evaluate("((10 + 20) * (40 - 30)) / (5 + 5)")
+        assert result == 30.0
+
+    def test_profit_margin_calculation(self):
+        """Test: (revenue - cost) / revenue * 100"""
+        result = self.evaluator.evaluate("(500 - 300) / 500 * 100")
+        assert result == 40.0
+
+    def test_compound_interest_partial(self):
+        """Test partial compound interest formula"""
+        result = self.evaluator.evaluate("1000 * (1 + 0.05)")
+        assert result == 1050.0
+
+    def test_weighted_average(self):
+        """Test weighted average calculation"""
+        result = self.evaluator.evaluate("(80 * 0.6 + 90 * 0.4)")
+        assert result == 84.0
