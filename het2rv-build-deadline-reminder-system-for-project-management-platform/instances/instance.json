@@ -1,0 +1,11 @@
+{
+            "instance_id": "HET2RV",
+            "problem_statement": "The platform currently lacks notification and scheduling capabilities, causing users to miss task deadlines. A reliable deadline reminder system must be introduced to support configurable reminders, accurate scheduling across time zones, and persistence across restarts without impacting API performance.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/het2rv-build-deadline-reminder-system-for-project-management-platform",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
