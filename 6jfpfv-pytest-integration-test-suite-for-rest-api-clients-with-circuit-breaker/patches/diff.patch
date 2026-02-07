@@ -44,7 +44,7 @@ index 0000000..ecfdeac
 Binary files /dev/null and b/repository_after/__pycache__/retry.cpython-311.pyc differ
 diff --git a/repository_after/__pycache__/test_clients_integration.cpython-311-pytest-7.4.4.pyc b/repository_after/__pycache__/test_clients_integration.cpython-311-pytest-7.4.4.pyc
 new file mode 100644
-index 0000000..4c48ca2
+index 0000000..7341210
 Binary files /dev/null and b/repository_after/__pycache__/test_clients_integration.cpython-311-pytest-7.4.4.pyc differ
 diff --git a/repository_after/circuit_breaker.py b/repository_after/circuit_breaker.py
 new file mode 100644
