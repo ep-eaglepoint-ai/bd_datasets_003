@@ -1,0 +1,11 @@
+{
+            "instance_id": "ZK4M66",
+            "problem_statement": "The content management system's REST API exhibits unacceptable response times under moderate load. Database profiling reveals identical queries executing repeatedly across requests for the same resources, with expensive aggregation queries running on every single request. When Redis becomes temporarily unavailable, the entire API crashes instead of falling back gracefully. Cache invalidation currently flushes all cached data on any content change, causing a thundering herd of database queries when multiple users request the same uncached resource simultaneously.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/zk4m66-rest-api-performancefix-with-redis-caching-and-cache-invalidation",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
