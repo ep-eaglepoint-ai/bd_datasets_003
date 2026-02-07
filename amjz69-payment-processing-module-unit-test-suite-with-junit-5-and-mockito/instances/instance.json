@@ -1,0 +1,11 @@
+{
+            "instance_id": "AMJZ69",
+            "problem_statement": "A payment processing module handles credit card transactions, refunds, and fraud detection but lacks comprehensive test coverage. The existing code includes services for authorization, capture, void, and refund operations that integrate with external payment gateways. Test coverage is needed to verify business logic, validate edge cases, ensure proper error handling, and confirm correct interaction with mocked dependencies without making real network calls.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/amjz69-payment-processing-module-unit-test-suite-with-junit-5-and-mockito",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
