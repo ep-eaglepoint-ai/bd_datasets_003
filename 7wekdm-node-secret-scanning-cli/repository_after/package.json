@@ -1,0 +1,13 @@
+{
+  "name": "secretsniffer",
+  "version": "1.0.0",
+  "description": "SecretSniffer - secret scanning CLI",
+  "type": "commonjs",
+  "bin": {
+    "secretsniffer": "./bin/secretsniffer.js"
+  },
+  "scripts": {
+    "test": "jest --runInBand",
+    "lint": "node -c ./bin/secretsniffer.js"
+  }
+}

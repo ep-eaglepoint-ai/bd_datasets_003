@@ -1,0 +1,27 @@
+{
+  "run_id": "551a3201-4e57-4de5-86de-7c97c4043555",
+  "started_at": "2026-02-07T11:04:13.015Z",
+  "finished_at": "2026-02-07T11:04:13.771Z",
+  "duration_seconds": 0.756,
+  "environment": {
+    "node_version": "v22.22.0",
+    "platform": "linux",
+    "arch": "x64",
+    "cpus": 16
+  },
+  "before": {},
+  "after": {
+    "tests": {
+      "passed": true,
+      "return_code": 0,
+      "output": "> test\n> npm --prefix repository_after test\n\n\n> secretsniffer@1.0.0 test\n> jest --runInBand\n\nPASS ../tests/secretsniffer.test.js\n  SecretSniffer\n    ✓ Regex accuracy: detects AWS key with correct line number (3 ms)\n    ✓ Entropy sensitivity: flags high-entropy random-looking token (1 ms)\n    ✓ False positive suppression: UUID and long URL are not flagged by entropy\n\nTest Suites: 1 passed, 1 total\nTests:       3 passed, 3 total\nSnapshots:   0 total\nTime:        0.28 s\nRan all test suites."
+    },
+    "metrics": {}
+  },
+  "comparison": {
+    "passed_gate": true,
+    "improvement_summary": "Refactor fixed failing tests and met distributed requirements."
+  },
+  "success": true,
+  "error": null
+}

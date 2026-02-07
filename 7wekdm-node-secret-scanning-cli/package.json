@@ -1,0 +1,13 @@
+{
+  "name": "7wekdm-node-secret-scanning-cli-root",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "test": "npm --prefix repository_after test",
+    "scan": "node repository_after/bin/secretsniffer.js .",
+    "evaluation": "node evaluation/evaluation.js"
+  },
+  "dependencies": {
+    "jest": "^30.2.0"
+  }
+}

@@ -1,11 +1,13 @@
 # 7WEKDM - Node-Secret-Scanning-CLI
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Run tests (from repo root)
 
-    ## After Test Docker Command
-    <docker after command here>
+```bash
+npm test
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## After Test Docker Command
+docker-compose run --rm app npm test
+
+## Evaluation Docker Command
+docker-compose run --rm app node evaluation/evaluation.js

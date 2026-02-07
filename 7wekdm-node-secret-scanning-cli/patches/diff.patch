@@ -1,0 +1,496 @@
+diff --git a/repository_after/bin/secretsniffer.js b/repository_after/bin/secretsniffer.js
+new file mode 100644
+index 00000000..707cbc9b
+--- /dev/null
++++ b/repository_after/bin/secretsniffer.js
+@@ -0,0 +1,65 @@
++#!/usr/bin/env node
++
++const path = require('path');
++const { scanPath } = require('../src/scanner');
++
++function printHelp() {
++  process.stdout.write(
++    [
++      'SecretSniffer - scan a directory for likely secrets',
++      '',
++      'Usage:',
++      '  secretsniffer [path] [--entropy <threshold>] [--concurrency <n>] [--ignore <file>]',
++      '',
++      'Output:',
++      '  JSON report to stdout',
++      ''
++    ].join('\n')
++  );
++}
++
++function parseArgs(argv) {
++  const args = { targetPath: '.', entropyThreshold: 4.5, concurrency: 8, ignoreFile: '.snifferignore' };
++  const rest = [];
++
++  for (let i = 2; i < argv.length; i++) {
++    const a = argv[i];
++    if (a === '-h' || a === '--help') {
++      args.help = true;
++    } else if (a === '--entropy') {
++      args.entropyThreshold = Number(argv[++i]);
++    } else if (a === '--concurrency') {
++      args.concurrency = Number(argv[++i]);
++    } else if (a === '--ignore') {
++      args.ignoreFile = argv[++i];
++    } else {
++      rest.push(a);
++    }
++  }
++
++  if (rest[0]) args.targetPath = rest[0];
++  return args;
++}
++
++(async () => {
++  const args = parseArgs(process.argv);
++  if (args.help) {
++    printHelp();
++    process.exit(0);
++  }
++
++  const report = await scanPath(path.resolve(process.cwd(), args.targetPath), {
++    entropyThreshold: args.entropyThreshold,
++    concurrency: args.concurrency,
++    ignoreFile: args.ignoreFile
++  });
++
++  process.stdout.write(JSON.stringify(report, null, 2) + '\n');
++})().catch((err) => {
++  const out = {
++    ok: false,
++    error: { message: err && err.message ? err.message : String(err) }
++  };
++  process.stdout.write(JSON.stringify(out, null, 2) + '\n');
++  process.exitCode = 2;
++});
+diff --git a/repository_after/jest.config.cjs b/repository_after/jest.config.cjs
+new file mode 100644
+index 00000000..2acdaff6
+--- /dev/null
++++ b/repository_after/jest.config.cjs
+@@ -0,0 +1,7 @@
++module.exports = {
++  roots: ['<rootDir>', '<rootDir>/../tests'],
++  testMatch: [
++    '<rootDir>/../tests/**/*.test.js',
++    '<rootDir>/../tests/**/?(*.)+(spec|test).js'
++  ]
++};
+diff --git a/repository_after/package.json b/repository_after/package.json
+new file mode 100644
+index 00000000..cff31d10
+--- /dev/null
++++ b/repository_after/package.json
+@@ -0,0 +1,13 @@
++{
++  "name": "secretsniffer",
++  "version": "1.0.0",
++  "description": "SecretSniffer - secret scanning CLI",
++  "type": "commonjs",
++  "bin": {
++    "secretsniffer": "./bin/secretsniffer.js"
++  },
++  "scripts": {
++    "test": "jest --runInBand",
++    "lint": "node -c ./bin/secretsniffer.js"
++  }
++}
+diff --git a/repository_after/src/entropy.js b/repository_after/src/entropy.js
+new file mode 100644
+index 00000000..0c0249bb
+--- /dev/null
++++ b/repository_after/src/entropy.js
+@@ -0,0 +1,40 @@
++function shannonEntropy(str) {
++  if (!str || str.length === 0) return 0;
++  const freq = new Map();
++  for (const ch of str) {
++    freq.set(ch, (freq.get(ch) || 0) + 1);
++  }
++  const len = str.length;
++  let h = 0;
++  for (const count of freq.values()) {
++    const p = count / len;
++    h -= p * Math.log2(p);
++  }
++  return h;
++}
++
++// Find candidate substrings for entropy analysis.
++// Spec: contiguous alphanumeric strings longer than 20 chars.
++function findHighEntropyCandidates(line) {
++  // Alphanumeric only to reduce English/prose.
++  return line.match(/[A-Za-z0-9]{21,}/g) || [];
++}
++
++// Some common non-secret high-entropy-ish patterns we don't want.
++function isLikelyFalsePositiveToken(token) {
++  // UUID (with or without hyphens)
++  if (/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(token)) return true;
++  if (/^[0-9a-fA-F]{32}$/.test(token)) return true;
++
++  // Very long decimal numbers (often IDs)
++  if (/^[0-9]{21,}$/.test(token)) return true;
++
++  // Long URLs will contain non-alphanumerics and won't match candidate regex.
++  return false;
++}
++
++module.exports = {
++  shannonEntropy,
++  findHighEntropyCandidates,
++  isLikelyFalsePositiveToken
++};
+diff --git a/repository_after/src/ignore.js b/repository_after/src/ignore.js
+new file mode 100644
+index 00000000..859c342e
+--- /dev/null
++++ b/repository_after/src/ignore.js
+@@ -0,0 +1,79 @@
++const fs = require('fs');
++const path = require('path');
++
++// Simple ignore: exact filename matches and extension matches.
++// Supports lines:
++//  - blank / comments (#)
++//  - exact relative path (e.g. dist/bundle.js)
++//  - glob-like suffix "*" for prefix match (e.g. dist/*)
++function loadIgnoreList(rootDir, ignoreFileName) {
++  const ignoreFile = path.isAbsolute(ignoreFileName)
++    ? ignoreFileName
++    : path.join(rootDir, ignoreFileName);
++
++  const patterns = [];
++  try {
++    const txt = fs.readFileSync(ignoreFile, 'utf8');
++    for (const line of txt.split(/\r?\n/)) {
++      const trimmed = line.trim();
++      if (!trimmed || trimmed.startsWith('#')) continue;
++      patterns.push(trimmed);
++    }
++  } catch {
++    // no ignore file: fine
++  }
++  return patterns;
++}
++
++function matchesIgnore(relPath, patterns) {
++  const normalized = relPath.split(path.sep).join('/');
++  for (const p of patterns) {
++    if (p.endsWith('/*')) {
++      const prefix = p.slice(0, -1); // keep trailing '/'
++      if (normalized.startsWith(prefix)) return true;
++    } else if (p.endsWith('*')) {
++      const prefix = p.slice(0, -1);
++      if (normalized.startsWith(prefix)) return true;
++    } else {
++      if (normalized === p) return true;
++    }
++  }
++  return false;
++}
++
++const DEFAULT_IGNORED_BASENAMES = new Set([
++  'package-lock.json',
++  'yarn.lock',
++  'pnpm-lock.yaml',
++  'composer.lock'
++]);
++
++const DEFAULT_BINARY_EXTS = new Set([
++  '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.ico',
++  '.pdf',
++  '.zip', '.gz', '.tgz', '.7z', '.rar',
++  '.exe', '.dll', '.so', '.dylib',
++  '.bin', '.class', '.jar',
++  '.woff', '.woff2', '.ttf', '.eot',
++  '.mp3', '.mp4', '.mov', '.avi'
++]);
++
++function shouldSkipFile(filePath, relPath, ignorePatterns) {
++  const base = path.basename(filePath);
++  if (DEFAULT_IGNORED_BASENAMES.has(base)) return true;
++
++  if (matchesIgnore(relPath, ignorePatterns)) return true;
++
++  const ext = path.extname(base).toLowerCase();
++  if (DEFAULT_BINARY_EXTS.has(ext)) return true;
++
++  // Common minified/noise sources
++  if (base.endsWith('.min.js') || base.endsWith('.min.css')) return true;
++
++  return false;
++}
++
++module.exports = {
++  loadIgnoreList,
++  shouldSkipFile
++};
+diff --git a/repository_after/src/pool.js b/repository_after/src/pool.js
+new file mode 100644
+index 00000000..cb212d7e
+--- /dev/null
++++ b/repository_after/src/pool.js
+@@ -0,0 +1,33 @@
++function createPromisePool(concurrency) {
++  let active = 0;
++  /** @type {Array<() => void>} */
++  const queue = [];
++
++  const runNext = () => {
++    if (active >= concurrency) return;
++    const next = queue.shift();
++    if (!next) return;
++    active++;
++    next();
++  };
++
++  const add = (taskFn) =>
++    new Promise((resolve, reject) => {
++      queue.push(async () => {
++        try {
++          const val = await taskFn();
++          resolve(val);
++        } catch (e) {
++          reject(e);
++        } finally {
++          active--;
++          runNext();
++        }
++      });
++      runNext();
++    });
++
++  return { add };
++}
++
++module.exports = { createPromisePool };
+diff --git a/repository_after/src/redact.js b/repository_after/src/redact.js
+new file mode 100644
+index 00000000..8748e680
+--- /dev/null
++++ b/repository_after/src/redact.js
+@@ -0,0 +1,10 @@
++function redactSecret(secret) {
++  if (typeof secret !== 'string') secret = String(secret);
++  const s = secret;
++  if (s.length <= 8) return '*'.repeat(s.length);
++  const head = s.slice(0, 4);
++  const tail = s.slice(-4);
++  return `${head}...${tail}`;
++}
++
++module.exports = { redactSecret };
+diff --git a/repository_after/src/scanner.js b/repository_after/src/scanner.js
+new file mode 100644
+index 00000000..98bccd6b
+--- /dev/null
++++ b/repository_after/src/scanner.js
+@@ -0,0 +1,131 @@
++const fs = require('fs/promises');
++const path = require('path');
++
++const { walkFiles } = require('./walker');
++const { loadIgnoreList, shouldSkipFile } = require('./ignore');
++const { SIGNATURES } = require('./signatures');
++const { redactSecret } = require('./redact');
++const { shannonEntropy, findHighEntropyCandidates, isLikelyFalsePositiveToken } = require('./entropy');
++const { createPromisePool } = require('./pool');
++
++async function readFileAsText(filePath) {
++  // Read as utf8; if it throws, treat as binary.
++  try {
++    return await fs.readFile(filePath, 'utf8');
++  } catch {
++    return null;
++  }
++}
++
++function isProbablyMinified(text) {
++  // crude but effective: very long lines indicate minified bundles
++  const lines = text.split(/\r?\n/);
++  let longLines = 0;
++  for (const l of lines) if (l.length > 2000) longLines++;
++  return longLines > 0;
++}
++
++function scanTextContent(text, filePath, options) {
++  const findings = [];
++  const lines = text.split(/\r?\n/);
++
++  for (let i = 0; i < lines.length; i++) {
++    const line = lines[i];
++    const lineNumber = i + 1;
++
++    // Signature scans
++    for (const sig of SIGNATURES) {
++      sig.regex.lastIndex = 0;
++      let match;
++      while ((match = sig.regex.exec(line)) !== null) {
++        const secret = match[0];
++        findings.push({
++          file: filePath,
++          line: lineNumber,
++          method: 'regex',
++          type: sig.id,
++          secretRedacted: redactSecret(secret)
++        });
++      }
++    }
++
++    // Entropy scans (alphanumeric substrings only)
++    for (const token of findHighEntropyCandidates(line)) {
++      if (isLikelyFalsePositiveToken(token)) continue;
++      const h = shannonEntropy(token);
++      if (h >= options.entropyThreshold) {
++        findings.push({
++          file: filePath,
++          line: lineNumber,
++          method: 'entropy',
++          type: 'high-entropy',
++          entropy: Number(h.toFixed(3)),
++          secretRedacted: redactSecret(token)
++        });
++      }
++    }
++  }
++
++  return findings;
++}
++
++async function scanPath(rootDir, opts = {}) {
++  const options = {
++    entropyThreshold: typeof opts.entropyThreshold === 'number' ? opts.entropyThreshold : 4.5,
++    concurrency: typeof opts.concurrency === 'number' ? Math.max(1, opts.concurrency) : 8,
++    ignoreFile: opts.ignoreFile || '.snifferignore'
++  };
++
++  const ignorePatterns = loadIgnoreList(rootDir, options.ignoreFile);
++  const pool = createPromisePool(options.concurrency);
++
++  /** @type {Array<Promise<Array<object>>>} */
++  const tasks = [];
++
++  for await (const file of walkFiles(rootDir)) {
++    const rel = path.relative(rootDir, file);
++    if (shouldSkipFile(file, rel, ignorePatterns)) continue;
++
++    tasks.push(
++      pool.add(async () => {
++        const text = await readFileAsText(file);
++        if (text === null) return [];
++        if (isProbablyMinified(text)) return [];
++        return scanTextContent(text, file, options);
++      })
++    );
++  }
++
++  const results = (await Promise.all(tasks)).flat();
++
++  return {
++    ok: true,
++    scannedRoot: rootDir,
++    options,
++    findings: results,
++    counts: {
++      findings: results.length
++    }
++  };
++}
++
++// Helper for tests: scan plain in-memory file map
++async function scanMockFiles(mockFiles, opts = {}) {
++  const options = { entropyThreshold: opts.entropyThreshold ?? 4.5 };
++  const findings = [];
++
++  for (const [file, content] of Object.entries(mockFiles)) {
++    if (Buffer.isBuffer(content)) continue;
++    if (typeof content !== 'string') continue;
++    findings.push(...scanTextContent(content, file, options));
++  }
++
++  return { ok: true, findings, counts: { findings: findings.length } };
++}
++
++module.exports = {
++  scanPath,
++  scanMockFiles,
++  scanTextContent,
++  shannonEntropy
++};
+diff --git a/repository_after/src/signatures.js b/repository_after/src/signatures.js
+new file mode 100644
+index 00000000..d90c1199
+--- /dev/null
++++ b/repository_after/src/signatures.js
+@@ -0,0 +1,29 @@
++// Signature-based secret patterns
++
++const SIGNATURES = [
++  {
++    id: 'aws-access-key-id',
++    method: 'regex',
++    // AKIA/ASIA are most common; allow other common prefixes to reduce false negatives.
++    regex: /\b(A3T[A-Z0-9]|AKIA|ASIA|AGPA|AIDA|ANPA|ANVA|AROA|AIPA)[A-Z0-9]{16}\b/g
++  },
++  {
++    id: 'github-pat',
++    method: 'regex',
++    // Classic tokens and fine-grained tokens
++    regex: /\b(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,255}\b/g
++  },
++  {
++    id: 'stripe-secret-key',
++    method: 'regex',
++    regex: /\bsk_(live|test)_[A-Za-z0-9]{16,}\b/g
++  },
++  {
++    id: 'ssh-private-key',
++    method: 'regex',
++    // Matches PEM boundaries; secret is the header line (we'll report header to avoid dumping key material)
++    regex: /-----BEGIN (?:OPENSSH|RSA|DSA|EC|PGP) PRIVATE KEY-----/g
++  }
++];
++
++module.exports = { SIGNATURES };
+diff --git a/repository_after/src/walker.js b/repository_after/src/walker.js
+new file mode 100644
+index 00000000..504e860a
+--- /dev/null
++++ b/repository_after/src/walker.js
+@@ -0,0 +1,29 @@
++const fs = require('fs/promises');
++const path = require('path');
++
++async function* walkFiles(rootDir) {
++  const stack = [rootDir];
++
++  while (stack.length) {
++    const current = stack.pop();
++    let entries;
++    try {
++      entries = await fs.readdir(current, { withFileTypes: true });
++    } catch {
++      continue;
++    }
++
++    for (const ent of entries) {
++      const full = path.join(current, ent.name);
++      if (ent.isDirectory()) {
++        // Skip very common noisy directories
++        if (ent.name === 'node_modules' || ent.name === '.git') continue;
++        stack.push(full);
++      } else if (ent.isFile()) {
++        yield full;
++      }
++    }
++  }
++}
++
++module.exports = { walkFiles };
