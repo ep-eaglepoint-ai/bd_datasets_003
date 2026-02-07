@@ -1,0 +1,35 @@
+{
+    "instance_id": "NWFFN4",
+    "problem_statement": "A multi-tenant SaaS project management platform has a permission system that performs poorly under load and lacks proper tenant isolation. The current implementation checks permissions by querying the database on every request, causing response times to degrade as user count grows. Additionally, permission checks don't properly inherit through the organization hierarchy, and users can occasionally access resources from other organizations due to missing tenant scoping. The permission logic is scattered across multiple views rather than centralized, making it difficult to audit and maintain. Core files include accounts/models.py, permissions/services/permission_checker.py, projects/views.py, and audit/services.py",
+    "base_commit": "repository_before/",
+    "test_patch": "tests/",
+    "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/nwffn4-multi-tenant-saas-permission-system",
+    "environment_setup": "Dockerfile",
+    "FAIL_TO_PASS": [
+        "tests/test_permissions.py::TestCachingPerformance::test_permission_check_uses_cache",
+        "tests/test_permissions.py::TestCachingPerformance::test_cache_invalidation_on_membership_change",
+        "tests/test_permissions.py::TestTenantIsolation::test_cannot_access_different_organization_resources",
+        "tests/test_permissions.py::TestTenantIsolation::test_project_list_filtered_by_current_organization",
+        "tests/test_permissions.py::TestBulkPermissionChecks::test_bulk_check_returns_all_results",
+        "tests/test_permissions.py::TestBulkPermissionChecks::test_bulk_check_optimized_queries",
+        "tests/test_permissions.py::TestAuditLogging::test_permission_check_creates_audit_log",
+        "tests/test_permissions.py::TestAuditLogging::test_denied_permission_also_logged",
+        "tests/test_permissions.py::TestPermissionOverrides::test_grant_override_allows_access",
+        "tests/test_permissions.py::TestPermissionOverrides::test_deny_override_blocks_access",
+        "tests/test_permissions.py::TestCustomRoles::test_custom_role_permissions_subset_of_base_role",
+        "tests/test_permissions.py::TestCustomRoles::test_custom_role_exceeding_base_role_fails"
+    ],
+    "PASS_TO_PASS": [
+        "tests/test_permissions.py::TestPredefinedRoles::test_exactly_four_predefined_roles",
+        "tests/test_permissions.py::TestPredefinedRoles::test_owner_has_all_six_permissions",
+        "tests/test_permissions.py::TestPredefinedRoles::test_admin_has_five_permissions_no_manage_roles",
+        "tests/test_permissions.py::TestPredefinedRoles::test_member_has_three_permissions",
+        "tests/test_permissions.py::TestPredefinedRoles::test_viewer_has_only_read_permission",
+        "tests/test_permissions.py::TestHierarchicalInheritance::test_task_inherits_from_organization",
+        "tests/test_permissions.py::TestHierarchicalInheritance::test_explicit_child_membership_overrides_parent",
+        "tests/test_permissions.py::TestAdversarialScenarios::test_no_organization_membership_denies_all_access",
+        "tests/test_permissions.py::TestAdversarialScenarios::test_user_without_current_organization_denied",
+        "tests/test_permissions.py::TestAdversarialScenarios::test_nonexistent_resource_returns_false",
+        "tests/test_permissions.py::TestAdversarialScenarios::test_permission_override_takes_precedence_over_role"
+    ]
+}
