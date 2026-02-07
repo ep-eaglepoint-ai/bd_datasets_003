@@ -20,7 +20,8 @@ RUN cd repository_after/api && npm install --silent --legacy-peer-deps || true
 COPY . .
 
 # Pre-generate Prisma client during build (requires API deps installed)
-RUN cd repository_after && npx prisma generate --schema api/db/schema.prisma
+# Force binary engine to avoid missing WASM runtime files in container builds.
+RUN cd repository_after && PRISMA_CLIENT_ENGINE_TYPE=binary PRISMA_CLI_QUERY_ENGINE_TYPE=binary npx prisma generate --schema api/db/schema.prisma
 
 # Default command
 CMD ["npm", "test", "--silent"]
