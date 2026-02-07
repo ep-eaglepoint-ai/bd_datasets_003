@@ -66,7 +66,7 @@ def test_hypothesis_comparison(operations, searches):
         assert res_opt == naive_expected, (
             f"Optimized does not match Naive (normalized for deterministic tie-breaking).\n"
             f"Opt: {res_opt}\n"
-            f"Naive (Stable): {naive_candidates}\n"
+            f"Naive (Stable): {naive_unique[:limit]}\n"
             f"Naive (Sorted): {naive_expected}"
         )
 
