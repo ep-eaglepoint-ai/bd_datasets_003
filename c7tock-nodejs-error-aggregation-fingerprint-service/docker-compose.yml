@@ -1,3 +1,5 @@
+version: "3.8"
+
 services:
   test-after:
     build:
@@ -21,5 +23,4 @@ services:
       - ./tests:/app/tests:ro
       - ./evaluation:/app/evaluation
     depends_on:
-      test-after:
-        condition: service_completed_successfully
+      - test-after

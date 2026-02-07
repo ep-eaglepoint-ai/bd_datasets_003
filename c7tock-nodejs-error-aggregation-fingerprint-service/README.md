@@ -2,10 +2,10 @@
 
 ## After Test Docker Command
 ```
-docker-compose run test-after
+docker-compose run --rm test-after
 ```
 
 ## Evaluation Docker Command
 ```
-docker-compose run evaluation
+docker-compose run --rm evaluation
 ```
