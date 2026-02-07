@@ -188,10 +188,6 @@ function runEvaluate() {
 
   writeFileSync(outPath, JSON.stringify(report, null, 2), 'utf8');
 
-  // Also write a latest pointer for easy reference
-  const latestPath = join(__dirname, 'latest.json');
-  writeFileSync(latestPath, JSON.stringify(report, null, 2), 'utf8');
-
   console.log(`Wrote report to ${outPath}`);
   if (!jestJson) console.warn('Warning: could not parse Jest JSON from test run output; report contains raw stdout/stderr.');
 }
