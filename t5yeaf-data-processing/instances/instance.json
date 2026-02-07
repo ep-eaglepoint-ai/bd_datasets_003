@@ -7,11 +7,19 @@
   "environment_setup": "Dockerfile",
   "FAIL_TO_PASS": [
     "DataProcessorTest.testEmptyAndNullInput",
+    "DataProcessorTest.testNullFields",
+    "DataProcessorTest.testSharedInterests",
+    "DataProcessorTest.testMultipleNullEmails",
+    "DataProcessorTest.testEngagementCachingEfficiency"
+  ],
+  "PASS_TO_PASS": [
     "DataProcessorTest.testBasicAnalysis",
     "DataProcessorTest.testDuplicates",
     "DataProcessorTest.testCountryGrouping",
-    "DataProcessorTest.testSharedInterests",
-    "DataProcessorTest.testPerformanceLargeDataset"
-  ],
-  "PASS_TO_PASS": []
+    "DataProcessorTest.testEmptyActivitiesAndInterests",
+    "DataProcessorTest.testTopUsersTieBreaking",
+    "DataProcessorTest.testThreadSafety",
+    "DataProcessorTest.testPerformanceLargeDataset",
+    "DataProcessorTest.testResultConsistency"
+  ]
 }
