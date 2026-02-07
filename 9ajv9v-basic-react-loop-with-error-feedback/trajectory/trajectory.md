@@ -288,7 +288,7 @@ docker-compose up --build
 ├── repository_after/
 │   └── main.py                   # Main agent implementation
 └── tests/
-    └── test_agent.py             # Comprehensive test suite (20 tests)
+    └── test_agent.py             # Comprehensive test suite
 ```
 
 ## Development
