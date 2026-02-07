@@ -4,5 +4,5 @@ services:
     working_dir: /app
     volumes:
       - ./evaluation:/app/evaluation
-    commands:
+    command:
       - npm run test
