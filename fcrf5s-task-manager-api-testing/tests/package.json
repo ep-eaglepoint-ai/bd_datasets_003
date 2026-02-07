@@ -1,0 +1,13 @@
+{
+    "name": "task-manager-api-meta-tests",
+    "version": "1.0.0",
+    "description": "Meta test suite for task manager API",
+    "type": "commonjs",
+    "scripts": {
+        "test": "jest --config jest.meta.config.js --coverage"
+    },
+    "devDependencies": {
+        "jest": "^29.7.0",
+        "supertest": "^6.3.4"
+    }
+}

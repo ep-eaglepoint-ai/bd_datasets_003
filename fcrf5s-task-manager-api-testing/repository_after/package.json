@@ -1,0 +1,36 @@
+{
+    "name": "task-manager-api",
+    "version": "1.0.0",
+    "description": "Task Manager API for meta test evaluation",
+    "main": "src/app.js",
+    "type": "commonjs",
+    "scripts": {
+        "test": "jest --coverage"
+    },
+    "dependencies": {
+        "express": "^4.19.2"
+    },
+    "devDependencies": {
+        "jest": "^29.7.0",
+        "supertest": "^6.3.4"
+    },
+    "jest": {
+        "testEnvironment": "node",
+        "collectCoverage": true,
+        "collectCoverageFrom": [
+            "src/**/*.js"
+        ],
+        "coverageDirectory": "../coverage",
+        "coverageReporters": [
+            "json",
+            "text",
+            "lcov"
+        ],
+        "coverageThreshold": {
+            "global": {
+                "lines": 80,
+                "branches": 75
+            }
+        }
+    }
+}
