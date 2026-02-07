@@ -1,11 +1,9 @@
 # 9AJV9V -  Basic ReAct Loop with Error Feedback
 
-    ## Before Test Docker Command
-    <docker before command here>
+```bash
+docker build -t agent-executor . && docker run --rm agent-executor pytest -v tests/
+```
 
-    ## After Test Docker Command
-    <docker after command here>
-
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+```bash
+docker compose run --rm app python evaluation/evaluation.py
+```
