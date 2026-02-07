@@ -4,7 +4,7 @@
 
 ### 1. Run Tests on repository_before
 ```bash
-docker compose run --rm app bash -c 'cd repository_before && python -m pytest >/dev/null 2>&1 || echo "No implementation in repository_before"'
+docker compose run --rm app bash -c 'cd repository_before && python -m pytest || true'
 ```
 
 ### 2. Run Tests on repository_after
