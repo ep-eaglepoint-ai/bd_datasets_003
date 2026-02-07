@@ -4,7 +4,7 @@ from datetime import datetime
 
 def generate_report():
    
-    folder_path = "/app/evaluation"
+    folder_path = "/evaluation"
     file_path = os.path.join(folder_path, 'report.json')
 
     report_data = {
