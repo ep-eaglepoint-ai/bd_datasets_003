@@ -1,0 +1,98 @@
+{
+    "boards": [
+        {
+            "id": "board-1",
+            "name": "Project Alpha",
+            "columns": [
+                {
+                    "id": "col-1",
+                    "title": "To Do",
+                    "cards": [
+                        {
+                            "id": "card-1",
+                            "title": "Research competitors",
+                            "description": "Analyze top 5 competitors and create a comparison report",
+                            "priority": "high",
+                            "assignee": "Alice",
+                            "dueDate": "2024-02-10"
+                        },
+                        {
+                            "id": "card-2",
+                            "title": "Design landing page",
+                            "description": "Create wireframes for the new landing page",
+                            "priority": "medium",
+                            "assignee": "Bob",
+                            "dueDate": "2024-02-12"
+                        },
+                        {
+                            "id": "card-3",
+                            "title": "Setup CI/CD pipeline",
+                            "description": "Configure GitHub Actions for automated deployments",
+                            "priority": "high",
+                            "assignee": "Charlie",
+                            "dueDate": "2024-02-08"
+                        }
+                    ]
+                },
+                {
+                    "id": "col-2",
+                    "title": "In Progress",
+                    "cards": [
+                        {
+                            "id": "card-4",
+                            "title": "Implement user auth",
+                            "description": "Add login and registration with JWT tokens",
+                            "priority": "high",
+                            "assignee": "Alice",
+                            "dueDate": "2024-02-15"
+                        },
+                        {
+                            "id": "card-5",
+                            "title": "Write API documentation",
+                            "description": "Document all REST endpoints using OpenAPI spec",
+                            "priority": "low",
+                            "assignee": "Diana",
+                            "dueDate": "2024-02-20"
+                        }
+                    ]
+                },
+                {
+                    "id": "col-3",
+                    "title": "Review",
+                    "cards": [
+                        {
+                            "id": "card-6",
+                            "title": "Database schema design",
+                            "description": "Review the proposed PostgreSQL schema changes",
+                            "priority": "medium",
+                            "assignee": "Bob",
+                            "dueDate": "2024-02-07"
+                        }
+                    ]
+                },
+                {
+                    "id": "col-4",
+                    "title": "Done",
+                    "cards": [
+                        {
+                            "id": "card-7",
+                            "title": "Project kickoff meeting",
+                            "description": "Initial team meeting to align on goals and timeline",
+                            "priority": "medium",
+                            "assignee": "Charlie",
+                            "dueDate": "2024-02-01"
+                        },
+                        {
+                            "id": "card-8",
+                            "title": "Setup development environment",
+                            "description": "Install required tools and configure local dev setup",
+                            "priority": "high",
+                            "assignee": "Diana",
+                            "dueDate": "2024-02-02"
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

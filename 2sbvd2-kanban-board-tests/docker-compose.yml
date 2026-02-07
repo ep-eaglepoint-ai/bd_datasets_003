@@ -1,0 +1,41 @@
+services:
+    tests:
+        build: .
+        volumes:
+            - ./repository_before:/app/repository_before
+            - ./repository_after:/app/repository_after
+            - ./tests:/app/tests
+            - ./jest.meta.config.js:/app/jest.meta.config.js
+
+            # protect node_modules from being wiped by the bind mount
+            - /app/repository_after/kanban_app/node_modules
+            - /app/repository_before/kanban_app/node_modules
+
+        working_dir: /app
+        command: >
+            sh -lc "
+            cd /app/repository_after/kanban_app &&
+            if [ ! -f node_modules/jest/bin/jest.js ]; then
+              echo 'node_modules missing -> installing dev deps...' &&
+              npm ci --silent --include=dev;
+            fi &&
+            node node_modules/jest/bin/jest.js
+            --config /app/jest.meta.config.js
+            --runInBand
+            "
+
+    evaluation:
+        build: .
+        volumes:
+            - ./repository_before:/app/repository_before
+            - ./repository_after:/app/repository_after
+            - ./tests:/app/tests
+            - ./evaluation:/app/evaluation
+            - ./jest.meta.config.js:/app/jest.meta.config.js
+
+            # protect node_modules here too (same container image, but safer)
+            - /app/repository_after/kanban_app/node_modules
+            - /app/repository_before/kanban_app/node_modules
+
+        working_dir: /app/tests
+        command: node ../evaluation/evaluate.js
