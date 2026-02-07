@@ -1,17 +1,5 @@
-
 FROM python:3.11-slim
-
 WORKDIR /app
-
-# Copy requirements first for better caching
-COPY requirements.txt .
+COPY . /app
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy the rest of the application
-COPY . .
-
-# Set PYTHONPATH to include repository_after for imports
-ENV PYTHONPATH=/app/repository_after:/app
-
-# Default command
-CMD ["python", "-m", "pytest", "-v", "tests/"]
+CMD ["pytest", "-q", "tests"]

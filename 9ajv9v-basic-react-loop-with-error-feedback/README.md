@@ -1,7 +1,7 @@
 # 9AJV9V -  Basic ReAct Loop with Error Feedback
 
 ```bash
-docker build -t agent-executor . && docker run --rm agent-executor pytest -v tests/
+docker compose run --rm -e PYTHONPATH=/app/repository_after app pytest -q
 ```
 
 ```bash
