@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -66,58 +65,47 @@ type Report struct {
 }
 
 func runTests() TestResults {
-	testFiles := []string{"test_repo_structure", "test_final_image", "test_cross_build", "test_go_cache", "test_secret_injection", "test_requirements_lock", "test_go_payload"}
-	tests := []Test{}
-	overallSuccess := true
+	cmd := exec.Command("go", "test", "./tests")
+	cmd.Dir = "/app"
+	output, err := cmd.CombinedOutput()
+	exitCode := 0
+	if cmd.ProcessState != nil {
+		exitCode = cmd.ProcessState.ExitCode()
+	}
 
-	for _, testName := range testFiles {
-		cmd := exec.Command("python3", fmt.Sprintf("tests/%s.py", testName))
-		cmd.Dir = "/app"
-		output, err := cmd.CombinedOutput()
-		exitCode := 0
-		if cmd.ProcessState != nil {
-			exitCode = cmd.ProcessState.ExitCode()
+	status := "passed"
+	failureMsg := []string{}
+	success := err == nil && exitCode == 0
+	if !success {
+		status = "failed"
+		if len(output) > 0 {
+			failureMsg = []string{string(output)}
 		}
-		
-		status := "passed"
-		failureMsg := []string{}
-		if err != nil || exitCode != 0 {
-			status = "failed"
-			overallSuccess = false
-			if len(output) > 0 {
-				failureMsg = []string{string(output)}
-			}
-		}
-		
-		tests = append(tests, Test{
-			Name:            testName,
+	}
+
+	tests := []Test{
+		{
+			Name:            "go test ./tests",
 			Status:          status,
 			Duration:        0,
 			FailureMessages: failureMsg,
-		})
+		},
 	}
 
 	passed := 0
 	failed := 0
-	for _, t := range tests {
-		if t.Status == "passed" {
-			passed++
-		} else {
-			failed++
-		}
-	}
-
-	exitCode := 0
-	if !overallSuccess {
-		exitCode = 1
+	if status == "passed" {
+		passed = 1
+	} else {
+		failed = 1
 	}
 
 	return TestResults{
-		Success:  overallSuccess,
+		Success:  success,
 		ExitCode: exitCode,
 		Tests:    tests,
 		Summary: Summary{
-			Total:   len(tests),
+			Total:   1,
 			Passed:  passed,
 			Failed:  failed,
 			Xfailed: 0,
@@ -170,9 +158,7 @@ func main() {
 	outputFile := filepath.Join(outputDir, "report.json")
 	data, _ := json.MarshalIndent(report, "", "  ")
 	os.WriteFile(outputFile, data, 0644)
-
-	fmt.Printf("Report generated: %s\n", outputFile)
-	fmt.Printf("Tests: %d/%d passed\n", report.Results.After.Summary.Passed, report.Results.After.Summary.Total)
+	_, _ = os.Stdout.WriteString("Tests completed. Evaluation report written to " + outputFile + "\n")
 
 	if !testResults.Success {
 		os.Exit(1)

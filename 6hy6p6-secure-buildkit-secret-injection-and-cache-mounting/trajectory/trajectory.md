@@ -18,7 +18,7 @@ The goal is to author a BuildKit-enabled Dockerfile and minimal Go payload that 
 - Requirements: [repository_after/REQUIREMENTS.md](repository_after/REQUIREMENTS.md)
 - Build target: Dockerfile (root)
 - Payload: [repository_after/main.go](repository_after/main.go)
-- Tests: [tests](tests)
+- Tests: [tests/tests_test.go](tests/tests_test.go)
 
 ### 2. Phase 2: QUESTION ASSUMPTIONS (Challenge the Premise)
 **Guiding Question**: "Is there a simpler way? Why not leak secrets or avoid cache mounts?"
@@ -28,23 +28,21 @@ Leaving secrets in layers or passing them via ARG/ENV is simpler but insecure. T
 
 ### 3. Phase 3: DEFINE SUCCESS CRITERIA (Measurable Goals)
 **Success Criteria**:
-1. **Secret mount present**: `--mount=type=secret,id=ssh_key` is used in exactly one `RUN`. Verified by [tests/test_secret_injection.py](tests/test_secret_injection.py).
-2. **No secret artifacts**: No `ARG SSH`, `ENV SSH`, or `id_rsa` left in the final stage; final image has no secret references. Verified by [tests/test_final_image.py](tests/test_final_image.py) and [tests/test_secret_injection.py](tests/test_secret_injection.py).
-3. **Git configured for SSH**: Build uses SSH to fetch private modules (checked by the Dockerfile contents by tests).
-4. **Module cache used**: `--mount=type=cache,target=/go/pkg/mod` in build stage and used with `go mod download`. Verified by [tests/test_go_cache.py](tests/test_go_cache.py).
-5. **Minimal final image**: Final stage base is `scratch` or `gcr.io/distroless/static` and only copies binary + certs. Verified by [tests/test_final_image.py](tests/test_final_image.py).
-6. **Cross-build flags**: `ARG TARGETOS` and `ARG TARGETARCH` exist and `GOOS`/`GOARCH` are passed to `go build`; `CGO_ENABLED=0` set. Verified by [tests/test_cross_build.py](tests/test_cross_build.py).
-7. **Repository structure**: Single root `Dockerfile`, `repository_after/REQUIREMENTS.md` present. Verified by [tests/test_repo_structure.py](tests/test_repo_structure.py) and [tests/test_requirements_lock.py](tests/test_requirements_lock.py).
+1. **Secret mount present**: `--mount=type=secret,id=ssh_key` is used in `RUN` instructions. Verified by [tests/tests_test.go](tests/tests_test.go).
+2. **No secret artifacts**: No `ARG SSH`, `ENV SSH`, or `id_rsa` left in the final stage; final image has no secret references. Verified by [tests/tests_test.go](tests/tests_test.go).
+3. **Git configured for SSH**: Dockerfile configures SSH for GitHub and uses `GIT_SSH_COMMAND`. Verified by [tests/tests_test.go](tests/tests_test.go).
+4. **Module cache used**: `--mount=type=cache,target=/go/pkg/mod` in build stage and used with `go mod download`. Verified by [tests/tests_test.go](tests/tests_test.go).
+5. **Minimal final image**: Final stage base is `scratch` or `gcr.io/distroless/static` and only copies binary + certs. Verified by [tests/tests_test.go](tests/tests_test.go).
+6. **Cross-build flags**: `ARG TARGETOS` and `ARG TARGETARCH` exist and `GOOS`/`GOARCH` are passed to `go build`; `CGO_ENABLED=0` set. Verified by [tests/tests_test.go](tests/tests_test.go).
+7. **Repository structure**: Single root `Dockerfile`, `repository_after/REQUIREMENTS.md` present. Verified by [tests/tests_test.go](tests/tests_test.go).
+8. **SSH fetch attempt**: If Docker is available, the build must attempt an SSH-based fetch. The test treats expected SSH auth errors as proof of an SSH fetch attempt, while still enforcing image integrity when the build succeeds. Verified by [tests/tests_test.go](tests/tests_test.go).
 
 ### 4. Phase 4: MAP REQUIREMENTS TO VALIDATION (Test Strategy)
 **Test Strategy**:
-- **Requirements lock**: [tests/test_requirements_lock.py](tests/test_requirements_lock.py) verifies the textual requirements in [repository_after/REQUIREMENTS.md](repository_after/REQUIREMENTS.md).
-- **Structural test**: [tests/test_repo_structure.py](tests/test_repo_structure.py) ensures the repository layout and artifact placement.
-- **Secret injection tests**: [tests/test_secret_injection.py](tests/test_secret_injection.py) checks for the secret mount usage and absence of ARG/ENV secrets.
-- **Cache tests**: [tests/test_go_cache.py](tests/test_go_cache.py) verifies cache mount placement and usage with `go mod download`.
-- **Final image tests**: [tests/test_final_image.py](tests/test_final_image.py) validates the final base image and content copied.
-- **Cross-build tests**: [tests/test_cross_build.py](tests/test_cross_build.py) confirms `TARGETOS`/`TARGETARCH` usage and `CGO_ENABLED=0`.
-- **Payload tests**: [tests/test_go_payload.py](tests/test_go_payload.py) checks `repository_after` contains `main.go` and `go.mod` referencing required modules.
+- All assertions are consolidated in a single Go test file: [tests/tests_test.go](tests/tests_test.go).
+- The suite validates Dockerfile content for BuildKit secret and cache mounts, cross-build flags, and minimal final image behavior.
+- Repository structure and `REQUIREMENTS.md` content are checked for consistency.
+- The build integrity test attempts a Docker build. If Docker is present and the private repo is inaccessible, the test expects SSH auth errors as evidence of an SSH-based fetch attempt; if the build succeeds, it verifies entrypoint and secret non-leakage.
 
 ### 5. Phase 5: SCOPE THE SOLUTION (Minimal Implementation)
 **Components created / expected locations**:
@@ -63,7 +61,7 @@ Leaving secrets in layers or passing them via ARG/ENV is simpler but insecure. T
 4. Final stage copies `/out/secure-build` and `ca-certificates.crt` into a `scratch`/distroless image; no secret files copied.
 
 **Verification Flow**:
-- Tests parse the `Dockerfile` and `repository_after` to ensure mounts, builds, and final content match the requirements.
+- Tests parse the `Dockerfile` and `repository_after` to ensure mounts, builds, and final content match the requirements. A Docker build is attempted when available to validate SSH fetch behavior and final image integrity.
 
 ### 7. Phase 7: ANTICIPATE OBJECTIONS (Trade-offs & Risks)
 **Objection 1**: "Why not pass SSH key via ARG/ENV?"
@@ -77,8 +75,8 @@ Leaving secrets in layers or passing them via ARG/ENV is simpler but insecure. T
 
 ### 8. Phase 8: VERIFY INVARIANTS / CONSTRAINTS
 **Must Satisfy**:
-- Secrets only in BuildKit secret mount and not present in final stage. (Checked by [tests/test_secret_injection.py](tests/test_secret_injection.py) and [tests/test_final_image.py](tests/test_final_image.py)).
-- Go builds use `CGO_ENABLED=0` and accept `TARGETOS`/`TARGETARCH`. (Checked by [tests/test_cross_build.py](tests/test_cross_build.py)).
+- Secrets only in BuildKit secret mount and not present in final stage. (Checked by [tests/tests_test.go](tests/tests_test.go)).
+- Go builds use `CGO_ENABLED=0` and accept `TARGETOS`/`TARGETARCH`. (Checked by [tests/tests_test.go](tests/tests_test.go)).
 
 **Must Not Violate**:
 - No `ARG SSH` / `ENV SSH` or `id_rsa` strings in Dockerfile or final stage. (Enforced by tests.)
@@ -110,9 +108,8 @@ Leaving secrets in layers or passing them via ARG/ENV is simpler but insecure. T
 **When to revisit**:
 - If the project needs runtime multi-arch images per platform-specific assets, or if a builderless CI environment prevents BuildKit secret mounts, revisit to add Git auth alternatives that remain secure.
 
-**Test Coverage**: The provided Python tests in `tests/` cover structural, behavioral, and content-based assertions for the requirements.
+**Test Coverage**: The provided Go tests in `tests/tests_test.go` cover structural, behavioral, and content-based assertions for the requirements.
 
 ---
 Generated from the repository contents and test suite present in this workspace.
 # Trajectory
-

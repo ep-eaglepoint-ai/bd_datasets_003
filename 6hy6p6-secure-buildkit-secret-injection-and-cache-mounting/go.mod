@@ -1,3 +1,3 @@
-module secure-build-kit
+module secure-buildkit-tests
 
 go 1.21

@@ -4,7 +4,6 @@ services:
   app:
     build:
       context: .
-      target: final
     ports:
       - "8080:8080"
   test:
@@ -13,11 +12,19 @@ services:
       target: tester
     volumes:
       - .:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    working_dir: /app
+    command: sh -c "cd /app && go test ./tests"
   evaluate:
     build:
       context: .
       target: tester
     volumes:
       - .:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - DOCKER_HOST=unix:///var/run/docker.sock
     working_dir: /app/evaluation
     command: sh -c "go run evaluation.go"

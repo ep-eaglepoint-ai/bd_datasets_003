@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"os"
 
-	// Placeholder for private module requirement
-	_ "github.com/private-org/private-lib"
+	"github.com/google/uuid"
+	"github.com/private/securedep"
 )
 
 func main() {
@@ -16,7 +16,13 @@ func main() {
 	}
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "Secure Build Kit Microservice - Static Binary\n")
+		id := uuid.New().String()
+		fmt.Fprintf(
+			w,
+			"Secure Build Kit Microservice - Static Binary\nModule loaded: github.com/google/uuid v1.6.0\nPrivate dep: %s\nRequest ID: %s\n",
+			securedep.Version(),
+			id,
+		)
 	})
 
 	fmt.Printf("Starting server on port %s...\n", port)
