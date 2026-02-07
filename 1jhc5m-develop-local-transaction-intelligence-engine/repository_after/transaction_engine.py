@@ -1,21 +1,43 @@
 import re
 
 class TransactionEngine:
-    def __init__(self):
+    def __init__(self, max_amount_threshold: float = 1000000000.0):
+        """
+        Initialize the Transaction Engine.
+        
+        Args:
+            max_amount_threshold: Configurable maximum allowed transaction amount.
+                                  Amounts exceeding this are rejected as invalid.
+        """
+        self.max_amount_threshold = max_amount_threshold
         self.categories = {
             'Dining': ['restaurant', 'cafe', 'coffee', 'bistro', 'diner', 'food', 'steakhouse', 'pizza', 'burger'],
             'Travel': ['uber', 'lyft', 'taxi', 'airline', 'flight', 'rail', 'train', 'metro', 'bus', 'travel'],
             'Utilities': ['electric', 'water', 'gas', 'power', 'telecom', 'broadband', 'internet', 'mobile', 'bill'],
             'Shopping': ['amazon', 'walmart', 'target', 'store', 'market', 'grocery', 'retail', 'shop', 'fashion', 'mall']
         }
+        # Marketing keywords for Traffic Classifier - messages containing these are promotional, not transactions
+        self.marketing_keywords = [
+            'cashback offer', 'get up to', 'save up to', 'win up to', 'earn up to',
+            'special offer', 'exclusive offer', 'limited time', 'promotion',
+            'sign up', 'subscribe', 'unsubscribe', 'click here', 'act now',
+            'free gift', 'congratulations', 'you have won', 'claim your',
+            'discount code', 'promo code', 'coupon', 'deal of the day'
+        ]
 
     def process_message(self, message: str) -> dict:
         """
         Parses a financial SMS message and extracts structured data.
         """
-        
+        # Traffic Classifier: Check for authentication-specific keywords first
         if re.search(r'\b(OTP|Verification Code|Secured Login)\b', message, re.IGNORECASE):
             return {}
+        
+        # Traffic Classifier: Check for marketing/promotional messages
+        msg_lower = message.lower()
+        for marketing_kw in self.marketing_keywords:
+            if marketing_kw in msg_lower:
+                return {}
 
         result = {
             "amount": None,
@@ -66,10 +88,19 @@ class TransactionEngine:
             return {} # Treat as unreliable/empty
 
         if result['amount'] is not None:
-            # Check for zero, negative (unless valid type? usually amount is absolute value in extraction)
-            # "Amounts that are zero, negative... or excessively large"
-            if result['amount'] <= 0 or result['amount'] > 1000000000: # Arbitrary large threshold
-                 return {}
+            # Mathematical Verification: Sanity check for extracted numeric values
+            # Check for zero - always invalid
+            if result['amount'] == 0:
+                return {}
+            
+            # Check for negative amounts - only allowed for Credit transactions (e.g., refund adjustments)
+            if result['amount'] < 0:
+                if result['type'] != 'Credit':
+                    return {}  # Reject negative amounts for non-Credit transactions
+            
+            # Check for excessively large amounts using configurable threshold
+            if abs(result['amount']) > self.max_amount_threshold:
+                return {}
 
         return result
 
