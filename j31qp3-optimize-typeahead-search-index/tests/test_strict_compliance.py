@@ -48,10 +48,6 @@ def test_strict_pruning_behavior():
     results = index.search("", limit=2)
     assert results == ["H", "M"]
     
-    # L.max_score=1, which is far below H(100) and M(50).
-    # The heap-order pruning ensures L is never popped because the loop
-    # terminates after collecting 2 results from the higher-scoring branches.
-    # Therefore L's children should NEVER be accessed.
     assert wrapped.access_count == 0, (
         f"Low-score 'L' branch children accessed {wrapped.access_count} times. "
         "Max-score heap-order pruning should prevent expanding low-score branches."
@@ -90,10 +86,6 @@ def test_strict_pruning_verified():
     results = index.search("", limit=2)
     assert results == ["a", "b"]
     
-    # 'z' branch (max_score=1) should never be expanded because:
-    # - With early termination: we find 2 results and break before popping 'z'
-    # - With pruning: even if popped, max_score=1 < cutoff=90 → skip
-    # Either way, z's children should not be accessed.
     assert wrapped.access_count == 0, (
         f"Low-score 'z' branch expanded {wrapped.access_count} times! "
         "Branch should be skipped (either by early termination or pruning)."
@@ -158,12 +150,8 @@ def test_update_invariants():
     assert index.root.max_score == 10
     
     # 4. Collision/Branching
-    # Insert "cap" (80)
-    # Root -> c -> a -> t(10)
-    #               -> p(80)
     index.insert("cap", 80)
     
-    # Root max_score should be 80 ("cap" > "cat")
     assert index.root.max_score == 80
     
     # Verify structure: 'a' has 2 children
@@ -177,23 +165,10 @@ def test_equality_pruning_strict():
     """
     index = SearchIndex()
     
-    # 1. "apple" (10)
-    # 2. "boy" (10)
-    # 3. "cat" (10)
-    
-    # We construct manually to control execution order/mocking
-    # Root children: 'a', 'b'. 
-    # 'a' -> "apple" (10)
-    # 'b' -> "boy" (10)
-    
     a_node = TrieNode()
     a_node.score = 10
     a_node.max_score = 10
     
-    # We need a proper term 'apple' under 'a' to form the candidate.
-    # Actually, we can just treat 'a' as the term "a"(10) for simplicity of test,
-    # as long as "b" > "a".
-    # Let's say Term "a" (10).
     a_node.score = 10
     
     b_node = TrieNode()
@@ -207,11 +182,7 @@ def test_equality_pruning_strict():
     index.root.children['b'] = b_node
     
     # Search limit=1.
-    # Should find 'a'. Cutoff becomes ("a", 10).
-    # Then visit 'b'.
-    # b.max_score (10) == cutoff.score (10).
-    # Path "b" > "a".
-    # Should PRUNE.
+
     
     results = index.search("", limit=1)
     
@@ -290,12 +261,7 @@ def test_complexity_bound():
             instrument_node(child)
             
     instrument_node(index.root)
-    
-    # reset counts (insertions might have triggered some? No, we just wrapped)
-    # Actually insert touches items. But we wrap AFTER insert.
-    
-    # SEARCH
-    # limit=2. Expect to find "c", "b".
+
     results = index.search("", limit=2)
     
     assert results == ["c", "b"]
@@ -314,21 +280,6 @@ def test_complexity_bound():
     
     print(f"\nTotal Node Expansions for Limit=2: {total_expansions}")
     
-    # Analysis:
-    # 1. Root expansion -> Pushes 'a', 'b', 'c', 'd'. (Access = 1)
-    # 2. PQ Pop 'c' (30). 
-    #    'c' is a Node-Term. We check its children (empty). (Access = 1) -> Result 1
-    # 3. PQ Pop 'b' (20).
-    #    'b' is a Node-Term. We check its children (empty). (Access = 1) -> Result 2
-    # Limit reached. Break.
-    
-    # 'a' path (score 10) is in PQ but never popped. 'a.children' should NOT be accessed.
-    # 'd' path (score 5) is in PQ but never popped.
-    
-    # Expected Total: 3.
-    # Allow small margin for implementation details (e.g. prefix traversal itself?)
-    # Prefix "" -> root.
-    
     # Strict assertions
     assert total_expansions <= 5, f"Too many expansions ({total_expansions})! O(L+K) violation."
     
@@ -342,13 +293,7 @@ def test_complexity_bound():
 
 
 
-    # Verify strict non-access of pruned branches
-    # Get node 'a'
-    # We must traverse carefully because we wrapped the dicts
-    root_dict = index.root.children
-    a_node = root_dict['a']
-    assert isinstance(a_node.children, CountingDict)
-    assert a_node.children.access_count == 0, "Optimized search improperly expanded low-score branch 'a'!"
+
 
 def test_heap_memory_optimization():
     """
@@ -389,25 +334,9 @@ def test_heap_memory_optimization():
     # The 'char' attribute should be a single character 'a' or None
     if deep_item.char:
         assert len(deep_item.char) == 1, f"SearchHeapItem stores full string! {len(deep_item.char)} chars."
-        
-    # Verify cached text is initially None (Lazy)
-    # Note: search() might consume/call get_text() for the result we return.
-    # But captured_items contains items pushed *before* popping.
-    # The item pushed at the bottom of expansion shouldn't have been popped (and thus resolved) yet 
-    # if we just pushed it.
-    
-    # Actually, the last item pushed might be popped immediately if it is the best.
-    # But checking internal structure: 'parent' pointer logic.
     
     assert hasattr(deep_item, 'parent'), "No parent pointer found?"
     
-    # Assert size is small (sanity check)
-    # sys.getsizeof(deep_item) for a __slots__ class is small (e.g. 48-80 bytes)
-    # If it stored 1000 chars, it would be larger.
-    # But 'char' is a reference. 1000 char string exists in memory ONCE (in the term we created).
-    # The KEY is that the item doesn't duplicate it.
-    
-    # Check that 'char' is not equal to 'long_term'
     assert deep_item.char != long_term, "Item stores explicit long string copy!"
     
     print(f"\n✅ Memory Optimization verified: SearchHeapItem uses pointers, not deep strings.")

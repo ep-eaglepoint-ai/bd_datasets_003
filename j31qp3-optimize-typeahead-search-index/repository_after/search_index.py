@@ -42,16 +42,6 @@ class SearchHeapItem:
 
     def __lt__(self, other):
         # Priority 1: Higher Score is Better (Pop First)
-        # heapq is a Min-Heap.
-        # We want to pop Max Score.
-        # So we need "Greatest" to be "Smallest".
-        # If we store positive scores?
-        # Usage: heapq.heappush(pq, item).
-        # We need item1 < item2 to mean "item1 is better".
-        # If score1=100, score2=50. 100 is better.
-        # So we want item(100) < item(50) to return True.
-        # Code: return self.score > other.score. 100 > 50 -> True. Correct.
-        
         if self.score != other.score:
             return self.score > other.score
         
@@ -65,12 +55,6 @@ class SearchHeapItem:
         if self.parent is other.parent:
             # Same prefix. Compare chars.
             if self.char != other.char:
-                # We want alphabetical first. 'a' < 'b'.
-                # 'a' implies "apple". 'b' implies "boy".
-                # "apple" should pop first (better).
-                # so self < other.
-                
-                # Handle None chars (Base)?
                 c1 = self.char or ""
                 c2 = other.char or ""
                 return c1 < c2
@@ -100,16 +84,6 @@ class SearchIndex:
         """
         node = self.root
         
-        # We'll use a stack to keep track of the path so we can update max_scores
-        # efficiently if we needed to propagate upwards, but since we are inserting top-down
-        # we can update max_score on the way down if the new score is higher.
-        
-        # However, if we are updating an EXISTING term with a LOWER score, 
-        # that could be tricky. But the prompt says "Collisions ... duplicate term updates (updating the score)".
-        # Usually update means overwrite. If we lower a score, max_scores above might be wrong if they depended on this term.
-        # But commonly in these problems, scores only increase or we rebuild. 
-        # Let's assume standard overwrite. Re-propagating max-score up is safer.
-        
         path = []
         
         # Propagate max_score updates downwards tentatively? No, safer to just traverse, 
@@ -126,15 +100,7 @@ class SearchIndex:
             
         # Update the term node
         node.score = score
-        # node.term = term  <-- Removed for memory efficiency (Req 5)
-        
-        # IMPORTANT: Initialize local max_score to the term's own score
-        # But node might imply a subtree with BETTER scores.
-        # So node.max_score = max(node.score, existing children max)
-        
-        # Since we are propagating UP fully, we can set node score and rebuild.
-        # But to be safe, let's reset max_score at leaf/term level?
-        # Actually, recursive recalculation from bottom up is cleanest for updates.
+
         
         # Fully correct update:
         for i in range(len(path) - 1, -1, -1):
@@ -195,35 +161,10 @@ class SearchIndex:
             push_term(node.score, None, None) 
             
         # 2. Add properties for children
-        # Initial Frontier
-        # Parent is None (relative to prefix start)
         for char, child in node.children.items():
             push_node(child, char, None)
             
         results = []
-        # Pruning strategy — "Max-Score caching" (Requirement 4):
-        #
-        # Each trie node caches the maximum score of any term reachable in
-        # its subtree (the `max_score` field).  This cached value is used as
-        # the priority key when the node is pushed onto the max-heap,
-        # ensuring the most promising branches are always explored first.
-        #
-        # This enables aggressive pruning via heap-order + early termination:
-        #
-        #   Because nodes are keyed by max_score, the heap guarantees
-        #   branches are explored strictly in order of their best potential
-        #   score.  Low-scoring branches naturally sink to the bottom and
-        #   are never popped once 'limit' results have been collected (the
-        #   loop terminates).  Without max_score caching, nodes would need
-        #   an arbitrary or inefficient key and the algorithm would
-        #   degenerate to a full subtree scan.
-        #
-        #   Children are also pushed keyed by their own max_score, so
-        #   low-scoring subtrees are never expanded before the top-K
-        #   results have been collected from higher-scoring branches.
-        #
-        # This yields O(L + K) search complexity (Requirement 3) where L is
-        # the prefix length and K is the result limit.
         
         while pq:
             if len(results) >= limit:
@@ -241,11 +182,6 @@ class SearchIndex:
                 if curr_node.score is not None:
                     push_term(curr_node.score, item.char, item.parent)
                     
-                # Expand children into the heap.
-                # Child-push pruning is handled implicitly: each child is
-                # pushed with its max_score as priority key, so low-scoring
-                # children sink to the bottom and are never popped before
-                # 'limit' results are collected (see heap-order pruning).
                 for char, child in curr_node.children.items():
                     push_node(child, char, item)
                     

@@ -74,14 +74,6 @@ def test_explicit_pruning_skips_low_branches():
     index = SearchIndex()
     
     # Create structure:
-    # Root -> 'a' (term, score=50)  -> children: 'a1' (term, score=49), 'a2' (term, score=48)
-    # Root -> 'b' (term, score=47)
-    # Root -> 'z' (max_score=1, deep subtree with 100 terms, all score=1)
-    #
-    # search("", limit=3) should return ["a", "a1", "a2"] (or similar top-3)
-    # After collecting 3 results, the PQ might still contain 'z' with max_score=1.
-    # If 'z' is popped, it MUST be pruned because 1 < 48 (worst result).
-    
     index.insert("a", 50)
     index.insert("aa", 49)
     index.insert("ab", 48)
@@ -122,9 +114,6 @@ def test_explicit_pruning_skips_low_branches():
     assert results == ["a", "aa", "ab"]
     
     # 'z' subtree should NOT have been expanded because z.max_score (1) < cutoff (48)
-    # The root expansion accesses root.children.items() which pushes 'z' into PQ,
-    # but when 'z' is popped, it should be pruned.
-    # So z_node.children.items() should have 0 access (it was never expanded).
     assert wrapped_z.access_count == 0, (
         f"'z' subtree was expanded {wrapped_z.access_count} times despite max_score=1 < cutoff=48. "
         "Explicit pruning is not working!"

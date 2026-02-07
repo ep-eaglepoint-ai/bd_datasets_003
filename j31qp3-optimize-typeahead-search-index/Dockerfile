@@ -3,8 +3,9 @@ FROM python:3.9-slim
 WORKDIR /app
 
 # Install dependencies if any (none really standard, but nice to have)
-# We need pytest
-RUN pip install pytest hypothesis
+# Install dependencies
+COPY requirements.txt ./
+RUN pip install -r requirements.txt
 
 # Copy everything
 COPY . /app
