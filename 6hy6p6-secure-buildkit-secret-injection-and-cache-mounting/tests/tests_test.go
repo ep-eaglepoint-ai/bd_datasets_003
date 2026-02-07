@@ -87,8 +87,8 @@ func TestRepoStructure(t *testing.T) {
 	if _, err := os.Stat("repository_after"); err != nil {
 		t.Fatalf("/repository_after directory must exist: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join("repository_after", "REQUIREMENTS.md")); err != nil {
-		t.Fatalf("REQUIREMENTS.md must be in /repository_after: %v", err)
+	if _, err := os.Stat(filepath.Join("tests", "REQUIREMENTS.md")); err != nil {
+		t.Fatalf("REQUIREMENTS.md must be in /tests: %v", err)
 	}
 }
 
@@ -105,7 +105,7 @@ func TestRequirementsLock(t *testing.T) {
 		"Secret must not exist in final image",
 		"Cross-build for linux/amd64 and linux/arm64",
 	}
-	path := filepath.Join("repository_after", "REQUIREMENTS.md")
+	path := filepath.Join("tests", "REQUIREMENTS.md")
 	content := readFile(t, path)
 	lines := []string{}
 	for _, line := range strings.Split(content, "\n") {

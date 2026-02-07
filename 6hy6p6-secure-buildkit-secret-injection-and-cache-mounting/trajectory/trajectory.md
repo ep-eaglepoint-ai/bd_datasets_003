@@ -16,7 +16,7 @@ The goal is to author a BuildKit-enabled Dockerfile and minimal Go payload that 
 - **Cross-build**: Support `ARG TARGETOS` and `ARG TARGETARCH`, pass them to `go build`, and set `CGO_ENABLED=0` for static builds.
 
 **Primary artifacts**:
-- Requirements: [repository_after/REQUIREMENTS.md](repository_after/REQUIREMENTS.md)
+- Requirements: [tests/REQUIREMENTS.md](tests/REQUIREMENTS.md)
 - Build target: [repository_after/Dockerfile](repository_after/Dockerfile)
 - Payload: [repository_after/main.go](repository_after/main.go)
 - Tests: [tests/tests_test.go](tests/tests_test.go)
@@ -36,7 +36,7 @@ Leaving secrets in layers or passing them via ARG/ENV is simpler but insecure. T
 5. **Deterministic build**: Base images are pinned by digest and `go build` uses `-trimpath -buildvcs=false`. Verified by [tests/tests_test.go](tests/tests_test.go).
 6. **Minimal final image**: Final stage base is `scratch` or `gcr.io/distroless/static` and only copies binary + certs. Verified by [tests/tests_test.go](tests/tests_test.go).
 7. **Cross-build flags**: `ARG TARGETOS` and `ARG TARGETARCH` exist and `GOOS`/`GOARCH` are passed to `go build`; `CGO_ENABLED=0` set. Verified by [tests/tests_test.go](tests/tests_test.go).
-8. **Repository structure**: Root `Dockerfile` exists, and `repository_after/Dockerfile` plus `repository_after/REQUIREMENTS.md` are present. Verified by [tests/tests_test.go](tests/tests_test.go).
+8. **Repository structure**: Root `Dockerfile` exists, and `repository_after/Dockerfile` plus `tests/REQUIREMENTS.md` are present. Verified by [tests/tests_test.go](tests/tests_test.go).
 9. **SSH fetch attempt**: If Docker is available, the build must attempt an SSH-based fetch. The test treats expected SSH auth errors as proof of an SSH fetch attempt, while still enforcing image integrity when the build succeeds. Verified by [tests/tests_test.go](tests/tests_test.go).
 
 ### 4. Phase 4: MAP REQUIREMENTS TO VALIDATION (Test Strategy)
@@ -95,7 +95,7 @@ Leaving secrets in layers or passing them via ARG/ENV is simpler but insecure. T
 
 ### 10. Phase 10: MEASURE IMPACT / VERIFY COMPLETION
 **Observed verification**:
-- Requirements are enumerated in [repository_after/REQUIREMENTS.md](repository_after/REQUIREMENTS.md).
+- Requirements are enumerated in [tests/REQUIREMENTS.md](tests/REQUIREMENTS.md).
 - The test suite in `tests/` maps explicitly to each requirement and validates them.
 - The evaluation harness [evaluation/evaluation.go](evaluation/evaluation.go) runs each test script and emits a JSON report under `evaluation/<timestamp>/report.json`.
 

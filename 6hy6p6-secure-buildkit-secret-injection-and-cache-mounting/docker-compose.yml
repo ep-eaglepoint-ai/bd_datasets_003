@@ -37,4 +37,4 @@ services:
 
 secrets:
   ssh_key:
-    file: ${SSH_KEY_PATH:-./secrets/ssh_key}
+    file: ${SSH_KEY_PATH:-./tests/secrets/ssh_key}

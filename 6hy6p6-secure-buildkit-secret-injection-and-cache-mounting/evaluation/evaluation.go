@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -64,53 +66,114 @@ type Report struct {
 	} `json:"results"`
 }
 
+type goTestEvent struct {
+	Time    time.Time `json:"Time"`
+	Action  string    `json:"Action"`
+	Package string    `json:"Package"`
+	Test    string    `json:"Test"`
+	Elapsed float64   `json:"Elapsed"`
+	Output  string    `json:"Output"`
+}
+
 func runTests() TestResults {
-	cmd := exec.Command("go", "test", "./tests")
+	cmd := exec.Command("go", "test", "-json", "./tests")
 	cmd.Dir = "/app"
-	output, err := cmd.CombinedOutput()
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return TestResults{Success: false, ExitCode: 1}
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return TestResults{Success: false, ExitCode: 1}
+	}
+
+	if err := cmd.Start(); err != nil {
+		return TestResults{Success: false, ExitCode: 1}
+	}
+
+	testMap := map[string]*Test{}
+	outputMap := map[string][]string{}
+	scanner := bufio.NewScanner(stdout)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		var ev goTestEvent
+		if err := json.Unmarshal(line, &ev); err != nil {
+			continue
+		}
+		if ev.Test == "" {
+			continue
+		}
+		key := ev.Package + "/" + ev.Test
+		t, ok := testMap[key]
+		if !ok {
+			t = &Test{Name: ev.Test, Status: "running", Duration: 0, FailureMessages: []string{}}
+			testMap[key] = t
+		}
+		switch ev.Action {
+		case "pass":
+			t.Status = "passed"
+			t.Duration = int(ev.Elapsed)
+		case "fail":
+			t.Status = "failed"
+			t.Duration = int(ev.Elapsed)
+			if out := outputMap[key]; len(out) > 0 {
+				t.FailureMessages = append(t.FailureMessages, out...)
+			}
+		case "skip":
+			t.Status = "skipped"
+			t.Duration = int(ev.Elapsed)
+		case "output":
+			if ev.Output != "" {
+				outputMap[key] = append(outputMap[key], ev.Output)
+			}
+		}
+	}
+
+	_ = scanner.Err()
+	_, _ = io.Copy(io.Discard, stderr)
+	err = cmd.Wait()
 	exitCode := 0
 	if cmd.ProcessState != nil {
 		exitCode = cmd.ProcessState.ExitCode()
 	}
 
-	status := "passed"
-	failureMsg := []string{}
-	success := err == nil && exitCode == 0
-	if !success {
-		status = "failed"
-		if len(output) > 0 {
-			failureMsg = []string{string(output)}
-		}
-	}
-
-	tests := []Test{
-		{
-			Name:            "Go unit tests: ./tests (Dockerfile + repository_after validation)",
-			Status:          status,
-			Duration:        0,
-			FailureMessages: failureMsg,
-		},
+	tests := make([]Test, 0, len(testMap))
+	for _, t := range testMap {
+		tests = append(tests, *t)
 	}
 
 	passed := 0
 	failed := 0
-	if status == "passed" {
-		passed = 1
-	} else {
-		failed = 1
+	skipped := 0
+	errors := 0
+
+	for _, t := range tests {
+		switch t.Status {
+		case "passed":
+			passed++
+		case "failed":
+			failed++
+		case "skipped":
+			skipped++
+		default:
+			errors++
+		}
 	}
+
+	success := err == nil && exitCode == 0 && failed == 0 && errors == 0
 
 	return TestResults{
 		Success:  success,
 		ExitCode: exitCode,
 		Tests:    tests,
 		Summary: Summary{
-			Total:   1,
+			Total:   len(tests),
 			Passed:  passed,
 			Failed:  failed,
 			Xfailed: 0,
-			Errors:  0,
-			Skipped: 0,
+			Errors:  errors,
+			Skipped: skipped,
 		},
 	}
 }
