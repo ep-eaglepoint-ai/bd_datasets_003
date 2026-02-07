@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Table Explorer</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        .search-container {
+            margin-bottom: 20px;
+        }
+
+        .search-container label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #555;
+        }
+
+        #search-input {
+            width: 100%;
+            max-width: 300px;
+            padding: 10px 12px;
+            font-size: 14px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            outline: none;
+        }
+
+        #search-input:focus {
+            border-color: #0066cc;
+            box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.2);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #333;
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+        }
+
+        th:hover {
+            background: #e9ecef;
+        }
+
+        th.sortable::after {
+            content: '';
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 0;
+            height: 0;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            opacity: 0.3;
+        }
+
+        th.sort-asc::after {
+            border-bottom: 6px solid #333;
+            opacity: 1;
+        }
+
+        th.sort-desc::after {
+            border-top: 6px solid #333;
+            opacity: 1;
+        }
+
+        th:not(.sort-asc):not(.sort-desc)::after {
+            border-bottom: 6px solid #999;
+        }
+
+        th.no-sort {
+            cursor: default;
+        }
+
+        th.no-sort:hover {
+            background: #f8f9fa;
+        }
+
+        tr:hover {
+            background: #f8f9fa;
+        }
+
+        tr.editing {
+            background: #fff8e1;
+        }
+
+        tr.editing:hover {
+            background: #fff8e1;
+        }
+
+        .btn {
+            padding: 6px 12px;
+            font-size: 13px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 5px;
+        }
+
+        .btn:focus {
+            outline: 2px solid #0066cc;
+            outline-offset: 2px;
+        }
+
+        .btn-edit {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .btn-edit:hover {
+            background: #bbdefb;
+        }
+
+        .btn-save {
+            background: #c8e6c9;
+            color: #388e3c;
+        }
+
+        .btn-save:hover {
+            background: #a5d6a7;
+        }
+
+        .btn-cancel {
+            background: #ffcdd2;
+            color: #d32f2f;
+        }
+
+        .btn-cancel:hover {
+            background: #ef9a9a;
+        }
+
+        .edit-input {
+            width: 100%;
+            padding: 6px 8px;
+            font-size: 14px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+        }
+
+        .edit-input:focus {
+            border-color: #0066cc;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.2);
+        }
+
+        .edit-input.invalid {
+            border-color: #d32f2f;
+            background: #ffebee;
+        }
+
+        .error-message {
+            color: #d32f2f;
+            font-size: 12px;
+            margin-top: 4px;
+            display: block;
+        }
+
+        .cell-content {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .no-results {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .actions-cell {
+            white-space: nowrap;
+        }
+
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            border: 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Table Explorer</h1>
+
+    <div class="search-container">
+        <label for="search-input">Search records:</label>
+        <input type="text" id="search-input" placeholder="Type to filter..." aria-label="Search records">
+    </div>
+
+    <table id="data-table" role="grid" aria-label="Data table with sortable columns">
+        <thead>
+            <tr>
+                <th class="sortable" data-column="id" tabindex="0" role="columnheader" aria-sort="none">
+                    ID
+                </th>
+                <th class="sortable" data-column="name" tabindex="0" role="columnheader" aria-sort="none">
+                    Name
+                </th>
+                <th class="sortable" data-column="email" tabindex="0" role="columnheader" aria-sort="none">
+                    Email
+                </th>
+                <th class="sortable" data-column="status" tabindex="0" role="columnheader" aria-sort="none">
+                    Status
+                </th>
+                <th class="no-sort" data-column="actions">
+                    Actions
+                </th>
+            </tr>
+        </thead>
+        <tbody id="table-body">
+        </tbody>
+    </table>
+
+    <div id="status-message" class="sr-only" aria-live="polite"></div>
+
+    <script>
+        (function() {
+            'use strict';
+
+            const data = [
+                { id: 1, name: 'Alice Johnson', email: 'alice@example.com', status: 'Active' },
+                { id: 2, name: 'Bob Smith', email: 'bob@example.com', status: 'Inactive' },
+                { id: 3, name: 'Charlie Brown', email: 'charlie@example.com', status: 'Active' },
+                { id: 4, name: 'Diana Ross', email: 'diana@example.com', status: 'Pending' },
+                { id: 5, name: 'Edward Norton', email: 'edward@example.com', status: 'Active' },
+                { id: 6, name: 'Fiona Apple', email: 'fiona@example.com', status: 'Inactive' },
+                { id: 7, name: 'George Lucas', email: 'george@example.com', status: 'Active' },
+                { id: 8, name: 'Helen Mirren', email: 'helen@example.com', status: 'Pending' }
+            ];
+
+            const state = {
+                searchTerm: '',
+                sortColumn: null,
+                sortDirection: 'asc',
+                editingRowId: null,
+                editingValues: null
+            };
+
+            const tableBody = document.getElementById('table-body');
+            const searchInput = document.getElementById('search-input');
+            const statusMessage = document.getElementById('status-message');
+            const headers = document.querySelectorAll('th.sortable');
+            const rowElements = new Map();
+
+            function getFilteredAndSortedData() {
+                let result = [...data];
+
+                if (state.searchTerm) {
+                    const term = state.searchTerm.toLowerCase();
+                    result = result.filter(row =>
+                        row.name.toLowerCase().includes(term) ||
+                        row.email.toLowerCase().includes(term) ||
+                        row.status.toLowerCase().includes(term) ||
+                        String(row.id).includes(term)
+                    );
+                }
+
+                if (state.sortColumn) {
+                    result.sort((a, b) => {
+                        let valA = a[state.sortColumn];
+                        let valB = b[state.sortColumn];
+
+                        if (typeof valA === 'string') {
+                            valA = valA.toLowerCase();
+                            valB = valB.toLowerCase();
+                        }
+
+                        let comparison = 0;
+                        if (valA < valB) comparison = -1;
+                        if (valA > valB) comparison = 1;
+
+                        return state.sortDirection === 'desc' ? -comparison : comparison;
+                    });
+                }
+
+                return result;
+            }
+
+            function validateRow(values) {
+                const errors = {};
+
+                if (!values.name || values.name.trim() === '') {
+                    errors.name = 'Name cannot be empty';
+                }
+
+                const validStatuses = ['Active', 'Inactive', 'Pending'];
+                if (!validStatuses.includes(values.status)) {
+                    errors.status = 'Status must be Active, Inactive, or Pending';
+                }
+
+                return {
+                    isValid: Object.keys(errors).length === 0,
+                    errors
+                };
+            }
+
+            function createCell(content, isEditing, field, error) {
+                const td = document.createElement('td');
+
+                if (isEditing && field !== 'id') {
+                    const cellContent = document.createElement('div');
+                    cellContent.className = 'cell-content';
+
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.className = 'edit-input' + (error ? ' invalid' : '');
+                    input.value = content;
+                    input.dataset.field = field;
+                    input.setAttribute('aria-label', `Edit ${field}`);
+                    if (error) {
+                        input.setAttribute('aria-invalid', 'true');
+                        input.setAttribute('aria-describedby', `error-${field}`);
+                    }
+
+                    cellContent.appendChild(input);
+
+                    if (error) {
+                        const errorSpan = document.createElement('span');
+                        errorSpan.className = 'error-message';
+                        errorSpan.id = `error-${field}`;
+                        errorSpan.textContent = error;
+                        errorSpan.setAttribute('role', 'alert');
+                        cellContent.appendChild(errorSpan);
+                    }
+
+                    td.appendChild(cellContent);
+                } else {
+                    td.textContent = content;
+                }
+
+                return td;
+            }
+
+            function createActionCell(row, isEditing) {
+                const td = document.createElement('td');
+                td.className = 'actions-cell';
+
+                if (isEditing) {
+                    const saveBtn = document.createElement('button');
+                    saveBtn.className = 'btn btn-save';
+                    saveBtn.textContent = 'Save';
+                    saveBtn.setAttribute('aria-label', `Save changes for ${row.name}`);
+                    saveBtn.addEventListener('click', () => handleSave(row.id));
+
+                    const cancelBtn = document.createElement('button');
+                    cancelBtn.className = 'btn btn-cancel';
+                    cancelBtn.textContent = 'Cancel';
+                    cancelBtn.setAttribute('aria-label', `Cancel editing ${row.name}`);
+                    cancelBtn.addEventListener('click', () => handleCancel());
+
+                    td.appendChild(saveBtn);
+                    td.appendChild(cancelBtn);
+                } else {
+                    const editBtn = document.createElement('button');
+                    editBtn.className = 'btn btn-edit';
+                    editBtn.textContent = 'Edit';
+                    editBtn.setAttribute('aria-label', `Edit ${row.name}`);
+                    editBtn.addEventListener('click', () => handleEdit(row.id));
+
+                    if (state.editingRowId !== null) {
+                        editBtn.disabled = true;
+                    }
+
+                    td.appendChild(editBtn);
+                }
+
+                return td;
+            }
+
+            function updateRow(rowElement, row, isEditing, errors = {}) {
+                rowElement.innerHTML = '';
+                rowElement.className = isEditing ? 'editing' : '';
+                rowElement.dataset.id = row.id;
+
+                const values = isEditing && state.editingValues ? state.editingValues : row;
+
+                rowElement.appendChild(createCell(row.id, false, 'id', null));
+                rowElement.appendChild(createCell(values.name, isEditing, 'name', errors.name));
+                rowElement.appendChild(createCell(values.email, isEditing, 'email', errors.email));
+                rowElement.appendChild(createCell(values.status, isEditing, 'status', errors.status));
+                rowElement.appendChild(createActionCell(row, isEditing));
+            }
+
+            function renderTable() {
+                const filteredData = getFilteredAndSortedData();
+
+                tableBody.innerHTML = '';
+                rowElements.clear();
+
+                if (filteredData.length === 0) {
+                    const tr = document.createElement('tr');
+                    const td = document.createElement('td');
+                    td.colSpan = 5;
+                    td.className = 'no-results';
+                    td.textContent = 'No records found';
+                    tr.appendChild(td);
+                    tableBody.appendChild(tr);
+                    return;
+                }
+
+                filteredData.forEach(row => {
+                    const tr = document.createElement('tr');
+                    const isEditing = state.editingRowId === row.id;
+                    updateRow(tr, row, isEditing);
+                    tableBody.appendChild(tr);
+                    rowElements.set(row.id, tr);
+                });
+            }
+
+            function reconcileTable() {
+                const filteredData = getFilteredAndSortedData();
+                const newIds = new Set(filteredData.map(r => r.id));
+
+                // Remove the no-results row if present
+                const noResultsRow = tableBody.querySelector('.no-results');
+                if (noResultsRow) noResultsRow.closest('tr').remove();
+
+                // Remove rows no longer in filtered set
+                rowElements.forEach((tr, id) => {
+                    if (!newIds.has(id)) {
+                        tr.remove();
+                        rowElements.delete(id);
+                    }
+                });
+
+                if (filteredData.length === 0) {
+                    const tr = document.createElement('tr');
+                    const td = document.createElement('td');
+                    td.colSpan = 5;
+                    td.className = 'no-results';
+                    td.textContent = 'No records found';
+                    tr.appendChild(td);
+                    tableBody.appendChild(tr);
+                    return;
+                }
+
+                // Reorder existing and create new rows
+                filteredData.forEach(row => {
+                    let tr = rowElements.get(row.id);
+                    if (!tr) {
+                        tr = document.createElement('tr');
+                        updateRow(tr, row, false);
+                        rowElements.set(row.id, tr);
+                    }
+                    // appendChild moves existing nodes, effectively reordering
+                    tableBody.appendChild(tr);
+                });
+            }
+
+            function updateSortIndicators() {
+                headers.forEach(header => {
+                    header.classList.remove('sort-asc', 'sort-desc');
+                    header.setAttribute('aria-sort', 'none');
+
+                    if (header.dataset.column === state.sortColumn) {
+                        if (state.sortDirection === 'asc') {
+                            header.classList.add('sort-asc');
+                            header.setAttribute('aria-sort', 'ascending');
+                        } else {
+                            header.classList.add('sort-desc');
+                            header.setAttribute('aria-sort', 'descending');
+                        }
+                    }
+                });
+            }
+
+            function handleSearch(event) {
+                state.searchTerm = event.target.value;
+
+                if (state.editingRowId !== null) {
+                    handleCancel();
+                }
+
+                reconcileTable();
+
+                const count = getFilteredAndSortedData().length;
+                statusMessage.textContent = `Showing ${count} record${count !== 1 ? 's' : ''}`;
+            }
+
+            function handleSort(column) {
+                if (state.sortColumn === column) {
+                    state.sortDirection = state.sortDirection === 'asc' ? 'desc' : 'asc';
+                } else {
+                    state.sortColumn = column;
+                    state.sortDirection = 'asc';
+                }
+
+                updateSortIndicators();
+                reconcileTable();
+
+                statusMessage.textContent = `Sorted by ${column} ${state.sortDirection === 'asc' ? 'ascending' : 'descending'}`;
+            }
+
+            function handleEdit(id) {
+                const row = data.find(r => r.id === id);
+                if (!row) return;
+
+                state.editingRowId = id;
+                state.editingValues = { ...row };
+
+                const rowElement = tableBody.querySelector(`tr[data-id="${id}"]`);
+                if (rowElement) {
+                    updateRow(rowElement, row, true);
+
+                    const firstInput = rowElement.querySelector('.edit-input');
+                    if (firstInput) {
+                        firstInput.focus();
+                    }
+                }
+
+                document.querySelectorAll('.btn-edit').forEach(btn => {
+                    if (!btn.closest('tr').classList.contains('editing')) {
+                        btn.disabled = true;
+                    }
+                });
+
+                statusMessage.textContent = `Editing ${row.name}`;
+            }
+
+            function handleSave(id) {
+                const rowElement = tableBody.querySelector(`tr[data-id="${id}"]`);
+                if (!rowElement) return;
+
+                const inputs = rowElement.querySelectorAll('.edit-input');
+                inputs.forEach(input => {
+                    state.editingValues[input.dataset.field] = input.value;
+                });
+
+                const validation = validateRow(state.editingValues);
+
+                if (!validation.isValid) {
+                    updateRow(rowElement, data.find(r => r.id === id), true, validation.errors);
+
+                    const firstInvalidInput = rowElement.querySelector('.edit-input.invalid');
+                    if (firstInvalidInput) {
+                        firstInvalidInput.focus();
+                    }
+
+                    const errorMessages = Object.values(validation.errors).join('. ');
+                    statusMessage.textContent = `Validation failed: ${errorMessages}`;
+                    return;
+                }
+
+                const dataIndex = data.findIndex(r => r.id === id);
+                if (dataIndex !== -1) {
+                    data[dataIndex] = { ...data[dataIndex], ...state.editingValues };
+                }
+
+                state.editingRowId = null;
+                state.editingValues = null;
+
+                updateRow(rowElement, data[dataIndex], false);
+
+                document.querySelectorAll('.btn-edit').forEach(btn => {
+                    btn.disabled = false;
+                });
+
+                statusMessage.textContent = `Changes saved successfully`;
+            }
+
+            function handleCancel() {
+                const editingId = state.editingRowId;
+                state.editingRowId = null;
+                state.editingValues = null;
+
+                const rowElement = tableBody.querySelector(`tr[data-id="${editingId}"]`);
+                if (rowElement) {
+                    const row = data.find(r => r.id === editingId);
+                    updateRow(rowElement, row, false);
+                }
+
+                document.querySelectorAll('.btn-edit').forEach(btn => {
+                    btn.disabled = false;
+                });
+
+                statusMessage.textContent = `Edit cancelled`;
+            }
+
+            function handleInputChange(event) {
+                if (event.target.classList.contains('edit-input')) {
+                    const field = event.target.dataset.field;
+                    state.editingValues[field] = event.target.value;
+
+                    event.target.classList.remove('invalid');
+                    const errorSpan = event.target.parentElement.querySelector('.error-message');
+                    if (errorSpan) {
+                        errorSpan.remove();
+                    }
+                }
+            }
+
+            function handleKeydown(event) {
+                if (event.key === 'Escape' && state.editingRowId !== null) {
+                    handleCancel();
+                }
+
+                if (event.key === 'Enter' && event.target.classList.contains('edit-input')) {
+                    handleSave(state.editingRowId);
+                }
+
+                if ((event.key === 'Enter' || event.key === ' ') && event.target.classList.contains('sortable')) {
+                    event.preventDefault();
+                    handleSort(event.target.dataset.column);
+                }
+            }
+
+            searchInput.addEventListener('input', handleSearch);
+
+            headers.forEach(header => {
+                header.addEventListener('click', () => handleSort(header.dataset.column));
+            });
+
+            tableBody.addEventListener('input', handleInputChange);
+            document.addEventListener('keydown', handleKeydown);
+
+            renderTable();
+
+            window.tableExplorer = {
+                getData: () => [...data],
+                getState: () => ({ ...state }),
+                resetData: (newData) => {
+                    data.length = 0;
+                    data.push(...newData);
+                    renderTable();
+                }
+            };
+        })();
+    </script>
+</body>
+</html>

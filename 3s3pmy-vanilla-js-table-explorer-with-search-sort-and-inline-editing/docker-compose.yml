@@ -1,0 +1,21 @@
+services:
+  test-after:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - TEST_URL=http://localhost:3000/index.html
+    command: >
+      sh -c "npx http-server repository_after -p 3000 -s & sleep 2 &&
+             TEST_URL=http://localhost:3000/index.html npx playwright test --reporter=list"
+    volumes:
+      - ./test-results-after:/app/test-results
+
+  evaluation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: >
+      sh -c "node evaluation/evaluate.js"
+    volumes:
+      - ./evaluation:/app/evaluation
