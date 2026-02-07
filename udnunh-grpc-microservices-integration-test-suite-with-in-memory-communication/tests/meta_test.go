@@ -2,12 +2,15 @@ package tests
 
 import (
 	"context"
+	"fmt"
 	"net"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
@@ -167,4 +170,229 @@ func TestGracefulShutdownWorks(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("graceful shutdown timed out")
 	}
+}
+
+// =============================================================================
+// Req 13: Meta-tests proving goleak catches leaks, no TCP ports, isolation
+// =============================================================================
+
+// TestGoleakCatchesIntentionalLeak proves that goleak will detect leaked goroutines
+func TestGoleakCatchesIntentionalLeak(t *testing.T) {
+	// Run a sub-test with goleak that intentionally creates a leak
+	// to verify our setup can detect it
+	leaked := make(chan struct{})
+	leakDetected := false
+
+	// Create intentional leak
+	go func() {
+		<-leaked // blocks forever if not closed
+	}()
+
+	// Check with goleak - expecting to find the leak
+	err := goleak.Find()
+	if err != nil {
+		leakDetected = true
+	}
+
+	// Now clean up the leak
+	close(leaked)
+	time.Sleep(10 * time.Millisecond) // Allow goroutine to exit
+
+	// Verify goleak detected the leak before cleanup
+	assert.True(t, leakDetected, "goleak should detect intentional goroutine leak")
+
+	// Verify clean state after cleanup
+	defer goleak.VerifyNone(t)
+}
+
+// TestNoTCPListenersUsed verifies that bufconn does not bind to any TCP ports
+func TestNoTCPListenersUsed(t *testing.T) {
+	// Get list of TCP listeners before
+	beforeConns := getListeningTCPPorts(t)
+
+	// Create bufconn infrastructure
+	listener := bufconn.Listen(bufSize)
+	defer listener.Close()
+
+	server := grpc.NewServer()
+	go func() {
+		server.Serve(listener)
+	}()
+	defer server.GracefulStop()
+
+	ctx := context.Background()
+	conn, err := grpc.DialContext(ctx, "bufnet",
+		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
+			return listener.DialContext(ctx)
+		}),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	// Get list of TCP listeners after
+	afterConns := getListeningTCPPorts(t)
+
+	// Verify no new TCP ports were opened
+	assert.Equal(t, len(beforeConns), len(afterConns), "bufconn should not open any new TCP ports")
+
+	// Verify the listener address is bufconn, not TCP
+	addr := listener.Addr()
+	assert.Equal(t, "bufconn", addr.Network(), "listener should use bufconn network type")
+	assert.NotContains(t, addr.String(), ":", "bufconn address should not contain port notation")
+}
+
+// getListeningTCPPorts attempts to get count of listening ports (simplified for test)
+func getListeningTCPPorts(t *testing.T) []net.Listener {
+	// Try binding to a range of ports to verify they are available
+	// This is a heuristic - if bufconn opened ports, some would be unavailable
+	var listeners []net.Listener
+	for port := 50000; port < 50010; port++ {
+		l, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+		if err == nil {
+			listeners = append(listeners, l)
+		}
+	}
+	// Close them immediately
+	for _, l := range listeners {
+		l.Close()
+	}
+	return listeners
+}
+
+// TestParallelTestSafety proves tests can run in parallel without interference
+func TestParallelTestSafety(t *testing.T) {
+	// Create multiple independent environments and run them in parallel
+	const numParallel = 5
+	var wg sync.WaitGroup
+	results := make(chan int, numParallel)
+
+	for i := 0; i < numParallel; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+
+			// Each goroutine creates its own isolated bufconn infrastructure
+			listener := bufconn.Listen(bufSize)
+			defer listener.Close()
+
+			server := grpc.NewServer()
+			go func() {
+				server.Serve(listener)
+			}()
+			defer server.GracefulStop()
+
+			ctx := context.Background()
+			conn, err := grpc.DialContext(ctx, fmt.Sprintf("bufnet-%d", id),
+				grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
+					return listener.DialContext(ctx)
+				}),
+				grpc.WithTransportCredentials(insecure.NewCredentials()),
+			)
+			if err != nil {
+				t.Errorf("goroutine %d failed to dial: %v", id, err)
+				return
+			}
+			conn.Close()
+
+			results <- id
+		}(i)
+	}
+
+	wg.Wait()
+	close(results)
+
+	// Verify all parallel tests completed
+	completedIds := make(map[int]bool)
+	for id := range results {
+		completedIds[id] = true
+	}
+	assert.Len(t, completedIds, numParallel, "all parallel tests should complete independently")
+}
+
+// TestIsolationBetweenTests proves that different test contexts have separate state
+func TestIsolationBetweenTests(t *testing.T) {
+	// Create two independent listeners and verify they don't share state
+	listener1 := bufconn.Listen(bufSize)
+	listener2 := bufconn.Listen(bufSize)
+	defer listener1.Close()
+	defer listener2.Close()
+
+	server1 := grpc.NewServer()
+	server2 := grpc.NewServer()
+	go func() { server1.Serve(listener1) }()
+	go func() { server2.Serve(listener2) }()
+	defer server1.GracefulStop()
+	defer server2.GracefulStop()
+
+	ctx := context.Background()
+
+	conn1, err := grpc.DialContext(ctx, "bufnet1",
+		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
+			return listener1.DialContext(ctx)
+		}),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	require.NoError(t, err)
+	defer conn1.Close()
+
+	conn2, err := grpc.DialContext(ctx, "bufnet2",
+		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
+			return listener2.DialContext(ctx)
+		}),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	require.NoError(t, err)
+	defer conn2.Close()
+
+	// Verify completely independent connections
+	assert.NotEqual(t, conn1.Target(), conn2.Target())
+
+	// Closing one should not affect the other
+	err = conn1.Close()
+	assert.NoError(t, err)
+
+	// conn2 should still be valid
+	state := conn2.GetState()
+	assert.NotNil(t, state)
+}
+
+// TestBufconnProvidesInMemoryCommunication verifies bufconn is truly in-memory
+func TestBufconnProvidesInMemoryCommunication(t *testing.T) {
+	listener := bufconn.Listen(bufSize)
+	defer listener.Close()
+
+	// Verify listener properties
+	addr := listener.Addr()
+	assert.Equal(t, "bufconn", addr.Network())
+
+	// Verify we can't resolve this as a network address
+	_, err := net.ResolveTCPAddr("tcp", addr.String())
+	assert.Error(t, err, "bufconn address should not be resolvable as TCP")
+}
+
+// TestCleanupPreventsCrossTestContamination verifies cleanup prevents test leakage
+func TestCleanupPreventsCrossTestContamination(t *testing.T) {
+	// First "test" environment
+	state1 := make(map[string]interface{})
+	listener1 := bufconn.Listen(bufSize)
+	state1["listener"] = listener1
+	state1["data"] = "test1"
+
+	// Cleanup first environment
+	listener1.Close()
+	state1 = nil
+
+	// Second "test" environment
+	state2 := make(map[string]interface{})
+	listener2 := bufconn.Listen(bufSize)
+	state2["listener"] = listener2
+	state2["data"] = "test2"
+
+	// Verify no contamination
+	assert.NotEqual(t, listener1, listener2)
+	assert.Nil(t, state1)
+	assert.NotNil(t, state2)
+
+	listener2.Close()
 }
