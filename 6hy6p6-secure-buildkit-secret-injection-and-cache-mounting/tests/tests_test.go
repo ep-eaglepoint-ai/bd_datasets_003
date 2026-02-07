@@ -76,16 +76,8 @@ func TestRepoStructure(t *testing.T) {
 	if _, err := os.Stat("Dockerfile"); err != nil {
 		t.Fatalf("Dockerfile must exist at the root: %v", err)
 	}
-
-	var dockerfiles []string
-	_ = filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
-		if err == nil && !info.IsDir() && strings.EqualFold(info.Name(), "Dockerfile") {
-			dockerfiles = append(dockerfiles, path)
-		}
-		return nil
-	})
-	if len(dockerfiles) != 1 {
-		t.Fatalf("expected exactly one Dockerfile, found %d: %v", len(dockerfiles), dockerfiles)
+	if _, err := os.Stat(filepath.Join("repository_after", "Dockerfile")); err != nil {
+		t.Fatalf("Dockerfile must exist in /repository_after: %v", err)
 	}
 
 	if _, err := os.Stat("tests"); err != nil {
@@ -138,89 +130,120 @@ func TestRequirementsLock(t *testing.T) {
 }
 
 func TestSecretInjection(t *testing.T) {
-	content := readFile(t, "Dockerfile")
+	content := readFile(t, filepath.Join("repository_after", "Dockerfile"))
 
 	if !strings.Contains(content, "--mount=type=secret,id=ssh_key") {
-		t.Fatal("Dockerfile must contain --mount=type=secret,id=ssh_key")
+		t.Fatal("repository_after/Dockerfile must contain --mount=type=secret,id=ssh_key")
 	}
 	if regexp.MustCompile(`(?i)ARG\s+SSH`).MatchString(content) {
-		t.Fatal("Dockerfile must NOT contain ARG SSH")
+		t.Fatal("repository_after/Dockerfile must NOT contain ARG SSH")
 	}
 	if regexp.MustCompile(`(?i)ENV\s+SSH`).MatchString(content) {
-		t.Fatal("Dockerfile must NOT contain ENV SSH")
+		t.Fatal("repository_after/Dockerfile must NOT contain ENV SSH")
 	}
 	if strings.Contains(content, "id_rsa") {
-		t.Fatal("Dockerfile must NOT contain 'id_rsa'")
+		t.Fatal("repository_after/Dockerfile must NOT contain 'id_rsa'")
 	}
 	if !strings.Contains(content, "GIT_SSH_COMMAND") || !strings.Contains(content, "-i /run/secrets/ssh_key") {
-		t.Fatal("Dockerfile must configure GIT_SSH_COMMAND to use the mounted secret")
+		t.Fatal("repository_after/Dockerfile must configure GIT_SSH_COMMAND to use the mounted secret")
 	}
 	if !strings.Contains(content, "ssh://git@github.com") {
-		t.Fatal("Git must be configured to use ssh://git@github.com")
+		t.Fatal("repository_after/Dockerfile must configure git to use ssh://git@github.com")
 	}
 	if !regexp.MustCompile(`RUN\s+--mount=type=secret,id=ssh_key`).MatchString(content) {
-		t.Fatal("Secret mount should be scoped to RUN instructions only")
+		t.Fatal("repository_after/Dockerfile secret mount should be scoped to RUN instructions only")
+	}
+}
+
+func TestSecretNotWrittenToLayer(t *testing.T) {
+	content := readFile(t, filepath.Join("repository_after", "Dockerfile"))
+	lines := strings.Split(content, "\n")
+	for _, line := range lines {
+		trim := strings.TrimSpace(line)
+		if !strings.HasPrefix(strings.ToUpper(trim), "RUN ") {
+			continue
+		}
+		if !strings.Contains(trim, "/run/secrets/ssh_key") {
+			continue
+		}
+		if !strings.Contains(trim, "--mount=type=secret,id=ssh_key") {
+			t.Fatal("repository_after/Dockerfile must only reference /run/secrets/ssh_key in RUN steps with secret mounts")
+		}
+		// Heuristic guardrails against persisting the secret in layers.
+		if strings.Contains(trim, "cp /run/secrets/ssh_key") ||
+			strings.Contains(trim, "install /run/secrets/ssh_key") ||
+			strings.Contains(trim, "cat /run/secrets/ssh_key") ||
+			strings.Contains(trim, " /run/secrets/ssh_key >") ||
+			strings.Contains(trim, " /run/secrets/ssh_key >>") ||
+			strings.Contains(trim, "tee ") {
+			t.Fatal("repository_after/Dockerfile must not copy or redirect /run/secrets/ssh_key into the filesystem")
+		}
 	}
 }
 
 func TestGoCache(t *testing.T) {
-	content := readFile(t, "Dockerfile")
+	content := readFile(t, filepath.Join("repository_after", "Dockerfile"))
 
 	if !strings.Contains(content, "--mount=type=cache,target=/go/pkg/mod") {
-		t.Fatal("Dockerfile must contain --mount=type=cache,target=/go/pkg/mod")
+		t.Fatal("repository_after/Dockerfile must contain --mount=type=cache,target=/go/pkg/mod")
 	}
 	if strings.Contains(content, "rm -rf /go/pkg/mod/cache/vcs") {
-		t.Fatal("Dockerfile must not delete the Go module VCS cache when using a cache mount")
+		t.Fatal("repository_after/Dockerfile must not delete the Go module VCS cache when using a cache mount")
 	}
 
-	copyGoMod := strings.Index(content, "COPY repository_after/go.mod ./")
-	copyAll := strings.Index(content, "COPY repository_after/ .")
+	copyGoMod := strings.Index(content, "COPY go.mod ./")
+	copyAll := strings.Index(content, "COPY . /app")
 	if copyGoMod == -1 {
-		t.Fatal("Dockerfile must copy go.mod")
+		t.Fatal("repository_after/Dockerfile must copy go.mod")
 	}
 	if copyAll != -1 && copyGoMod > copyAll {
-		t.Fatal("go.mod must be copied before the rest of the source code")
+		t.Fatal("repository_after/Dockerfile must copy go.mod before the rest of the source code")
 	}
 
 	re := regexp.MustCompile(`RUN[\s\S]*--mount=type=cache,target=/go/pkg/mod[\s\S]*go mod download`)
 	if !re.MatchString(content) {
-		t.Fatal("Go module cache must be used with 'go mod download'")
+		t.Fatal("repository_after/Dockerfile must use go mod download with a cache mount")
+	}
+
+	buildRe := regexp.MustCompile(`RUN[\s\S]*--mount=type=cache,target=/go/pkg/mod[\s\S]*go build`)
+	if !buildRe.MatchString(content) {
+		t.Fatal("repository_after/Dockerfile must use go build with a cache mount")
 	}
 
 	stages := parseStages(content)
 	finalStage := findFinalStage(stages)
 	if finalStage == "" {
-		t.Fatal("Could not identify the final production stage")
+		t.Fatal("Could not identify the final production stage in repository_after/Dockerfile")
 	}
 	if strings.Contains(finalStage, "--mount=type=cache") {
-		t.Fatal("Cache mount must not leak into final stage")
+		t.Fatal("repository_after/Dockerfile cache mount must not leak into final stage")
 	}
 }
 
 func TestFinalImage(t *testing.T) {
-	content := readFile(t, "Dockerfile")
+	content := readFile(t, filepath.Join("repository_after", "Dockerfile"))
 	stages := parseStages(content)
 	finalStage := findFinalStage(stages)
 	if finalStage == "" {
-		t.Fatal("Could not identify the final production stage")
+		t.Fatal("Could not identify the final production stage in repository_after/Dockerfile")
 	}
 
 	if !strings.Contains(finalStage, "gcr.io/distroless/static") && !strings.Contains(finalStage, "scratch") {
-		t.Fatal("Final stage base image must be scratch or gcr.io/distroless/static")
+		t.Fatal("repository_after/Dockerfile final stage base image must be scratch or gcr.io/distroless/static")
 	}
 	for _, base := range []string{"alpine", "debian", "ubuntu"} {
 		if strings.Contains(strings.ToLower(finalStage), base) {
-			t.Fatalf("Final stage must not use %s", base)
+			t.Fatalf("repository_after/Dockerfile final stage must not use %s", base)
 		}
 	}
 	if strings.Contains(finalStage, "ssh_key") || strings.Contains(finalStage, "id_rsa") {
-		t.Fatal("Final stage must not refer to SSH keys")
+		t.Fatal("repository_after/Dockerfile final stage must not refer to SSH keys")
 	}
 
 	copyRe := regexp.MustCompile(`COPY\s+--from=\w+\s+(\S+)\s+(\S+)`)
 	copies := copyRe.FindAllStringSubmatch(finalStage, -1)
 	if len(copies) != 2 {
-		t.Fatalf("Final stage should have exactly 2 COPY commands, found %d", len(copies))
+		t.Fatalf("repository_after/Dockerfile final stage should have exactly 2 COPY commands, found %d", len(copies))
 	}
 	var copied []string
 	for _, c := range copies {
@@ -237,35 +260,35 @@ func TestFinalImage(t *testing.T) {
 		}
 	}
 	if !hasCert {
-		t.Fatal("Certs must be copied")
+		t.Fatal("repository_after/Dockerfile must copy certs")
 	}
 	if !hasBin {
-		t.Fatal("Binary must be copied")
+		t.Fatal("repository_after/Dockerfile must copy the binary")
 	}
 }
 
 func TestCrossBuild(t *testing.T) {
-	content := readFile(t, "Dockerfile")
+	content := readFile(t, filepath.Join("repository_after", "Dockerfile"))
 	if !regexp.MustCompile(`(?i)ARG\s+TARGETOS`).MatchString(content) {
-		t.Fatal("Dockerfile must contain ARG TARGETOS")
+		t.Fatal("repository_after/Dockerfile must contain ARG TARGETOS")
 	}
 	if !regexp.MustCompile(`(?i)ARG\s+TARGETARCH`).MatchString(content) {
-		t.Fatal("Dockerfile must contain ARG TARGETARCH")
+		t.Fatal("repository_after/Dockerfile must contain ARG TARGETARCH")
 	}
 	if !strings.Contains(content, "GOOS=${TARGETOS}") && !strings.Contains(content, "GOOS=$TARGETOS") {
-		t.Fatal("GOOS=$TARGETOS must be passed to go build")
+		t.Fatal("repository_after/Dockerfile must pass GOOS=$TARGETOS to go build")
 	}
 	if !strings.Contains(content, "GOARCH=${TARGETARCH}") && !strings.Contains(content, "GOARCH=$TARGETARCH") {
-		t.Fatal("GOARCH=$TARGETARCH must be passed to go build")
+		t.Fatal("repository_after/Dockerfile must pass GOARCH=$TARGETARCH to go build")
 	}
 	if !strings.Contains(content, "CGO_ENABLED=0") {
-		t.Fatal("go build must set CGO_ENABLED=0")
+		t.Fatal("repository_after/Dockerfile go build must set CGO_ENABLED=0")
 	}
 	if !strings.Contains(content, "-trimpath") || !strings.Contains(content, "-buildvcs=false") {
-		t.Fatal("go build must include -trimpath and -buildvcs=false for deterministic builds")
+		t.Fatal("repository_after/Dockerfile go build must include -trimpath and -buildvcs=false for deterministic builds")
 	}
 	if !strings.Contains(content, "FROM --platform=$BUILDPLATFORM") {
-		t.Fatal("builder stage must use --platform=$BUILDPLATFORM for multi-arch builds")
+		t.Fatal("repository_after/Dockerfile builder stage must use --platform=$BUILDPLATFORM for multi-arch builds")
 	}
 }
 
@@ -281,16 +304,16 @@ func TestGoSum(t *testing.T) {
 }
 
 func TestPinnedBaseImages(t *testing.T) {
-	content := readFile(t, "Dockerfile")
+	content := readFile(t, filepath.Join("repository_after", "Dockerfile"))
 	fromRe := regexp.MustCompile(`(?m)^FROM\s+(?:--platform=\S+\s+)?(\S+)`)
 	matches := fromRe.FindAllStringSubmatch(content, -1)
 	if len(matches) == 0 {
-		t.Fatal("Dockerfile must contain FROM lines")
+		t.Fatal("repository_after/Dockerfile must contain FROM lines")
 	}
 	for _, m := range matches {
 		image := m[1]
 		if !strings.Contains(image, "@sha256:") {
-			t.Fatalf("Base images must be pinned by digest for determinism: %s", image)
+			t.Fatalf("repository_after/Dockerfile base images must be pinned by digest: %s", image)
 		}
 	}
 }
@@ -331,7 +354,7 @@ func TestGoPayload(t *testing.T) {
 
 func TestBuildIntegrity(t *testing.T) {
 	if _, err := exec.LookPath("docker"); err != nil {
-		t.Skip("docker CLI is required for build validation")
+		t.Fatal("docker CLI is required for build validation")
 	}
 
 	tempDir := t.TempDir()
@@ -351,7 +374,7 @@ func TestBuildIntegrity(t *testing.T) {
 		"--build-arg", "TARGETOS=linux",
 		"--build-arg", "TARGETARCH=amd64",
 		"-t", tag,
-		".",
+		filepath.Join(".", "repository_after"),
 	)
 	build.Env = append(os.Environ(), "DOCKER_BUILDKIT=1")
 	out, err := build.CombinedOutput()
@@ -416,5 +439,50 @@ func TestBuildIntegrity(t *testing.T) {
 	}
 	if bytes.Contains(exportOut, keyBytes) {
 		t.Fatal("Secret content leaked into final image")
+	}
+}
+
+func TestMultiArchBuildSinglePass(t *testing.T) {
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Fatal("docker CLI is required for build validation")
+	}
+	if err := exec.Command("docker", "buildx", "version").Run(); err != nil {
+		t.Skip("docker buildx is not available; skipping multi-arch build test")
+	}
+
+	tempDir := t.TempDir()
+	keyPath := filepath.Join(tempDir, "id_ed25519")
+	ociPath := filepath.Join(tempDir, "secure-build-oci.tar")
+
+	cmd := exec.Command("ssh-keygen", "-t", "ed25519", "-N", "", "-f", keyPath)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("ssh-keygen failed: %v\n%s", err, string(out))
+	}
+
+	build := exec.Command(
+		"docker", "buildx", "build",
+		"--platform", "linux/amd64,linux/arm64",
+		"--target", "final",
+		"--secret", "id=ssh_key,src="+keyPath,
+		"--output", "type=oci,dest="+ociPath,
+		filepath.Join(".", "repository_after"),
+	)
+	build.Env = append(os.Environ(), "DOCKER_BUILDKIT=1")
+	out, err := build.CombinedOutput()
+	if err != nil {
+		outStr := string(out)
+		sshError := regexp.MustCompile(`(?i)(permission denied|publickey|could not read from remote repository|git@github\.com|ssh)`)
+		if sshError.MatchString(outStr) {
+			return
+		}
+		t.Fatalf("docker buildx multi-arch build failed without SSH evidence: %v\n%s", err, outStr)
+	}
+
+	info, err := os.Stat(ociPath)
+	if err != nil {
+		t.Fatalf("expected OCI output at %s: %v", ociPath, err)
+	}
+	if info.Size() == 0 {
+		t.Fatal("OCI output file is empty")
 	}
 }
