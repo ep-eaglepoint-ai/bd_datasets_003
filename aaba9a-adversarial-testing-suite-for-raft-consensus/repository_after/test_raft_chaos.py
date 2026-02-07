@@ -206,6 +206,7 @@ async def heal_all(nodes: List[MockRaftNode]):
     ("bridge", 0.0, "bridge"),
     ("cyclic", 0.0, "cyclic"),
     ("packet_loss", 0.3, "none"),
+    ("packet_loss", 0.5, "none"), # Req 8: Multiple packet loss values
     ("message_reordering", 0.0, "none"), # New Fault Type
     ("isolate_leader", 0.0, "none"), # Req 1: Isolate Leader
 ])
@@ -269,23 +270,13 @@ async def test_raft_system_under_chaos(cluster, orchestrator, fault_type, packet
             if partition_size == "1v4":
                 group_a = nodes_shuffled[:1]
                 group_b = nodes_shuffled[1:]
+                await orchestrator.apply_partition(group_a, group_b)
             elif partition_size == "2v3":
                 group_a = nodes_shuffled[:2]
                 group_b = nodes_shuffled[2:]
+                await orchestrator.apply_partition(group_a, group_b)
             else: # Random
-                split = random.randint(1, 4)
-                group_a = nodes_shuffled[:split]
-                group_b = nodes_shuffled[split:]
-            
-            ids_a = [n.node_id for n in group_a]
-            ids_b = [n.node_id for n in group_b]
-            
-            print(f"Injecting Partition: {ids_a} <|> {ids_b}")
-            
-            for n in group_a:
-                await n.partition_from(ids_b)
-            for n in group_b:
-                await n.partition_from(ids_a)
+                await orchestrator.inject_random_partition()
                      
         elif fault_type == "bridge":
             await create_bridge_partition(cluster)

@@ -65,9 +65,22 @@ class ChaosOrchestrator:
         self.history: List[Tuple[str, str, Any, float, float, str]] = [] 
         # (op_type, key, value/result, start_time, end_time, node_id)
 
-    def inject_random_partition(self) -> Tuple[List[str], List[str]]:
+    async def apply_partition(self, group_a: List[RaftNodeProxy], group_b: List[RaftNodeProxy]):
+        """Async apply partition between two groups."""
+        ids_a = [n.node_id for n in group_a]
+        ids_b = [n.node_id for n in group_b]
+        
+        print(f"Creating partition: {ids_a} <|> {ids_b}")
+        
+        for n in group_a:
+            await n.partition_from(ids_b)
+        for n in group_b:
+            await n.partition_from(ids_a)
+        return ids_a, ids_b
+
+    async def inject_random_partition(self) -> Tuple[List[str], List[str]]:
         """
-        Randomly splits the nodes into two non-communicating sets.
+        Randomly splits the nodes into two non-communicating sets and applies the partition.
         Return tuple of (ids_side_a, ids_side_b)
         """
         nodes_shuffled = self.nodes[:]
@@ -81,11 +94,7 @@ class ChaosOrchestrator:
         side_a = nodes_shuffled[:split_idx]
         side_b = nodes_shuffled[split_idx:]
         
-        ids_a = [n.node_id for n in side_a]
-        ids_b = [n.node_id for n in side_b]
-        
-        print(f"Creating partition: {ids_a} <|> {ids_b}")
-        return ids_a, ids_b
+        return await self.apply_partition(side_a, side_b)
 
     def inject_latency(self, delay: float):
         """

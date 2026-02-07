@@ -1,12 +1,12 @@
 diff --git a/repository_before/__pycache__/raft_chaos_harness.cpython-311.pyc b/repository_after/__pycache__/raft_chaos_harness.cpython-311.pyc
-index 31ce715..65d54a0 100644
+index 872b0e2..8ba5420 100644
 Binary files a/repository_before/__pycache__/raft_chaos_harness.cpython-311.pyc and b/repository_after/__pycache__/raft_chaos_harness.cpython-311.pyc differ
 diff --git a/repository_after/__pycache__/test_raft_chaos.cpython-311-pytest-9.0.2.pyc b/repository_after/__pycache__/test_raft_chaos.cpython-311-pytest-9.0.2.pyc
 new file mode 100644
-index 0000000..e2367b8
+index 0000000..8a99780
 Binary files /dev/null and b/repository_after/__pycache__/test_raft_chaos.cpython-311-pytest-9.0.2.pyc differ
 diff --git a/repository_before/raft_chaos_harness.py b/repository_after/raft_chaos_harness.py
-index e25693f..d42ff25 100644
+index e25693f..22ee0f8 100644
 --- a/repository_before/raft_chaos_harness.py
 +++ b/repository_after/raft_chaos_harness.py
 @@ -1,10 +1,7 @@
@@ -22,7 +22,7 @@ index e25693f..d42ff25 100644
  
  class RaftNodeProxy:
      """ 
-@@ -14,61 +11,190 @@ class RaftNodeProxy:
+@@ -14,61 +11,199 @@ class RaftNodeProxy:
          self.node_id = node_id
          self.client_url = client_url # For GET/SET operations
          self.mgmt_url = mgmt_url     # For injecting faults (e.g., drop_traffic_from)
@@ -91,11 +91,25 @@ index e25693f..d42ff25 100644
 -        self.history = [] # To record (operation, timestamp, result) for linearizability check
 +        self.history: List[Tuple[str, str, Any, float, float, str]] = [] 
 +        # (op_type, key, value/result, start_time, end_time, node_id)
++
++    async def apply_partition(self, group_a: List[RaftNodeProxy], group_b: List[RaftNodeProxy]):
++        """Async apply partition between two groups."""
++        ids_a = [n.node_id for n in group_a]
++        ids_b = [n.node_id for n in group_b]
++        
++        print(f"Creating partition: {ids_a} <|> {ids_b}")
++        
++        for n in group_a:
++            await n.partition_from(ids_b)
++        for n in group_b:
++            await n.partition_from(ids_a)
++        return ids_a, ids_b
  
 -    def inject_random_partition(self):
-+    def inject_random_partition(self) -> Tuple[List[str], List[str]]:
++    async def inject_random_partition(self) -> Tuple[List[str], List[str]]:
          """
-         Randomly splits the nodes into two non-communicating sets.
+-        Randomly splits the nodes into two non-communicating sets.
++        Randomly splits the nodes into two non-communicating sets and applies the partition.
 +        Return tuple of (ids_side_a, ids_side_b)
          """
 -        random.shuffle(self.nodes)
@@ -104,7 +118,9 @@ index e25693f..d42ff25 100644
 -        side_b = self.nodes[split_idx:]
 +        nodes_shuffled = self.nodes[:]
 +        random.shuffle(nodes_shuffled)
-+        
+         
+-        print(f"Creating partition: {[n.node_id for n in side_a]} <|> {[n.node_id for n in side_b]}")
+-        # Implementation of network block logic goes here
 +        # Ensure we don't have empty partitions if enough nodes
 +        if len(nodes_shuffled) < 2:
 +            return [], []
@@ -113,13 +129,7 @@ index e25693f..d42ff25 100644
 +        side_a = nodes_shuffled[:split_idx]
 +        side_b = nodes_shuffled[split_idx:]
 +        
-+        ids_a = [n.node_id for n in side_a]
-+        ids_b = [n.node_id for n in side_b]
-         
--        print(f"Creating partition: {[n.node_id for n in side_a]} <|> {[n.node_id for n in side_b]}")
--        # Implementation of network block logic goes here
-+        print(f"Creating partition: {ids_a} <|> {ids_b}")
-+        return ids_a, ids_b
++        return await self.apply_partition(side_a, side_b)
 +
 +    def inject_latency(self, delay: float):
 +        """
@@ -252,10 +262,10 @@ index e25693f..d42ff25 100644
 \ No newline at end of file
 diff --git a/repository_after/test_raft_chaos.py b/repository_after/test_raft_chaos.py
 new file mode 100644
-index 0000000..f000906
+index 0000000..e5bb6c2
 --- /dev/null
 +++ b/repository_after/test_raft_chaos.py
-@@ -0,0 +1,378 @@
+@@ -0,0 +1,369 @@
 +
 +import pytest
 +import pytest_asyncio
@@ -464,6 +474,7 @@ index 0000000..f000906
 +    ("bridge", 0.0, "bridge"),
 +    ("cyclic", 0.0, "cyclic"),
 +    ("packet_loss", 0.3, "none"),
++    ("packet_loss", 0.5, "none"), # Req 8: Multiple packet loss values
 +    ("message_reordering", 0.0, "none"), # New Fault Type
 +    ("isolate_leader", 0.0, "none"), # Req 1: Isolate Leader
 +])
@@ -527,23 +538,13 @@ index 0000000..f000906
 +            if partition_size == "1v4":
 +                group_a = nodes_shuffled[:1]
 +                group_b = nodes_shuffled[1:]
++                await orchestrator.apply_partition(group_a, group_b)
 +            elif partition_size == "2v3":
 +                group_a = nodes_shuffled[:2]
 +                group_b = nodes_shuffled[2:]
++                await orchestrator.apply_partition(group_a, group_b)
 +            else: # Random
-+                split = random.randint(1, 4)
-+                group_a = nodes_shuffled[:split]
-+                group_b = nodes_shuffled[split:]
-+            
-+            ids_a = [n.node_id for n in group_a]
-+            ids_b = [n.node_id for n in group_b]
-+            
-+            print(f"Injecting Partition: {ids_a} <|> {ids_b}")
-+            
-+            for n in group_a:
-+                await n.partition_from(ids_b)
-+            for n in group_b:
-+                await n.partition_from(ids_a)
++                await orchestrator.inject_random_partition()
 +                     
 +        elif fault_type == "bridge":
 +            await create_bridge_partition(cluster)
