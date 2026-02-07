@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from django.core.cache import cache
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.db.models import Count, Max
 from django.db.models.functions import TruncDate
@@ -26,6 +27,7 @@ from organizations.serializers import (
     ProjectSerializer,
     UserProfileSerializer,
 )
+from organizations.tasks import send_invitation_email_task
 
 
 class OrganizationViewSet(viewsets.ModelViewSet):
@@ -133,9 +135,9 @@ class InvitationViewSet(OrganizationScopedMixin, viewsets.ModelViewSet):
         org = self.get_organization()
         invitation = serializer.save(organization=org, created_by=self.request.user)
         try:
-            invitation.send_invitation_email()
+            send_invitation_email_task.delay(invitation.id)
         except Exception:
-            # Email failures must not break invitation creation.
+            # Queueing failures must not break invitation creation.
             pass
 
 
@@ -244,7 +246,8 @@ class JoinViewSet(viewsets.ViewSet):
                 if profile.primary_organization_id is None:
                     profile.primary_organization = membership.organization
                     profile.save(update_fields=["primary_organization"])
-        except ValidationError as exc:
+        except (ValidationError, DjangoValidationError) as exc:
+            # Normalize model-layer validation failures to a consistent API 400.
             raise ValidationError(detail=str(exc))
         return Response({"membership_id": membership.id}, status=status.HTTP_200_OK)
 

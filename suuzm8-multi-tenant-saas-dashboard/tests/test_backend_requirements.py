@@ -577,6 +577,50 @@ def test_join_validate_is_public(api_client, user):
     assert resp.status_code == 200
 
 
+@pytest.mark.django_db
+def test_join_accept_expired_invitation_returns_400_not_500(api_client, user):
+    org = Organization.objects.create(name="Org")
+    OrganizationMembership.objects.create(organization=org, user=user, role=OrganizationMembership.Role.OWNER)
+    inv = Invitation.objects.create(organization=org, email="new@example.com", created_by=user)
+    inv.expires_at = timezone.now() - timezone.timedelta(days=1)
+    inv.save(update_fields=["expires_at"])
+
+    api_client.force_authenticate(user=user)
+    resp = api_client.post(f"/api/join/{inv.token}/accept/", {}, format="json")
+    assert resp.status_code == 400
+
+
+@pytest.mark.django_db
+def test_join_accept_used_invitation_returns_400_not_500(api_client, user, user2):
+    org = Organization.objects.create(name="Org")
+    OrganizationMembership.objects.create(organization=org, user=user, role=OrganizationMembership.Role.OWNER)
+    inv = Invitation.objects.create(organization=org, email="new@example.com", created_by=user)
+    inv.accepted_at = timezone.now()
+    inv.save(update_fields=["accepted_at"])
+
+    api_client.force_authenticate(user=user2)
+    resp = api_client.post(f"/api/join/{inv.token}/accept/", {}, format="json")
+    assert resp.status_code == 400
+
+
+@pytest.mark.django_db
+def test_join_accept_full_org_returns_400_not_500(api_client, user, user2):
+    org = Organization.objects.create(name="Org")
+    OrganizationMembership.objects.create(organization=org, user=user, role=OrganizationMembership.Role.OWNER)
+    inv = Invitation.objects.create(organization=org, email="new2@example.com", created_by=user)
+
+    # Fill org to 50 active members so accept triggers ValidationError.
+    User = type(user)
+    current = OrganizationMembership.objects.filter(organization=org, is_active=True).count()
+    for i in range(50 - current):
+        u = User.objects.create_user(username=f"full_join_{i}", password="pass")
+        OrganizationMembership.objects.create(organization=org, user=u, role=OrganizationMembership.Role.MEMBER)
+
+    api_client.force_authenticate(user=user2)
+    resp = api_client.post(f"/api/join/{inv.token}/accept/", {}, format="json")
+    assert resp.status_code == 400
+
+
 def test_no_raw_sql_usage_in_organizations_app():
     base = Path(__file__).resolve().parents[1] / "repository_after" / "server" / "organizations"
     patterns = [

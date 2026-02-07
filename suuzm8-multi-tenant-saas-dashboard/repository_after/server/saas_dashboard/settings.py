@@ -129,6 +129,16 @@ if redis_url:
         "OPTIONS": {"CLIENT_CLASS": "django_redis.client.DefaultClient"},
     }
 
+# Celery (Redis broker)
+CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL") or redis_url or "redis://localhost:6379/0"
+CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND") or CELERY_BROKER_URL
+
+# In test runs we execute tasks eagerly so the suite doesn't require a separate worker.
+# Default to eager execution so the app/test container doesn't require a separate
+# Celery worker process. Set CELERY_TASK_ALWAYS_EAGER=0 to use async workers.
+CELERY_TASK_ALWAYS_EAGER = os.environ.get("CELERY_TASK_ALWAYS_EAGER", "1") == "1"
+CELERY_TASK_EAGER_PROPAGATES = True
+
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework.authentication.SessionAuthentication",

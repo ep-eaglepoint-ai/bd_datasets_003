@@ -6581,6 +6581,10 @@ diff --git a/repository_after/server/organizations/__pycache__/serializers.cpyth
 new file mode 100644
 index 0000000..7c2681f
 Binary files /dev/null and b/repository_after/server/organizations/__pycache__/serializers.cpython-311.pyc differ
+diff --git a/repository_after/server/organizations/__pycache__/tasks.cpython-311.pyc b/repository_after/server/organizations/__pycache__/tasks.cpython-311.pyc
+new file mode 100644
+index 0000000..598b77a
+Binary files /dev/null and b/repository_after/server/organizations/__pycache__/tasks.cpython-311.pyc differ
 diff --git a/repository_after/server/organizations/__pycache__/throttling.cpython-311.pyc b/repository_after/server/organizations/__pycache__/throttling.cpython-311.pyc
 new file mode 100644
 index 0000000..7e0ea8d
@@ -6591,7 +6595,7 @@ index 0000000..bd2b5a7
 Binary files /dev/null and b/repository_after/server/organizations/__pycache__/urls.cpython-311.pyc differ
 diff --git a/repository_after/server/organizations/__pycache__/views.cpython-311.pyc b/repository_after/server/organizations/__pycache__/views.cpython-311.pyc
 new file mode 100644
-index 0000000..813f59a
+index 0000000..d0c63fd
 Binary files /dev/null and b/repository_after/server/organizations/__pycache__/views.cpython-311.pyc differ
 diff --git a/repository_after/server/organizations/apps.py b/repository_after/server/organizations/apps.py
 new file mode 100644
@@ -7604,6 +7608,31 @@ index 0000000..43713df
 +        if plaintext:
 +            data["key"] = plaintext
 +        return data
+diff --git a/repository_after/server/organizations/tasks.py b/repository_after/server/organizations/tasks.py
+new file mode 100644
+index 0000000..af220c3
+--- /dev/null
++++ b/repository_after/server/organizations/tasks.py
+@@ -0,0 +1,19 @@
++from __future__ import annotations
++
++from celery import shared_task
++
++
++@shared_task(bind=True, autoretry_for=(Exception,), retry_backoff=True, retry_kwargs={"max_retries": 3})
++def send_invitation_email_task(self, invitation_id: int) -> None:
++    # Import lazily so Celery can load without Django app registry issues.
++    from organizations.models import Invitation
++
++    invitation = Invitation.objects.select_related("organization").filter(id=invitation_id).first()
++    if not invitation:
++        return
++
++    # If already accepted or expired, do nothing.
++    if not invitation.is_valid():
++        return
++
++    invitation.send_invitation_email()
 diff --git a/repository_after/server/organizations/throttling.py b/repository_after/server/organizations/throttling.py
 new file mode 100644
 index 0000000..adb2193
@@ -7727,15 +7756,16 @@ index 0000000..f92572d
 +]
 diff --git a/repository_after/server/organizations/views.py b/repository_after/server/organizations/views.py
 new file mode 100644
-index 0000000..fefc05c
+index 0000000..c4bc647
 --- /dev/null
 +++ b/repository_after/server/organizations/views.py
-@@ -0,0 +1,309 @@
+@@ -0,0 +1,312 @@
 +from __future__ import annotations
 +
 +from datetime import timedelta
 +
 +from django.core.cache import cache
++from django.core.exceptions import ValidationError as DjangoValidationError
 +from django.db import transaction
 +from django.db.models import Count, Max
 +from django.db.models.functions import TruncDate
@@ -7759,6 +7789,7 @@ index 0000000..fefc05c
 +    ProjectSerializer,
 +    UserProfileSerializer,
 +)
++from organizations.tasks import send_invitation_email_task
 +
 +
 +class OrganizationViewSet(viewsets.ModelViewSet):
@@ -7866,9 +7897,9 @@ index 0000000..fefc05c
 +        org = self.get_organization()
 +        invitation = serializer.save(organization=org, created_by=self.request.user)
 +        try:
-+            invitation.send_invitation_email()
++            send_invitation_email_task.delay(invitation.id)
 +        except Exception:
-+            # Email failures must not break invitation creation.
++            # Queueing failures must not break invitation creation.
 +            pass
 +
 +
@@ -7977,7 +8008,8 @@ index 0000000..fefc05c
 +                if profile.primary_organization_id is None:
 +                    profile.primary_organization = membership.organization
 +                    profile.save(update_fields=["primary_organization"])
-+        except ValidationError as exc:
++        except (ValidationError, DjangoValidationError) as exc:
++            # Normalize model-layer validation failures to a consistent API 400.
 +            raise ValidationError(detail=str(exc))
 +        return Response({"membership_id": membership.id}, status=status.HTTP_200_OK)
 +
@@ -8042,18 +8074,28 @@ index 0000000..fefc05c
 +        return Response({"detail": "Ownership transferred"}, status=status.HTTP_200_OK)
 diff --git a/repository_after/server/saas_dashboard/__init__.py b/repository_after/server/saas_dashboard/__init__.py
 new file mode 100644
-index 0000000..e69de29
+index 0000000..53f4ccb
+--- /dev/null
++++ b/repository_after/server/saas_dashboard/__init__.py
+@@ -0,0 +1,3 @@
++from .celery import app as celery_app
++
++__all__ = ("celery_app",)
 diff --git a/repository_after/server/saas_dashboard/__pycache__/__init__.cpython-311.pyc b/repository_after/server/saas_dashboard/__pycache__/__init__.cpython-311.pyc
 new file mode 100644
-index 0000000..e9c18c4
+index 0000000..91911e5
 Binary files /dev/null and b/repository_after/server/saas_dashboard/__pycache__/__init__.cpython-311.pyc differ
+diff --git a/repository_after/server/saas_dashboard/__pycache__/celery.cpython-311.pyc b/repository_after/server/saas_dashboard/__pycache__/celery.cpython-311.pyc
+new file mode 100644
+index 0000000..e3b2cc3
+Binary files /dev/null and b/repository_after/server/saas_dashboard/__pycache__/celery.cpython-311.pyc differ
 diff --git a/repository_after/server/saas_dashboard/__pycache__/perf_views.cpython-311.pyc b/repository_after/server/saas_dashboard/__pycache__/perf_views.cpython-311.pyc
 new file mode 100644
 index 0000000..60643b7
 Binary files /dev/null and b/repository_after/server/saas_dashboard/__pycache__/perf_views.cpython-311.pyc differ
 diff --git a/repository_after/server/saas_dashboard/__pycache__/settings.cpython-311.pyc b/repository_after/server/saas_dashboard/__pycache__/settings.cpython-311.pyc
 new file mode 100644
-index 0000000..950effe
+index 0000000..eed9fa4
 Binary files /dev/null and b/repository_after/server/saas_dashboard/__pycache__/settings.cpython-311.pyc differ
 diff --git a/repository_after/server/saas_dashboard/__pycache__/urls.cpython-311.pyc b/repository_after/server/saas_dashboard/__pycache__/urls.cpython-311.pyc
 new file mode 100644
@@ -8063,12 +8105,29 @@ diff --git a/repository_after/server/saas_dashboard/__pycache__/wsgi.cpython-311
 new file mode 100644
 index 0000000..2c0baae
 Binary files /dev/null and b/repository_after/server/saas_dashboard/__pycache__/wsgi.cpython-311.pyc differ
+diff --git a/repository_after/server/saas_dashboard/celery.py b/repository_after/server/saas_dashboard/celery.py
+new file mode 100644
+index 0000000..1e9d5bd
+--- /dev/null
++++ b/repository_after/server/saas_dashboard/celery.py
+@@ -0,0 +1,11 @@
++from __future__ import annotations
++
++import os
++
++from celery import Celery
++
++os.environ.setdefault("DJANGO_SETTINGS_MODULE", "saas_dashboard.settings")
++
++app = Celery("saas_dashboard")
++app.config_from_object("django.conf:settings", namespace="CELERY")
++app.autodiscover_tasks()
 diff --git a/repository_after/server/saas_dashboard/settings.py b/repository_after/server/saas_dashboard/settings.py
 new file mode 100644
-index 0000000..0942e8c
+index 0000000..e739e86
 --- /dev/null
 +++ b/repository_after/server/saas_dashboard/settings.py
-@@ -0,0 +1,144 @@
+@@ -0,0 +1,154 @@
 +from __future__ import annotations
 +
 +import os
@@ -8199,6 +8258,16 @@ index 0000000..0942e8c
 +        "LOCATION": redis_url,
 +        "OPTIONS": {"CLIENT_CLASS": "django_redis.client.DefaultClient"},
 +    }
++
++# Celery (Redis broker)
++CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL") or redis_url or "redis://localhost:6379/0"
++CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND") or CELERY_BROKER_URL
++
++# In test runs we execute tasks eagerly so the suite doesn't require a separate worker.
++# Default to eager execution so the app/test container doesn't require a separate
++# Celery worker process. Set CELERY_TASK_ALWAYS_EAGER=0 to use async workers.
++CELERY_TASK_ALWAYS_EAGER = os.environ.get("CELERY_TASK_ALWAYS_EAGER", "1") == "1"
++CELERY_TASK_EAGER_PROPAGATES = True
 +
 +REST_FRAMEWORK = {
 +    "DEFAULT_AUTHENTICATION_CLASSES": [
