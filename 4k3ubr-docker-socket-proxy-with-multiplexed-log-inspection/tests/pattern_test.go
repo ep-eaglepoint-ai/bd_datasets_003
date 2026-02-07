@@ -5,7 +5,6 @@ import (
 	"testing"
 )
 
-// TestSensitivePatterns tests all the regex patterns
 func TestSensitivePatterns(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -64,7 +63,6 @@ func TestSensitivePatterns(t *testing.T) {
 	}
 }
 
-// TestRedaction tests redaction logic
 func TestRedaction(t *testing.T) {
 	tests := []struct {
 		input    string

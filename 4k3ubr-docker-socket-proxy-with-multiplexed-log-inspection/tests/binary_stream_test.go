@@ -47,10 +47,8 @@ func TestBinaryHeaderParsing(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			header := make([]byte, 8)
 			header[0] = tt.streamType
-			// bytes 1-3 are padding
 			binary.BigEndian.PutUint32(header[4:8], tt.payloadSize)
 
-			// Verify we can read it correctly
 			parsedType := header[0]
 			parsedSize := binary.BigEndian.Uint32(header[4:8])
 
@@ -69,7 +67,6 @@ func TestBinaryHeaderParsing(t *testing.T) {
 func TestBigEndianDecoding(t *testing.T) {
 	buf := make([]byte, 4)
 
-	// Test various sizes
 	testSizes := []uint32{1, 255, 256, 1024, 65535, 16777216}
 
 	for _, size := range testSizes {
@@ -84,7 +81,6 @@ func TestBigEndianDecoding(t *testing.T) {
 
 // TestPayloadIsolation ensures regex matching only happens on payload
 func TestPayloadIsolation(t *testing.T) {
-	// Create a multiplexed stream with a sensitive pattern in payload
 	var buf bytes.Buffer
 
 	payload := []byte("AKIAIOSFODNN7EXAMPLE")
@@ -95,29 +91,20 @@ func TestPayloadIsolation(t *testing.T) {
 	buf.Write(header)
 	buf.Write(payload)
 
-	// Read header
 	readHeader := make([]byte, 8)
 	io.ReadFull(&buf, readHeader)
 
-	// Verify header bytes are not treated as payload
-	if bytes.Contains(readHeader, []byte("AKIA")) {
-		// This is expected - the header doesn't contain the pattern
-	}
-
-	// Read payload
 	size := binary.BigEndian.Uint32(readHeader[4:8])
 	readPayload := make([]byte, size)
 	io.ReadFull(&buf, readPayload)
 
-	// Verify payload contains pattern
 	if !bytes.Contains(readPayload, []byte("AKIA")) {
 		t.Error("Payload should contain AWS key pattern")
 	}
 }
 
-// TestStreamingArchitecture tests that we process frame by frame, not buffering all
+// TestStreamingArchitecture tests that we process frame by frame
 func TestStreamingArchitecture(t *testing.T) {
-	// Create multiple frames
 	var inputBuf bytes.Buffer
 
 	frames := []string{
@@ -128,14 +115,13 @@ func TestStreamingArchitecture(t *testing.T) {
 
 	for _, frameData := range frames {
 		header := make([]byte, 8)
-		header[0] = 1 // stdout
+		header[0] = 1
 		binary.BigEndian.PutUint32(header[4:8], uint32(len(frameData)))
 
 		inputBuf.Write(header)
 		inputBuf.Write([]byte(frameData))
 	}
 
-	// Process stream frame by frame
 	framesProcessed := 0
 	header := make([]byte, 8)
 
@@ -162,7 +148,6 @@ func TestContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
-	// Simulate a long-running stream
 	done := make(chan bool)
 
 	go func() {

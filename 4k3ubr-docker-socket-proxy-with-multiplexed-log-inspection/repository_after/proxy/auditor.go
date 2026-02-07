@@ -20,6 +20,7 @@ const (
 	auditWorkerCount = 4
 	auditQueueSize   = 1000
 	chunkSize        = 16 * 1024 // Scan in 16KB chunks
+	chunkOverlap     = 128       // Overlap to avoid split matches at chunk boundaries
 )
 
 type AuditJob struct {
@@ -34,7 +35,7 @@ type LogAuditor struct {
 
 	auditQueue   chan AuditJob
 	wg           sync.WaitGroup
-	auditWg      sync.WaitGroup // NEW: Track in-flight audits
+	auditWg      sync.WaitGroup
 	started      bool
 	stopped      bool
 	mu           sync.Mutex
@@ -65,12 +66,11 @@ func (a *LogAuditor) StopWorkers() {
 		return
 	}
 	a.stopped = true
+	close(a.auditQueue)
 	a.mu.Unlock()
 
-	close(a.auditQueue)
-	a.wg.Wait() // Wait for workers to finish
-
-	a.auditWg.Wait() // NEW: Wait for all in-flight audits
+	a.wg.Wait()     // Wait for workers to drain the queue
+	a.auditWg.Wait() // Wait for all in-flight audits
 
 	dropped := atomic.LoadInt64(&a.droppedCount)
 	if dropped > 0 {
@@ -121,7 +121,7 @@ func (a *LogAuditor) AuditMultiplexedStream(ctx context.Context, reader io.Reade
 
 		n, err := io.ReadFull(reader, header)
 		if err != nil {
-			if err == io.EOF || n == 0 {
+			if err == io.EOF || err == io.ErrUnexpectedEOF || n == 0 {
 				return nil
 			}
 			return fmt.Errorf("failed to read header: %v", err)
@@ -134,6 +134,9 @@ func (a *LogAuditor) AuditMultiplexedStream(ctx context.Context, reader io.Reade
 			if _, err := writer.Write(header); err != nil {
 				return err
 			}
+			if flusher != nil {
+				flusher.Flush()
+			}
 			continue
 		}
 
@@ -143,12 +146,13 @@ func (a *LogAuditor) AuditMultiplexedStream(ctx context.Context, reader io.Reade
 			return fmt.Errorf("failed to read payload: %v", err)
 		}
 
+		// Queue audit job (non-blocking, copies payload internally)
 		a.queueAuditJob(containerID, streamType, payload)
 
+		// Forward header + payload unchanged
 		if _, err := writer.Write(header); err != nil {
 			return err
 		}
-
 		if _, err := writer.Write(payload); err != nil {
 			return err
 		}
@@ -159,14 +163,9 @@ func (a *LogAuditor) AuditMultiplexedStream(ctx context.Context, reader io.Reade
 	}
 }
 
+// queueAuditJob enqueues an audit job. Holds lock through channel send to prevent
+// TOCTOU race between checking a.stopped and sending on a.auditQueue.
 func (a *LogAuditor) queueAuditJob(containerID string, streamType StreamType, payload []byte) {
-	a.mu.Lock()
-	if a.stopped || a.auditQueue == nil {
-		a.mu.Unlock()
-		return
-	}
-	a.mu.Unlock()
-
 	auditSize := len(payload)
 	if auditSize > maxAuditScanSize {
 		auditSize = maxAuditScanSize
@@ -181,8 +180,16 @@ func (a *LogAuditor) queueAuditJob(containerID string, streamType StreamType, pa
 		Payload:     auditPayload,
 	}
 
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.stopped || a.auditQueue == nil {
+		return
+	}
+
 	select {
 	case a.auditQueue <- job:
+		// Enqueued successfully
 	default:
 		atomic.AddInt64(&a.droppedCount, 1)
 	}
@@ -224,8 +231,11 @@ func (a *LogAuditor) AuditPlainStream(ctx context.Context, reader io.Reader, wri
 	return scanner.Err()
 }
 
+// auditPayloadWithTimeout runs the audit scan with a timeout.
+// No extra goroutine is spawned — the context controls cancellation directly,
+// preventing goroutine leaks.
 func (a *LogAuditor) auditPayloadWithTimeout(containerID string, streamType StreamType, payload []byte) {
-	a.auditWg.Add(1) // NEW: Track this audit
+	a.auditWg.Add(1)
 	defer a.auditWg.Done()
 
 	defer func() {
@@ -237,29 +247,40 @@ func (a *LogAuditor) auditPayloadWithTimeout(containerID string, streamType Stre
 	ctx, cancel := context.WithTimeout(context.Background(), regexTimeoutMs*time.Millisecond)
 	defer cancel()
 
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		a.auditPayloadChunked(containerID, streamType, payload) // NEW: Use chunked scanning
-	}()
-
-	select {
-	case <-done:
-		// Completed successfully
-	case <-ctx.Done():
-		// Timeout - goroutine may still run but we move on
-		// The spawned goroutine will complete eventually
-	}
+	// Run scan inline — context checked between chunks for cancellation
+	a.auditPayloadChunked(ctx, containerID, streamType, payload)
 }
 
-// NEW: Chunked scanning to avoid expensive single-pass scans
-func (a *LogAuditor) auditPayloadChunked(containerID string, streamType StreamType, payload []byte) {
+// auditPayloadChunked scans payload in overlapping chunks to avoid missing
+// matches that span chunk boundaries. Checks context between each chunk.
+func (a *LogAuditor) auditPayloadChunked(ctx context.Context, containerID string, streamType StreamType, payload []byte) {
 	if a.AuditLogger == nil {
 		return
 	}
 
-	// Scan in chunks to limit regex execution time per iteration
-	for offset := 0; offset < len(payload); offset += chunkSize {
+	if len(payload) == 0 {
+		return
+	}
+
+	// For payloads smaller than or equal to one chunk, scan directly
+	if len(payload) <= chunkSize {
+		a.auditChunk(containerID, streamType, payload)
+		return
+	}
+
+	// Scan in overlapping chunks
+	step := chunkSize - chunkOverlap
+	if step <= 0 {
+		step = chunkSize
+	}
+
+	for offset := 0; offset < len(payload); {
+		select {
+		case <-ctx.Done():
+			return // Stop scanning on timeout
+		default:
+		}
+
 		end := offset + chunkSize
 		if end > len(payload) {
 			end = len(payload)
@@ -267,6 +288,12 @@ func (a *LogAuditor) auditPayloadChunked(containerID string, streamType StreamTy
 
 		chunk := payload[offset:end]
 		a.auditChunk(containerID, streamType, chunk)
+
+		if end == len(payload) {
+			break
+		}
+
+		offset += step
 	}
 }
 
@@ -274,6 +301,10 @@ func (a *LogAuditor) auditChunk(containerID string, streamType StreamType, chunk
 	chunkStr := string(chunk)
 
 	for _, pattern := range a.Config.SensitivePatterns {
+		if pattern.Regex == nil {
+			continue
+		}
+
 		indices := pattern.Regex.FindAllStringIndex(chunkStr, -1)
 
 		for _, idx := range indices {
@@ -284,16 +315,23 @@ func (a *LogAuditor) auditChunk(containerID string, streamType StreamType, chunk
 			match := chunkStr[idx[0]:idx[1]]
 			redacted := redactString(match)
 
+			severity := pattern.Severity
+			if severity == "" {
+				severity = "MEDIUM"
+			}
+
 			event := AuditEvent{
 				Timestamp:   time.Now(),
 				ContainerID: containerID,
 				StreamType:  streamType.String(),
 				Pattern:     pattern.Name,
 				Redacted:    redacted,
-				Severity:    pattern.Severity, // NEW: Use pattern severity
+				Severity:    severity,
 			}
 
-			a.AuditLogger.Log(event)
+			if err := a.AuditLogger.Log(event); err != nil {
+				log.Printf("Failed to log audit event: %v", err)
+			}
 		}
 	}
 }

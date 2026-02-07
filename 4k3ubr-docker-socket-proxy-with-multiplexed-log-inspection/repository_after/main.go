@@ -18,21 +18,22 @@ const (
 )
 
 func main() {
-	auditLogger, err := proxy.NewAuditLogger("audit.log")
-	if err != nil {
-		log.Fatalf("Failed to initialize audit logger: %v", err)
-	}
-	defer auditLogger.Close()
-
 	config, err := proxy.LoadConfig()
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
+	auditLogger, err := proxy.NewAuditLoggerWithRotation("audit.log", config.MaxLogSizeMB, config.MaxLogFiles)
+	if err != nil {
+		log.Fatalf("Failed to initialize audit logger: %v", err)
+	}
+	defer auditLogger.Close()
+
 	proxyHandler, err := proxy.NewDockerProxy(dockerSocket, config, auditLogger)
 	if err != nil {
 		log.Fatalf("Failed to create proxy: %v", err)
 	}
+	defer proxyHandler.Close()
 
 	server := &http.Server{
 		Addr:    proxyAddr,
@@ -47,7 +48,10 @@ func main() {
 		log.Println("Shutting down proxy...")
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		server.Shutdown(ctx)
+
+		if err := server.Shutdown(ctx); err != nil {
+			log.Printf("Server shutdown error: %v", err)
+		}
 	}()
 
 	log.Printf("Docker Socket Proxy listening on %s", proxyAddr)
@@ -57,4 +61,6 @@ func main() {
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("Server error: %v", err)
 	}
+
+	log.Println("Proxy shut down cleanly")
 }

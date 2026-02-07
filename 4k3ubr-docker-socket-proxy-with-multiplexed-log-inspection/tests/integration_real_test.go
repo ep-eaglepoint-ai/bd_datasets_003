@@ -47,6 +47,7 @@ func TestRealDockerProxyImplementation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create proxy: %v", err)
 	}
+	defer proxyHandler.Close()
 
 	proxyServer := httptest.NewServer(proxyHandler)
 	defer proxyServer.Close()
@@ -70,29 +71,25 @@ func TestRealDockerProxyImplementation(t *testing.T) {
 	}
 }
 
-// TestUnixSocketDialVerification verifies Unix socket is actually used (fixes issue #3)
+// TestUnixSocketDialVerification verifies Unix socket is actually used
 func TestUnixSocketDialVerification(t *testing.T) {
 	tmpDir := t.TempDir()
 	socketPath := filepath.Join(tmpDir, "test.sock")
 
-	// Track if Unix socket was dialed
 	dialCalls := make(map[string]int)
 	var mu sync.Mutex
 
-	// Create transport with dial tracking
 	transport := &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			mu.Lock()
 			dialCalls[network]++
 			mu.Unlock()
-			
-			// Force Unix socket dial
+
 			var d net.Dialer
 			return d.DialContext(ctx, "unix", socketPath)
 		},
 	}
 
-	// Create Unix socket server
 	listener, err := net.Listen("unix", socketPath)
 	if err != nil {
 		t.Fatalf("Failed to create Unix socket: %v", err)
@@ -105,10 +102,8 @@ func TestUnixSocketDialVerification(t *testing.T) {
 	})
 	go http.Serve(listener, handler)
 
-	// Give server time to start
 	time.Sleep(50 * time.Millisecond)
 
-	// Make request
 	client := &http.Client{Transport: transport}
 	req, _ := http.NewRequest("GET", "http://dummy/test", nil)
 	resp, err := client.Do(req)
@@ -117,13 +112,11 @@ func TestUnixSocketDialVerification(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	// Read response
 	body, _ := io.ReadAll(resp.Body)
 	if string(body) != "OK" {
 		t.Errorf("Expected 'OK', got '%s'", string(body))
 	}
 
-	// Verify at least one dial was made
 	mu.Lock()
 	totalDials := 0
 	for _, count := range dialCalls {
@@ -154,10 +147,6 @@ func TestAuditSideEffectVerification(t *testing.T) {
 		AuditLogger: auditLogger,
 	}
 
-	// Use exported struct fields (capitalized)
-	auditor.Config = config
-	auditor.AuditLogger = auditLogger
-
 	var buf bytes.Buffer
 	payload := []byte("Secret: AKIAIOSFODNN7EXAMPLE\n")
 	header := make([]byte, 8)
@@ -173,7 +162,8 @@ func TestAuditSideEffectVerification(t *testing.T) {
 		t.Fatalf("Audit failed: %v", err)
 	}
 
-	time.Sleep(100 * time.Millisecond)
+	// Wait for async audit workers
+	auditor.StopWorkers()
 
 	content, _ := os.ReadFile(auditFile)
 	if len(content) == 0 {
@@ -186,6 +176,48 @@ func TestAuditSideEffectVerification(t *testing.T) {
 	if event.ContainerID != "test-container" {
 		t.Errorf("Expected 'test-container', got '%s'", event.ContainerID)
 	}
+}
+
+// TestUnixSocketDialProof verifies the production DockerProxy actually dials unix
+func TestUnixSocketDialProof(t *testing.T) {
+	tmpDir := t.TempDir()
+	socketPath := filepath.Join(tmpDir, "docker.sock")
+	auditFile := filepath.Join(tmpDir, "audit.log")
+
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatalf("Failed to create Unix socket: %v", err)
+	}
+	defer listener.Close()
+
+	go http.Serve(listener, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	time.Sleep(50 * time.Millisecond)
+
+	auditLogger, _ := proxy.NewAuditLogger(auditFile)
+	config, _ := proxy.LoadConfig()
+	p, err := proxy.NewDockerProxy(socketPath, config, auditLogger)
+	if err != nil {
+		t.Fatalf("Failed to create proxy: %v", err)
+	}
+	defer p.Close()
+	defer auditLogger.Close()
+
+	server := httptest.NewServer(p)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/version")
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	resp.Body.Close()
+
+	if p.DialedNetwork() != "unix" {
+		t.Fatalf("Expected unix dial, got %q", p.DialedNetwork())
+	}
+
+	t.Log("DockerProxy confirmed unix socket dial")
 }
 
 func createMockDockerBackend(t *testing.T) *httptest.Server {

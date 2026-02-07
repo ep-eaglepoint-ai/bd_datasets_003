@@ -36,7 +36,6 @@ func TestRequirement1_NonMultiplexedLogsAreAudited(t *testing.T) {
 	}
 	auditor.StartWorkers()
 
-	// Create PLAIN TEXT stream (non-multiplexed) with AWS key
 	plainTextLog := "2024-01-01 10:00:00 App started\nAWS_KEY=AKIAIOSFODNN7EXAMPLE\n2024-01-01 10:00:01 Ready\n"
 	input := strings.NewReader(plainTextLog)
 	var output bytes.Buffer
@@ -47,11 +46,9 @@ func TestRequirement1_NonMultiplexedLogsAreAudited(t *testing.T) {
 		t.Fatalf("AuditPlainStream failed: %v", err)
 	}
 
-	// Cleanup
 	auditor.StopWorkers()
 	auditLogger.Close()
 
-	// Verify audit log was created
 	auditContent, err := os.ReadFile(auditFile)
 	if err != nil {
 		t.Fatalf("Failed to read audit file: %v", err)
@@ -78,7 +75,6 @@ func TestRequirement2_CoreImplementationTested(t *testing.T) {
 
 	config, _ := proxy.LoadConfig()
 
-	// Create mock backend
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "/logs") {
 			w.Header().Set("Content-Type", "application/vnd.docker.multiplexed-stream")
@@ -94,7 +90,6 @@ func TestRequirement2_CoreImplementationTested(t *testing.T) {
 	}))
 	defer backend.Close()
 
-	// Create Unix socket
 	listener, err := net.Listen("unix", socketPath)
 	if err != nil {
 		t.Fatalf("Failed to create socket: %v", err)
@@ -103,7 +98,6 @@ func TestRequirement2_CoreImplementationTested(t *testing.T) {
 	go http.Serve(listener, backend.Config.Handler)
 	time.Sleep(50 * time.Millisecond)
 
-	// Create REAL DockerProxy instance
 	dockerProxy, err := proxy.NewDockerProxy(socketPath, config, auditLogger)
 	if err != nil {
 		t.Fatalf("Failed to create DockerProxy: %v", err)
@@ -113,11 +107,9 @@ func TestRequirement2_CoreImplementationTested(t *testing.T) {
 		t.Fatal("REQUIREMENT 2 FAILED: DockerProxy instance is nil")
 	}
 
-	// Create test server with REAL DockerProxy
 	proxyServer := httptest.NewServer(dockerProxy)
 	defer proxyServer.Close()
 
-	// Make request through real proxy
 	resp, err := http.Get(proxyServer.URL + "/containers/test/logs?stdout=1")
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
@@ -126,11 +118,9 @@ func TestRequirement2_CoreImplementationTested(t *testing.T) {
 
 	io.ReadAll(resp.Body)
 
-	// Cleanup
 	dockerProxy.Close()
 	auditLogger.Close()
 
-	// Verify audit occurred
 	auditContent, _ := os.ReadFile(auditFile)
 	if len(auditContent) == 0 {
 		t.Error("REQUIREMENT 2 FAILED: Real implementation didn't create audit")
@@ -147,10 +137,8 @@ func TestRequirement3_UnixSocketDialingValidated(t *testing.T) {
 	actualDialedNetwork := ""
 	var mu sync.Mutex
 
-	// Create transport that tracks what is ACTUALLY dialed
 	transport := &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			// Track what we ACTUALLY dial (not what was requested)
 			mu.Lock()
 			actualDialedNetwork = "unix"
 			mu.Unlock()
@@ -160,7 +148,6 @@ func TestRequirement3_UnixSocketDialingValidated(t *testing.T) {
 		},
 	}
 
-	// Create Unix socket server
 	listener, _ := net.Listen("unix", socketPath)
 	defer listener.Close()
 
@@ -169,7 +156,6 @@ func TestRequirement3_UnixSocketDialingValidated(t *testing.T) {
 	}))
 	time.Sleep(50 * time.Millisecond)
 
-	// Make request
 	client := &http.Client{Transport: transport}
 	req, _ := http.NewRequest("GET", "http://dummy/test", nil)
 	resp, err := client.Do(req)
@@ -178,7 +164,6 @@ func TestRequirement3_UnixSocketDialingValidated(t *testing.T) {
 	}
 	resp.Body.Close()
 
-	// Verify unix socket was ACTUALLY dialed
 	mu.Lock()
 	dialed := actualDialedNetwork
 	mu.Unlock()
@@ -190,7 +175,7 @@ func TestRequirement3_UnixSocketDialingValidated(t *testing.T) {
 	}
 }
 
-// TestGracefulShutdown - FIXED: Test graceful shutdown properly
+// TestGracefulShutdown tests graceful shutdown properly
 func TestGracefulShutdown(t *testing.T) {
 	tmpDir := t.TempDir()
 	auditFile := filepath.Join(tmpDir, "audit.log")
@@ -203,7 +188,6 @@ func TestGracefulShutdown(t *testing.T) {
 	}
 	auditor.StartWorkers()
 
-	// Process actual stream to generate audit jobs
 	var inputBuf bytes.Buffer
 	for i := 0; i < 100; i++ {
 		payload := []byte("Secret: AKIAIOSFODNN7EXAMPLE\n")
@@ -216,34 +200,29 @@ func TestGracefulShutdown(t *testing.T) {
 
 	var outputBuf bytes.Buffer
 	ctx := context.Background()
-	
-	// Start processing in background
+
 	done := make(chan error)
 	go func() {
 		done <- auditor.AuditMultiplexedStream(ctx, &inputBuf, &outputBuf, "test", nil)
 	}()
 
-	// Wait for processing to start
 	time.Sleep(50 * time.Millisecond)
 
 	// Shutdown should wait for all in-flight audits
 	auditor.StopWorkers()
 	auditLogger.Close()
 
-	// Wait for stream processing to complete
 	<-done
 
-	// No goroutines should panic after close
 	time.Sleep(100 * time.Millisecond)
 	t.Log("REQUIREMENT: Graceful shutdown completed")
 }
 
-// TestRequirement4_AuditSideEffectVerified - FIXED: Accept any severity
+// TestRequirement4_AuditSideEffectVerified verifies audit file creation
 func TestRequirement4_AuditSideEffectVerified(t *testing.T) {
 	tmpDir := t.TempDir()
 	auditFile := filepath.Join(tmpDir, "audit.log")
 
-	// Verify file doesn't exist initially
 	if _, err := os.Stat(auditFile); err == nil {
 		t.Fatal("Audit file should not exist before test")
 	}
@@ -257,7 +236,6 @@ func TestRequirement4_AuditSideEffectVerified(t *testing.T) {
 	}
 	auditor.StartWorkers()
 
-	// Create stream with sensitive patterns
 	var buf bytes.Buffer
 	sensitiveData := []byte("AWS: AKIAIOSFODNN7EXAMPLE, Email: admin@company.com\n")
 	header := make([]byte, 8)
@@ -269,22 +247,18 @@ func TestRequirement4_AuditSideEffectVerified(t *testing.T) {
 	var output bytes.Buffer
 	auditor.AuditMultiplexedStream(context.Background(), &buf, &output, "test-container", nil)
 
-	// Cleanup
 	auditor.StopWorkers()
 	auditLogger.Close()
 
-	// Verify file was created (side effect)
 	if _, err := os.Stat(auditFile); os.IsNotExist(err) {
 		t.Fatal("REQUIREMENT 4 FAILED: Audit file was not created")
 	}
 
-	// Verify content
 	content, _ := os.ReadFile(auditFile)
 	if len(content) == 0 {
 		t.Fatal("REQUIREMENT 4 FAILED: Audit file is empty")
 	}
 
-	// Count audit entries - accept any severity
 	lines := strings.Split(strings.TrimSpace(string(content)), "\n")
 	validEntries := 0
 	for _, line := range lines {
@@ -320,8 +294,7 @@ func TestRequirement5_RegexPerformanceSafeguards(t *testing.T) {
 	}
 	auditor.StartWorkers()
 
-	// Create large payload
-	hugePayloadSize := 256 * 1024 // 256KB
+	hugePayloadSize := 256 * 1024
 	hugePayload := make([]byte, hugePayloadSize)
 	for i := range hugePayload {
 		hugePayload[i] = 'A'
@@ -345,7 +318,6 @@ func TestRequirement5_RegexPerformanceSafeguards(t *testing.T) {
 
 	elapsed := time.Since(start)
 
-	// Cleanup
 	auditor.StopWorkers()
 	auditLogger.Close()
 
@@ -353,7 +325,6 @@ func TestRequirement5_RegexPerformanceSafeguards(t *testing.T) {
 		t.Errorf("REQUIREMENT 5 FAILED: Processing took too long (%v)", elapsed)
 	}
 
-	// Verify FULL payload was forwarded
 	expectedSize := 8 + hugePayloadSize
 	if outputBuf.Len() != expectedSize {
 		t.Errorf("STREAM INTEGRITY FAILED: Expected %d bytes, got %d", expectedSize, outputBuf.Len())
@@ -375,7 +346,6 @@ func TestRequirement6_HTTPMethodRestricted(t *testing.T) {
 	defer dockerProxy.Close()
 	defer auditLogger.Close()
 
-	// Test POST (should be rejected)
 	resp, err := http.Post(server.URL+"/containers/test/logs", "text/plain", nil)
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
@@ -386,7 +356,6 @@ func TestRequirement6_HTTPMethodRestricted(t *testing.T) {
 		t.Errorf("REQUIREMENT 6 FAILED: POST returned %d, expected 405", resp.StatusCode)
 	}
 
-	// Test PUT (should be rejected)
 	req, _ := http.NewRequest("PUT", server.URL+"/containers/test/logs", nil)
 	client := &http.Client{}
 	resp2, _ := client.Do(req)
@@ -404,7 +373,6 @@ func TestRequirement7_RegexPatternsConfigurable(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "custom-audit.json")
 
-	// Create custom config file with severity
 	customConfig := `{
 		"patterns": [
 			{
@@ -425,11 +393,9 @@ func TestRequirement7_RegexPatternsConfigurable(t *testing.T) {
 		t.Fatalf("Failed to write config: %v", err)
 	}
 
-	// Set environment variable
 	os.Setenv("AUDIT_CONFIG_PATH", configFile)
 	defer os.Unsetenv("AUDIT_CONFIG_PATH")
 
-	// Load config
 	config, err := proxy.LoadConfig()
 	if err != nil {
 		t.Fatalf("Failed to load config: %v", err)
@@ -464,7 +430,6 @@ func TestRequirement8_AuditingWorksWithoutFlusher(t *testing.T) {
 	}
 	auditor.StartWorkers()
 
-	// Create stream
 	var buf bytes.Buffer
 	payload := []byte("Data: AKIAIOSFODNN7EXAMPLE\n")
 	header := make([]byte, 8)
@@ -473,18 +438,15 @@ func TestRequirement8_AuditingWorksWithoutFlusher(t *testing.T) {
 	buf.Write(header)
 	buf.Write(payload)
 
-	// Call with nil flusher
 	var output bytes.Buffer
 	err := auditor.AuditMultiplexedStream(context.Background(), &buf, &output, "no-flush-container", nil)
 	if err != nil {
 		t.Fatalf("Audit failed without flusher: %v", err)
 	}
 
-	// Cleanup
 	auditor.StopWorkers()
 	auditLogger.Close()
 
-	// Verify audit still happened
 	content, _ := os.ReadFile(auditFile)
 	if len(content) == 0 {
 		t.Fatal("REQUIREMENT 8 FAILED: Auditing was skipped without http.Flusher")
@@ -523,7 +485,7 @@ func TestRequirement9_TransportClientReused(t *testing.T) {
 // TestRequirement10_DialCancellationRespected verifies context cancellation
 func TestRequirement10_DialCancellationRespected(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // Cancel immediately
+	cancel()
 
 	transport := &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -548,19 +510,16 @@ func TestRequirement10_DialCancellationRespected(t *testing.T) {
 	t.Log("REQUIREMENT 10 PASSED: Dial respects context cancellation")
 }
 
-// NEW: Test log rotation
+// TestLogRotation tests log file rotation
 func TestLogRotation(t *testing.T) {
 	tmpDir := t.TempDir()
 	auditFile := filepath.Join(tmpDir, "audit.log")
 
-	// Create logger with 2KB max size for testing
 	auditLogger, err := proxy.NewAuditLoggerWithBytes(auditFile, 2048, 3)
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
 
-	// Write events to exceed 2KB and trigger rotation
-	// Each JSON event is ~200-250 bytes
 	for i := 0; i < 15; i++ {
 		event := proxy.AuditEvent{
 			Timestamp:   time.Now(),
@@ -576,23 +535,21 @@ func TestLogRotation(t *testing.T) {
 
 	auditLogger.Close()
 
-	// Verify rotation occurred
 	rotatedFile := auditFile + ".1"
 	if _, err := os.Stat(rotatedFile); err != nil {
-		// Debug info
 		if info, err := os.Stat(auditFile); err == nil {
 			t.Logf("Current audit.log size: %d bytes", info.Size())
 		}
 		files, _ := os.ReadDir(tmpDir)
 		t.Logf("Files in dir: %v", files)
-		
+
 		t.Errorf("Log rotation did not occur - no .1 file found")
 	} else {
 		t.Log("Log rotation working - found rotated file")
 	}
 }
 
-// NEW: Test metrics endpoint
+// TestMetricsEndpoint tests the metrics endpoint
 func TestMetricsEndpoint(t *testing.T) {
 	tmpDir := t.TempDir()
 	auditLogger, _ := proxy.NewAuditLogger(filepath.Join(tmpDir, "audit.log"))
@@ -605,7 +562,6 @@ func TestMetricsEndpoint(t *testing.T) {
 	defer dockerProxy.Close()
 	defer auditLogger.Close()
 
-	// Request metrics
 	resp, err := http.Get(server.URL + "/_proxy/metrics")
 	if err != nil {
 		t.Fatalf("Metrics request failed: %v", err)
@@ -630,7 +586,7 @@ func TestMetricsEndpoint(t *testing.T) {
 	t.Log("REQUIREMENT: Metrics endpoint working")
 }
 
-// NEW: Test chunked scanning
+// TestChunkedScanning tests chunked scanning with overlap
 func TestChunkedScanning(t *testing.T) {
 	tmpDir := t.TempDir()
 	auditFile := filepath.Join(tmpDir, "audit.log")
@@ -643,12 +599,11 @@ func TestChunkedScanning(t *testing.T) {
 	}
 	auditor.StartWorkers()
 
-	// Create payload larger than chunk size with secrets in different chunks
 	largePayload := make([]byte, 100*1024) // 100KB
 	for i := range largePayload {
 		largePayload[i] = 'A'
 	}
-	
+
 	// Put secrets in different positions
 	copy(largePayload[1000:], []byte("AKIAIOSFODNN7EXAMPLE"))
 	copy(largePayload[50000:], []byte("AKIAZZZZZZZZZZZZZZZZ"))
@@ -669,13 +624,11 @@ func TestChunkedScanning(t *testing.T) {
 	auditor.StopWorkers()
 	auditLogger.Close()
 
-	// Verify both secrets were found (chunked scanning worked)
 	content, _ := os.ReadFile(auditFile)
 	if len(content) == 0 {
 		t.Fatal("No audit entries created")
 	}
 
-	// Should have at least 2 AWS key matches
 	lines := strings.Split(strings.TrimSpace(string(content)), "\n")
 	awsKeyCount := 0
 	for _, line := range lines {

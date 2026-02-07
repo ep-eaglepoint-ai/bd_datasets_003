@@ -9,14 +9,14 @@ import (
 
 type Config struct {
 	SensitivePatterns []SensitivePattern `json:"patterns"`
-	MaxLogSizeMB      int                `json:"max_log_size_mb"`
-	MaxLogFiles       int                `json:"max_log_files"`
+	MaxLogSizeMB     int                `json:"max_log_size_mb"`
+	MaxLogFiles      int                `json:"max_log_files"`
 }
 
 type SensitivePattern struct {
 	Name     string `json:"name"`
 	Pattern  string `json:"pattern"`
-	Severity string `json:"severity"` // NEW: Configurable severity
+	Severity string `json:"severity"`
 	Regex    *regexp.Regexp
 }
 
@@ -36,9 +36,13 @@ func (sp *SensitivePattern) UnmarshalJSON(data []byte) error {
 		sp.Severity = "MEDIUM"
 	}
 
+	if sp.Pattern == "" {
+		return fmt.Errorf("pattern field is required for %q", sp.Name)
+	}
+
 	regex, err := regexp.Compile(sp.Pattern)
 	if err != nil {
-		return fmt.Errorf("invalid regex: %v", err)
+		return fmt.Errorf("invalid regex for pattern %q: %w", sp.Name, err)
 	}
 	sp.Regex = regex
 	return nil
@@ -60,12 +64,12 @@ func LoadConfig() (*Config, error) {
 func loadFromFile(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read config file %s: %w", path, err)
 	}
 
 	var config Config
 	if err := json.Unmarshal(data, &config); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse config file %s: %w", path, err)
 	}
 
 	// Set defaults
@@ -74,6 +78,17 @@ func loadFromFile(path string) (*Config, error) {
 	}
 	if config.MaxLogFiles == 0 {
 		config.MaxLogFiles = 5
+	}
+
+	// Validate all patterns have compiled regexes
+	for i, p := range config.SensitivePatterns {
+		if p.Regex == nil && p.Pattern != "" {
+			regex, err := regexp.Compile(p.Pattern)
+			if err != nil {
+				return nil, fmt.Errorf("invalid regex for pattern %q: %w", p.Name, err)
+			}
+			config.SensitivePatterns[i].Regex = regex
+		}
 	}
 
 	return &config, nil

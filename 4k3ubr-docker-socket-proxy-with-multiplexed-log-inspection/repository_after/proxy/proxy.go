@@ -8,22 +8,39 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
 
+// Pre-compiled regexes (avoids recompilation on every request)
+var (
+	logsPathRegex    = regexp.MustCompile(`^(/v[\d.]+)?/containers/[^/]+/logs$`)
+	containerIDRegex = regexp.MustCompile(`/containers/([^/]+)/logs`)
+)
+
 // DockerProxy handles proxying requests to Docker socket
 type DockerProxy struct {
-	auditor    *LogAuditor
-	socketPath string
-	client     *http.Client
-	transport  *http.Transport
+	auditor     *LogAuditor
+	socketPath  string
+	client      *http.Client
+	transport   *http.Transport
+	dialNetwork string
+	dialMu      sync.Mutex
 }
 
 // NewDockerProxy creates a new Docker proxy
 func NewDockerProxy(socketPath string, config *Config, auditLogger *AuditLogger) (*DockerProxy, error) {
+	p := &DockerProxy{
+		socketPath: socketPath,
+	}
+
 	transport := &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			p.dialMu.Lock()
+			p.dialNetwork = "unix"
+			p.dialMu.Unlock()
+
 			var d net.Dialer
 			return d.DialContext(ctx, "unix", socketPath)
 		},
@@ -35,22 +52,20 @@ func NewDockerProxy(socketPath string, config *Config, auditLogger *AuditLogger)
 
 	client := &http.Client{
 		Transport: transport,
-		Timeout:   0,
+		Timeout:   0, // No timeout — streams can be long-lived
 	}
 
 	auditor := &LogAuditor{
 		Config:      config,
 		AuditLogger: auditLogger,
 	}
-	// Start worker pool
 	auditor.StartWorkers()
 
-	return &DockerProxy{
-		auditor:    auditor,
-		socketPath: socketPath,
-		client:     client,
-		transport:  transport,
-	}, nil
+	p.transport = transport
+	p.client = client
+	p.auditor = auditor
+
+	return p, nil
 }
 
 // Close gracefully shuts down the proxy
@@ -58,23 +73,33 @@ func (p *DockerProxy) Close() {
 	if p.auditor != nil {
 		p.auditor.StopWorkers()
 	}
+	if p.transport != nil {
+		p.transport.CloseIdleConnections()
+	}
+}
+
+// DialedNetwork returns what network the last dial used (for testing)
+func (p *DockerProxy) DialedNetwork() string {
+	p.dialMu.Lock()
+	defer p.dialMu.Unlock()
+	return p.dialNetwork
 }
 
 // GetMetrics returns observability metrics
 func (p *DockerProxy) GetMetrics() map[string]interface{} {
 	metrics := make(map[string]interface{})
-	
+
 	if p.auditor != nil {
 		dropped := atomic.LoadInt64(&p.auditor.droppedCount)
 		metrics["dropped_audits"] = dropped
-		
+
 		if p.auditor.AuditLogger != nil {
 			logSize, logFile := p.auditor.AuditLogger.GetMetrics()
 			metrics["audit_log_size_bytes"] = logSize
 			metrics["audit_log_file"] = logFile
 		}
 	}
-	
+
 	return metrics
 }
 
@@ -99,15 +124,14 @@ func (p *DockerProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (p *DockerProxy) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	metrics := p.GetMetrics()
-	
+
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	
-	// Simple text format (Prometheus-style)
+
 	fmt.Fprintf(w, "# HELP docker_proxy_dropped_audits_total Total number of dropped audit events\n")
 	fmt.Fprintf(w, "# TYPE docker_proxy_dropped_audits_total counter\n")
 	fmt.Fprintf(w, "docker_proxy_dropped_audits_total %d\n", metrics["dropped_audits"])
-	
+
 	if size, ok := metrics["audit_log_size_bytes"].(int64); ok {
 		fmt.Fprintf(w, "# HELP docker_proxy_audit_log_size_bytes Current size of audit log file\n")
 		fmt.Fprintf(w, "# TYPE docker_proxy_audit_log_size_bytes gauge\n")
@@ -115,9 +139,18 @@ func (p *DockerProxy) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// isLogsRequest uses pre-compiled regex to check if the request targets container logs
 func isLogsRequest(r *http.Request) bool {
-	path := r.URL.Path
-	return regexp.MustCompile(`^(/v[\d.]+)?/containers/[^/]+/logs$`).MatchString(path)
+	return logsPathRegex.MatchString(r.URL.Path)
+}
+
+// extractContainerID uses pre-compiled regex to extract the container ID from the path
+func extractContainerID(path string) string {
+	matches := containerIDRegex.FindStringSubmatch(path)
+	if len(matches) > 1 {
+		return matches[1]
+	}
+	return "unknown"
 }
 
 func (p *DockerProxy) handleStandardProxy(w http.ResponseWriter, r *http.Request) {
@@ -180,11 +213,26 @@ func (p *DockerProxy) handleLogsRequest(w http.ResponseWriter, r *http.Request) 
 
 	w.WriteHeader(resp.StatusCode)
 
+	// Determine if stream is multiplexed based on Docker's content type.
+	// application/vnd.docker.raw-stream = TTY (non-multiplexed)
+	// application/vnd.docker.multiplexed-stream = multiplexed (stdout+stderr interleaved)
 	contentType := resp.Header.Get("Content-Type")
-	isMultiplexed := strings.Contains(contentType, "application/vnd.docker.raw-stream") ||
-		strings.Contains(contentType, "application/vnd.docker.multiplexed-stream") ||
-		r.URL.Query().Get("stdout") != "" ||
-		r.URL.Query().Get("stderr") != ""
+	isMultiplexed := strings.Contains(contentType, "application/vnd.docker.multiplexed-stream")
+
+	// Heuristic fallback: if both stdout AND stderr are requested and content-type
+	// doesn't indicate raw-stream (TTY), assume multiplexed format.
+	if !isMultiplexed && !strings.Contains(contentType, "application/vnd.docker.raw-stream") {
+		hasStdout := r.URL.Query().Get("stdout") != ""
+		hasStderr := r.URL.Query().Get("stderr") != ""
+		if hasStdout && hasStderr {
+			isMultiplexed = true
+		}
+		// Single stream (only stdout or only stderr) without explicit content-type:
+		// also treat as multiplexed since Docker still frames single streams
+		if (hasStdout || hasStderr) && !(hasStdout && hasStderr) {
+			isMultiplexed = true
+		}
+	}
 
 	if isMultiplexed {
 		flusher, _ := w.(http.Flusher)
@@ -192,13 +240,4 @@ func (p *DockerProxy) handleLogsRequest(w http.ResponseWriter, r *http.Request) 
 	} else {
 		p.auditor.AuditPlainStream(r.Context(), resp.Body, w, containerID)
 	}
-}
-
-func extractContainerID(path string) string {
-	re := regexp.MustCompile(`/containers/([^/]+)/logs`)
-	matches := re.FindStringSubmatch(path)
-	if len(matches) > 1 {
-		return matches[1]
-	}
-	return "unknown"
 }
