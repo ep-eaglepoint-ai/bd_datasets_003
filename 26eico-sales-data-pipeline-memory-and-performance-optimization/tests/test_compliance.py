@@ -85,7 +85,9 @@ def test_req_8_malformed_rows_logged_and_skipped(malformed_csv_data, tmp_path):
     ingest = get_module('ingest')
 
     csv_file = tmp_path / "bad_sales.csv"
-    csv_file.write_text(malformed_csv_data)
+    # Added a row with 'invalid' in quantity (int32) -> should be logged as type error
+    csv_data = malformed_csv_data + "10,2023-01-01 10:00:00,101,501,Prod,Cat,invalid,10.0,0.0,1,Card,North\n"
+    csv_file.write_text(csv_data)
 
     # Capture logger calls
     with patch('logger.logger.error') as mock_err:
@@ -101,6 +103,9 @@ def test_req_8_malformed_rows_logged_and_skipped(malformed_csv_data, tmp_path):
     # Expected invalid lines are line 3 and 4 in file (header=1)
     assert "Line 3" in logged
     assert "Line 4" in logged
+    # Line 5 was the type error
+    assert "Line 5" in logged
+    assert "invalid type" in logged
 
 
 def test_req_8_structural_malformed_csv_logged(structurally_malformed_csv_data, tmp_path):
@@ -146,11 +151,14 @@ def test_req_12_explicit_gc():
     with patch('gc.collect') as mock_gc:
         import main
         with patch('main.load_sales_data', return_value=[pd.DataFrame({'a': [1]})]), \
+             patch('main.get_csv_info') as mock_info, \
              patch('main.transform_data', return_value=pd.DataFrame({'a': [1]})), \
              patch('main.update_aggregates'), \
              patch('main.finalize_aggregates', return_value={}), \
-             patch('main.export_to_database'):
+             patch('main.export_to_database'), \
+             patch('main.os.path.exists', return_value=True):
              
+             mock_info.return_value = type('X', (), {'total_rows': 100})
              main.main()
              
         assert mock_gc.called

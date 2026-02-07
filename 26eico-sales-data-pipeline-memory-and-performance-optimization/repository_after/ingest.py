@@ -164,23 +164,37 @@ def load_sales_data(filepath: str) -> Iterator[pd.DataFrame]:
         # 2. Coerce Timestamp
         chunk["timestamp"] = pd.to_datetime(chunk["timestamp"], errors="coerce")
         
-        # 3. Log rows that became NaN due to type errors (optional but good for "malformed")
-        # The requirements essentially say "handle malformed/invalid".
-        # _validate_and_log_rows checks for NaT in timestamp, invalid ranges.
-        # It does NOT check for NaNs in IDs or Quantity that resulted from type coercion.
-        # We should add that check to _validate_and_log_rows or here.
+        # 3. Log rows that became NaN due to type errors
+        # Check for NaNs in required numeric columns (IDs, Quantity)
+        # We need to do this BEFORE dropping them to log them.
+        type_error_mask = (
+            chunk["transaction_id"].isna() | 
+            chunk["product_id"].isna() | 
+            chunk["customer_id"].isna() | 
+            chunk["quantity"].isna()
+        )
         
-        # Let's extend the validation logic implicitly by letting _validate_and_log_rows handle logic invalidity.
-        # But if IDs are NaN, we should drop them too?
-        # The prompt examples: "negative quantity, malformed date".
-        # Malformed ID? Probably drop.
+        # We also need to combine this with _validate_and_log_rows logic,
+        # or just log them here and let _validate drop them? 
+        # _validate_and_log_rows expects the DF.
+        # Let's add a specialized logging for type errors (NaNs) here.
         
-        # Let's rely on _validate_and_log_rows to do the job, but we must update it to handle NaNs in critical columns.
+        if type_error_mask.any():
+            bad_df = chunk.loc[type_error_mask]
+            bad_lines = line_numbers[type_error_mask.to_numpy()]
+            for (idx, row), ln in zip(bad_df.iterrows(), bad_lines):
+                log_malformed_row(int(ln), "invalid type (coerced to NaN)", raw_data=row.to_json())
         
-        # 4. Cast to optimized types (where possible/safe)
-        # Only cast AFTER dropping bad rows.
+        # Now we can drop the NaN rows so they don't break subsequent logic or validation
+        # But wait, _validate_and_log_rows checks for negative quantity. 
+        # if quantity is NaN, `NaN < 0` is False.
+        # So we must handle NaNs logic.
+        # Let's filter out the type-error rows FIRST.
         
-        # Validate and drop bad rows
+        chunk = chunk.loc[~type_error_mask]
+        line_numbers = line_numbers[~type_error_mask.to_numpy()]
+        
+        # 4. Validate and drop logic errors (negative qty, malformed date which is NaT)
         chunk = _validate_and_log_rows(chunk, line_numbers)
         
         # Now convert to final dtypes for valid rows
@@ -188,11 +202,22 @@ def load_sales_data(filepath: str) -> Iterator[pd.DataFrame]:
             if col in chunk.columns:
                 if dtype == "int32":
                      # safe cast because we should have handled NaNs?
-                     # If we have NaNs in int32 columns left, this will fail.
-                     # We need to ensure we drop NaNs in int columns or use Int32.
-                     # DTYPES uses "int32" (numpy).
-                     # So we MUST drop NaNs in IDs/Qty.
-                     chunk = chunk.dropna(subset=[col])
-                chunk[col] = chunk[col].astype(dtype)
+                     # We dropped NaNs in type_error_mask
+                     chunk[col] = chunk[col].astype(dtype)
+                else:
+                     chunk[col] = chunk[col].astype(dtype)
 
-        yield chunk
+        # Attach line consumption info for progress bar correctness
+        # Total lines consumed for this chunk iteration = n (rows in chunk) + skipped_in_current_chunk (bad CSV lines)
+        # Note: 'chunk' here is smaller than 'n' if we dropped rows.
+        # But for progress bar, we want to advance by the amount read from file.
+        # That amount is `n + skipped_in_current_chunk` (where n was original len before filtering).
+        # We need to capture original N.
+        
+        # Wait, 'n' was defined as `len(chunk)` at start of loop.
+        # That `n` + `skipped` is what was consumed from the file reader.
+        # Whether we drop them or not, we consumed them.
+        chunk.attrs["lines_consumed"] = n + skipped_in_current_chunk
+
+        if not chunk.empty:
+            yield chunk

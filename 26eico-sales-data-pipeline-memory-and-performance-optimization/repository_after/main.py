@@ -29,11 +29,7 @@ def main():
     
     if not os.path.exists(FILEPATH):
         print(f"File {FILEPATH} not found. Ensure it exists or mount it.")
-        # Fallback for testing/CI if needed, but per requirements we expect it.
-        # Check if we are in a test env where we might want to skip or handle gracefully?
-        # For now, let it fail naturally if missing in read_csv context, or printing here.
-        
-    print(f"Processing {FILEPATH} in chunks...")
+        return
 
     csv_info = None
     if os.path.exists(FILEPATH):
