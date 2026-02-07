@@ -5708,16 +5708,48 @@ index 0000000..4263d3b
 +}
 diff --git a/repository_after/client/src/App.tsx b/repository_after/client/src/App.tsx
 new file mode 100644
-index 0000000..d944fb1
+index 0000000..b250b62
 --- /dev/null
 +++ b/repository_after/client/src/App.tsx
-@@ -0,0 +1,34 @@
+@@ -0,0 +1,76 @@
 +import React from "react";
-+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
++import { QueryClient, QueryClientProvider, dehydrate, hydrate } from "@tanstack/react-query";
 +import { BrowserRouter, Route, Routes } from "react-router-dom";
 +import { JoinPage } from "./JoinPage";
 +import { OrganizationsPage } from "./OrganizationsPage";
 +import { DashboardPage } from "./DashboardPage";
++
++const PERSIST_KEY = "rq-cache";
++
++function loadPersistedState() {
++  if (typeof window === "undefined") return undefined;
++  try {
++    const raw = window.localStorage.getItem(PERSIST_KEY);
++    if (!raw) return undefined;
++    return JSON.parse(raw);
++  } catch {
++    return undefined;
++  }
++}
++
++function persistClient(client: QueryClient) {
++  if (typeof window === "undefined") return;
++  let timeout: number | undefined;
++
++  const save = () => {
++    try {
++      const state = dehydrate(client);
++      window.localStorage.setItem(PERSIST_KEY, JSON.stringify(state));
++    } catch {
++      // best-effort only
++    }
++  };
++
++  client.getQueryCache().subscribe(() => {
++    if (timeout) window.clearTimeout(timeout);
++    timeout = window.setTimeout(save, 200);
++  });
++}
 +
 +const queryClient = new QueryClient({
 +  defaultOptions: {
@@ -5729,6 +5761,16 @@ index 0000000..d944fb1
 +    },
 +  },
 +});
++
++const persisted = loadPersistedState();
++if (persisted) {
++  try {
++    hydrate(queryClient, persisted);
++  } catch {
++    // ignore corrupted state
++  }
++}
++persistClient(queryClient);
 +
 +export function App() {
 +  return (
@@ -6524,7 +6566,7 @@ index 0000000..ac7a1c5
 Binary files /dev/null and b/repository_after/server/organizations/__pycache__/auth.cpython-311.pyc differ
 diff --git a/repository_after/server/organizations/__pycache__/models.cpython-311.pyc b/repository_after/server/organizations/__pycache__/models.cpython-311.pyc
 new file mode 100644
-index 0000000..357e127
+index 0000000..db75b28
 Binary files /dev/null and b/repository_after/server/organizations/__pycache__/models.cpython-311.pyc differ
 diff --git a/repository_after/server/organizations/__pycache__/permissions.cpython-311.pyc b/repository_after/server/organizations/__pycache__/permissions.cpython-311.pyc
 new file mode 100644
@@ -6532,7 +6574,7 @@ index 0000000..0de48eb
 Binary files /dev/null and b/repository_after/server/organizations/__pycache__/permissions.cpython-311.pyc differ
 diff --git a/repository_after/server/organizations/__pycache__/serializers.cpython-311.pyc b/repository_after/server/organizations/__pycache__/serializers.cpython-311.pyc
 new file mode 100644
-index 0000000..8095715
+index 0000000..bd7287f
 Binary files /dev/null and b/repository_after/server/organizations/__pycache__/serializers.cpython-311.pyc differ
 diff --git a/repository_after/server/organizations/__pycache__/throttling.cpython-311.pyc b/repository_after/server/organizations/__pycache__/throttling.cpython-311.pyc
 new file mode 100644
@@ -6544,7 +6586,7 @@ index 0000000..bd2b5a7
 Binary files /dev/null and b/repository_after/server/organizations/__pycache__/urls.cpython-311.pyc differ
 diff --git a/repository_after/server/organizations/__pycache__/views.cpython-311.pyc b/repository_after/server/organizations/__pycache__/views.cpython-311.pyc
 new file mode 100644
-index 0000000..80105e5
+index 0000000..93069aa
 Binary files /dev/null and b/repository_after/server/organizations/__pycache__/views.cpython-311.pyc differ
 diff --git a/repository_after/server/organizations/apps.py b/repository_after/server/organizations/apps.py
 new file mode 100644
@@ -6874,10 +6916,10 @@ index 0000000..f108974
 Binary files /dev/null and b/repository_after/server/organizations/migrations/__pycache__/__init__.cpython-311.pyc differ
 diff --git a/repository_after/server/organizations/models.py b/repository_after/server/organizations/models.py
 new file mode 100644
-index 0000000..d630e19
+index 0000000..931879c
 --- /dev/null
 +++ b/repository_after/server/organizations/models.py
-@@ -0,0 +1,341 @@
+@@ -0,0 +1,356 @@
 +from __future__ import annotations
 +
 +import hashlib
@@ -7000,6 +7042,21 @@ index 0000000..d630e19
 +            return
 +        if not self.organization_id:
 +            return
++
++        # Ensure an organization always has at most one active Owner.
++        if self.role == self.Role.OWNER:
++            existing_owners = (
++                OrganizationMembership.objects.filter(
++                    organization_id=self.organization_id,
++                    role=self.Role.OWNER,
++                    is_active=True,
++                )
++                .exclude(pk=self.pk)
++                .count()
++            )
++            if existing_owners >= 1:
++                raise ValidationError({"role": "Organization must have exactly one owner"})
++
 +        active_count = OrganizationMembership.objects.filter(organization=self.organization, is_active=True).exclude(pk=self.pk).count()
 +        if active_count >= 50:
 +            raise ValidationError("Organizations are limited to 50 active members")
@@ -7318,10 +7375,10 @@ index 0000000..4754c47
 +        return _SCOPE_LEVEL.get(str(scope), 0) >= _SCOPE_LEVEL.get(str(required), 2)
 diff --git a/repository_after/server/organizations/serializers.py b/repository_after/server/organizations/serializers.py
 new file mode 100644
-index 0000000..fa5d8d3
+index 0000000..43713df
 --- /dev/null
 +++ b/repository_after/server/organizations/serializers.py
-@@ -0,0 +1,207 @@
+@@ -0,0 +1,220 @@
 +from __future__ import annotations
 +
 +from django.core.exceptions import ValidationError as DjangoValidationError
@@ -7376,6 +7433,19 @@ index 0000000..fa5d8d3
 +        model = OrganizationMembership
 +        fields = ["id", "organization_slug", "user_id", "role", "is_active", "created_at"]
 +        read_only_fields = ["id", "organization_slug", "user_id", "created_at"]
++
++    def validate_role(self, value: str) -> str:
++        # Ownership changes must go through the explicit transfer endpoint.
++        if value == OrganizationMembership.Role.OWNER:
++            raise serializers.ValidationError("Use transfer_ownership to assign Owner role")
++        return value
++
++    def validate(self, attrs):
++        # Do not allow editing the current owner membership through this endpoint.
++        if self.instance is not None and getattr(self.instance, "role", None) == OrganizationMembership.Role.OWNER:
++            if "role" in attrs or "is_active" in attrs:
++                raise serializers.ValidationError("Owner membership cannot be modified here; use transfer_ownership")
++        return super().validate(attrs)
 +
 +
 +class ProjectSerializer(serializers.ModelSerializer):
@@ -7652,10 +7722,10 @@ index 0000000..f92572d
 +]
 diff --git a/repository_after/server/organizations/views.py b/repository_after/server/organizations/views.py
 new file mode 100644
-index 0000000..5520134
+index 0000000..f4d1e2e
 --- /dev/null
 +++ b/repository_after/server/organizations/views.py
-@@ -0,0 +1,300 @@
+@@ -0,0 +1,309 @@
 +from __future__ import annotations
 +
 +from datetime import timedelta
@@ -7737,6 +7807,15 @@ index 0000000..5520134
 +        if self.action in {"list", "retrieve"}:
 +            return [IsAuthenticated(), IsOrganizationMember(), APIKeyScopeEnforcer()]
 +        return [IsAuthenticated(), IsAdmin(), APIKeyScopeEnforcer()]
++
++    def destroy(self, request, *args, **kwargs):
++        membership = self.get_object()
++        if membership.role == OrganizationMembership.Role.OWNER and membership.is_active:
++            return Response(
++                {"detail": "Owner membership cannot be removed; use transfer_ownership"},
++                status=status.HTTP_400_BAD_REQUEST,
++            )
++        return super().destroy(request, *args, **kwargs)
 +
 +
 +class ProjectViewSet(OrganizationScopedMixin, viewsets.ModelViewSet):
@@ -7969,11 +8048,11 @@ index 0000000..60643b7
 Binary files /dev/null and b/repository_after/server/saas_dashboard/__pycache__/perf_views.cpython-311.pyc differ
 diff --git a/repository_after/server/saas_dashboard/__pycache__/settings.cpython-311.pyc b/repository_after/server/saas_dashboard/__pycache__/settings.cpython-311.pyc
 new file mode 100644
-index 0000000..0d8bea3
+index 0000000..950effe
 Binary files /dev/null and b/repository_after/server/saas_dashboard/__pycache__/settings.cpython-311.pyc differ
 diff --git a/repository_after/server/saas_dashboard/__pycache__/urls.cpython-311.pyc b/repository_after/server/saas_dashboard/__pycache__/urls.cpython-311.pyc
 new file mode 100644
-index 0000000..0e52b43
+index 0000000..4d09aaf
 Binary files /dev/null and b/repository_after/server/saas_dashboard/__pycache__/urls.cpython-311.pyc differ
 diff --git a/repository_after/server/saas_dashboard/__pycache__/wsgi.cpython-311.pyc b/repository_after/server/saas_dashboard/__pycache__/wsgi.cpython-311.pyc
 new file mode 100644

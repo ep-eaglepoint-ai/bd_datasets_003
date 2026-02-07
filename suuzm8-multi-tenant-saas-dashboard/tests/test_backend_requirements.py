@@ -1,4 +1,5 @@
 import re
+from pathlib import Path
 
 import pytest
 from django.core.cache import cache
@@ -139,6 +140,21 @@ def test_invitation_token_expiry_and_accept_atomic(user):
 
 
 @pytest.mark.django_db
+def test_invitation_creation_fails_when_org_already_has_50_active_members(user):
+    org = Organization.objects.create(name="Org")
+    OrganizationMembership.objects.create(organization=org, user=user, role=OrganizationMembership.Role.OWNER)
+
+    User = type(user)
+    for i in range(49):
+        u = User.objects.create_user(username=f"m_{i}", password="pass")
+        OrganizationMembership.objects.create(organization=org, user=u, role=OrganizationMembership.Role.MEMBER)
+
+    assert OrganizationMembership.objects.filter(organization=org, is_active=True).count() == 50
+    with pytest.raises(ValidationError):
+        Invitation.objects.create(organization=org, email="too-many@example.com", created_by=user)
+
+
+@pytest.mark.django_db
 def test_invitation_default_expiration_is_configurable(settings, user):
     settings.INVITATION_DEFAULT_TTL_DAYS = 3
     org = Organization.objects.create(name="Org")
@@ -167,6 +183,24 @@ def test_api_keys_hashed_and_plaintext_returned_once(user):
 
     # Plaintext not stored on the model
     assert not hasattr(api_key, "key")
+
+
+@pytest.mark.django_db
+def test_api_key_hash_is_not_plaintext_in_db(user):
+    org = Organization.objects.create(name="Org")
+    OrganizationMembership.objects.create(organization=org, user=user, role=OrganizationMembership.Role.OWNER)
+
+    api_key, plaintext = APIKey.create_with_plaintext(organization=org, created_by=user, scope=APIKey.Scope.READ)
+
+    with connection.cursor() as cur:
+        cur.execute("SELECT key_hash, key_prefix FROM organizations_apikey WHERE id = %s", [api_key.id])
+        row = cur.fetchone()
+
+    assert row is not None
+    key_hash, key_prefix = row
+    assert key_prefix == plaintext[:8]
+    assert re.fullmatch(r"[0-9a-f]{64}", str(key_hash))
+    assert str(key_hash) != plaintext
 
 
 @pytest.mark.django_db
@@ -244,7 +278,7 @@ def test_dashboard_cached_and_low_query_count(api_client, django_assert_num_quer
 
     with CaptureQueriesContext(connection) as ctx:
         resp = api_client.get(f"/api/organizations/{org.slug}/dashboard/")
-    assert len(ctx.captured_queries) <= 8
+    assert len(ctx.captured_queries) < 5
     assert resp.status_code == 200
     assert resp.data["total_projects"] == 30
 
@@ -355,6 +389,43 @@ def test_transfer_ownership_edge_cases(api_client, user, user2):
 
 
 @pytest.mark.django_db
+def test_admin_cannot_assign_owner_role_via_membership_update(api_client, user, user2):
+    org = Organization.objects.create(name="Org")
+    OrganizationMembership.objects.create(organization=org, user=user, role=OrganizationMembership.Role.OWNER)
+    OrganizationMembership.objects.create(organization=org, user=user2, role=OrganizationMembership.Role.ADMIN)
+
+    member = type(user).objects.create_user(username="member", password="pass")
+    membership = OrganizationMembership.objects.create(
+        organization=org,
+        user=member,
+        role=OrganizationMembership.Role.MEMBER,
+    )
+
+    api_client.force_authenticate(user=user2)
+    resp = api_client.patch(
+        f"/api/organizations/{org.slug}/memberships/{membership.id}/",
+        {"role": OrganizationMembership.Role.OWNER},
+        format="json",
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.django_db
+def test_owner_membership_cannot_be_deleted_via_memberships_endpoint(api_client, user, user2):
+    org = Organization.objects.create(name="Org")
+    owner_membership = OrganizationMembership.objects.create(
+        organization=org,
+        user=user,
+        role=OrganizationMembership.Role.OWNER,
+    )
+    OrganizationMembership.objects.create(organization=org, user=user2, role=OrganizationMembership.Role.ADMIN)
+
+    api_client.force_authenticate(user=user2)
+    resp = api_client.delete(f"/api/organizations/{org.slug}/memberships/{owner_membership.id}/")
+    assert resp.status_code == 400
+
+
+@pytest.mark.django_db
 def test_api_key_rate_limit_1000_per_hour_returns_429_with_retry_after(api_client, user):
     org = Organization.objects.create(name="Org")
     OrganizationMembership.objects.create(organization=org, user=user, role=OrganizationMembership.Role.OWNER)
@@ -461,3 +532,20 @@ def test_join_validate_is_public(api_client, user):
     api_client.force_authenticate(user=None)
     resp = api_client.get(f"/api/join/{inv.token}/")
     assert resp.status_code == 200
+
+
+def test_no_raw_sql_usage_in_organizations_app():
+    base = Path(__file__).resolve().parents[1] / "repository_after" / "server" / "organizations"
+    patterns = [
+        r"\.raw\(",
+        r"connection\.cursor\(",
+        r"\.extra\(",
+        r"\.execute\(",
+    ]
+    rx = re.compile("|".join(patterns))
+
+    for path in base.rglob("*.py"):
+        if "migrations" in path.parts:
+            continue
+        text = path.read_text(encoding="utf-8")
+        assert rx.search(text) is None, f"Raw SQL-like usage found in {path}"

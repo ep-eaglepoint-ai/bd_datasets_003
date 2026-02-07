@@ -80,6 +80,15 @@ class MembershipViewSet(OrganizationScopedMixin, viewsets.ModelViewSet):
             return [IsAuthenticated(), IsOrganizationMember(), APIKeyScopeEnforcer()]
         return [IsAuthenticated(), IsAdmin(), APIKeyScopeEnforcer()]
 
+    def destroy(self, request, *args, **kwargs):
+        membership = self.get_object()
+        if membership.role == OrganizationMembership.Role.OWNER and membership.is_active:
+            return Response(
+                {"detail": "Owner membership cannot be removed; use transfer_ownership"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return super().destroy(request, *args, **kwargs)
+
 
 class ProjectViewSet(OrganizationScopedMixin, viewsets.ModelViewSet):
     serializer_class = ProjectSerializer

@@ -83,6 +83,98 @@ describe("Dashboard", () => {
     expect(screen.getByText("2")).toBeInTheDocument();
   });
 
+  it("renders cached dashboard data while offline (read operations)", async () => {
+    const nav = window.navigator as unknown as Record<string, unknown>;
+    const hadOwn = Object.prototype.hasOwnProperty.call(nav, "onLine");
+    const originalOwn = hadOwn
+      ? Object.getOwnPropertyDescriptor(nav, "onLine")
+      : undefined;
+
+    Object.defineProperty(nav, "onLine", {
+      configurable: true,
+      get: () => false,
+    });
+
+    try {
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      client.setQueryData(["dashboard", "acme"], {
+        organization: { slug: "acme", name: "Acme" },
+        total_projects: 9,
+        active_users: 4,
+        latest_project_created_at: null,
+        generated_at: new Date("2026-02-01T12:00:01Z").toISOString(),
+        activity_trends: [],
+      });
+
+      // If fetch is called while offline, fail the test.
+      vi.stubGlobal("fetch", vi.fn(() => {
+        throw new Error("fetch should not be called when cached data exists");
+      }) as unknown as typeof fetch);
+
+      render(
+        <QueryClientProvider client={client}>
+          <Dashboard organizationSlug="acme" />
+        </QueryClientProvider>
+      );
+
+      expect(await screen.findByText("Acme Dashboard")).toBeInTheDocument();
+      expect(screen.getByText("9")).toBeInTheDocument();
+      expect(screen.getByText("4")).toBeInTheDocument();
+    } finally {
+      if (originalOwn) {
+        Object.defineProperty(nav, "onLine", originalOwn);
+      } else {
+        delete (nav as { onLine?: unknown }).onLine;
+      }
+    }
+  });
+
+  it("formats timestamps using the provided timezone", async () => {
+    const originalDTF = Intl.DateTimeFormat;
+    const seen: Array<{ timeZone?: string }> = [];
+
+    // Stub DateTimeFormat to capture options.timeZone.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (Intl as any).DateTimeFormat = function (_locale?: any, options?: any) {
+      seen.push({ timeZone: options?.timeZone });
+      return { format: () => "formatted" };
+    } as unknown as typeof Intl.DateTimeFormat;
+
+    try {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async () =>
+            new Response(
+              JSON.stringify({
+                organization: { slug: "acme", name: "Acme" },
+                total_projects: 1,
+                active_users: 1,
+                latest_project_created_at: new Date(
+                  "2026-02-01T12:00:00Z"
+                ).toISOString(),
+                generated_at: new Date("2026-02-01T12:00:01Z").toISOString(),
+                activity_trends: [],
+              }),
+              { status: 200 }
+            )
+        ) as unknown as typeof fetch
+      );
+
+      renderWithQuery(
+        <Dashboard organizationSlug="acme" timeZone="America/New_York" />
+      );
+
+      expect(await screen.findByText("Acme Dashboard")).toBeInTheDocument();
+      expect(screen.getByText("formatted")).toBeInTheDocument();
+      expect(seen.some((o) => o.timeZone === "America/New_York")).toBe(true);
+    } finally {
+      Intl.DateTimeFormat = originalDTF;
+    }
+  });
+
   it("renders a clear error when the dashboard request fails", async () => {
     vi.stubGlobal(
       "fetch",

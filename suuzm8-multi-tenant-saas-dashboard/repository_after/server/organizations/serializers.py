@@ -53,6 +53,19 @@ class MembershipSerializer(serializers.ModelSerializer):
         fields = ["id", "organization_slug", "user_id", "role", "is_active", "created_at"]
         read_only_fields = ["id", "organization_slug", "user_id", "created_at"]
 
+    def validate_role(self, value: str) -> str:
+        # Ownership changes must go through the explicit transfer endpoint.
+        if value == OrganizationMembership.Role.OWNER:
+            raise serializers.ValidationError("Use transfer_ownership to assign Owner role")
+        return value
+
+    def validate(self, attrs):
+        # Do not allow editing the current owner membership through this endpoint.
+        if self.instance is not None and getattr(self.instance, "role", None) == OrganizationMembership.Role.OWNER:
+            if "role" in attrs or "is_active" in attrs:
+                raise serializers.ValidationError("Owner membership cannot be modified here; use transfer_ownership")
+        return super().validate(attrs)
+
 
 class ProjectSerializer(serializers.ModelSerializer):
     class Meta:

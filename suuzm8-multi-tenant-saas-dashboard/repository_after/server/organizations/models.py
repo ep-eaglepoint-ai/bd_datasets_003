@@ -120,6 +120,21 @@ class OrganizationMembership(models.Model):
             return
         if not self.organization_id:
             return
+
+        # Ensure an organization always has at most one active Owner.
+        if self.role == self.Role.OWNER:
+            existing_owners = (
+                OrganizationMembership.objects.filter(
+                    organization_id=self.organization_id,
+                    role=self.Role.OWNER,
+                    is_active=True,
+                )
+                .exclude(pk=self.pk)
+                .count()
+            )
+            if existing_owners >= 1:
+                raise ValidationError({"role": "Organization must have exactly one owner"})
+
         active_count = OrganizationMembership.objects.filter(organization=self.organization, is_active=True).exclude(pk=self.pk).count()
         if active_count >= 50:
             raise ValidationError("Organizations are limited to 50 active members")
