@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SSE News Ticker</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; }
+      #log { padding-left: 18px; }
+      code { background: #f3f4f6; padding: 2px 6px; border-radius: 6px; }
+    </style>
+  </head>
+  <body>
+    <h1>News stream (SSE)</h1>
+    <p>Open DevTools console to see raw messages.</p>
+    <p>Streaming from <code>/events</code>.</p>
+
+    <ol id="log"></ol>
+
+    <script>
+      const list = document.getElementById('log');
+      const LS_KEY = 'lastEventId';
+      const last = window.localStorage.getItem(LS_KEY);
+      const url = last ? `/events?lastEventId=${encodeURIComponent(last)}` : '/events';
+
+      const es = new EventSource(url);
+
+      es.onmessage = (ev) => {
+        console.log('news:', { id: ev.lastEventId, data: ev.data });
+        if (ev.lastEventId) window.localStorage.setItem(LS_KEY, ev.lastEventId);
+        const li = document.createElement('li');
+        li.textContent = `[${ev.lastEventId}] ${ev.data}`;
+        list.appendChild(li);
+      };
+
+      es.onerror = (err) => {
+        console.log('EventSource error (will retry automatically):', err);
+      };
+    </script>
+  </body>
+</html>
