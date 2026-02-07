@@ -163,7 +163,7 @@ def run_evaluation():
     start_time = datetime.utcnow()
     
     print("="*70)
-    print("  REPLAY PROTECTION TEST SUITE EVALUATION")
+    print("  TRANSACTION INTELLIGENCE ENGINE EVALUATION")
     print("="*70)
     
     print(f"\n  Run ID:     {run_id}")
@@ -183,7 +183,7 @@ def run_evaluation():
             "tests_passed": 0,
             "tests_failed": 0,
             "tests_skipped": 0,
-            "output": "repository_does not exists"
+            "output": "repository_before does not exist"
         },
         "metrics": {}
     }
