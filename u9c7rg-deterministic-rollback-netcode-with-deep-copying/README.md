@@ -5,11 +5,11 @@
 #### 1. Test the Solution
 
 ```bash
-docker-compose run test-after
+docker-compose run --rm test-after
 ```
 
 #### 2. Generate Evaluation Report
 
 ```bash
-docker-compose run evaluation
+docker-compose run --rm evaluation
 ```
