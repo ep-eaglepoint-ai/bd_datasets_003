@@ -14,13 +14,15 @@ import (
 type Network struct {
 	mu              sync.RWMutex
 	nodes           map[string]*SimNode
-	partitions      map[string]map[string]bool // nodeA -> nodeB -> partitioned
+	partitions      map[string]map[string]bool
 	dropRate        float64
 	minDelay        time.Duration
 	maxDelay        time.Duration
 	rand            *rand.Rand
+	seed            int64
 	messageLog      []Message
 	deliveredMsgs   []Message
+	deterministic   bool
 }
 
 // SimNode represents a simulated node
@@ -43,23 +45,44 @@ type Message struct {
 	Dropped   bool
 }
 
-// NewNetwork creates a new simulated network
+// NewNetwork creates a new simulated network with time-based seed
 func NewNetwork(dropRate float64, minDelay, maxDelay time.Duration) *Network {
+	return NewDeterministicNetwork(dropRate, minDelay, maxDelay, time.Now().UnixNano())
+}
+
+// NewDeterministicNetwork creates a network with fixed seed for reproducibility
+func NewDeterministicNetwork(dropRate float64, minDelay, maxDelay time.Duration, seed int64) *Network {
 	return &Network{
-		nodes:      make(map[string]*SimNode),
-		partitions: make(map[string]map[string]bool),
-		dropRate:   dropRate,
-		minDelay:   minDelay,
-		maxDelay:   maxDelay,
-		rand:       rand.New(rand.NewSource(time.Now().UnixNano())),
+		nodes:         make(map[string]*SimNode),
+		partitions:    make(map[string]map[string]bool),
+		dropRate:      dropRate,
+		minDelay:      minDelay,
+		maxDelay:      maxDelay,
+		rand:          rand.New(rand.NewSource(seed)),
+		seed:          seed,
+		deterministic: true,
 	}
+}
+
+// GetSeed returns the random seed for replay
+func (n *Network) GetSeed() int64 {
+	return n.seed
+}
+
+// Reset resets the network to initial state with same seed
+func (n *Network) Reset() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.rand = rand.New(rand.NewSource(n.seed))
+	n.partitions = make(map[string]map[string]bool)
+	n.messageLog = nil
+	n.deliveredMsgs = nil
 }
 
 // AddNode adds a node to the network
 func (n *Network) AddNode(id string, node *raft.Raft, transport *SimTransport) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-
 	n.nodes[id] = &SimNode{
 		ID:        id,
 		Raft:      node,
@@ -69,11 +92,10 @@ func (n *Network) AddNode(id string, node *raft.Raft, transport *SimTransport) {
 	n.partitions[id] = make(map[string]bool)
 }
 
-// Partition partitions a node from the rest of the cluster
+// Partition partitions a node from the rest
 func (n *Network) Partition(nodeID string) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-
 	for otherID := range n.nodes {
 		if otherID != nodeID {
 			n.partitions[nodeID][otherID] = true
@@ -86,7 +108,6 @@ func (n *Network) Partition(nodeID string) {
 func (n *Network) Heal(nodeID string) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-
 	for otherID := range n.nodes {
 		if otherID != nodeID {
 			delete(n.partitions[nodeID], otherID)
@@ -99,7 +120,12 @@ func (n *Network) Heal(nodeID string) {
 func (n *Network) PartitionBetween(nodeA, nodeB string) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-
+	if n.partitions[nodeA] == nil {
+		n.partitions[nodeA] = make(map[string]bool)
+	}
+	if n.partitions[nodeB] == nil {
+		n.partitions[nodeB] = make(map[string]bool)
+	}
 	n.partitions[nodeA][nodeB] = true
 	n.partitions[nodeB][nodeA] = true
 }
@@ -108,7 +134,6 @@ func (n *Network) PartitionBetween(nodeA, nodeB string) {
 func (n *Network) HealBetween(nodeA, nodeB string) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-
 	delete(n.partitions[nodeA], nodeB)
 	delete(n.partitions[nodeB], nodeA)
 }
@@ -117,7 +142,6 @@ func (n *Network) HealBetween(nodeA, nodeB string) {
 func (n *Network) IsPartitioned(nodeA, nodeB string) bool {
 	n.mu.RLock()
 	defer n.mu.RUnlock()
-
 	if partitions, ok := n.partitions[nodeA]; ok {
 		return partitions[nodeB]
 	}
@@ -139,39 +163,36 @@ func (n *Network) SetDelay(min, max time.Duration) {
 	n.maxDelay = max
 }
 
-// ShouldDrop returns true if a message should be dropped
+// ShouldDrop returns true if a message should be dropped (deterministic)
 func (n *Network) ShouldDrop() bool {
-	n.mu.RLock()
-	defer n.mu.RUnlock()
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	return n.rand.Float64() < n.dropRate
 }
 
-// GetDelay returns a random delay
+// GetDelay returns a deterministic random delay
 func (n *Network) GetDelay() time.Duration {
-	n.mu.RLock()
-	defer n.mu.RUnlock()
-
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	if n.maxDelay <= n.minDelay {
 		return n.minDelay
 	}
 	return n.minDelay + time.Duration(n.rand.Int63n(int64(n.maxDelay-n.minDelay)))
 }
 
-// GetMessages returns all messages in the simulation
+// GetMessages returns all messages
 func (n *Network) GetMessages() []Message {
 	n.mu.RLock()
 	defer n.mu.RUnlock()
-
 	result := make([]Message, len(n.messageLog))
 	copy(result, n.messageLog)
 	return result
 }
 
-// GetDeliveredMessages returns all delivered messages
+// GetDeliveredMessages returns delivered messages
 func (n *Network) GetDeliveredMessages() []Message {
 	n.mu.RLock()
 	defer n.mu.RUnlock()
-
 	result := make([]Message, len(n.deliveredMsgs))
 	copy(result, n.deliveredMsgs)
 	return result
@@ -198,7 +219,6 @@ func (n *Network) GetNode(id string) *SimNode {
 func (n *Network) GetNodes() map[string]*SimNode {
 	n.mu.RLock()
 	defer n.mu.RUnlock()
-
 	result := make(map[string]*SimNode)
 	for k, v := range n.nodes {
 		result[k] = v
@@ -237,33 +257,27 @@ func (t *SimTransport) RequestVote(ctx context.Context, target string, req *raft
 		Timestamp: time.Now(),
 	}
 
-	// Check partition
 	if t.network.IsPartitioned(t.localID, target) {
 		msg.Dropped = true
 		t.network.LogMessage(msg)
 		return nil, fmt.Errorf("node partitioned")
 	}
 
-	// Check drop
 	if t.network.ShouldDrop() {
 		msg.Dropped = true
 		t.network.LogMessage(msg)
 		return nil, fmt.Errorf("message dropped")
 	}
 
-	// Add delay
 	delay := t.network.GetDelay()
 	time.Sleep(delay)
 
-	// Get target handler
 	handler, ok := t.handlers[target]
 	if !ok {
 		return nil, fmt.Errorf("unknown target: %s", target)
 	}
 
-	// Handle request
 	resp := handler.HandleRequestVote(req)
-
 	msg.Response = resp
 	msg.Delivered = true
 	t.network.LogMessage(msg)
@@ -281,33 +295,27 @@ func (t *SimTransport) AppendEntries(ctx context.Context, target string, req *ra
 		Timestamp: time.Now(),
 	}
 
-	// Check partition
 	if t.network.IsPartitioned(t.localID, target) {
 		msg.Dropped = true
 		t.network.LogMessage(msg)
 		return nil, fmt.Errorf("node partitioned")
 	}
 
-	// Check drop
 	if t.network.ShouldDrop() {
 		msg.Dropped = true
 		t.network.LogMessage(msg)
 		return nil, fmt.Errorf("message dropped")
 	}
 
-	// Add delay
 	delay := t.network.GetDelay()
 	time.Sleep(delay)
 
-	// Get target handler
 	handler, ok := t.handlers[target]
 	if !ok {
 		return nil, fmt.Errorf("unknown target: %s", target)
 	}
 
-	// Handle request
 	resp := handler.HandleAppendEntries(req)
-
 	msg.Response = resp
 	msg.Delivered = true
 	t.network.LogMessage(msg)
@@ -325,33 +333,27 @@ func (t *SimTransport) InstallSnapshot(ctx context.Context, target string, req *
 		Timestamp: time.Now(),
 	}
 
-	// Check partition
 	if t.network.IsPartitioned(t.localID, target) {
 		msg.Dropped = true
 		t.network.LogMessage(msg)
 		return nil, fmt.Errorf("node partitioned")
 	}
 
-	// Check drop
 	if t.network.ShouldDrop() {
 		msg.Dropped = true
 		t.network.LogMessage(msg)
 		return nil, fmt.Errorf("message dropped")
 	}
 
-	// Add delay
 	delay := t.network.GetDelay()
 	time.Sleep(delay)
 
-	// Get target handler
 	handler, ok := t.handlers[target]
 	if !ok {
 		return nil, fmt.Errorf("unknown target: %s", target)
 	}
 
-	// Handle request
 	resp := handler.HandleInstallSnapshot(req)
-
 	msg.Response = resp
 	msg.Delivered = true
 	t.network.LogMessage(msg)

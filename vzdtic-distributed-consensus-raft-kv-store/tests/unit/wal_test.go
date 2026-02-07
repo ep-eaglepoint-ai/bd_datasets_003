@@ -1,7 +1,6 @@
 package unit
 
 import (
-	"os"
 	"testing"
 
 	"github.com/vzdtic/raft-kv-store/repository_after/pkg/wal"
@@ -104,7 +103,6 @@ func TestWALTruncateAfter(t *testing.T) {
 func TestWALPersistence(t *testing.T) {
 	dir := t.TempDir()
 
-	// Create and write
 	w1, err := wal.New(dir)
 	if err != nil {
 		t.Fatalf("Failed to create WAL: %v", err)
@@ -119,7 +117,6 @@ func TestWALPersistence(t *testing.T) {
 	}
 	w1.Close()
 
-	// Reopen and verify
 	w2, err := wal.New(dir)
 	if err != nil {
 		t.Fatalf("Failed to reopen WAL: %v", err)
@@ -143,7 +140,6 @@ func TestWALSnapshot(t *testing.T) {
 	}
 	defer w.Close()
 
-	// Add entries
 	entries := []wal.Entry{
 		{Term: 1, Index: 1, Command: []byte("cmd1"), Type: wal.EntryNormal},
 		{Term: 1, Index: 2, Command: []byte("cmd2"), Type: wal.EntryNormal},
@@ -154,7 +150,6 @@ func TestWALSnapshot(t *testing.T) {
 		t.Fatalf("Failed to append entries: %v", err)
 	}
 
-	// Save snapshot
 	snapshot := wal.Snapshot{
 		Metadata: wal.SnapshotMetadata{
 			LastIncludedIndex: 2,
@@ -170,12 +165,10 @@ func TestWALSnapshot(t *testing.T) {
 		t.Fatalf("Failed to save snapshot: %v", err)
 	}
 
-	// Verify entries after snapshot were compacted
 	if w.Size() != 1 {
 		t.Errorf("Expected 1 entry after snapshot, got %d", w.Size())
 	}
 
-	// Load snapshot
 	loaded, err := w.LoadSnapshot()
 	if err != nil {
 		t.Fatalf("Failed to load snapshot: %v", err)
@@ -186,6 +179,65 @@ func TestWALSnapshot(t *testing.T) {
 	}
 }
 
-func TestMain(m *testing.M) {
-	os.Exit(m.Run())
+func TestWALByteSizeThreshold(t *testing.T) {
+	dir := t.TempDir()
+	
+	// Create WAL with small threshold
+	w, err := wal.NewWithThreshold(dir, 100) // 100 bytes threshold
+	if err != nil {
+		t.Fatalf("Failed to create WAL: %v", err)
+	}
+	defer w.Close()
+
+	// Initially should not need compaction
+	if w.NeedsCompaction() {
+		t.Error("Fresh WAL should not need compaction")
+	}
+
+	// Add entries to exceed threshold
+	largeCommand := make([]byte, 200)
+	entries := []wal.Entry{
+		{Term: 1, Index: 1, Command: largeCommand, Type: wal.EntryNormal},
+	}
+
+	if err := w.AppendEntries(entries); err != nil {
+		t.Fatalf("Failed to append entries: %v", err)
+	}
+
+	// Should need compaction now
+	if !w.NeedsCompaction() {
+		t.Errorf("WAL should need compaction, byteSize=%d, threshold=%d", 
+			w.ByteSize(), w.GetByteSizeThreshold())
+	}
+
+	// Test setting threshold
+	w.SetByteSizeThreshold(1000)
+	if w.NeedsCompaction() {
+		t.Error("Should not need compaction after increasing threshold")
+	}
+}
+
+func TestWALByteSizeTracking(t *testing.T) {
+	dir := t.TempDir()
+	w, err := wal.New(dir)
+	if err != nil {
+		t.Fatalf("Failed to create WAL: %v", err)
+	}
+	defer w.Close()
+
+	initialSize := w.ByteSize()
+
+	entries := []wal.Entry{
+		{Term: 1, Index: 1, Command: []byte("command1"), Type: wal.EntryNormal},
+		{Term: 1, Index: 2, Command: []byte("command2"), Type: wal.EntryNormal},
+	}
+
+	if err := w.AppendEntries(entries); err != nil {
+		t.Fatalf("Failed to append entries: %v", err)
+	}
+
+	newSize := w.ByteSize()
+	if newSize <= initialSize {
+		t.Errorf("Byte size should increase after appending, was %d now %d", initialSize, newSize)
+	}
 }

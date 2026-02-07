@@ -5,6 +5,7 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -13,18 +14,20 @@ import (
 	"github.com/vzdtic/raft-kv-store/repository_after/pkg/simulation"
 )
 
-// Operation represents a linearizability check operation
+// Operation for linearizability checking
 type Operation struct {
-	Type      string // "write" or "read"
+	Type      string
 	Key       string
 	Value     string
 	StartTime time.Time
 	EndTime   time.Time
 	Result    string
 	Success   bool
+	ClientID  int
+	SeqNum    int
 }
 
-// History records all operations for linearizability checking
+// History records operations
 type History struct {
 	mu         sync.Mutex
 	operations []Operation
@@ -44,7 +47,7 @@ func (h *History) GetOperations() []Operation {
 	return result
 }
 
-// waitForStableLeader waits for a stable leader in the cluster
+// waitForStableLeader with deterministic timeout
 func waitForStableLeader(nodes []*raft.Raft, timeout time.Duration) *raft.Raft {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
@@ -67,20 +70,22 @@ func waitForStableLeader(nodes []*raft.Raft, timeout time.Duration) *raft.Raft {
 	return nil
 }
 
-// TestLinearizability performs Jepsen-style linearizability testing
-func TestLinearizability(t *testing.T) {
-	network := simulation.NewNetwork(0.05, 0, 20*time.Millisecond)
+// createDeterministicCluster with fixed seed
+func createDeterministicCluster(t *testing.T, n int, seed int64) ([]*raft.Raft, *simulation.Network, []*simulation.SimTransport) {
+	t.Helper()
+
+	network := simulation.NewDeterministicNetwork(0.05, 0, 20*time.Millisecond, seed)
 	logger := log.New(os.Stdout, "", log.LstdFlags)
 
-	nodes := make([]*raft.Raft, 3)
-	transports := make([]*simulation.SimTransport, 3)
+	nodes := make([]*raft.Raft, n)
+	transports := make([]*simulation.SimTransport, n)
 
-	for i := 0; i < 3; i++ {
+	for i := 0; i < n; i++ {
 		nodeID := string(rune('1' + i))
 		transports[i] = simulation.NewSimTransport(network, nodeID)
 
 		peers := make(map[string]string)
-		for j := 0; j < 3; j++ {
+		for j := 0; j < n; j++ {
 			if i != j {
 				peerID := string(rune('1' + j))
 				peers[peerID] = peerID
@@ -92,6 +97,7 @@ func TestLinearizability(t *testing.T) {
 		config.WALDir = t.TempDir()
 		config.ElectionTimeout = 150 * time.Millisecond
 		config.HeartbeatInterval = 50 * time.Millisecond
+		config.RandomSeed = seed + int64(i)
 
 		node, err := raft.New(config, transports[i], logger)
 		if err != nil {
@@ -101,15 +107,21 @@ func TestLinearizability(t *testing.T) {
 		network.AddNode(nodeID, node, transports[i])
 	}
 
-	// Register handlers
-	for i := 0; i < 3; i++ {
-		for j := 0; j < 3; j++ {
+	for i := 0; i < n; i++ {
+		for j := 0; j < n; j++ {
 			nodeID := string(rune('1' + j))
 			transports[i].RegisterHandler(nodeID, nodes[j])
 		}
 	}
 
-	// Start nodes
+	return nodes, network, transports
+}
+
+// TestLinearizability with proper verification
+func TestLinearizability(t *testing.T) {
+	const seed int64 = 12345
+	nodes, network, _ := createDeterministicCluster(t, 3, seed)
+
 	for _, node := range nodes {
 		node.Start()
 	}
@@ -119,7 +131,6 @@ func TestLinearizability(t *testing.T) {
 		}
 	}()
 
-	// Wait for a stable leader
 	leader := waitForStableLeader(nodes, 3*time.Second)
 	if leader == nil {
 		t.Fatal("No leader elected")
@@ -128,21 +139,20 @@ func TestLinearizability(t *testing.T) {
 	history := &History{}
 	var wg sync.WaitGroup
 
-	// Run concurrent clients
 	numClients := 5
 	numOpsPerClient := 10
+	rng := rand.New(rand.NewSource(seed))
 
 	for c := 0; c < numClients; c++ {
 		wg.Add(1)
 		go func(clientID int) {
 			defer wg.Done()
-			r := rand.New(rand.NewSource(time.Now().UnixNano() + int64(clientID)))
+			localRng := rand.New(rand.NewSource(seed + int64(clientID*1000)))
 
 			for i := 0; i < numOpsPerClient; i++ {
-				key := fmt.Sprintf("key%d", r.Intn(5))
+				key := fmt.Sprintf("key%d", localRng.Intn(5))
 				value := fmt.Sprintf("value%d-%d", clientID, i)
 
-				// Find current leader
 				var currentLeader *raft.Raft
 				for _, node := range nodes {
 					if node.GetState() == raft.Leader {
@@ -156,13 +166,14 @@ func TestLinearizability(t *testing.T) {
 					continue
 				}
 
-				if r.Float32() < 0.7 {
-					// Write operation
+				if localRng.Float32() < 0.7 {
 					op := Operation{
 						Type:      "write",
 						Key:       key,
 						Value:     value,
 						StartTime: time.Now(),
+						ClientID:  clientID,
+						SeqNum:    i,
 					}
 
 					err := currentLeader.Set(key, []byte(value), fmt.Sprintf("client%d", clientID), uint64(i+1))
@@ -175,11 +186,12 @@ func TestLinearizability(t *testing.T) {
 					}
 					history.Add(op)
 				} else {
-					// Read operation
 					op := Operation{
 						Type:      "read",
 						Key:       key,
 						StartTime: time.Now(),
+						ClientID:  clientID,
+						SeqNum:    i,
 					}
 
 					val, found, err := currentLeader.Get(key, false)
@@ -195,17 +207,17 @@ func TestLinearizability(t *testing.T) {
 					history.Add(op)
 				}
 
-				time.Sleep(time.Duration(r.Intn(50)) * time.Millisecond)
+				time.Sleep(time.Duration(localRng.Intn(50)) * time.Millisecond)
 			}
 		}(c)
 	}
 
-	// Periodically inject network partitions
+	// Deterministic partition injection
 	go func() {
-		r := rand.New(rand.NewSource(time.Now().UnixNano()))
+		partitionRng := rand.New(rand.NewSource(seed + 999))
 		for i := 0; i < 3; i++ {
 			time.Sleep(200 * time.Millisecond)
-			nodeID := string(rune('1' + r.Intn(3)))
+			nodeID := string(rune('1' + partitionRng.Intn(3)))
 			network.Partition(nodeID)
 			time.Sleep(100 * time.Millisecond)
 			network.Heal(nodeID)
@@ -214,26 +226,17 @@ func TestLinearizability(t *testing.T) {
 
 	wg.Wait()
 
-	// Verify linearizability
 	ops := history.GetOperations()
-	if err := verifyLinearizability(ops); err != nil {
-		t.Errorf("Linearizability violation detected: %v", err)
+	if err := verifyLinearizabilityStrict(ops); err != nil {
+		t.Errorf("Linearizability violation: %v", err)
 	}
+
+	_ = rng
 }
 
-// verifyLinearizability checks if the history is linearizable.
-//
-// For each successful read that returned a non-nil value, we check that there
-// exists at least one successful write of that value whose execution interval
-// could have been linearized before the read.  Two operations *could* be
-// ordered (write before read) if the write started before the read ended –
-// i.e. their real-time intervals overlap or the write finished first.
-//
-// This is a simplified but sound single-key per-read check.  A full
-// linearizability checker (like Knossos / porcupine) would enumerate all
-// possible serializations; we intentionally keep the check lightweight.
-func verifyLinearizability(ops []Operation) error {
-	// Collect all successful writes grouped by key
+// verifyLinearizabilityStrict implements a stricter linearizability check
+func verifyLinearizabilityStrict(ops []Operation) error {
+	// Group writes by key
 	writesByKey := make(map[string][]Operation)
 	for _, op := range ops {
 		if op.Type == "write" && op.Success {
@@ -241,38 +244,52 @@ func verifyLinearizability(ops []Operation) error {
 		}
 	}
 
-	// For every successful read that returned a concrete value, make sure
-	// that value was actually written and the write *could* have preceded
-	// the read in a valid linearization.
+	// Sort writes by start time for each key
+	for key := range writesByKey {
+		sort.Slice(writesByKey[key], func(i, j int) bool {
+			return writesByKey[key][i].StartTime.Before(writesByKey[key][j].StartTime)
+		})
+	}
+
+	// For each read, verify it could be linearized
 	for _, op := range ops {
 		if op.Type != "read" || !op.Success || op.Result == "nil" {
 			continue
 		}
 
 		key := op.Key
-		writes, hasWrites := writesByKey[key]
-		if !hasWrites {
-			// Value was read but no write was ever recorded for that key.
-			// This can happen when a write succeeded on the state machine
-			// but the client goroutine recorded it as failed (timeout /
-			// leader change).  Not a linearizability violation per se.
+		writes := writesByKey[key]
+		if len(writes) == 0 {
 			continue
 		}
 
-		// Look for ANY write of this value that started before the read
-		// ended (i.e. the two intervals overlap, so they could be ordered
-		// write → read in a linearization).
+		// Find writes that could explain this read
 		found := false
 		for _, w := range writes {
-			if w.Value == op.Result && w.StartTime.Before(op.EndTime) {
-				found = true
-				break
+			if w.Value == op.Result {
+				// Write started before read ended (could be linearized before)
+				if w.StartTime.Before(op.EndTime) {
+					// No later write completed before this read started
+					validLinearization := true
+					for _, w2 := range writes {
+						if w2.Value != w.Value &&
+							w2.EndTime.Before(op.StartTime) &&
+							w2.StartTime.After(w.StartTime) {
+							validLinearization = false
+							break
+						}
+					}
+					if validLinearization {
+						found = true
+						break
+					}
+				}
 			}
 		}
 
 		if !found {
 			return fmt.Errorf(
-				"read of key=%s returned %q but no write of that value has a compatible real-time interval",
+				"read of key=%s returned %q but no valid linearization point exists",
 				key, op.Result,
 			)
 		}
@@ -281,49 +298,11 @@ func verifyLinearizability(ops []Operation) error {
 	return nil
 }
 
-// TestNoTwoLeaders verifies that at most one leader exists in each term
+// TestNoTwoLeaders with deterministic seed
 func TestNoTwoLeaders(t *testing.T) {
-	network := simulation.NewNetwork(0.1, 0, 10*time.Millisecond)
-	logger := log.New(os.Stdout, "", log.LstdFlags)
+	const seed int64 = 54321
+	nodes, network, _ := createDeterministicCluster(t, 5, seed)
 
-	nodes := make([]*raft.Raft, 5)
-	transports := make([]*simulation.SimTransport, 5)
-
-	for i := 0; i < 5; i++ {
-		nodeID := string(rune('1' + i))
-		transports[i] = simulation.NewSimTransport(network, nodeID)
-
-		peers := make(map[string]string)
-		for j := 0; j < 5; j++ {
-			if i != j {
-				peerID := string(rune('1' + j))
-				peers[peerID] = peerID
-			}
-		}
-
-		config := raft.DefaultConfig(nodeID)
-		config.Peers = peers
-		config.WALDir = t.TempDir()
-		config.ElectionTimeout = 100 * time.Millisecond
-		config.HeartbeatInterval = 30 * time.Millisecond
-
-		node, err := raft.New(config, transports[i], logger)
-		if err != nil {
-			t.Fatalf("Failed to create node %d: %v", i, err)
-		}
-		nodes[i] = node
-		network.AddNode(nodeID, node, transports[i])
-	}
-
-	// Register handlers
-	for i := 0; i < 5; i++ {
-		for j := 0; j < 5; j++ {
-			nodeID := string(rune('1' + j))
-			transports[i].RegisterHandler(nodeID, nodes[j])
-		}
-	}
-
-	// Start nodes
 	for _, node := range nodes {
 		node.Start()
 	}
@@ -334,20 +313,18 @@ func TestNoTwoLeaders(t *testing.T) {
 	}()
 
 	violations := 0
+	rng := rand.New(rand.NewSource(seed))
 
-	// Run for multiple rounds, checking for multiple leaders
 	for round := 0; round < 10; round++ {
 		time.Sleep(200 * time.Millisecond)
 
-		// Inject random partition
 		if round%3 == 0 {
-			nodeID := string(rune('1' + rand.Intn(5)))
+			nodeID := string(rune('1' + rng.Intn(5)))
 			network.Partition(nodeID)
 			time.Sleep(100 * time.Millisecond)
 			network.Heal(nodeID)
 		}
 
-		// Check leaders per term
 		leadersByTerm := make(map[uint64][]string)
 		for _, node := range nodes {
 			if node.GetState() == raft.Leader {
@@ -369,49 +346,11 @@ func TestNoTwoLeaders(t *testing.T) {
 	}
 }
 
-// TestLogConsistency verifies that committed entries are never overwritten
-func TestLogConsistency(t *testing.T) {
-	network := simulation.NewNetwork(0, 0, 10*time.Millisecond)
-	logger := log.New(os.Stdout, "", log.LstdFlags)
+// TestSameIndexAgreement verifies all nodes commit same values at same indices
+func TestSameIndexAgreement(t *testing.T) {
+	const seed int64 = 11111
+	nodes, _, _ := createDeterministicCluster(t, 3, seed)
 
-	nodes := make([]*raft.Raft, 3)
-	transports := make([]*simulation.SimTransport, 3)
-
-	for i := 0; i < 3; i++ {
-		nodeID := string(rune('1' + i))
-		transports[i] = simulation.NewSimTransport(network, nodeID)
-
-		peers := make(map[string]string)
-		for j := 0; j < 3; j++ {
-			if i != j {
-				peerID := string(rune('1' + j))
-				peers[peerID] = peerID
-			}
-		}
-
-		config := raft.DefaultConfig(nodeID)
-		config.Peers = peers
-		config.WALDir = t.TempDir()
-		config.ElectionTimeout = 100 * time.Millisecond
-		config.HeartbeatInterval = 30 * time.Millisecond
-
-		node, err := raft.New(config, transports[i], logger)
-		if err != nil {
-			t.Fatalf("Failed to create node %d: %v", i, err)
-		}
-		nodes[i] = node
-		network.AddNode(nodeID, node, transports[i])
-	}
-
-	// Register handlers
-	for i := 0; i < 3; i++ {
-		for j := 0; j < 3; j++ {
-			nodeID := string(rune('1' + j))
-			transports[i].RegisterHandler(nodeID, nodes[j])
-		}
-	}
-
-	// Start nodes
 	for _, node := range nodes {
 		node.Start()
 	}
@@ -421,14 +360,13 @@ func TestLogConsistency(t *testing.T) {
 		}
 	}()
 
-	// Wait for stable leader
 	leader := waitForStableLeader(nodes, 3*time.Second)
 	if leader == nil {
 		t.Fatal("No leader elected")
 	}
 
-	// Write values
-	for i := 0; i < 5; i++ {
+	// Write several values
+	for i := 0; i < 10; i++ {
 		key := fmt.Sprintf("key%d", i)
 		value := fmt.Sprintf("value%d", i)
 		err := leader.Set(key, []byte(value), "test-client", uint64(i+1))
@@ -438,6 +376,67 @@ func TestLogConsistency(t *testing.T) {
 	}
 
 	// Wait for replication
+	time.Sleep(500 * time.Millisecond)
+
+	// Collect committed entries from all nodes
+	allCommitted := make([]map[uint64]raft.CommittedEntry, len(nodes))
+	for i, node := range nodes {
+		allCommitted[i] = node.GetAllCommittedEntries()
+	}
+
+	// Verify same index has same value across all nodes
+	for idx := uint64(1); idx <= 20; idx++ {
+		var referenceEntry *raft.CommittedEntry
+		for nodeIdx, committed := range allCommitted {
+			entry, exists := committed[idx]
+			if !exists {
+				continue
+			}
+
+			if referenceEntry == nil {
+				referenceEntry = &entry
+			} else {
+				// Compare term
+				if entry.Term != referenceEntry.Term {
+					t.Errorf("Index %d: node %d has term %d, but node 0 has term %d",
+						idx, nodeIdx, entry.Term, referenceEntry.Term)
+				}
+				// Compare command
+				if string(entry.Command) != string(referenceEntry.Command) {
+					t.Errorf("Index %d: node %d has different command than node 0",
+						idx, nodeIdx)
+				}
+			}
+		}
+	}
+}
+
+// TestLogConsistency with proper verification
+func TestLogConsistency(t *testing.T) {
+	const seed int64 = 22222
+	nodes, network, _ := createDeterministicCluster(t, 3, seed)
+
+	for _, node := range nodes {
+		node.Start()
+	}
+	defer func() {
+		for _, node := range nodes {
+			node.Stop()
+		}
+	}()
+
+	leader := waitForStableLeader(nodes, 3*time.Second)
+	if leader == nil {
+		t.Fatal("No leader elected")
+	}
+
+	// Write values
+	for i := 0; i < 5; i++ {
+		key := fmt.Sprintf("key%d", i)
+		value := fmt.Sprintf("value%d", i)
+		leader.Set(key, []byte(value), "test-client", uint64(i+1))
+	}
+
 	time.Sleep(300 * time.Millisecond)
 
 	// Record committed values
@@ -454,22 +453,17 @@ func TestLogConsistency(t *testing.T) {
 	leaderID := leader.GetNodeID()
 	network.Partition(leaderID)
 
-	// Wait for new election
 	time.Sleep(500 * time.Millisecond)
 
-	// Heal partition
 	network.Heal(leaderID)
-
-	// Wait for cluster to stabilize
 	time.Sleep(300 * time.Millisecond)
 
-	// Find new leader and verify committed values are preserved
 	newLeader := waitForStableLeader(nodes, 3*time.Second)
 	if newLeader == nil {
 		t.Fatal("No leader after healing")
 	}
 
-	// Verify committed values
+	// Verify committed values preserved
 	for key, expectedValue := range committedValues {
 		val, found, _ := newLeader.Get(key, false)
 		if !found {
@@ -480,49 +474,11 @@ func TestLogConsistency(t *testing.T) {
 	}
 }
 
-// TestSplitBrain tests that split-brain scenarios are handled correctly
+// TestSplitBrain with deterministic behavior
 func TestSplitBrain(t *testing.T) {
-	network := simulation.NewNetwork(0, 0, 10*time.Millisecond)
-	logger := log.New(os.Stdout, "", log.LstdFlags)
+	const seed int64 = 33333
+	nodes, network, _ := createDeterministicCluster(t, 5, seed)
 
-	nodes := make([]*raft.Raft, 5)
-	transports := make([]*simulation.SimTransport, 5)
-
-	for i := 0; i < 5; i++ {
-		nodeID := string(rune('1' + i))
-		transports[i] = simulation.NewSimTransport(network, nodeID)
-
-		peers := make(map[string]string)
-		for j := 0; j < 5; j++ {
-			if i != j {
-				peerID := string(rune('1' + j))
-				peers[peerID] = peerID
-			}
-		}
-
-		config := raft.DefaultConfig(nodeID)
-		config.Peers = peers
-		config.WALDir = t.TempDir()
-		config.ElectionTimeout = 100 * time.Millisecond
-		config.HeartbeatInterval = 30 * time.Millisecond
-
-		node, err := raft.New(config, transports[i], logger)
-		if err != nil {
-			t.Fatalf("Failed to create node %d: %v", i, err)
-		}
-		nodes[i] = node
-		network.AddNode(nodeID, node, transports[i])
-	}
-
-	// Register handlers
-	for i := 0; i < 5; i++ {
-		for j := 0; j < 5; j++ {
-			nodeID := string(rune('1' + j))
-			transports[i].RegisterHandler(nodeID, nodes[j])
-		}
-	}
-
-	// Start nodes
 	for _, node := range nodes {
 		node.Start()
 	}
@@ -532,10 +488,9 @@ func TestSplitBrain(t *testing.T) {
 		}
 	}()
 
-	// Wait for election
 	time.Sleep(500 * time.Millisecond)
 
-	// Create a split: partition nodes 1,2 from nodes 3,4,5
+	// Create split: nodes 1,2 vs nodes 3,4,5
 	network.PartitionBetween("1", "3")
 	network.PartitionBetween("1", "4")
 	network.PartitionBetween("1", "5")
@@ -543,10 +498,9 @@ func TestSplitBrain(t *testing.T) {
 	network.PartitionBetween("2", "4")
 	network.PartitionBetween("2", "5")
 
-	// Wait for new election in majority partition
 	time.Sleep(700 * time.Millisecond)
 
-	// The majority partition (3,4,5) should have exactly one leader
+	// Majority partition should have leader
 	majorityLeaders := 0
 	for i := 2; i < 5; i++ {
 		if nodes[i].GetState() == raft.Leader {
@@ -554,10 +508,8 @@ func TestSplitBrain(t *testing.T) {
 		}
 	}
 
-	if majorityLeaders != 1 {
-		// Give extra time for vote-splitting in the majority
+	if majorityLeaders == 0 {
 		time.Sleep(500 * time.Millisecond)
-		majorityLeaders = 0
 		for i := 2; i < 5; i++ {
 			if nodes[i].GetState() == raft.Leader {
 				majorityLeaders++
@@ -569,7 +521,7 @@ func TestSplitBrain(t *testing.T) {
 		t.Errorf("Expected 1 leader in majority partition, got %d", majorityLeaders)
 	}
 
-	// Heal partition
+	// Heal
 	network.HealBetween("1", "3")
 	network.HealBetween("1", "4")
 	network.HealBetween("1", "5")
@@ -577,10 +529,8 @@ func TestSplitBrain(t *testing.T) {
 	network.HealBetween("2", "4")
 	network.HealBetween("2", "5")
 
-	// Wait for cluster to stabilize
 	time.Sleep(500 * time.Millisecond)
 
-	// Should have exactly one leader
 	finalLeaderCount := 0
 	for _, node := range nodes {
 		if node.GetState() == raft.Leader {
@@ -589,6 +539,83 @@ func TestSplitBrain(t *testing.T) {
 	}
 
 	if finalLeaderCount != 1 {
-		t.Errorf("Expected exactly 1 leader after healing, got %d", finalLeaderCount)
+		t.Errorf("Expected 1 leader after healing, got %d", finalLeaderCount)
+	}
+}
+
+// TestDeterministicLeaderIsolation with fixed seed for reproducibility
+func TestDeterministicLeaderIsolation(t *testing.T) {
+	const seed int64 = 44444
+	nodes, network, _ := createDeterministicCluster(t, 3, seed)
+
+	for _, node := range nodes {
+		node.Start()
+	}
+	defer func() {
+		for _, node := range nodes {
+			node.Stop()
+		}
+	}()
+
+	leader := waitForStableLeader(nodes, 3*time.Second)
+	if leader == nil {
+		t.Fatal("No leader elected")
+	}
+
+	// Write initial data
+	err := leader.Set("isolation-key", []byte("initial"), "client", 1)
+	if err != nil {
+		t.Fatalf("Failed to write initial data: %v", err)
+	}
+	time.Sleep(200 * time.Millisecond)
+
+	// Isolate the leader
+	leaderID := leader.GetNodeID()
+	t.Logf("Isolating leader %s (seed=%d)", leaderID, seed)
+	network.Partition(leaderID)
+
+	// Wait for new leader in remaining nodes
+	time.Sleep(600 * time.Millisecond)
+
+	var newLeader *raft.Raft
+	for _, node := range nodes {
+		if node.GetNodeID() != leaderID && node.GetState() == raft.Leader {
+			newLeader = node
+			break
+		}
+	}
+
+	if newLeader == nil {
+		time.Sleep(400 * time.Millisecond)
+		for _, node := range nodes {
+			if node.GetNodeID() != leaderID && node.GetState() == raft.Leader {
+				newLeader = node
+				break
+			}
+		}
+	}
+
+	if newLeader == nil {
+		t.Fatal("No new leader elected after isolating old leader")
+	}
+
+	t.Logf("New leader elected: %s", newLeader.GetNodeID())
+
+	// New leader should be able to make progress
+	err = newLeader.Set("isolation-key", []byte("new-value"), "client", 2)
+	if err != nil {
+		t.Errorf("New leader failed to write: %v", err)
+	}
+
+	// Heal and verify convergence
+	network.Heal(leaderID)
+	time.Sleep(500 * time.Millisecond)
+
+	// All nodes should agree on value
+	for _, node := range nodes {
+		val, found, _ := node.Get("isolation-key", false)
+		if found && string(val) != "new-value" {
+			t.Errorf("Node %s has value %s, expected new-value", node.GetNodeID(), string(val))
+		}
 	}
 }

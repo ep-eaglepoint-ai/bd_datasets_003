@@ -1,10 +1,11 @@
 package jepsen
 
 import (
+	"bytes"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
-	"sync"
 	"testing"
 	"time"
 
@@ -12,84 +13,89 @@ import (
 	"github.com/vzdtic/raft-kv-store/repository_after/pkg/simulation"
 )
 
-// StateSnapshot captures the state of all nodes at a point in time
+// StateSnapshot captures the state of all nodes
 type StateSnapshot struct {
 	Timestamp time.Time
 	States    map[string]NodeSnapshot
 }
 
-// NodeSnapshot captures the state of a single node
+// NodeSnapshot captures state of a single node
 type NodeSnapshot struct {
-	NodeID      string
-	State       raft.State
-	Term        uint64
-	CommitIndex uint64
-	Data        map[string]string
+	NodeID          string
+	State           raft.State
+	Term            uint64
+	CommitIndex     uint64
+	CommittedData   map[uint64][]byte
 }
 
 // ModelChecker performs TLA+ inspired model checking
 type ModelChecker struct {
-	mu        sync.Mutex
-	snapshots []StateSnapshot
+	snapshots  []StateSnapshot
 	invariants []Invariant
 	violations []string
+	seed       int64
 }
 
-// Invariant is a function that checks a safety property
-type Invariant func(snapshot StateSnapshot) error
+// Invariant checks a safety property
+type Invariant func(snapshot StateSnapshot, previous *StateSnapshot) error
 
-// NewModelChecker creates a new model checker
-func NewModelChecker() *ModelChecker {
+// NewModelChecker with deterministic seed
+func NewModelChecker(seed int64) *ModelChecker {
 	mc := &ModelChecker{
 		snapshots: make([]StateSnapshot, 0),
+		seed:      seed,
 	}
 
-	// Add invariants
 	mc.invariants = []Invariant{
 		mc.checkSingleLeaderPerTerm,
-		mc.checkLogConsistency,
+		mc.checkLogAgreement,
 		mc.checkTermMonotonicity,
+		mc.checkCommitMonotonicity,
 	}
 
 	return mc
 }
 
-// RecordSnapshot records a state snapshot
+// RecordSnapshot with committed data
 func (mc *ModelChecker) RecordSnapshot(nodes []*raft.Raft) {
-	mc.mu.Lock()
-	defer mc.mu.Unlock()
-
 	snapshot := StateSnapshot{
 		Timestamp: time.Now(),
 		States:    make(map[string]NodeSnapshot),
 	}
 
 	for _, node := range nodes {
-		leaderID, term, _ := node.GetClusterInfo()
-		_ = leaderID // unused in snapshot
-
-		nodeSnapshot := NodeSnapshot{
-			NodeID: node.GetNodeID(),
-			State:  node.GetState(),
-			Term:   term,
-			Data:   make(map[string]string),
+		_, term, _ := node.GetClusterInfo()
+		committed := node.GetAllCommittedEntries()
+		
+		committedData := make(map[uint64][]byte)
+		for idx, entry := range committed {
+			committedData[idx] = entry.Command
 		}
 
-		snapshot.States[node.GetNodeID()] = nodeSnapshot
+		snapshot.States[node.GetNodeID()] = NodeSnapshot{
+			NodeID:        node.GetNodeID(),
+			State:         node.GetState(),
+			Term:          term,
+			CommittedData: committedData,
+		}
+	}
+
+	var prevSnapshot *StateSnapshot
+	if len(mc.snapshots) > 0 {
+		prevSnapshot = &mc.snapshots[len(mc.snapshots)-1]
 	}
 
 	mc.snapshots = append(mc.snapshots, snapshot)
 
-	// Check invariants
 	for _, invariant := range mc.invariants {
-		if err := invariant(snapshot); err != nil {
+		if err := invariant(snapshot, prevSnapshot); err != nil {
 			mc.violations = append(mc.violations, err.Error())
 		}
 	}
 }
 
-// checkSingleLeaderPerTerm verifies at most one leader per term
-func (mc *ModelChecker) checkSingleLeaderPerTerm(snapshot StateSnapshot) error {
+// checkSingleLeaderPerTerm - at most one leader per term
+func (mc *ModelChecker) checkSingleLeaderPerTerm(snapshot StateSnapshot, _ *StateSnapshot) error {
 	leadersByTerm := make(map[uint64][]string)
 
 	for nodeID, state := range snapshot.States {
@@ -107,23 +113,34 @@ func (mc *ModelChecker) checkSingleLeaderPerTerm(snapshot StateSnapshot) error {
 	return nil
 }
 
-// checkLogConsistency verifies log consistency across nodes
-func (mc *ModelChecker) checkLogConsistency(snapshot StateSnapshot) error {
-	// For each pair of nodes, if they have entries at the same index,
-	// the entries should match
-	for nodeA, stateA := range snapshot.States {
-		for nodeB, stateB := range snapshot.States {
-			if nodeA >= nodeB {
+// checkLogAgreement - same index must have same value across nodes
+func (mc *ModelChecker) checkLogAgreement(snapshot StateSnapshot, _ *StateSnapshot) error {
+	// Collect all committed indices
+	allIndices := make(map[uint64]bool)
+	for _, state := range snapshot.States {
+		for idx := range state.CommittedData {
+			allIndices[idx] = true
+		}
+	}
+
+	// For each index, verify all nodes that have it agree on value
+	for idx := range allIndices {
+		var referenceData []byte
+		var referenceNode string
+
+		for nodeID, state := range snapshot.States {
+			data, exists := state.CommittedData[idx]
+			if !exists {
 				continue
 			}
 
-			// Compare data (simplified check)
-			for key, valueA := range stateA.Data {
-				if valueB, ok := stateB.Data[key]; ok {
-					if valueA != valueB {
-						return fmt.Errorf("inconsistent value for key %s: node %s has %s, node %s has %s",
-							key, nodeA, valueA, nodeB, valueB)
-					}
+			if referenceData == nil {
+				referenceData = data
+				referenceNode = nodeID
+			} else {
+				if !bytes.Equal(data, referenceData) {
+					return fmt.Errorf("index %d: node %s has different data than node %s",
+						idx, nodeID, referenceNode)
 				}
 			}
 		}
@@ -132,16 +149,14 @@ func (mc *ModelChecker) checkLogConsistency(snapshot StateSnapshot) error {
 	return nil
 }
 
-// checkTermMonotonicity verifies terms never decrease
-func (mc *ModelChecker) checkTermMonotonicity(snapshot StateSnapshot) error {
-	if len(mc.snapshots) < 2 {
+// checkTermMonotonicity - terms never decrease
+func (mc *ModelChecker) checkTermMonotonicity(snapshot StateSnapshot, previous *StateSnapshot) error {
+	if previous == nil {
 		return nil
 	}
 
-	prevSnapshot := mc.snapshots[len(mc.snapshots)-2]
-
 	for nodeID, state := range snapshot.States {
-		if prevState, ok := prevSnapshot.States[nodeID]; ok {
+		if prevState, ok := previous.States[nodeID]; ok {
 			if state.Term < prevState.Term {
 				return fmt.Errorf("term decreased for node %s: was %d, now %d",
 					nodeID, prevState.Term, state.Term)
@@ -152,18 +167,41 @@ func (mc *ModelChecker) checkTermMonotonicity(snapshot StateSnapshot) error {
 	return nil
 }
 
-// GetViolations returns all recorded violations
+// checkCommitMonotonicity - commit index never decreases
+func (mc *ModelChecker) checkCommitMonotonicity(snapshot StateSnapshot, previous *StateSnapshot) error {
+	if previous == nil {
+		return nil
+	}
+
+	for nodeID, state := range snapshot.States {
+		if prevState, ok := previous.States[nodeID]; ok {
+			if state.CommitIndex < prevState.CommitIndex {
+				return fmt.Errorf("commit index decreased for node %s: was %d, now %d",
+					nodeID, prevState.CommitIndex, state.CommitIndex)
+			}
+		}
+	}
+
+	return nil
+}
+
+// GetViolations returns recorded violations
 func (mc *ModelChecker) GetViolations() []string {
-	mc.mu.Lock()
-	defer mc.mu.Unlock()
 	return mc.violations
 }
 
-// TestModelChecking runs model checking tests
+// GetSeed returns the seed for replay
+func (mc *ModelChecker) GetSeed() int64 {
+	return mc.seed
+}
+
+// TestModelChecking with deterministic seed
 func TestModelChecking(t *testing.T) {
-	network := simulation.NewNetwork(0.1, 5*time.Millisecond, 20*time.Millisecond)
+	const seed int64 = 77777
+	
+	network := simulation.NewDeterministicNetwork(0.1, 5*time.Millisecond, 20*time.Millisecond, seed)
 	logger := log.New(os.Stdout, "", log.LstdFlags)
-	modelChecker := NewModelChecker()
+	modelChecker := NewModelChecker(seed)
 
 	nodes := make([]*raft.Raft, 3)
 	transports := make([]*simulation.SimTransport, 3)
@@ -185,6 +223,7 @@ func TestModelChecking(t *testing.T) {
 		config.WALDir = t.TempDir()
 		config.ElectionTimeout = 100 * time.Millisecond
 		config.HeartbeatInterval = 30 * time.Millisecond
+		config.RandomSeed = seed + int64(i)
 
 		node, err := raft.New(config, transports[i], logger)
 		if err != nil {
@@ -194,7 +233,6 @@ func TestModelChecking(t *testing.T) {
 		network.AddNode(nodeID, node, transports[i])
 	}
 
-	// Register handlers
 	for i := 0; i < 3; i++ {
 		for j := 0; j < 3; j++ {
 			nodeID := string(rune('1' + j))
@@ -202,21 +240,25 @@ func TestModelChecking(t *testing.T) {
 		}
 	}
 
-	// Start nodes
 	for _, node := range nodes {
 		node.Start()
 	}
+	defer func() {
+		for _, node := range nodes {
+			node.Stop()
+		}
+	}()
 
-	// Run simulation with model checking
+	rng := rand.New(rand.NewSource(seed))
+
 	done := make(chan bool)
 	go func() {
 		for i := 0; i < 50; i++ {
 			time.Sleep(50 * time.Millisecond)
 			modelChecker.RecordSnapshot(nodes)
 
-			// Random network events
 			if i%10 == 0 {
-				nodeID := string(rune('1' + (i/10)%3))
+				nodeID := string(rune('1' + rng.Intn(3)))
 				network.Partition(nodeID)
 				time.Sleep(100 * time.Millisecond)
 				network.Heal(nodeID)
@@ -227,25 +269,22 @@ func TestModelChecking(t *testing.T) {
 
 	<-done
 
-	// Check for violations
 	violations := modelChecker.GetViolations()
 	if len(violations) > 0 {
+		t.Logf("Test ran with seed %d (replayable)", modelChecker.GetSeed())
 		for _, v := range violations {
 			t.Errorf("Safety violation: %s", v)
 		}
 	}
-
-	// Cleanup
-	for _, node := range nodes {
-		node.Stop()
-	}
 }
 
-// TestRandomizedExecution performs randomized testing
+// TestRandomizedExecution with fixed seeds per run
 func TestRandomizedExecution(t *testing.T) {
-	for seed := int64(0); seed < 5; seed++ {
+	seeds := []int64{88881, 88882, 88883, 88884, 88885}
+
+	for _, seed := range seeds {
 		t.Run(fmt.Sprintf("seed_%d", seed), func(t *testing.T) {
-			network := simulation.NewNetwork(0.05, 0, 15*time.Millisecond)
+			network := simulation.NewDeterministicNetwork(0.05, 0, 15*time.Millisecond, seed)
 			logger := log.New(os.Stdout, "", log.LstdFlags)
 
 			nodes := make([]*raft.Raft, 3)
@@ -268,6 +307,7 @@ func TestRandomizedExecution(t *testing.T) {
 				config.WALDir = t.TempDir()
 				config.ElectionTimeout = 100 * time.Millisecond
 				config.HeartbeatInterval = 30 * time.Millisecond
+				config.RandomSeed = seed + int64(i)
 
 				node, err := raft.New(config, transports[i], logger)
 				if err != nil {
@@ -277,7 +317,6 @@ func TestRandomizedExecution(t *testing.T) {
 				network.AddNode(nodeID, node, transports[i])
 			}
 
-			// Register handlers
 			for i := 0; i < 3; i++ {
 				for j := 0; j < 3; j++ {
 					nodeID := string(rune('1' + j))
@@ -285,15 +324,18 @@ func TestRandomizedExecution(t *testing.T) {
 				}
 			}
 
-			// Start nodes
 			for _, node := range nodes {
 				node.Start()
 			}
+			defer func() {
+				for _, node := range nodes {
+					node.Stop()
+				}
+			}()
 
-			// Wait for election
 			time.Sleep(500 * time.Millisecond)
 
-			// Run operations
+			rng := rand.New(rand.NewSource(seed))
 			for i := 0; i < 20; i++ {
 				var leader *raft.Raft
 				for _, node := range nodes {
@@ -304,15 +346,14 @@ func TestRandomizedExecution(t *testing.T) {
 				}
 
 				if leader != nil {
-					key := fmt.Sprintf("k%d", i%5)
+					key := fmt.Sprintf("k%d", rng.Intn(5))
 					value := fmt.Sprintf("v%d", i)
-					leader.Set(key, []byte(value), "client", uint64(i))
+					leader.Set(key, []byte(value), "client", uint64(i+1))
 				}
 
 				time.Sleep(50 * time.Millisecond)
 			}
 
-			// Verify at most one leader
 			leaderCount := 0
 			for _, node := range nodes {
 				if node.GetState() == raft.Leader {
@@ -321,12 +362,7 @@ func TestRandomizedExecution(t *testing.T) {
 			}
 
 			if leaderCount > 1 {
-				t.Errorf("More than one leader: %d", leaderCount)
-			}
-
-			// Cleanup
-			for _, node := range nodes {
-				node.Stop()
+				t.Errorf("Seed %d: More than one leader: %d", seed, leaderCount)
 			}
 		})
 	}
