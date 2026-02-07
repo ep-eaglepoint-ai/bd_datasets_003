@@ -1,0 +1,51 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: webhooks
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d webhooks"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  test:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://user:password@postgres:5432/webhooks
+      REDIS_URL: redis://redis:6379/0
+      PYTHONPATH: /app/repository_after:/app
+    volumes:
+      - .:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: pytest -v tests
+
+  evaluate:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://user:password@postgres:5432/webhooks
+      REDIS_URL: redis://redis:6379/0
+      PYTHONPATH: /app/repository_after:/app
+      INSIDE_DOCKER: "true"
+    volumes:
+      - .:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: python3 evaluation/evaluate.py

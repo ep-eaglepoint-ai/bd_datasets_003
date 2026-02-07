@@ -1,0 +1,11 @@
+{
+            "instance_id": "Z1ERB8",
+            "problem_statement": "The SaaS platform's webhook delivery system has reliability issues causing customer complaints about missed notifications. When recipient endpoints are temporarily unavailable, webhook deliveries fail permanently with no retry attempts. There is no visibility into delivery history, making it impossible to diagnose why specific webhooks were not received. Endpoints that have been decommissioned continue receiving delivery attempts indefinitely, wasting server resources. Customer support cannot verify whether webhooks were actually sent or if the recipient's server rejected them.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/z1erb8-webhook-delivery-system-with-exponential-backoff-and-signature-verification",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
