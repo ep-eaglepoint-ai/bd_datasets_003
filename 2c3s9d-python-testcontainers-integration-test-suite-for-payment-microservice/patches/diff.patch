@@ -1,0 +1,61 @@
+diff --git a/repository_before/app/services/payment.py b/repository_after/app/services/payment.py
+index 1234567..abcdefg 100644
+--- a/repository_before/app/services/payment.py
++++ b/repository_after/app/services/payment.py
+@@ -1,4 +1,5 @@
+ import httpx
++import asyncio
+ import uuid
+ from app.repositories.payment_repo import PaymentRepository
+ from app.queue.publisher import EventPublisher
+ from app.models import Payment
+
+diff --git a/repository_before/app/models.py b/repository_after/app/models.py
+index 1234567..abcdefg 100644
+--- a/repository_before/app/models.py
++++ b/repository_after/app/models.py
+@@ -23,7 +23,7 @@ class Payment:
+             idempotency_key=data.get("idempotency_key")
+         )
+ 
+     @classmethod
+     def from_row(cls, row):
+-        return cls(
++        return cls(**dict(row)) if hasattr(row, '__iter__') else cls(
+             id=row["id"],
+             amount=row["amount"],
+             currency=row["currency"],
+@@ -48,3 +48,20 @@ class Refund:
+             amount=row["amount"],
+             reason=row.get("reason"),
+             status=row["status"]
+         )
++
++    def to_dict(self):
++        return {
++            "id": self.id,
++            "payment_id": self.payment_id,
++            "amount": self.amount,
++            "reason": self.reason,
++            "status": self.status
++        }
++
++    @classmethod
++    def from_dict(cls, data):
++        return cls(
++            id=data["id"],
++            payment_id=data["payment_id"],
++            amount=data["amount"],
++            reason=data.get("reason"),
++            status=data["status"]
++        )
++
++    @classmethod
++    def from_row(cls, row):
++        return cls(
++            id=row["id"],
++            payment_id=row["payment_id"],
++            amount=row["amount"],
++            reason=row.get("reason"),
++            status=row["status"]
++        )
