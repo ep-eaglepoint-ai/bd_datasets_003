@@ -3,7 +3,9 @@ services:
         build: .
         volumes:
             - ./repository_after:/app/repository_after
+            - /app/repository_after/node_modules
             - ./tests:/app/tests
+            - /app/tests/node_modules
             - ./coverage:/app/coverage
         working_dir: /app
         command: >
@@ -17,9 +19,13 @@ services:
         build: .
         volumes:
             - ./repository_before:/app/repository_before
+            - /app/repository_before/node_modules
             - ./repository_after:/app/repository_after
+            - /app/repository_after/node_modules
             - ./tests:/app/tests
+            - /app/tests/node_modules
             - ./evaluation:/app/evaluation
+            - ./coverage:/app/coverage
         working_dir: /app
         command: >
             sh -lc "node /app/evaluation/evaluate.js"
