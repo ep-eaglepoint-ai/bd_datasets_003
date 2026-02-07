@@ -1,11 +1,13 @@
 # FCRF5S - task manager api testing
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Before Test Docker Command (SKIPPED)
 
-    ## After Test Docker Command
-    <docker after command here>
+docker run --rm alpine true
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## After Test Docker Command
+
+docker compose up --build
+
+## Evaluation Docker Command
+
+docker compose run --rm evaluation
