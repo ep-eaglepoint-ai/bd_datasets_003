@@ -259,16 +259,89 @@ describe('NotificationCenter', () => {
     expect(focusSpy).toHaveBeenCalled();
   });
   
+  test('handles keyboard navigation (Space) for items', () => {
+      const component = renderer.create(React.createElement(NotificationCenter));
+      const root = component.root;
+      let list = root.findByType(NotificationList);
+      let firstItem = list.findAllByType('li')[0];
+      
+      // Space key marks as read
+      firstItem.props.onKeyDown({ key: ' ', preventDefault: jest.fn() });
+      
+      list = root.findByType(NotificationList);
+      expect(list.findAllByType('li')[0].props.className).toContain('read');
+  });
+
   test('Constraint Check: Components should be standard React classes', () => {
-     // This test inspects the prototypes to ensure they inherit from React.Component
-     // and do not look like functional components.
-     expect(NotificationCenter.prototype).toBeDefined();
-     expect(NotificationCenter.prototype.render).toBeDefined();
-     
-     expect(NotificationList.prototype).toBeDefined();
-     expect(NotificationList.prototype.render).toBeDefined();
-     
-     expect(Pagination.prototype).toBeDefined();
-     expect(Pagination.prototype.render).toBeDefined();
+     expect(NotificationCenter.prototype instanceof React.Component).toBe(true);
+     expect(NotificationList.prototype instanceof React.Component).toBe(true);
+     // Now we can check NotificationItem
+     expect(NotificationList.NotificationItem.prototype instanceof React.Component).toBe(true);
+  });
+
+  test('Constraint Check: No forbidden dependencies or syntax', () => {
+    // 1. Check package.json
+    const fs = require('fs');
+    const path = require('path');
+    const packageJsonPath = path.join(__dirname, '../repository_after/package.json');
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+    
+    const dependencies = Object.keys(packageJson.dependencies || {});
+    const allowedDependencies = ['react', 'react-dom'];
+    
+    // Filter out allowed to see if any forbidden remain
+    const forbidden = dependencies.filter(d => !allowedDependencies.includes(d));
+    expect(forbidden).toEqual([]);
+
+    // 2. Scan source files for requires
+    const srcDir = path.join(__dirname, '../repository_after/src');
+    const files = fs.readdirSync(srcDir).filter(f => f.endsWith('.js'));
+    
+    files.forEach(file => {
+      const content = fs.readFileSync(path.join(srcDir, file), 'utf8');
+      // Regex to find require('...')
+      const requireRegex = /require\(['"]([^'"]+)['"]\)/g;
+      let match;
+      while ((match = requireRegex.exec(content)) !== null) {
+        const importPath = match[1];
+        // Allow: react, react-dom, and relative paths (./...)
+        const isAllowed = importPath === 'react' || 
+                          importPath === 'react-dom' || 
+                          importPath.startsWith('.');
+        
+        if (!isAllowed) {
+            throw new Error(`Forbidden import found in ${file}: ${importPath}`);
+        }
+      }
+    });
+  });
+
+  test('Safety: handles missing event object in handlers', () => {
+    const component = renderer.create(React.createElement(NotificationCenter));
+    const root = component.root;
+    const pagination = root.findByType(Pagination);
+    const nextBtn = pagination.findAllByType('button')[1];
+
+    // Call handler without event object - should not throw
+    expect(() => nextBtn.props.onClick(undefined)).not.toThrow();
+    
+    // Call keydown without event - should safely return
+    expect(() => nextBtn.props.onKeyDown(undefined)).not.toThrow();
+  });
+  
+  test('renders empty state correctly', () => {
+    // Mock empty data
+    jest.resetModules();
+    jest.mock('../repository_after/src/data', () => []);
+    const NotificationCenterEmpty = require('../repository_after/src/NotificationCenter');
+    
+    const component = renderer.create(React.createElement(NotificationCenterEmpty));
+    const tree = component.toJSON();
+    expect(tree).toMatchSnapshot(); // Snapshot for empty state
+    
+    const root = component.root;
+    const list = root.findAllByType('div').find(n => n.props.className === 'notification-list-empty');
+    expect(list).toBeDefined();
+    expect(list.children).toContain('No notifications');
   });
 });

@@ -1,5 +1,5 @@
 var React = require('react');
-// var PropTypes = require('prop-types');
+
 
 class Pagination extends React.Component {
   constructor(props) {
@@ -8,19 +8,17 @@ class Pagination extends React.Component {
     this.handleNext = this.handleNext.bind(this);
   }
 
-  componentDidUpdate(prevProps) {
-    if (this.props.currentPage !== prevProps.currentPage) {
-       // Requirement: Focus restoration. 
-    }
-  }
+
 
   handlePrev(e) {
-    if (e.type === 'keydown' && e.key !== 'Enter') return;
+    if (e && e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
+    if (e && e.preventDefault) e.preventDefault(); // Prevent scroll on Space
     this.props.onPrev();
   }
 
   handleNext(e) {
-    if (e.type === 'keydown' && e.key !== 'Enter') return;
+    if (e && e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
+    if (e && e.preventDefault) e.preventDefault(); // Prevent scroll on Space
     this.props.onNext();
   }
 

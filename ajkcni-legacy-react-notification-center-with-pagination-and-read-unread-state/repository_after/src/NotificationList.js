@@ -1,5 +1,5 @@
 var React = require('react');
-// var PropTypes = require('prop-types');
+
 
 class NotificationList extends React.Component {
   render() {
@@ -40,7 +40,8 @@ class NotificationItem extends React.Component {
   }
 
   handleKeyDown(e) {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' || e.key === ' ') {
+      if (e.key === ' ') e.preventDefault();
       this.handleClick();
     }
   }
@@ -70,4 +71,5 @@ NotificationItem.displayName = 'NotificationItem';
 //   onToggleRead: PropTypes.func.isRequired
 // };
 
+NotificationList.NotificationItem = NotificationItem;
 module.exports = NotificationList;

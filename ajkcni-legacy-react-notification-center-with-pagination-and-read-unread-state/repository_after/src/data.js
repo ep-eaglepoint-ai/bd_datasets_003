@@ -6,7 +6,7 @@ for (var i = 1; i <= 50; i++) {
     id: i,
     message: "Notification " + i + ": System update pending action.",
     type: types[i % 4],
-    timestamp: new Date().toISOString(),
+    timestamp: "2023-10-01T12:00:00.000Z",
     isRead: false
   });
 }
