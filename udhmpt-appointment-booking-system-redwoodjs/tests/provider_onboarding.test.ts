@@ -123,7 +123,14 @@ describe('Provider Onboarding (Integration)', () => {
   })
 
   test('Rejects invalid provider timezone on profile create', async () => {
-    context.currentUser = { id: providerUserId, email: 'provider@test.com', role: 'PROVIDER' }
+    const anotherProvider = await db.user.create({
+      data: { email: `provider-bad-${Date.now()}@test.com`, role: 'PROVIDER' },
+    })
+    context.currentUser = {
+      id: anotherProvider.id,
+      email: 'provider-bad@test.com',
+      role: 'PROVIDER',
+    }
     await expect(
       createProviderProfile({
         input: {

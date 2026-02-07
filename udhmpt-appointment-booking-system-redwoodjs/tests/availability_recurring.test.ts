@@ -24,7 +24,7 @@ describe('Recurring availability rules', () => {
     expect(JSON.stringify(a)).toBe(JSON.stringify(b))
   })
 
-  test('Custom day overrides weekly', () => {
+  test('Custom day adds on top of weekly', () => {
     const rules = [
       { weekday: 2, startLocal: '10:00', endLocal: '11:00', tz: 'UTC' },
     ]
@@ -39,9 +39,10 @@ describe('Recurring availability rules', () => {
     ]
 
     const merged = mergeOverrides(expanded as any, customDays)
-    // For 2021-11-02, recurring (10:00-11:00) should be replaced by custom (15:00-16:00)
-    expect(merged.length).toBe(1)
-    expect(merged[0].startUtc).toContain('T15:00')
+    // Custom day should add availability without removing the recurring window
+    expect(merged.length).toBe(2)
+    expect(merged.some((w: any) => w.startUtc.includes('T10:00'))).toBe(true)
+    expect(merged.some((w: any) => w.startUtc.includes('T15:00'))).toBe(true)
   })
 
   test('DST week does not shift times (local times preserved)', () => {
