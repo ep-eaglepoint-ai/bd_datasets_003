@@ -15,4 +15,16 @@ RUN echo ">>> Installing dependencies (1–3 min)..." \
   && (test -f /app/package-lock.json && npm ci --no-audit --no-fund || npm install --no-audit --no-fund --loglevel=info) \
   && echo ">>> Dependencies installed."
 # If CMD is passed as one string (e.g. "node process_repo.mjs"), split it so exec gets separate args
-ENTRYPOINT ["/bin/sh", "-c", "if [ $# -gt 0 ]; then [ $# -eq 1 ] && set -- $1; exec \"$@\"; fi; set -e; if [ \"$REPO_PATH\" = 'repository_before' ]; then npm run test -w repository_before || true; elif [ \"$REPO_PATH\" = 'repository_after' ]; then npm run test -w repository_after; else node evaluation/evaluation.js; fi"]
+#ENTRYPOINT ["/bin/sh", "-c", "if [ $# -gt 0 ]; then [ $# -eq 1 ] && set -- $1; exec \"$@\"; fi; set -e; if [ \"$REPO_PATH\" = 'repository_before' ]; then npm run test -w repository_before || true; elif [ \"$REPO_PATH\" = 'repository_after' ]; then npm run test -w repository_after; else node evaluation/evaluation.js; fi"]
+ENTRYPOINT ["/bin/sh", "-c", "\
+set -e; \
+if [ \"$REPO_PATH\" = 'repository_before' ]; then \
+  npm test -w repository_before -- --runInBand --watch=false || true; \
+  exit 0; \
+elif [ \"$REPO_PATH\" = 'repository_after' ]; then \
+  npm test -w repository_after -- --runInBand --watch=false; \
+  exit 0; \
+else \
+  node evaluation/evaluation.js; \
+  exit 0; \
+fi"]
