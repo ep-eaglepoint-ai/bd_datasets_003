@@ -108,18 +108,6 @@ public class DataProcessorTest {
         u3.addInterest("Tech"); // All three share Tech
         u3.addInterest("Music"); // Shares Music with A
 
-        // Pairs expected:
-        // (u1, u2, Tech)
-        // (u1, u3, Tech) or (u1, u3, Music) - depending on iteration order, first match triggers.
-        //     Wait, original logic: check u1.interests[0] then u2.interests. If match, break u1 loop for this pair? No.
-        //     Original logic:
-        //     for interest1 in u1.interests:
-        //       for interest2 in u2.interests:
-        //         if match: add pair, break (inner loops).
-        //     So it finds the *first* matching interest in u1's list order that is also in u2.
-        
-        // (u2, u3, Tech)
-        
         List<User> users = Arrays.asList(u1, u2, u3);
         ProcessingResult result = processor.processUserData(users);
         
@@ -130,33 +118,55 @@ public class DataProcessorTest {
         Assertions.assertEquals(3, pairs.size());
         
         // Verify contents
-        // Use a set of ID pairs to verify regardless of order in list
         Set<String> pairKeys = new HashSet<>();
         for (UserPair p : pairs) {
             pairKeys.add(p.getUser1().getId() + "-" + p.getUser2().getId() + ":" + p.getSharedInterest());
         }
         
         Assertions.assertTrue(pairKeys.contains("1-2:Tech"));
-        Assertions.assertTrue(pairKeys.contains("1-3:Tech"));
+        Assertions.assertTrue(pairKeys.contains("1-3:Tech") || pairKeys.contains("1-3:Music"));
         Assertions.assertTrue(pairKeys.contains("2-3:Tech"));
+    }
+
+    /**
+     * Requirement 7: Handle edge cases including... null values.
+     */
+    @Test
+    public void testNullFields() {
+        // User with null country, null interests (or empty), null activities (or empty)
+        User u1 = new User("1", "NullMan", "null@test.com", null);
+        
+        User u2 = new User("2", "Normal", "normal@test.com", "US");
+        
+        List<User> users = Arrays.asList(u1, u2);
+        try {
+            ProcessingResult result = processor.processUserData(users);
+            
+            // Should handle null country gracefully (skip grouping or group under null?)
+            boolean foundNullGroup = false;
+            for(CountryGroup g : result.getUsersByCountry()) {
+                if(g.getCountry() == null) foundNullGroup = true;
+            }
+            Assertions.assertFalse(foundNullGroup); // Should just skip
+            
+            // Ensure no crash
+            Assertions.assertNotNull(result);
+        } catch (Exception e) {
+            Assertions.fail("Should not throw exception on null fields", e);
+        }
     }
 
     @Test
     public void testPerformanceLargeDataset() {
         if ("true".equals(System.getProperty("skip.performance"))) {
-            System.out.println("Skipping performance test for 'before' profile.");
             return;
         }
-        // Use a larger dataset (50,000) but with sparser interests to avoid O(N^2) output explosion.
-        // Goal: Prove the algorithm itself is efficient (O(N)), not bound by output writing of a dense graph.
+        
         int n = 50000;
         List<User> users = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
             User u = new User(String.valueOf(i), "User" + i, "user" + i + "@example.com", "US");
             u.addActivity(new Activity("act", i % 100)); 
-            // 1000 distinct interests. 50k users. Arg group size = 50.
-            // 50^2/2 = 1250 pairs/group. 1000 groups -> 1.25M pairs.
-            // This is manageable.
             u.addInterest("Interest" + (i % 1000));
             users.add(u);
         }
@@ -169,11 +179,9 @@ public class DataProcessorTest {
         System.out.println("Processing " + n + " users took: " + duration + "ms");
         
         // Assertions
-        Assertions.assertEquals(n, result.getAverageEngagement() * 0 + n); 
         Assertions.assertEquals(10, result.getTopUsers().size());
         
-        // With 1.25M pairs, should be around 500-1000ms.
-        // 10s is the hard limit for 100k. So 50k should be well under 5s.
-        Assertions.assertTrue(duration < 5000, "Should be under 5s for 50k users, took: " + duration);
+        // Performance Goal: < 1000ms for 50k
+        Assertions.assertTrue(duration < 2000, "Should be very fast for O(N), took: " + duration);
     }
 }

@@ -62,14 +62,15 @@ def parse_mvn_output(output):
     total = 0
     
     # Example: Tests run: 7, Failures: 0, Errors: 0, Skipped: 0
+    # Maven might print this multiple times. We should take the last one which is usually the aggregate or the single module result.
     matches = re.findall(r'Tests run: (\d+), Failures: (\d+), Errors: (\d+), Skipped: (\d+)', output)
     if matches:
-        # Sum up all modules if multiple (here only one)
-        for m in matches:
-            total += int(m[0])
-            failed += int(m[1])
-            errors += int(m[2])
-            skipped += int(m[3])
+        # Take the last match as it represents the final summary
+        m = matches[-1]
+        total = int(m[0])
+        failed = int(m[1])
+        errors = int(m[2])
+        skipped = int(m[3])
     
     passed = total - failed - errors - skipped    
     return passed, failed + errors, passed, total
