@@ -1,0 +1,6 @@
+# Keep context smaller; node_modules are included (must run npm install before build)
+.git
+.cursor
+.vscode
+*.log
+.DS_Store

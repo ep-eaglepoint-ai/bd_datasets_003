@@ -1,0 +1,8 @@
+{
+  "private": true,
+  "name": "data-grid-task",
+  "workspaces": [
+    "repository_before",
+    "repository_after"
+  ]
+}
