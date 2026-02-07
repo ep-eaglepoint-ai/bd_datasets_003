@@ -16,8 +16,13 @@ const authenticateUser = (
     res.status(401).json({ error: "Unauthorized: Missing X-User-ID header" });
     return;
   }
+  const pid = parseInt(userId as string, 10);
+  if (isNaN(pid) || pid <= 0) {
+    res.status(400).json({ error: "Invalid X-User-ID" });
+    return;
+  }
   // @ts-ignore
-  req.user = { id: parseInt(userId as string, 10) };
+  req.user = { id: pid };
   next();
 };
 
@@ -146,7 +151,11 @@ app.post("/tasks", async (req, res) => {
 
     const msg = (err as Error).message;
     // Distinguish Validation errors (400) from Server errors (500)
-    if (msg.includes("Cannot schedule") || msg.includes("Invalid date")) {
+    if (
+      msg.includes("Cannot schedule") ||
+      msg.includes("Invalid date") ||
+      msg.includes("Invalid reminder format") // Catch parse errors
+    ) {
       res.status(400).json({ error: msg });
     } else {
       res.status(500).json({ error: msg });
@@ -217,7 +226,12 @@ app.post("/tasks/:id/reminders", async (req, res) => {
       res.status(409).json({ error: "Reminder already exists" });
       return;
     }
-    res.status(500).json({ error: (err as Error).message });
+    // Added specific validation catch here
+    const msg = (err as Error).message;
+    if (msg.includes("Invalid date")) {
+      return res.status(400).json({ error: msg });
+    }
+    res.status(500).json({ error: msg });
   }
 });
 
