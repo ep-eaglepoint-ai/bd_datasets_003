@@ -3,7 +3,7 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config ./jest.meta.config.js --runInBand",
+        "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config /app/jest.meta.config.js --runInBand",
         "postinstall": "prisma generate || echo \"prisma not present; skipping\""
     },
     "dependencies": {
