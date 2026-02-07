@@ -7,6 +7,6 @@
   ],
   "scripts": {
     "evaluate": "node evaluation/evaluation.js",
-    "test": "vitest run --watch=false --threads=false"
+    "test": "vitest run --watch=false "
   }
 }
