@@ -1,0 +1,10 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    volumes:
+      - .:/app
+    environment:
+      - CGO_ENABLED=0
+      - REPO_PATH=${REPO_PATH:-repository_after}

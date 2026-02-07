@@ -1,0 +1,30 @@
+# Compiled binaries
+/app
+/repository_after/parser_bin
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Dependency directories (only if you use 'go mod vendor')
+# vendor/
+
+# Test and Evaluation artifacts
+evaluation/report.json
+report.json
+*.test
+*.out
+
+# Trajectory logs (excluding the main documentation)
+trajectory/step_*.json
+
+# Operating System files
+.DS_Store
+Thumbs.db
+
+# IDEs and Editors
+.idea/
+.vscode/
+*.swp
+*.swo
