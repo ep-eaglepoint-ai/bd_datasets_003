@@ -1,0 +1,11 @@
+{
+            "instance_id": "XN0XIJ",
+            "problem_statement": "Teams need a fast and lightweight way to make decisions without long discussions or meetings. Existing tools are often overkill for simple polls and introduce unnecessary complexity. The goal is to build a simple, reliable polling application where users can create polls, vote once, and instantly view accurate results. The system must enforce voting rules, validate inputs, and ensure consistent results across refreshes.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/xn0xij-polling-application",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
