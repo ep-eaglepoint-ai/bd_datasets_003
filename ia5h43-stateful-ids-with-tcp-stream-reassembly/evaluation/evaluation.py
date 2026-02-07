@@ -137,7 +137,10 @@ def run_evaluation():
 def main():
     try:
         REPORTS.mkdir(parents=True, exist_ok=True)
+        # Ensure the directory is writable by everyone so the host user can delete it
+        os.chmod(REPORTS, 0o777)
     except PermissionError:
+        print(f"Error: Permission denied creating {REPORTS}")
         return 1
     
     try:
@@ -157,8 +160,13 @@ def main():
         }
     
     path = REPORTS / "latest.json"
-    path.write_text(json.dumps(report, indent=2))
-    print(f"Report written to {path}")
+    try:
+        path.write_text(json.dumps(report, indent=2))
+        os.chmod(path, 0o666)
+        print(f"Report written to {path}")
+    except Exception as exc:
+        print(f"Error writing report: {exc}")
+        return 1
     
     return 0 if report["success"] else 1
 
