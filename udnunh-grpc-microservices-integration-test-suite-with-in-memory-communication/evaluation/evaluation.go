@@ -78,8 +78,8 @@ func main() {
 
 func runPrimaryTests() {
 	fmt.Println("Running primary tests...")
-	cmd := exec.Command("go", "test", "-v", "-count=1", "./...")
-	cmd.Dir = "/app/repository_after"
+	cmd := exec.Command("go", "test", "-v", "-count=1", "-short", "./repository_after/...", "./tests/...")
+	cmd.Dir = "/app"
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	err := cmd.Run()

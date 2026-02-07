@@ -359,7 +359,7 @@ func getListeningTCPPorts(t *testing.T) []net.Listener {
 	// Try binding to a range of ports to verify they are available
 	// This is a heuristic - if bufconn opened ports, some would be unavailable
 	var listeners []net.Listener
-	for port := 50000; port < 50010; port++ {
+	for port := 49152; port < 49252; port++ {
 		l, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 		if err == nil {
 			listeners = append(listeners, l)
@@ -374,6 +374,7 @@ func getListeningTCPPorts(t *testing.T) []net.Listener {
 
 // TestParallelTestSafety proves tests can run in parallel without interference
 func TestParallelTestSafety(t *testing.T) {
+	t.Parallel()
 	// Create multiple independent environments and run them in parallel
 	const numParallel = 5
 	var wg sync.WaitGroup

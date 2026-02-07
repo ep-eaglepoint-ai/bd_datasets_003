@@ -8,7 +8,7 @@ RUN cd repository_after && \
     protoc --go_out=. --go_opt=paths=source_relative \
            --go-grpc_out=. --go-grpc_opt=paths=source_relative \
            proto/user/user.proto proto/inventory/inventory.proto proto/order/order.proto && \
-    go mod tidy && go mod download
-RUN cd tests && go mod tidy && go mod download
-RUN cd evaluation && go mod tidy && go build -o /app/evaluation/runner .
+    GOWORK=off go mod tidy && GOWORK=off go mod download
+RUN cd tests && GOWORK=off go mod tidy && GOWORK=off go mod download
+RUN cd evaluation && GOWORK=off go mod tidy && GOWORK=off go build -o /app/evaluation/runner .
 ENTRYPOINT ["/app/evaluation/runner"]

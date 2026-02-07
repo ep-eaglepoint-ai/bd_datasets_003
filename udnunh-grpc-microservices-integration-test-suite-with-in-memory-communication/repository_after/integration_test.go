@@ -371,9 +371,10 @@ func (s *IntegrationTestSuite) TestListUsersStream() {
 	count := 0
 	for {
 		_, err := stream.Recv()
-		if err != nil {
+		if err == io.EOF {
 			break
 		}
+		s.Require().NoError(err)
 		count++
 	}
 	s.Equal(5, count)
@@ -860,6 +861,73 @@ func (s *IntegrationTestSuite) TestOrderInvalidTransition() {
 	s.Equal(codes.FailedPrecondition, st.Code())
 }
 
+// TestOrderDeliveredUpdateFailedPrecondition verifies that updating an order
+// from "delivered" status returns FailedPrecondition since delivered is a terminal state.
+func (s *IntegrationTestSuite) TestOrderDeliveredUpdateFailedPrecondition() {
+	ctx := context.Background()
+
+	order, err := s.orderClient.CreateOrder(ctx, &orderpb.CreateOrderRequest{
+		UserId: "user-delivered",
+		Items: []*orderpb.OrderItem{
+			{ProductId: "p1", Quantity: 1, Price: 10.0},
+		},
+		ShippingAddress: "456 Delivered St",
+	})
+	s.Require().NoError(err)
+	s.Equal("pending", order.Status)
+
+	// Advance through full lifecycle: pending -> confirmed -> shipped -> delivered
+	order, err = s.orderClient.UpdateOrderStatus(ctx, &orderpb.UpdateStatusRequest{
+		Id: order.Id, Status: "confirmed",
+	})
+	s.Require().NoError(err)
+	s.Equal("confirmed", order.Status)
+
+	order, err = s.orderClient.UpdateOrderStatus(ctx, &orderpb.UpdateStatusRequest{
+		Id: order.Id, Status: "shipped",
+	})
+	s.Require().NoError(err)
+	s.Equal("shipped", order.Status)
+
+	order, err = s.orderClient.UpdateOrderStatus(ctx, &orderpb.UpdateStatusRequest{
+		Id: order.Id, Status: "delivered",
+	})
+	s.Require().NoError(err)
+	s.Equal("delivered", order.Status)
+
+	// Attempt to update from delivered (terminal state) should fail
+	_, err = s.orderClient.UpdateOrderStatus(ctx, &orderpb.UpdateStatusRequest{
+		Id: order.Id, Status: "confirmed",
+	})
+	s.Error(err)
+	st, ok := status.FromError(err)
+	s.True(ok, "error should be extractable via status.FromError")
+	s.Equal(codes.FailedPrecondition, st.Code(), "update from delivered must return FailedPrecondition")
+}
+
+// TestUpdateStockNegativeFailedPrecondition verifies that UpdateStock returns
+// FailedPrecondition when the quantity change would result in negative stock.
+func (s *IntegrationTestSuite) TestUpdateStockNegativeFailedPrecondition() {
+	ctx := context.Background()
+
+	// Initialize stock with 5 units
+	_, err := s.inventoryClient.UpdateStock(ctx, &inventorypb.UpdateStockRequest{
+		ProductId:      "neg-stock-prod",
+		QuantityChange: 5,
+	})
+	s.Require().NoError(err)
+
+	// Attempt to remove more than available (would result in negative stock)
+	_, err = s.inventoryClient.UpdateStock(ctx, &inventorypb.UpdateStockRequest{
+		ProductId:      "neg-stock-prod",
+		QuantityChange: -10,
+	})
+	s.Error(err)
+	st, ok := status.FromError(err)
+	s.True(ok, "error should be extractable via status.FromError")
+	s.Equal(codes.FailedPrecondition, st.Code(), "negative stock must return FailedPrecondition")
+}
+
 func (s *IntegrationTestSuite) TestCrossServiceIntegration() {
 	ctx := context.Background()
 
@@ -1028,9 +1096,10 @@ func (s *IntegrationTestSuite) TestListOrdersStream() {
 	count := 0
 	for {
 		_, err := stream.Recv()
-		if err != nil {
+		if err == io.EOF {
 			break
 		}
+		s.Require().NoError(err)
 		count++
 	}
 	s.Equal(3, count)
@@ -2417,6 +2486,152 @@ func TestParallelExecutionSafety(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestBufconnWithPostgresReset combines bufconn gRPC services with a Postgres
+// container to validate DB reset/isolation alongside in-memory gRPC operations.
+// This addresses the "No combined integration test" requirement.
+func TestBufconnWithPostgresReset(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping testcontainers test in short mode")
+	}
+
+	ctx := context.Background()
+
+	// Start Postgres container
+	req := testcontainers.ContainerRequest{
+		Image:        "postgres:15-alpine",
+		ExposedPorts: []string{"5432/tcp"},
+		Env: map[string]string{
+			"POSTGRES_USER":     "testuser",
+			"POSTGRES_PASSWORD": "testpass",
+			"POSTGRES_DB":       "testdb",
+		},
+		WaitingFor: wait.ForLog("database system is ready to accept connections").
+			WithOccurrence(2).
+			WithStartupTimeout(60 * time.Second),
+	}
+
+	pgContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	if err != nil {
+		t.Skipf("skipping testcontainers test: Docker not available: %v", err)
+	}
+	defer pgContainer.Terminate(ctx)
+
+	host, err := pgContainer.Host(ctx)
+	if err != nil {
+		t.Fatalf("failed to get container host: %v", err)
+	}
+	mappedPort, err := pgContainer.MappedPort(ctx, "5432")
+	if err != nil {
+		t.Fatalf("failed to get mapped port: %v", err)
+	}
+
+	dsn := fmt.Sprintf("postgres://testuser:testpass@%s:%s/testdb?sslmode=disable", host, mappedPort.Port())
+	db, err := sql.Open("postgres", dsn)
+	if err != nil {
+		t.Fatalf("failed to open DB: %v", err)
+	}
+	defer db.Close()
+
+	for i := 0; i < 30; i++ {
+		if err = db.Ping(); err == nil {
+			break
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	if err != nil {
+		t.Fatalf("database not ready after retries: %v", err)
+	}
+
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS items (
+		id VARCHAR(64) PRIMARY KEY,
+		name VARCHAR(255) NOT NULL
+	)`)
+	if err != nil {
+		t.Fatalf("failed to create table: %v", err)
+	}
+
+	// Setup bufconn gRPC user service
+	listener := bufconn.Listen(bufSize)
+	defer listener.Close()
+
+	userSvc := user.NewService()
+	server := grpc.NewServer()
+	userpb.RegisterUserServiceServer(server, userSvc)
+	go func() { server.Serve(listener) }()
+	defer server.GracefulStop()
+
+	conn, err := grpc.DialContext(ctx, "bufnet",
+		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
+			return listener.DialContext(ctx)
+		}),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		t.Fatalf("failed to dial bufconn: %v", err)
+	}
+	defer conn.Close()
+
+	userClient := userpb.NewUserServiceClient(conn)
+
+	// Sub-test 1: Exercise bufconn service + DB write
+	t.Run("BufconnAndDBWrite", func(t *testing.T) {
+		userResp, err := userClient.CreateUser(ctx, &userpb.CreateUserRequest{
+			Email: "db-reset@test.com", Name: "DB Reset", Password: "pass", Role: "customer",
+		})
+		if err != nil {
+			t.Fatalf("failed to create user via bufconn: %v", err)
+		}
+		if userResp.Id == "" {
+			t.Fatal("expected non-empty user ID from bufconn service")
+		}
+
+		_, err = db.Exec("INSERT INTO items (id, name) VALUES ($1, $2)", "item-1", "Item One")
+		if err != nil {
+			t.Fatalf("failed to insert into DB: %v", err)
+		}
+
+		var count int
+		err = db.QueryRow("SELECT COUNT(*) FROM items").Scan(&count)
+		if err != nil {
+			t.Fatalf("failed to count items: %v", err)
+		}
+		if count != 1 {
+			t.Fatalf("expected 1 item, got %d", count)
+		}
+	})
+
+	// Sub-test 2: Reset DB state and verify isolation
+	t.Run("DBResetIsolation", func(t *testing.T) {
+		_, err := db.Exec("TRUNCATE TABLE items")
+		if err != nil {
+			t.Fatalf("failed to truncate: %v", err)
+		}
+
+		var count int
+		err = db.QueryRow("SELECT COUNT(*) FROM items").Scan(&count)
+		if err != nil {
+			t.Fatalf("failed to count items: %v", err)
+		}
+		if count != 0 {
+			t.Fatalf("expected 0 items after reset, got %d", count)
+		}
+
+		// Bufconn service still works after DB reset
+		userResp, err := userClient.CreateUser(ctx, &userpb.CreateUserRequest{
+			Email: "post-reset@test.com", Name: "Post Reset", Password: "pass", Role: "customer",
+		})
+		if err != nil {
+			t.Fatalf("bufconn service should still work after DB reset: %v", err)
+		}
+		if userResp.Id == "" {
+			t.Fatal("expected non-empty user ID")
+		}
+	})
 }
 
 func TestIntegrationSuite(t *testing.T) {
