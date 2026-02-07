@@ -1,11 +1,8 @@
 FROM python:3.11-slim
 WORKDIR /app
 
-# Copy and install requirements first (for better caching)
 COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt && \
-    python -m pytest --version
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY repository_after/ /app/repository_after/
