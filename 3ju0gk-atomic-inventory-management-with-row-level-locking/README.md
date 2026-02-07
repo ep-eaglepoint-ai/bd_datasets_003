@@ -8,5 +8,6 @@
 
 
     ## Evaluation Docker Command
-    docker compose exec app python /app/evaluation/evaluation.py
+    docker compose run --rm app python /app/evaluation/evaluation.py
+
     
