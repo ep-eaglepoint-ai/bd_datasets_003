@@ -1,0 +1,13 @@
+{
+    "requirements": {
+        "req_1_dictionary_indexing": "PASS",
+        "req_2_sub_millisecond": "PASS",
+        "req_3_100x_speedup": "PASS",
+        "req_4_correctness": "PASS"
+    },
+    "metrics": {
+        "avg_response_time_before_sec": 0.0014012457799981348,
+        "avg_response_time_after_sec": 1.1050960019929334e-05,
+        "speedup_factor": 126.79855663862
+    }
+}

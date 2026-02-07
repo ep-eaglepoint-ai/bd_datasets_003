@@ -1,0 +1,1006 @@
+diff --git a/g1dvzz-shift-roster-availability-optimizer/docker-compose.yml b/g1dvzz-shift-roster-availability-optimizer/docker-compose.yml
+index e917959e..849ab2c2 100644
+--- a/g1dvzz-shift-roster-availability-optimizer/docker-compose.yml
++++ b/g1dvzz-shift-roster-availability-optimizer/docker-compose.yml
+@@ -4,7 +4,7 @@ services:
+     build: .
+     environment:
+       - TARGET=BEFORE
+-    command: pytest -v tests/test_overall.py
++    command: bash -c "pytest -v tests/test_overall.py || true"
+     volumes:
+       - .:/app
+ 
+diff --git a/g1dvzz-shift-roster-availability-optimizer/evaluation/evaluation.py b/g1dvzz-shift-roster-availability-optimizer/evaluation/evaluation.py
+index 8e83fbab..3cda2224 100644
+--- a/g1dvzz-shift-roster-availability-optimizer/evaluation/evaluation.py
++++ b/g1dvzz-shift-roster-availability-optimizer/evaluation/evaluation.py
+@@ -86,5 +86,10 @@ def run_evaluation():
+     print(f"Evaluation Complete. Report saved to {output_path}")
+     print(json.dumps(results, indent=4))
+ 
++    # 7. Fail Build if any requirement is FAIL
++    if "FAIL" in results["requirements"].values():
++        print("\nFATAL: One or more requirements failed!")
++        sys.exit(1)
++
+ if __name__ == "__main__":
+     run_evaluation()
+diff --git a/g1dvzz-shift-roster-availability-optimizer/patches/diff.patch b/g1dvzz-shift-roster-availability-optimizer/patches/diff.patch
+index 514f5f51..f5ac01b5 100644
+--- a/g1dvzz-shift-roster-availability-optimizer/patches/diff.patch
++++ b/g1dvzz-shift-roster-availability-optimizer/patches/diff.patch
+@@ -1,957 +1,28 @@
+-diff --git a/g1dvzz-shift-roster-availability-optimizer/README.md b/g1dvzz-shift-roster-availability-optimizer/README.md
+-index 30280f7a..59046a5e 100644
+---- a/g1dvzz-shift-roster-availability-optimizer/README.md
+-+++ b/g1dvzz-shift-roster-availability-optimizer/README.md
+-@@ -1,44 +1,5 @@
+--# G1DVZZ - shift-Roster-Availability-Optimizer
+--
+--**Category:** sft
+--
+--## Overview
+--- Task ID: G1DVZZ
+--- Title: shift-Roster-Availability-Optimizer
+--- Category: sft
+--- Repository: ep-eaglepoint-ai/bd_datasets_002
+--- Branch: g1dvzz-shift-roster-availability-optimizer
+--
+--## Requirements
+--- Dictionary-Based Indexing: During class initialization, build a map where keys are 'Roles' and values are lists of employees. This must allow for immediate retrieval of potential candidates without iterating the entire staff list during a query.
+--- Complexity Shift: Achieve a transformation from $O(N)$ to $O(1)$ (amortized) for retrieving the base list of skilled workers, ensuring sub-millisecond responses for queries regardless of the total staff count.
+--- Testing Requirement: Write a benchmark test using the `timeit` module with a mock dataset of 20,000 employees. Demonstrate that the optimized version is at least 100x faster than the original linear search.
+--- Testing Requirement: Verify that if no workers match the role or all matching workers are 'on_duty', the function returns an empty list without throwing a KeyError.
+--
+--## Metadata
+--- Programming Languages: Python
+--- Frameworks: (none)
+--- Libraries: (none)
+--- Databases: (none)
+--- Tools: (none)
+--- Best Practices: (none)
+--- Performance Metrics: (none)
+--- Security Standards: (none)
+--
+--## Structure
+--- repository_before/: baseline code (`__init__.py`)
+--- repository_after/: optimized code (`__init__.py`)
+--- tests/: test suite (`__init__.py`)
+--- evaluation/: evaluation scripts (`evaluation.py`)
+--- instances/: sample/problem instances (JSON)
+--- patches/: patches for diffing
+--- trajectory/: notes or write-up (Markdown)
+- 
+- ## Quick start
+--- Run tests locally: `python -m pytest -q tests`
+--- With Docker: `docker compose up --build --abort-on-container-exit`
+--- Add dependencies to `requirements.txt`
+--
+--## Notes
+--- Keep commits focused and small.
+--- Open a PR when ready for review.
+-+- **Verify Before (Fails)**: `docker compose run before`
+-+- **Verify After (Passes)**: `docker compose run after`
+-+- **Run Evaluation**: `docker compose run evaluate`
+ diff --git a/g1dvzz-shift-roster-availability-optimizer/docker-compose.yml b/g1dvzz-shift-roster-availability-optimizer/docker-compose.yml
+-index e26e8ea3..e917959e 100644
++index e917959e..849ab2c2 100644
+ --- a/g1dvzz-shift-roster-availability-optimizer/docker-compose.yml
+ +++ b/g1dvzz-shift-roster-availability-optimizer/docker-compose.yml
+-@@ -1,6 +1,23 @@
+-+
+- services:
+--  app:
+-+  before:
++@@ -4,7 +4,7 @@ services:
+      build: .
+--    command: pytest -q tests
+-+    environment:
+-+      - TARGET=BEFORE
+-+    command: pytest -v tests/test_overall.py
+-+    volumes:
+-+      - .:/app
+-+
+-+  after:
+-+    build: .
+-+    environment:
+-+      - TARGET=AFTER
+-+    command: pytest -v tests/test_overall.py
+-+    volumes:
+-+      - .:/app
+-+
+-+  evaluate:
+-+    build: .
+-+    command: python evaluation/evaluation.py
++     environment:
++       - TARGET=BEFORE
++-    command: pytest -v tests/test_overall.py
+++    command: bash -c "pytest -v tests/test_overall.py || true"
+      volumes:
+        - .:/app
++ 
+ diff --git a/g1dvzz-shift-roster-availability-optimizer/evaluation/evaluation.py b/g1dvzz-shift-roster-availability-optimizer/evaluation/evaluation.py
+-index c652d368..8e83fbab 100644
++index 8e83fbab..3cda2224 100644
+ --- a/g1dvzz-shift-roster-availability-optimizer/evaluation/evaluation.py
+ +++ b/g1dvzz-shift-roster-availability-optimizer/evaluation/evaluation.py
+-@@ -1,7 +1,90 @@
+--def main():
+--    # TODO: implement evaluation logic
+--    print("Evaluation placeholder")
++@@ -86,5 +86,10 @@ def run_evaluation():
++     print(f"Evaluation Complete. Report saved to {output_path}")
++     print(json.dumps(results, indent=4))
+  
+-+import json
+-+import timeit
+-+import random
+-+import sys
+-+import os
+-+
+-+# Add path to allow imports
+-+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+++    # 7. Fail Build if any requirement is FAIL
+++    if "FAIL" in results["requirements"].values():
+++        print("\nFATAL: One or more requirements failed!")
+++        sys.exit(1)
+ +
+-+from repository_before.staff_scheduler import StaffAggregator as StaffAggregatorBefore
+-+from repository_after.staff_scheduler import StaffAggregator as StaffAggregatorAfter
+-+
+-+def run_evaluation():
+-+    print("Starting Evaluation...")
+-+    results = {
+-+        "requirements": {},
+-+        "metrics": {}
+-+    }
+-+    
+-+    # 1. Setup Data
+-+    num_employees = 20000
+-+    roles = [f"Role_{i}" for i in range(100)]
+-+    employees = []
+-+    for i in range(num_employees):
+-+        employees.append({
+-+            'name': f'Employee_{i}',
+-+            'role': random.choice(roles),
+-+            'on_duty': random.choice([True, False])
+-+        })
+-+    
+-+    print("Initializing Aggregators...")
+-+    # Initialize implementation
+-+    before_agg = StaffAggregatorBefore(employees)
+-+    after_agg = StaffAggregatorAfter(employees)
+-+    target_role = 'Role_50'
+-+    
+-+    # 2. Verify Requirement 1: Dictionary Indexing
+-+    # Check if 'role_map' exists in the optimized version
+-+    has_map = hasattr(after_agg, 'role_map')
+-+    results["requirements"]["req_1_dictionary_indexing"] = "PASS" if has_map else "FAIL"
+-+    
+-+    # 3. Verify Requirement 2: Sub-millisecond Response
+-+    runs = 100
+-+    t_after = timeit.timeit(lambda: after_agg.get_eligible_workers(target_role), number=runs)
+-+    avg_after = t_after / runs
+-+    
+-+    # 4. Verify Requirement 3: 100x Speedup
+-+    t_before = timeit.timeit(lambda: before_agg.get_eligible_workers(target_role), number=runs)
+-+    avg_before = t_before / runs
+-+    
+-+    # Avoid division by zero
+-+    start_speedup = avg_before / (avg_after if avg_after > 0 else 1e-9)
+-+    
+-+    results["metrics"]["avg_response_time_before_sec"] = avg_before
+-+    results["metrics"]["avg_response_time_after_sec"] = avg_after
+-+    results["metrics"]["speedup_factor"] = start_speedup
+-+    
+-+    if avg_before < 1e-6: avg_before = 1e-6 # Avoid div by zero in fail message if baseline is impossibly fast
+-+    
+-+    results["requirements"]["req_2_sub_millisecond"] = "PASS" if avg_after < 0.001 else "FAIL"
+-+    results["requirements"]["req_3_100x_speedup"] = "PASS" if start_speedup > 100 else "FAIL"
+-+    
+-+    # 5. Verify Requirement 4: Correctness (Edge Cases & General)
+-+    # Check general correctness against baseline
+-+    res_before = sorted(before_agg.get_eligible_workers(target_role))
+-+    res_after = sorted(after_agg.get_eligible_workers(target_role))
+-+    is_correct_general = (res_before == res_after)
+-+    
+-+    # Check Edge Case: No Match
+-+    res_none = after_agg.get_eligible_workers('NonExistentRole')
+-+    is_correct_none = (res_none == [])
+-+    
+-+    results["requirements"]["req_4_correctness"] = "PASS" if (is_correct_general and is_correct_none) else "FAIL"
+-+    
+-+    # 6. Save Report
+-+    # Ensure directory exists
+-+    output_dir = os.path.dirname(__file__)
+-+    if not os.path.exists(output_dir):
+-+        os.makedirs(output_dir)
+-+        
+-+    output_path = os.path.join(output_dir, 'evaluation_report.json')
+-+    with open(output_path, 'w') as f:
+-+        json.dump(results, f, indent=4)
+-+    
+-+    print(f"Evaluation Complete. Report saved to {output_path}")
+-+    print(json.dumps(results, indent=4))
+- 
+  if __name__ == "__main__":
+--    main()
+-+    run_evaluation()
+-diff --git a/g1dvzz-shift-roster-availability-optimizer/evaluation/evaluation_report.json b/g1dvzz-shift-roster-availability-optimizer/evaluation/evaluation_report.json
+-new file mode 100644
+-index 00000000..5f10998b
+---- /dev/null
+-+++ b/g1dvzz-shift-roster-availability-optimizer/evaluation/evaluation_report.json
+-@@ -0,0 +1,13 @@
+-+{
+-+    "requirements": {
+-+        "req_1_dictionary_indexing": "PASS",
+-+        "req_2_sub_millisecond": "PASS",
+-+        "req_3_100x_speedup": "PASS",
+-+        "req_4_correctness": "PASS"
+-+    },
+-+    "metrics": {
+-+        "avg_response_time_before_sec": 0.0014012457799981348,
+-+        "avg_response_time_after_sec": 1.1050960019929334e-05,
+-+        "speedup_factor": 126.79855663862
+-+    }
+-+}
+-\ No newline at end of file
+-diff --git a/g1dvzz-shift-roster-availability-optimizer/patches/diff.patch b/g1dvzz-shift-roster-availability-optimizer/patches/diff.patch
+-index e69de29b..1a697cd2 100644
+---- a/g1dvzz-shift-roster-availability-optimizer/patches/diff.patch
+-+++ b/g1dvzz-shift-roster-availability-optimizer/patches/diff.patch
+-@@ -0,0 +1,476 @@
+-+diff --git a/g1dvzz-shift-roster-availability-optimizer/README.md b/g1dvzz-shift-roster-availability-optimizer/README.md
+-+index 30280f7a..59046a5e 100644
+-+--- a/g1dvzz-shift-roster-availability-optimizer/README.md
+-++++ b/g1dvzz-shift-roster-availability-optimizer/README.md
+-+@@ -1,44 +1,5 @@
+-+-# G1DVZZ - shift-Roster-Availability-Optimizer
+-+-
+-+-**Category:** sft
+-+-
+-+-## Overview
+-+-- Task ID: G1DVZZ
+-+-- Title: shift-Roster-Availability-Optimizer
+-+-- Category: sft
+-+-- Repository: ep-eaglepoint-ai/bd_datasets_002
+-+-- Branch: g1dvzz-shift-roster-availability-optimizer
+-+-
+-+-## Requirements
+-+-- Dictionary-Based Indexing: During class initialization, build a map where keys are 'Roles' and values are lists of employees. This must allow for immediate retrieval of potential candidates without iterating the entire staff list during a query.
+-+-- Complexity Shift: Achieve a transformation from $O(N)$ to $O(1)$ (amortized) for retrieving the base list of skilled workers, ensuring sub-millisecond responses for queries regardless of the total staff count.
+-+-- Testing Requirement: Write a benchmark test using the `timeit` module with a mock dataset of 20,000 employees. Demonstrate that the optimized version is at least 100x faster than the original linear search.
+-+-- Testing Requirement: Verify that if no workers match the role or all matching workers are 'on_duty', the function returns an empty list without throwing a KeyError.
+-+-
+-+-## Metadata
+-+-- Programming Languages: Python
+-+-- Frameworks: (none)
+-+-- Libraries: (none)
+-+-- Databases: (none)
+-+-- Tools: (none)
+-+-- Best Practices: (none)
+-+-- Performance Metrics: (none)
+-+-- Security Standards: (none)
+-+-
+-+-## Structure
+-+-- repository_before/: baseline code (`__init__.py`)
+-+-- repository_after/: optimized code (`__init__.py`)
+-+-- tests/: test suite (`__init__.py`)
+-+-- evaluation/: evaluation scripts (`evaluation.py`)
+-+-- instances/: sample/problem instances (JSON)
+-+-- patches/: patches for diffing
+-+-- trajectory/: notes or write-up (Markdown)
+-+ 
+-+ ## Quick start
+-+-- Run tests locally: `python -m pytest -q tests`
+-+-- With Docker: `docker compose up --build --abort-on-container-exit`
+-+-- Add dependencies to `requirements.txt`
+-+-
+-+-## Notes
+-+-- Keep commits focused and small.
+-+-- Open a PR when ready for review.
+-++- **Verify Before (Fails)**: `docker compose run before`
+-++- **Verify After (Passes)**: `docker compose run after`
+-++- **Run Evaluation**: `docker compose run evaluate`
+-+diff --git a/g1dvzz-shift-roster-availability-optimizer/docker-compose.yml b/g1dvzz-shift-roster-availability-optimizer/docker-compose.yml
+-+index e26e8ea3..e917959e 100644
+-+--- a/g1dvzz-shift-roster-availability-optimizer/docker-compose.yml
+-++++ b/g1dvzz-shift-roster-availability-optimizer/docker-compose.yml
+-+@@ -1,6 +1,23 @@
+-++
+-+ services:
+-+-  app:
+-++  before:
+-+     build: .
+-+-    command: pytest -q tests
+-++    environment:
+-++      - TARGET=BEFORE
+-++    command: pytest -v tests/test_overall.py
+-++    volumes:
+-++      - .:/app
+-++
+-++  after:
+-++    build: .
+-++    environment:
+-++      - TARGET=AFTER
+-++    command: pytest -v tests/test_overall.py
+-++    volumes:
+-++      - .:/app
+-++
+-++  evaluate:
+-++    build: .
+-++    command: python evaluation/evaluation.py
+-+     volumes:
+-+       - .:/app
+-+diff --git a/g1dvzz-shift-roster-availability-optimizer/evaluation/evaluation.py b/g1dvzz-shift-roster-availability-optimizer/evaluation/evaluation.py
+-+index c652d368..8e83fbab 100644
+-+--- a/g1dvzz-shift-roster-availability-optimizer/evaluation/evaluation.py
+-++++ b/g1dvzz-shift-roster-availability-optimizer/evaluation/evaluation.py
+-+@@ -1,7 +1,90 @@
+-+-def main():
+-+-    # TODO: implement evaluation logic
+-+-    print("Evaluation placeholder")
+-+ 
+-++import json
+-++import timeit
+-++import random
+-++import sys
+-++import os
+-++
+-++# Add path to allow imports
+-++sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+-++
+-++from repository_before.staff_scheduler import StaffAggregator as StaffAggregatorBefore
+-++from repository_after.staff_scheduler import StaffAggregator as StaffAggregatorAfter
+-++
+-++def run_evaluation():
+-++    print("Starting Evaluation...")
+-++    results = {
+-++        "requirements": {},
+-++        "metrics": {}
+-++    }
+-++    
+-++    # 1. Setup Data
+-++    num_employees = 20000
+-++    roles = [f"Role_{i}" for i in range(100)]
+-++    employees = []
+-++    for i in range(num_employees):
+-++        employees.append({
+-++            'name': f'Employee_{i}',
+-++            'role': random.choice(roles),
+-++            'on_duty': random.choice([True, False])
+-++        })
+-++    
+-++    print("Initializing Aggregators...")
+-++    # Initialize implementation
+-++    before_agg = StaffAggregatorBefore(employees)
+-++    after_agg = StaffAggregatorAfter(employees)
+-++    target_role = 'Role_50'
+-++    
+-++    # 2. Verify Requirement 1: Dictionary Indexing
+-++    # Check if 'role_map' exists in the optimized version
+-++    has_map = hasattr(after_agg, 'role_map')
+-++    results["requirements"]["req_1_dictionary_indexing"] = "PASS" if has_map else "FAIL"
+-++    
+-++    # 3. Verify Requirement 2: Sub-millisecond Response
+-++    runs = 100
+-++    t_after = timeit.timeit(lambda: after_agg.get_eligible_workers(target_role), number=runs)
+-++    avg_after = t_after / runs
+-++    
+-++    # 4. Verify Requirement 3: 100x Speedup
+-++    t_before = timeit.timeit(lambda: before_agg.get_eligible_workers(target_role), number=runs)
+-++    avg_before = t_before / runs
+-++    
+-++    # Avoid division by zero
+-++    start_speedup = avg_before / (avg_after if avg_after > 0 else 1e-9)
+-++    
+-++    results["metrics"]["avg_response_time_before_sec"] = avg_before
+-++    results["metrics"]["avg_response_time_after_sec"] = avg_after
+-++    results["metrics"]["speedup_factor"] = start_speedup
+-++    
+-++    if avg_before < 1e-6: avg_before = 1e-6 # Avoid div by zero in fail message if baseline is impossibly fast
+-++    
+-++    results["requirements"]["req_2_sub_millisecond"] = "PASS" if avg_after < 0.001 else "FAIL"
+-++    results["requirements"]["req_3_100x_speedup"] = "PASS" if start_speedup > 100 else "FAIL"
+-++    
+-++    # 5. Verify Requirement 4: Correctness (Edge Cases & General)
+-++    # Check general correctness against baseline
+-++    res_before = sorted(before_agg.get_eligible_workers(target_role))
+-++    res_after = sorted(after_agg.get_eligible_workers(target_role))
+-++    is_correct_general = (res_before == res_after)
+-++    
+-++    # Check Edge Case: No Match
+-++    res_none = after_agg.get_eligible_workers('NonExistentRole')
+-++    is_correct_none = (res_none == [])
+-++    
+-++    results["requirements"]["req_4_correctness"] = "PASS" if (is_correct_general and is_correct_none) else "FAIL"
+-++    
+-++    # 6. Save Report
+-++    # Ensure directory exists
+-++    output_dir = os.path.dirname(__file__)
+-++    if not os.path.exists(output_dir):
+-++        os.makedirs(output_dir)
+-++        
+-++    output_path = os.path.join(output_dir, 'evaluation_report.json')
+-++    with open(output_path, 'w') as f:
+-++        json.dump(results, f, indent=4)
+-++    
+-++    print(f"Evaluation Complete. Report saved to {output_path}")
+-++    print(json.dumps(results, indent=4))
+-+ 
+-+ if __name__ == "__main__":
+-+-    main()
+-++    run_evaluation()
+-+diff --git a/g1dvzz-shift-roster-availability-optimizer/evaluation/evaluation_report.json b/g1dvzz-shift-roster-availability-optimizer/evaluation/evaluation_report.json
+-+new file mode 100644
+-+index 00000000..5f10998b
+-+--- /dev/null
+-++++ b/g1dvzz-shift-roster-availability-optimizer/evaluation/evaluation_report.json
+-+@@ -0,0 +1,13 @@
+-++{
+-++    "requirements": {
+-++        "req_1_dictionary_indexing": "PASS",
+-++        "req_2_sub_millisecond": "PASS",
+-++        "req_3_100x_speedup": "PASS",
+-++        "req_4_correctness": "PASS"
+-++    },
+-++    "metrics": {
+-++        "avg_response_time_before_sec": 0.0014012457799981348,
+-++        "avg_response_time_after_sec": 1.1050960019929334e-05,
+-++        "speedup_factor": 126.79855663862
+-++    }
+-++}
+-+\ No newline at end of file
+-+diff --git a/g1dvzz-shift-roster-availability-optimizer/repository_after/staff_scheduler.py b/g1dvzz-shift-roster-availability-optimizer/repository_after/staff_scheduler.py
+-+index e69de29b..ac0cdb22 100644
+-+--- a/g1dvzz-shift-roster-availability-optimizer/repository_after/staff_scheduler.py
+-++++ b/g1dvzz-shift-roster-availability-optimizer/repository_after/staff_scheduler.py
+-+@@ -0,0 +1,26 @@
+-++# // filename: staff_scheduler.py
+-++import collections
+-++
+-++class StaffAggregator:
+-++    def __init__(self, employee_list):
+-++        self.employees = employee_list 
+-++        # 1. Dictionary-Based Indexing
+-++        # Requirement 1: Build a map where keys are 'Roles' and values are lists of employees.
+-++        # We pre-filter for 'on_duty == False' to ensure O(1) retrieval of *eligible* candidates
+-++        # and satisfy Requirement 2 (sub-millisecond responses).
+-++        # We store the full employee dictionary (not just name) to strictly satisfy "values are lists of employees".
+-++        self.role_map = collections.defaultdict(list)
+-++        for person in employee_list:
+-++            if not person['on_duty']:
+-++                self.role_map[person['role']].append(person)
+-++
+-++    def get_eligible_workers(self, required_role):
+-++        # 2. Complexity Shift: O(1) retrieval of the list
+-++        candidates = self.role_map.get(required_role, [])
+-++        
+-++        # Requirement: System should return a list of available employee names.
+-++        # Since 'candidates' contains full employee objects (to satisfy Req 1),
+-++        # we extract names here.
+-++        # Note: Iterating this pre-filtered list is still O(1) relative to total N,
+-++        # and satisfies the sub-millisecond constraint.
+-++        return [person['name'] for person in candidates]
+-+diff --git a/g1dvzz-shift-roster-availability-optimizer/requirements.txt b/g1dvzz-shift-roster-availability-optimizer/requirements.txt
+-+index 6b06c23f..e079f8a6 100644
+-+--- a/g1dvzz-shift-roster-availability-optimizer/requirements.txt
+-++++ b/g1dvzz-shift-roster-availability-optimizer/requirements.txt
+-+@@ -1 +1 @@
+-+-# Add your Python dependencies here
+-++pytest
+-+diff --git a/g1dvzz-shift-roster-availability-optimizer/tests/test_overall.py b/g1dvzz-shift-roster-availability-optimizer/tests/test_overall.py
+-+new file mode 100644
+-+index 00000000..b997ade0
+-+--- /dev/null
+-++++ b/g1dvzz-shift-roster-availability-optimizer/tests/test_overall.py
+-+@@ -0,0 +1,122 @@
+-++
+-++import unittest
+-++import timeit
+-++import random
+-++import sys
+-++import os
+-++import collections
+-++
+-++# Ensure we can import from repository_before and repository_after
+-++sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+-++
+-++from repository_before.staff_scheduler import StaffAggregator as StaffAggregatorBefore
+-++from repository_after.staff_scheduler import StaffAggregator as StaffAggregatorAfter
+-++
+-++class TestStaffScheduler(unittest.TestCase):
+-++    def setUp(self):
+-++        """
+-++        Setup dataset and select Target Implementation based on ENV variable.
+-++        """
+-++        self.target_env = os.environ.get('TARGET', 'AFTER')
+-++        
+-++        if self.target_env == 'BEFORE':
+-++            self.TargetClass = StaffAggregatorBefore
+-++            print(f"\n[Running Tests against BEFORE implementation]")
+-++        else:
+-++            self.TargetClass = StaffAggregatorAfter
+-++            print(f"\n[Running Tests against AFTER implementation]")
+-++
+-++        # Dataset for correctness
+-++        self.basic_employees = [
+-++            {'name': 'Alice', 'role': 'Kitchen Prep', 'on_duty': False}, 
+-++            {'name': 'Bob',   'role': 'Kitchen Prep', 'on_duty': True},
+-++            {'name': 'Charlie','role': 'Server',       'on_duty': False},
+-++        ]
+-++        self.basic_agg = self.TargetClass(self.basic_employees)
+-++        
+-++        # Dataset for performance
+-++        self.num_employees = 20000
+-++        self.roles = [f"Role_{i}" for i in range(100)]
+-++        self.large_employees = []
+-++        for i in range(self.num_employees):
+-++            self.large_employees.append({
+-++                'name': f'Employee_{i}',
+-++                'role': random.choice(self.roles),
+-++                'on_duty': random.choice([True, False])
+-++            })
+-++        self.large_agg = self.TargetClass(self.large_employees)
+-++
+-++    # Test 1: Preservation of Legacy Logic (Basic Correctness)
+-++    # Checks positive case: "Kitchen Prep" -> "Alice"
+-++    def test_1_preservation_correctness(self):
+-++        result = self.basic_agg.get_eligible_workers('Kitchen Prep')
+-++        self.assertEqual(result, ['Alice'], "Failed basic correctness check (Preservation)")
+-++
+-++    # Test 2: Req 1 - Dictionary-Based Indexing
+-++    def test_2_req1_dictionary_indexing(self):
+-++        # Expected: FAIL on BEFORE, PASS on AFTER
+-++        
+-++        # Check if 'role_map' attribute exists
+-++        if not hasattr(self.large_agg, 'role_map'):
+-++            self.fail("Req 1 Failed: No 'role_map' attribute found (Dictionary Indexing missing)")
+-++            
+-++        role_map = self.large_agg.role_map
+-++        # Check if it is a dictionary-like structure
+-++        if not isinstance(role_map, (dict, collections.defaultdict)):
+-++             self.fail("Req 1 Failed: 'role_map' is not a dictionary")
+-++             
+-++        # Check if values are lists of employees (full dicts)
+-++        if role_map:
+-++            first_key = list(role_map.keys())[0]
+-++            val = role_map[first_key]
+-++            if not isinstance(val, list):
+-++                self.fail("Req 1 Failed: Values in role_map must be lists")
+-++            if val and not isinstance(val[0], dict):
+-++                 self.fail("Req 1 Failed: Values in role_map must be employee objects (dicts)")
+-++
+-++    # Test 3: Req 2 - Sub-millisecond Response
+-++    def test_3_req2_sub_millisecond(self):
+-++        # Expected: FAIL on BEFORE, PASS on AFTER
+-++        runs = 100
+-++        target = 'Role_50'
+-++        t = timeit.timeit(lambda: self.large_agg.get_eligible_workers(target), number=runs)
+-++        avg_time = t / runs
+-++        
+-++        # Strict Requirement: < 1ms (0.001s)
+-++        if avg_time >= 0.001:
+-++            self.fail(f"Req 2 Failed: Response time {avg_time*1000:.3f}ms is not sub-millisecond (<1ms)")
+-++
+-++    # Test 4: Req 3 - 100x Speedup Performance Standards
+-++    def test_4_req3_performance_standard(self):
+-++        # Expected: FAIL on BEFORE, PASS on AFTER
+-++        runs = 100
+-++        target = 'Role_50'
+-++        
+-++        # Measure Baseline (Always Before) to calculate speedup
+-++        baseline_agg = StaffAggregatorBefore(self.large_employees)
+-++        t_baseline = timeit.timeit(lambda: baseline_agg.get_eligible_workers(target), number=runs)
+-++        
+-++        # Measure Target
+-++        t_target = timeit.timeit(lambda: self.large_agg.get_eligible_workers(target), number=runs)
+-++        if t_target == 0: t_target = 1e-9
+-++            
+-++        speedup = t_baseline / t_target
+-++        print(f"\n[Req 3] Speedup vs Baseline: {speedup:.2f}x")
+-++        
+-++        if speedup < 100:
+-++             self.fail(f"Req 3 Failed: Speedup {speedup:.2f}x is less than 100x requirement")
+-++
+-++    # Test 5: Req 4 - Edge Cases Correctness (No Match / All Busy)
+-++    def test_5_req4_edge_cases(self):
+-++        # Expected: PASS on BOTH (Legacy handles this correctly too)
+-++        
+-++        # Case A: No Match
+-++        self.assertEqual(self.basic_agg.get_eligible_workers('Astronaut'), [], "Req 4 Failed: Non-existent role should return empty list")
+-++        
+-++        # Case B: All Busy
+-++        busy_employees = [{'name': 'Busy', 'role': 'BusyRole', 'on_duty': True}]
+-++        agg = self.TargetClass(busy_employees)
+-++        self.assertEqual(agg.get_eligible_workers('BusyRole'), [], "Req 4 Failed: All busy employees should return empty list")
+-++
+-++if __name__ == '__main__':
+-++    unittest.main()
+-+diff --git a/g1dvzz-shift-roster-availability-optimizer/trajectory/trajectory.md b/g1dvzz-shift-roster-availability-optimizer/trajectory/trajectory.md
+-+index 9a25341e..7c341eb7 100644
+-+--- a/g1dvzz-shift-roster-availability-optimizer/trajectory/trajectory.md
+-++++ b/g1dvzz-shift-roster-availability-optimizer/trajectory/trajectory.md
+-+@@ -1,2 +1,103 @@
+-+-# Trajectory
+-++# Trajectory: My Journey Optimizing the Staff Scheduler
+-+ 
+-++Here is the story of how I took the Staff Scheduler from a slow, dashboard-freezing bottleneck to a high-performance system.
+-++
+-++## 1. Analyzing the Problem
+-++
+-++I started by looking at the legacy code and realized it was suffering from a classic **Linear Search** problem.
+-++
+-++### The "Teacher" Analogy
+-++I imagined myself as a teacher in a school with 5,000 students. To find a "Math Helper", I was essentially walking up to *every single student* and asking, "Are you a Math Helper? AND are you free?"
+-++
+-++### The Technical Bottleneck
+-++Technically, this was an **O(N)** operation.
+-++```python
+-++# The bottlenecks I found in repository_before/staff_scheduler.py
+-++def get_eligible_workers(self, required_role):
+-++    eligible = []
+-++    # I saw this loop running 5,000+ times for every single query!
+-++    for person in self.employees:
+-++        if person['role'] == required_role and person['on_duty'] == False:
+-++            eligible.append(person['name'])
+-++    return eligible
+-++```
+-++As the company grew to 20,000 employees, this linear scan was causing the HR dashboard to freeze. I knew I needed a better way.
+-++
+-++---
+-++
+-++## 2. Designing the Solution: The "Smart Buckets" Approach
+-++
+-++I decided to switch to **Dictionary-Based Indexing**. To explain how this works, I used a mental model I call "Smart Buckets".
+-++
+-++### The Concept (For a 10-Year-Old)
+-++Imagine I am that same teacher, but this time I'm smarter. I know I'll need helpers all day, and I don't want to ask 5,000 people every time. So, I do something special first thing in the morning.
+-++
+-++**The Setup (The "Sorting Hat")**
+-++I take the messy pile of 5,000 student cards. I throw away the cards for busy students (for today). For the free students, I put them into labelled buckets. *Math Helpers* go in the blue bucket. *Art Assistants* go in the red bucket.
+-++
+-++**The Search (The "Instant Grab")**
+-++Later, when the principal yells, "I need a Math Helper NOW!", I don't panic. I don't run around asking 5,000 students.
+-++I just reach for the **Blue Bucket**. Boom! Inside are only the students who are (1) Math Helpers and (2) Free.
+-++
+-++### The Implementation
+-++I translated this "Smart Bucket" idea into code using a Python `defaultdict`.
+-++
+-++```python
+-++# How I fixed it in repository_after/staff_scheduler.py
+-++import collections
+-++
+-++class StaffAggregator:
+-++    def __init__(self, employee_list):
+-++        self.employees = employee_list 
+-++        
+-++        # 1. The Setup: I get my empty buckets
+-++        self.role_map = collections.defaultdict(list)
+-++        
+-++        for person in employee_list:
+-++            # The Trick: I only care about students who are FREE
+-++            if not person['on_duty']:
+-++                # The Sort: I drop them in the right bucket
+-++                self.role_map[person['role']].append(person)
+-++
+-++    def get_eligible_workers(self, required_role):
+-++        # 2. The Instant Grab: O(1) Lookup
+-++        candidates = self.role_map.get(required_role, [])
+-++        return [person['name'] for person in candidates]
+-++```
+-++
+-++**Why this works:**
+-++*   **Old Way (O(N))**: Reading a book page by page to find a word.
+-++*   **New Way (O(1))**: Using the Index at the back of the book.
+-++
+-++---
+-++
+-++## 3. How I Verified It
+-++
+-++I didn't just write the code; I tested it rigidly against 4 strict requirements.
+-++
+-++### Requirement 1: Dictionary-Based Indexing
+-++*   **My Goal**: Ensure I was actually building a map (my "buckets").
+-++*   **Result**: **PASSED**. I verified that my new class has a `role_map` attribute.
+-++
+-++### Requirement 2: Complexity Shift & Sub-millisecond Response
+-++*   **My Goal**: I needed to be fast. Less than 1 millisecond fast.
+-++*   **My Results**:
+-++    *   **Before**: ~1.2ms (Way too slow)
+-++    *   **After**: ~0.005ms (Incredibly fast)
+-++
+-++### Requirement 3: >100x Speedup
+-++*   **My Goal**: Prove the optimization wasn't just verified; it was *significant*.
+-++*   **Result**: **PASSED**. I achieved a massive speedup ratio, well over the 100x target.
+-++
+-++### Requirement 4: Correctness (Edge Cases)
+-++*   **My Goal**: Make sure I didn't break the logic.
+-++*   **Result**: **PASSED**. I confirmed that if I ask for a non-existent role, I still get an empty list back, just like before—only faster.
+-++
+-++---
+-++
+-++## 4. Final Delivery
+-++
+-++I've packaged my work with a complete test suite. You can see the difference yourself:
+-++
+-++*   **See the Failure**: Run `docker compose run before` to see where the old code failed (The "Linear Search" struggle).
+-++*   **See the Success**: Run `docker compose run after` to see my optimized solution passing all tests.
+-diff --git a/g1dvzz-shift-roster-availability-optimizer/repository_after/staff_scheduler.py b/g1dvzz-shift-roster-availability-optimizer/repository_after/staff_scheduler.py
+-index e69de29b..ac0cdb22 100644
+---- a/g1dvzz-shift-roster-availability-optimizer/repository_after/staff_scheduler.py
+-+++ b/g1dvzz-shift-roster-availability-optimizer/repository_after/staff_scheduler.py
+-@@ -0,0 +1,26 @@
+-+# // filename: staff_scheduler.py
+-+import collections
+-+
+-+class StaffAggregator:
+-+    def __init__(self, employee_list):
+-+        self.employees = employee_list 
+-+        # 1. Dictionary-Based Indexing
+-+        # Requirement 1: Build a map where keys are 'Roles' and values are lists of employees.
+-+        # We pre-filter for 'on_duty == False' to ensure O(1) retrieval of *eligible* candidates
+-+        # and satisfy Requirement 2 (sub-millisecond responses).
+-+        # We store the full employee dictionary (not just name) to strictly satisfy "values are lists of employees".
+-+        self.role_map = collections.defaultdict(list)
+-+        for person in employee_list:
+-+            if not person['on_duty']:
+-+                self.role_map[person['role']].append(person)
+-+
+-+    def get_eligible_workers(self, required_role):
+-+        # 2. Complexity Shift: O(1) retrieval of the list
+-+        candidates = self.role_map.get(required_role, [])
+-+        
+-+        # Requirement: System should return a list of available employee names.
+-+        # Since 'candidates' contains full employee objects (to satisfy Req 1),
+-+        # we extract names here.
+-+        # Note: Iterating this pre-filtered list is still O(1) relative to total N,
+-+        # and satisfies the sub-millisecond constraint.
+-+        return [person['name'] for person in candidates]
+-diff --git a/g1dvzz-shift-roster-availability-optimizer/requirements.txt b/g1dvzz-shift-roster-availability-optimizer/requirements.txt
+-index 6b06c23f..e079f8a6 100644
+---- a/g1dvzz-shift-roster-availability-optimizer/requirements.txt
+-+++ b/g1dvzz-shift-roster-availability-optimizer/requirements.txt
+-@@ -1 +1 @@
+--# Add your Python dependencies here
+-+pytest
+-diff --git a/g1dvzz-shift-roster-availability-optimizer/tests/test_overall.py b/g1dvzz-shift-roster-availability-optimizer/tests/test_overall.py
+-new file mode 100644
+-index 00000000..b997ade0
+---- /dev/null
+-+++ b/g1dvzz-shift-roster-availability-optimizer/tests/test_overall.py
+-@@ -0,0 +1,122 @@
+-+
+-+import unittest
+-+import timeit
+-+import random
+-+import sys
+-+import os
+-+import collections
+-+
+-+# Ensure we can import from repository_before and repository_after
+-+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+-+
+-+from repository_before.staff_scheduler import StaffAggregator as StaffAggregatorBefore
+-+from repository_after.staff_scheduler import StaffAggregator as StaffAggregatorAfter
+-+
+-+class TestStaffScheduler(unittest.TestCase):
+-+    def setUp(self):
+-+        """
+-+        Setup dataset and select Target Implementation based on ENV variable.
+-+        """
+-+        self.target_env = os.environ.get('TARGET', 'AFTER')
+-+        
+-+        if self.target_env == 'BEFORE':
+-+            self.TargetClass = StaffAggregatorBefore
+-+            print(f"\n[Running Tests against BEFORE implementation]")
+-+        else:
+-+            self.TargetClass = StaffAggregatorAfter
+-+            print(f"\n[Running Tests against AFTER implementation]")
+-+
+-+        # Dataset for correctness
+-+        self.basic_employees = [
+-+            {'name': 'Alice', 'role': 'Kitchen Prep', 'on_duty': False}, 
+-+            {'name': 'Bob',   'role': 'Kitchen Prep', 'on_duty': True},
+-+            {'name': 'Charlie','role': 'Server',       'on_duty': False},
+-+        ]
+-+        self.basic_agg = self.TargetClass(self.basic_employees)
+-+        
+-+        # Dataset for performance
+-+        self.num_employees = 20000
+-+        self.roles = [f"Role_{i}" for i in range(100)]
+-+        self.large_employees = []
+-+        for i in range(self.num_employees):
+-+            self.large_employees.append({
+-+                'name': f'Employee_{i}',
+-+                'role': random.choice(self.roles),
+-+                'on_duty': random.choice([True, False])
+-+            })
+-+        self.large_agg = self.TargetClass(self.large_employees)
+-+
+-+    # Test 1: Preservation of Legacy Logic (Basic Correctness)
+-+    # Checks positive case: "Kitchen Prep" -> "Alice"
+-+    def test_1_preservation_correctness(self):
+-+        result = self.basic_agg.get_eligible_workers('Kitchen Prep')
+-+        self.assertEqual(result, ['Alice'], "Failed basic correctness check (Preservation)")
+-+
+-+    # Test 2: Req 1 - Dictionary-Based Indexing
+-+    def test_2_req1_dictionary_indexing(self):
+-+        # Expected: FAIL on BEFORE, PASS on AFTER
+-+        
+-+        # Check if 'role_map' attribute exists
+-+        if not hasattr(self.large_agg, 'role_map'):
+-+            self.fail("Req 1 Failed: No 'role_map' attribute found (Dictionary Indexing missing)")
+-+            
+-+        role_map = self.large_agg.role_map
+-+        # Check if it is a dictionary-like structure
+-+        if not isinstance(role_map, (dict, collections.defaultdict)):
+-+             self.fail("Req 1 Failed: 'role_map' is not a dictionary")
+-+             
+-+        # Check if values are lists of employees (full dicts)
+-+        if role_map:
+-+            first_key = list(role_map.keys())[0]
+-+            val = role_map[first_key]
+-+            if not isinstance(val, list):
+-+                self.fail("Req 1 Failed: Values in role_map must be lists")
+-+            if val and not isinstance(val[0], dict):
+-+                 self.fail("Req 1 Failed: Values in role_map must be employee objects (dicts)")
+-+
+-+    # Test 3: Req 2 - Sub-millisecond Response
+-+    def test_3_req2_sub_millisecond(self):
+-+        # Expected: FAIL on BEFORE, PASS on AFTER
+-+        runs = 100
+-+        target = 'Role_50'
+-+        t = timeit.timeit(lambda: self.large_agg.get_eligible_workers(target), number=runs)
+-+        avg_time = t / runs
+-+        
+-+        # Strict Requirement: < 1ms (0.001s)
+-+        if avg_time >= 0.001:
+-+            self.fail(f"Req 2 Failed: Response time {avg_time*1000:.3f}ms is not sub-millisecond (<1ms)")
+-+
+-+    # Test 4: Req 3 - 100x Speedup Performance Standards
+-+    def test_4_req3_performance_standard(self):
+-+        # Expected: FAIL on BEFORE, PASS on AFTER
+-+        runs = 100
+-+        target = 'Role_50'
+-+        
+-+        # Measure Baseline (Always Before) to calculate speedup
+-+        baseline_agg = StaffAggregatorBefore(self.large_employees)
+-+        t_baseline = timeit.timeit(lambda: baseline_agg.get_eligible_workers(target), number=runs)
+-+        
+-+        # Measure Target
+-+        t_target = timeit.timeit(lambda: self.large_agg.get_eligible_workers(target), number=runs)
+-+        if t_target == 0: t_target = 1e-9
+-+            
+-+        speedup = t_baseline / t_target
+-+        print(f"\n[Req 3] Speedup vs Baseline: {speedup:.2f}x")
+-+        
+-+        if speedup < 100:
+-+             self.fail(f"Req 3 Failed: Speedup {speedup:.2f}x is less than 100x requirement")
+-+
+-+    # Test 5: Req 4 - Edge Cases Correctness (No Match / All Busy)
+-+    def test_5_req4_edge_cases(self):
+-+        # Expected: PASS on BOTH (Legacy handles this correctly too)
+-+        
+-+        # Case A: No Match
+-+        self.assertEqual(self.basic_agg.get_eligible_workers('Astronaut'), [], "Req 4 Failed: Non-existent role should return empty list")
+-+        
+-+        # Case B: All Busy
+-+        busy_employees = [{'name': 'Busy', 'role': 'BusyRole', 'on_duty': True}]
+-+        agg = self.TargetClass(busy_employees)
+-+        self.assertEqual(agg.get_eligible_workers('BusyRole'), [], "Req 4 Failed: All busy employees should return empty list")
+-+
+-+if __name__ == '__main__':
+-+    unittest.main()
+-diff --git a/g1dvzz-shift-roster-availability-optimizer/trajectory/trajectory.md b/g1dvzz-shift-roster-availability-optimizer/trajectory/trajectory.md
+-index 9a25341e..7c341eb7 100644
+---- a/g1dvzz-shift-roster-availability-optimizer/trajectory/trajectory.md
+-+++ b/g1dvzz-shift-roster-availability-optimizer/trajectory/trajectory.md
+-@@ -1,2 +1,103 @@
+--# Trajectory
+-+# Trajectory: My Journey Optimizing the Staff Scheduler
+- 
+-+Here is the story of how I took the Staff Scheduler from a slow, dashboard-freezing bottleneck to a high-performance system.
+-+
+-+## 1. Analyzing the Problem
+-+
+-+I started by looking at the legacy code and realized it was suffering from a classic **Linear Search** problem.
+-+
+-+### The "Teacher" Analogy
+-+I imagined myself as a teacher in a school with 5,000 students. To find a "Math Helper", I was essentially walking up to *every single student* and asking, "Are you a Math Helper? AND are you free?"
+-+
+-+### The Technical Bottleneck
+-+Technically, this was an **O(N)** operation.
+-+```python
+-+# The bottlenecks I found in repository_before/staff_scheduler.py
+-+def get_eligible_workers(self, required_role):
+-+    eligible = []
+-+    # I saw this loop running 5,000+ times for every single query!
+-+    for person in self.employees:
+-+        if person['role'] == required_role and person['on_duty'] == False:
+-+            eligible.append(person['name'])
+-+    return eligible
+-+```
+-+As the company grew to 20,000 employees, this linear scan was causing the HR dashboard to freeze. I knew I needed a better way.
+-+
+-+---
+-+
+-+## 2. Designing the Solution: The "Smart Buckets" Approach
+-+
+-+I decided to switch to **Dictionary-Based Indexing**. To explain how this works, I used a mental model I call "Smart Buckets".
+-+
+-+### The Concept (For a 10-Year-Old)
+-+Imagine I am that same teacher, but this time I'm smarter. I know I'll need helpers all day, and I don't want to ask 5,000 people every time. So, I do something special first thing in the morning.
+-+
+-+**The Setup (The "Sorting Hat")**
+-+I take the messy pile of 5,000 student cards. I throw away the cards for busy students (for today). For the free students, I put them into labelled buckets. *Math Helpers* go in the blue bucket. *Art Assistants* go in the red bucket.
+-+
+-+**The Search (The "Instant Grab")**
+-+Later, when the principal yells, "I need a Math Helper NOW!", I don't panic. I don't run around asking 5,000 students.
+-+I just reach for the **Blue Bucket**. Boom! Inside are only the students who are (1) Math Helpers and (2) Free.
+-+
+-+### The Implementation
+-+I translated this "Smart Bucket" idea into code using a Python `defaultdict`.
+-+
+-+```python
+-+# How I fixed it in repository_after/staff_scheduler.py
+-+import collections
+-+
+-+class StaffAggregator:
+-+    def __init__(self, employee_list):
+-+        self.employees = employee_list 
+-+        
+-+        # 1. The Setup: I get my empty buckets
+-+        self.role_map = collections.defaultdict(list)
+-+        
+-+        for person in employee_list:
+-+            # The Trick: I only care about students who are FREE
+-+            if not person['on_duty']:
+-+                # The Sort: I drop them in the right bucket
+-+                self.role_map[person['role']].append(person)
+-+
+-+    def get_eligible_workers(self, required_role):
+-+        # 2. The Instant Grab: O(1) Lookup
+-+        candidates = self.role_map.get(required_role, [])
+-+        return [person['name'] for person in candidates]
+-+```
+-+
+-+**Why this works:**
+-+*   **Old Way (O(N))**: Reading a book page by page to find a word.
+-+*   **New Way (O(1))**: Using the Index at the back of the book.
+-+
+-+---
+-+
+-+## 3. How I Verified It
+-+
+-+I didn't just write the code; I tested it rigidly against 4 strict requirements.
+-+
+-+### Requirement 1: Dictionary-Based Indexing
+-+*   **My Goal**: Ensure I was actually building a map (my "buckets").
+-+*   **Result**: **PASSED**. I verified that my new class has a `role_map` attribute.
+-+
+-+### Requirement 2: Complexity Shift & Sub-millisecond Response
+-+*   **My Goal**: I needed to be fast. Less than 1 millisecond fast.
+-+*   **My Results**:
+-+    *   **Before**: ~1.2ms (Way too slow)
+-+    *   **After**: ~0.005ms (Incredibly fast)
+-+
+-+### Requirement 3: >100x Speedup
+-+*   **My Goal**: Prove the optimization wasn't just verified; it was *significant*.
+-+*   **Result**: **PASSED**. I achieved a massive speedup ratio, well over the 100x target.
+-+
+-+### Requirement 4: Correctness (Edge Cases)
+-+*   **My Goal**: Make sure I didn't break the logic.
+-+*   **Result**: **PASSED**. I confirmed that if I ask for a non-existent role, I still get an empty list back, just like before—only faster.
+-+
+-+---
+-+
+-+## 4. Final Delivery
+-+
+-+I've packaged my work with a complete test suite. You can see the difference yourself:
+-+
+-+*   **See the Failure**: Run `docker compose run before` to see where the old code failed (The "Linear Search" struggle).
+-+*   **See the Success**: Run `docker compose run after` to see my optimized solution passing all tests.
++     run_evaluation()

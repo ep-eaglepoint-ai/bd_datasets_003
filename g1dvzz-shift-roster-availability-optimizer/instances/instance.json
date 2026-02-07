@@ -1,0 +1,11 @@
+{
+            "instance_id": "G1DVZZ",
+            "problem_statement": "Refactor a Python-based shift matching utility for a large retail store. The goal is to optimize the 'Find Eligible Employees' lookup from an $O(N)$ linear scan to a faster hash-map approach to handle scaling to thousands of staff members.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_002/tree/main/g1dvzz-shift-roster-availability-optimizer",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
