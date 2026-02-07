@@ -1,11 +1,5 @@
-# 8FSEV2 -  Idempotent Exam Submission System with Concurrency Control
+## After Test: Run Concurrency Suite
+docker compose run --rm test-runner go test -v ./tests/... -race
 
-    ## Before Test Docker Command
-    <docker before command here>
-
-    ## After Test Docker Command
-    <docker after command here>
-
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## evaluation
+docker compose run --rm test-runner go run evaluation/evaluation.go

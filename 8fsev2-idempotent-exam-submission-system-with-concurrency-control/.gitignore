@@ -1,12 +1,25 @@
-# Python
-__pycache__/
-*.pyc
-.venv/
-.env
 
-# Node
-node_modules/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+__debug_bin
+
+
+vendor/
+go.sum
+
+.vscode/
+
+# Docker
+.docker/
+docker-compose.override.yml
+
+# Project Specific
+evaluation/report/
+evaluation/*.json
 
 # OS
 .DS_Store
-evaluation/*.json

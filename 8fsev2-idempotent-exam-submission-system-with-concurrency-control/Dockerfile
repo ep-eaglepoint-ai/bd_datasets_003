@@ -1,8 +1,16 @@
+FROM golang:1.23-alpine
 
-        # Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
+RUN apk add --no-cache gcc musl-dev
 
-        FROM python:3.11-slim
 WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+
+
+ENV CGO_ENABLED=1
+
+COPY go.mod ./
+RUN go mod download || true
+
+COPY . .
+
+
+CMD ["go", "test", "-v", "./tests/...", "-race"]

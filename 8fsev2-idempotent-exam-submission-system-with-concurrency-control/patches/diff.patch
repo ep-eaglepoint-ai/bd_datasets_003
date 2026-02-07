@@ -1,0 +1,140 @@
+diff --git a/repository_after/cmd/client/client.go b/repository_after/cmd/client/client.go
+new file mode 100644
+index 0000000..6940ee3
+--- /dev/null
++++ b/repository_after/cmd/client/client.go
+@@ -0,0 +1,30 @@
++package repository_after
++import (
++	"bytes"
++	"encoding/json"
++	"fmt"
++	"net/http"
++	"sync"
++)
++
++func main() {
++	payload := map[string]interface{}{
++		"session_id": "exam_001",
++		"section_id": "math_101",
++		"answers":    map[string]string{"q1": "A", "q2": "C"},
++	}
++	data, _ := json.Marshal(payload)
++
++	var wg sync.WaitGroup
++	for i := 0; i < 5; i++ {
++		wg.Add(1)
++		go func(id int) {
++			defer wg.Done()
++			resp, _ := http.Post("http://server:8080/submit", "application/json", bytes.NewBuffer(data))
++			var res map[string]interface{}
++			json.NewDecoder(resp.Body).Decode(&res)
++			fmt.Printf("Retry %d: Status=%v, Total=%v\n", id, res["status"], res["total_score"])
++		}(i)
++	}
++	wg.Wait()
++}
+\ No newline at end of file
+diff --git a/repository_after/cmd/server/main.go b/repository_after/cmd/server/main.go
+new file mode 100644
+index 0000000..40e5a5a
+--- /dev/null
++++ b/repository_after/cmd/server/main.go
+@@ -0,0 +1,13 @@
++package main
++
++import (
++	"assessment-platform/repository_after"
++	"log"
++	"net/http"
++)
++
++func main() {
++	http.HandleFunc("/submit", repository_after.SubmitHandler)
++	log.Println("Architectural Server running on :8080")
++	log.Fatal(http.ListenAndServe(":8080", nil))
++}
+\ No newline at end of file
+diff --git a/repository_after/pkg/server.go b/repository_after/pkg/server.go
+new file mode 100644
+index 0000000..ee06ec1
+--- /dev/null
++++ b/repository_after/pkg/server.go
+@@ -0,0 +1,76 @@
++package pkg
++
++import (
++	"encoding/json"
++	"net/http"
++	"sync"
++)
++
++// Internal state storage protected by RWMutex
++var (
++	Sessions   = make(map[string]*SessionState)
++	SessionsMu sync.RWMutex
++)
++
++var AnswerKey = map[string]string{"q1": "A", "q2": "C", "q3": "B"}
++
++type SubmitRequest struct {
++	SessionID string            `json:"session_id"`
++	SectionID string            `json:"section_id"`
++	Answers   map[string]string `json:"answers"`
++}
++
++type SubmitResponse struct {
++	SessionID    string `json:"session_id"`
++	SectionScore int    `json:"section_score"`
++	TotalScore   int    `json:"total_score"`
++	Status       string `json:"status"`
++}
++
++type SessionState struct {
++	TotalScore     int
++	GradedSections map[string]int
++	Mu             sync.Mutex // Protects the read-modify-write cycle
++}
++
++func SubmitHandler(w http.ResponseWriter, r *http.Request) {
++	var req SubmitRequest
++	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
++		http.Error(w, "Bad Request", 400); return
++	}
++
++	// Session Retrieval with RWMutex
++	SessionsMu.RLock()
++	state, exists := Sessions[req.SessionID]
++	SessionsMu.RUnlock()
++
++	if !exists {
++		SessionsMu.Lock()
++		if state, exists = Sessions[req.SessionID]; !exists {
++			state = &SessionState{GradedSections: make(map[string]int)}
++			Sessions[req.SessionID] = state
++		}
++		SessionsMu.Unlock()
++	}
++
++	// CRITICAL SECTION: Idempotency Protection
++	state.Mu.Lock()
++	defer state.Mu.Unlock()
++
++	if prevScore, ok := state.GradedSections[req.SectionID]; ok {
++		w.Header().Set("Content-Type", "application/json")
++		json.NewEncoder(w).Encode(SubmitResponse{req.SessionID, prevScore, state.TotalScore, "IDEMPOTENT_SUCCESS"})
++		return
++	}
++
++	score := 0
++	for q, ans := range req.Answers {
++		if val, ok := AnswerKey[q]; ok && val == ans { score++ }
++	}
++
++	state.TotalScore += score
++	state.GradedSections[req.SectionID] = score
++
++	w.Header().Set("Content-Type", "application/json")
++	json.NewEncoder(w).Encode(SubmitResponse{req.SessionID, score, state.TotalScore, "GRADED"})
++}
+\ No newline at end of file
