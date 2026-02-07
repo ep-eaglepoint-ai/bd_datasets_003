@@ -67,14 +67,19 @@ describe("Webhooks Service Edge Cases (Req 1, 9)", () => {
   // }
   it("proceeds with replay if endpoint exists", async () => {
     // Quarantine exists
-    mockQuarantineModel.findOne.mockResolvedValue({
-      _id: "q_valid",
-      tenantId: "t1",
-      endpointId: "ep_valid",
-      eventId: "ev1",
-      eventType: "type",
-      payload: {},
-      deleteOne: jest.fn(),
+    mockQuarantineModel.findOne.mockImplementation((query: any) => {
+      if (query._id === "q_valid" && query.tenantId === "t1") {
+        return Promise.resolve({
+          _id: "q_valid",
+          tenantId: "t1",
+          endpointId: "ep_valid",
+          eventId: "ev1",
+          eventType: "type",
+          payload: {},
+          deleteOne: jest.fn(),
+        });
+      }
+      return Promise.resolve(null);
     });
 
     // Endpoint MUST exist for retryQuarantine to pass (impl checks endpoint)
@@ -85,9 +90,8 @@ describe("Webhooks Service Edge Cases (Req 1, 9)", () => {
     // Mock queue add success
     mockQueue.add.mockResolvedValue(undefined);
 
-    // Should not throw
-    await expect(
-      service.retryQuarantine("q_valid", "t1")
+    // Should not throw (Correct args: tenantId, quarantineId)
+    await expect(service.retryQuarantine("t1", "q_valid")).resolves.not.toThrow();
     ).resolves.not.toThrow();
 
     expect(mockCircuitBreaker.reset).toHaveBeenCalledWith("ep_valid");

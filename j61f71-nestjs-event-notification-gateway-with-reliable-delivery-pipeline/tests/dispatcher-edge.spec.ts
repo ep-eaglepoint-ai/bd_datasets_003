@@ -5,12 +5,15 @@ import { WebhookDispatcherListener } from "../repository_after/src/webhooks/webh
 describe("Webhook Dispatcher Edge Cases (Req 2)", () => {
   let listener: WebhookDispatcherListener;
   let mockEndpointModel: any;
-  let mockQueue: any;
+  let mockWebhooksService: any;
 
   beforeEach(() => {
     mockEndpointModel = { find: jest.fn() };
-    mockQueue = { add: jest.fn() };
-    listener = new WebhookDispatcherListener(mockEndpointModel, mockQueue);
+    mockWebhooksService = { enqueueDeliveryIfSubscribed: jest.fn() };
+    listener = new WebhookDispatcherListener(
+      mockEndpointModel,
+      mockWebhooksService
+    );
   });
 
   // Req 2 Edge 1: No subscribers for event
@@ -25,7 +28,9 @@ describe("Webhook Dispatcher Edge Cases (Req 2)", () => {
       occurredAt: new Date(),
     });
 
-    expect(mockQueue.add).not.toHaveBeenCalled();
+    expect(
+      mockWebhooksService.enqueueDeliveryIfSubscribed
+    ).not.toHaveBeenCalled();
   });
 
   // Req 2 Edge 2: Database failure during fetch
@@ -42,6 +47,8 @@ describe("Webhook Dispatcher Edge Cases (Req 2)", () => {
       })
     ).rejects.toThrow("DB Connection Lost");
 
-    expect(mockQueue.add).not.toHaveBeenCalled();
+    expect(
+      mockWebhooksService.enqueueDeliveryIfSubscribed
+    ).not.toHaveBeenCalled();
   });
 });

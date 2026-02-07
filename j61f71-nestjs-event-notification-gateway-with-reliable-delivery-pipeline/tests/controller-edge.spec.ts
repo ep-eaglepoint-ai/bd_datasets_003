@@ -9,9 +9,10 @@ describe("Webhooks Controller Edge Cases (Req 11)", () => {
 
   beforeEach(() => {
     mockService = {
-      getDeliveryLogs: jest.fn(),
-      getQuarantineEntries: jest.fn(),
+      listDeliveryLogs: jest.fn(),
+      listQuarantine: jest.fn(),
       retryQuarantine: jest.fn(),
+      requireTenantByApiKey: jest.fn(),
     };
     controller = new WebhooksController(mockService);
   });
