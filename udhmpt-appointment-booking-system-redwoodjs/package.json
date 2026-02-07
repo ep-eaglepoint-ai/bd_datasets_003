@@ -1,0 +1,35 @@
+{
+  "name": "udhmpt-appointment-booking-system-foundation",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "test": "npx jest --runInBand tests/provider_onboarding.test.ts tests/availability_recurring.test.ts tests/availability_overrides.test.ts tests/booking_creation.test.ts tests/booking_confirmation.test.tsx tests/booking_cancel_reschedule.test.ts tests/booking_policies_capacity.test.ts tests/search_availability.test.ts tests/realtime_slot_listing.test.tsx tests/calendar_ui.test.tsx tests/booking_details_panel.test.tsx tests/concurrency.test.ts tests/slot_generation.test.ts tests/timezone/cross_timezone_scenarios.test.ts tests/timezone/dst_edge_cases.test.ts tests/timezone/invalid_timezone_handling.test.ts tests/integration/end_to_end_workflows.test.ts tests/integration/auth_header_rbac.test.ts --silent"
+  },
+  "dependencies": {
+    "@prisma/client": "5.22.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "bcryptjs": "^3.0.3",
+    "jsonwebtoken": "^9.0.3",
+    "luxon": "^3.4.0"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^5.16.5",
+    "@testing-library/react": "^14.0.0",
+    "@types/jest": "^29.5.0",
+    "@types/luxon": "^3.0.0",
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0",
+    "@types/uuid": "^9.0.0",
+    "jest": "^29.5.0",
+    "jest-environment-jsdom": "^29.5.0",
+    "prisma": "5.22.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "ts-jest": "^29.1.0",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.1.0",
+    "uuid": "^9.0.0"
+  }
+}

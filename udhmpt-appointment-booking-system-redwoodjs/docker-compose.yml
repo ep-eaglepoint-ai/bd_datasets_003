@@ -1,0 +1,45 @@
+# Docker Compose file for running tests and evaluation. Use `docker compose run --rm test` or `docker compose run --rm evaluate`
+services:
+  app:
+    build: .
+    working_dir: /app/repository_after
+    environment:
+      - RWJS_CWD=/app/repository_after
+      - DATABASE_URL=file:/app/repository_after/api/db/dev.db
+      - REDWOOD_DISABLE_TELEMETRY=1
+    ports:
+      - "8910:8910"
+      - "8911:8911"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/repository_after/node_modules
+      - /app/repository_after/api/node_modules
+      - /app/repository_after/web/node_modules
+    command: sh -c "cd /app/repository_after && npm install --legacy-peer-deps && npx rw dev"
+
+  test:
+    build: .
+    working_dir: /app
+    environment:
+      - CI=true
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/repository_after/node_modules
+      - /app/repository_after/api/node_modules
+      - /app/repository_after/web/node_modules
+    command: sh -c "npm install --silent && npm test --silent"
+
+  evaluate:
+    build: .
+    working_dir: /app
+    environment:
+      - CI=true
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/repository_after/node_modules
+      - /app/repository_after/api/node_modules
+      - /app/repository_after/web/node_modules
+    command: sh -c "npm install --silent && npx ts-node evaluation/evaluation.ts"

@@ -1,0 +1,11 @@
+{
+            "instance_id": "UDHMPT",
+            "problem_statement": "Build a full-stack scheduling platform where service providers can define availability (recurring + one-off), customers can book/reschedule/cancel appointments in real time, and the system reliably prevents double bookings while handling time zones, policies, and role-based access. The app must be production-ready using RedwoodJS (Web + API), Prisma, GraphQL, and Cells, with a scalable architecture for future features like notifications, payments, and organizations.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/udhmpt-appointment-booking-system-redwoodjs",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        

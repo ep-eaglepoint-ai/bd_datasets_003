@@ -1,0 +1,17 @@
+{
+  "name": "api",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "@redwoodjs/api": "6.0.7",
+    "@redwoodjs/graphql-server": "6.0.7",
+    "@redwoodjs/realtime": "6.0.7",
+    "bcryptjs": "^3.0.3",
+    "jsonwebtoken": "^9.0.3",
+    "luxon": "^3.4.0"
+  },
+  "devDependencies": {
+    "prisma": "5.22.0"
+  }
+}

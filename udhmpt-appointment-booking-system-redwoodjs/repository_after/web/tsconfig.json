@@ -1,0 +1,27 @@
+{
+    "compilerOptions": {
+        "noEmit": true,
+        "allowJs": true,
+        "esModuleInterop": true,
+        "allowSyntheticDefaultImports": true,
+        "lib": [
+            "esnext",
+            "dom"
+        ],
+        "module": "esnext",
+        "moduleResolution": "node",
+        "target": "esnext",
+        "strict": true,
+        "checkJs": false,
+        "jsx": "react-jsx",
+        "baseUrl": ".",
+        "paths": {
+            "src/*": [
+                "./src/*"
+            ]
+        }
+    },
+    "include": [
+        "src/**/*"
+    ]
+}

@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.env
+
+# Node
+node_modules/
+**/node_modules/
+
+# OS
+.DS_Store
+
+# Redwood
+*/.redwood/
+*/dist/
+*/.netlify/
+*/.cache/
+
+# SQLite / Dev DB
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Build/Logs
+*.log
+.pnp
+.pnp.js
+
+
+#evaluation
+evaluation/????-??-??/

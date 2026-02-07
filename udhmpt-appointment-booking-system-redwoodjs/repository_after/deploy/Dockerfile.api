@@ -1,0 +1,55 @@
+# Multi-stage build for production API container
+FROM node:18-alpine AS base
+
+# Install dependencies only when needed
+FROM base AS deps
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+COPY yarn.lock ./
+
+# Install dependencies
+RUN yarn install --frozen-lockfile --production=false
+
+# Rebuild the source code only when needed
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+# Build the application
+ENV NODE_ENV=production
+RUN yarn rw build api
+
+# Production image, copy all the files and run the app
+FROM node:18-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PORT=8911
+
+# Create a non-root user
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 redwood
+
+# Copy built application
+COPY --from=builder /app/api/dist ./api/dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/redwood.toml ./redwood.toml
+COPY --from=builder /app/api/prisma ./api/prisma
+
+# Set permissions
+RUN chown -R redwood:nodejs /app
+USER redwood
+
+# Expose port
+EXPOSE 8911
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8911 || exit 1
+
+# Start the API server
+CMD ["yarn", "rw", "serve", "api", "--port", "8911"]
