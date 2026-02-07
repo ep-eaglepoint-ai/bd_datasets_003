@@ -1,0 +1,27 @@
+services:
+  test-before:
+    build: .
+    image: report-generator-env
+    command: mvn test -f repository_before/pom.xml -Dmaven.test.failure.ignore=true
+    volumes:
+      - .:/app
+      - maven_data:/root/.m2
+    working_dir: /app
+
+  test-after:
+    image: report-generator-env
+    command: mvn test -f repository_after/pom.xml
+    volumes:
+      - .:/app
+      - maven_data:/root/.m2
+    working_dir: /app
+
+  evaluation:
+    image: report-generator-env
+    command: python3 evaluation/evaluation.py
+    volumes:
+      - .:/app
+    working_dir: /app
+
+volumes:
+  maven_data:
