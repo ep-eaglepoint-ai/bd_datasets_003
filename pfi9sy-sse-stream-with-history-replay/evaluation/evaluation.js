@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
-const { v4: uuidv4 } = require("uuid");
+const { randomUUID } = require("crypto");
 const os = require("os");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -58,7 +58,7 @@ function runTests() {
 }
 
 async function runEvaluation() {
-  const runId = uuidv4();
+  const runId = randomUUID();
   const startTime = new Date();
   const startTimeIso = startTime.toISOString();
 
