@@ -1,13 +1,11 @@
 FROM python:3.11-slim
 WORKDIR /app
 
-COPY requirements.txt /app/requirements.txt
+# Copy and install dependencies
+COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY repository_after/ /app/repository_after/
-COPY repository_before/ /app/repository_before/
-COPY tests/ /app/tests/
-COPY evaluation/ /app/evaluation/
+# Copy all application code from current directory
+COPY . /app/
 
 CMD ["python", "-m", "pytest", "-q", "tests"]
