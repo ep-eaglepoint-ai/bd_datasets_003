@@ -1,7 +1,4 @@
-﻿After test: docker compose run --rm after_test
-Test + rediff --no-prefix repository_before repository_after
-
-diff --no-prefix repository_before/jest.config.js repository_after/jest.config.js
+﻿diff --no-prefix repository_before/jest.config.js repository_after/jest.config.js
 --- repository_before/jest.config.js
 +++ repository_after/jest.config.js
 @@ -1,13 +1,10 @@
