@@ -43,15 +43,32 @@ function Poll({ pollId, onBack }) {
     }
 
     try {
+      // Generate or retrieve a unique voter ID from localStorage
+      let voterId = localStorage.getItem('voterId');
+      if (!voterId) {
+        voterId = `voter_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        localStorage.setItem('voterId', voterId);
+      }
+
       const response = await fetch(`/api/polls/${pollId}/vote`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ optionIndex: selectedOption }),
+        body: JSON.stringify({ 
+          optionIndex: selectedOption,
+          voterId 
+        }),
       });
 
       const data = await response.json();
+
+      if (response.status === 403) {
+        setError('Already voted');
+        setHasVoted(true);
+        localStorage.setItem(`voted_${pollId}`, 'true');
+        return;
+      }
 
       if (!response.ok) {
         setError(data.error || 'Failed to vote');

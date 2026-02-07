@@ -29,7 +29,8 @@ const createPoll = (req, res) => {
   polls[pollId] = {
     question: question.trim(),
     options: options.map(opt => opt.trim()),
-    votes: new Array(options.length).fill(0)
+    votes: new Array(options.length).fill(0),
+    voters: new Set()
   };
 
   res.status(201).json({ pollId });
@@ -55,11 +56,21 @@ const getPoll = (req, res) => {
 
 const vote = (req, res) => {
   const { id } = req.params;
-  const { optionIndex } = req.body;
+  const { optionIndex, voterId } = req.body;
   const poll = polls[id];
 
   if (!poll) {
     return res.status(404).json({ error: 'Poll not found' });
+  }
+
+  // voterId is required for duplicate vote prevention
+  if (!voterId) {
+    return res.status(400).json({ error: 'voterId is required' });
+  }
+
+  // Check if voter has already voted
+  if (poll.voters.has(voterId)) {
+    return res.status(403).json({ error: 'Already voted' });
   }
 
   if (typeof optionIndex !== 'number' || !Number.isInteger(optionIndex) || optionIndex < 0 || optionIndex >= poll.options.length) {
@@ -67,6 +78,7 @@ const vote = (req, res) => {
   }
 
   poll.votes[optionIndex]++;
+  poll.voters.add(voterId);
 
   const percentages = calculatePercentages(poll.votes);
 

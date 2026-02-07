@@ -17689,10 +17689,10 @@ index 0000000..2ef8173
 +}
 diff --git a/repository_after/client/src/components/Poll.js b/repository_after/client/src/components/Poll.js
 new file mode 100644
-index 0000000..2b2defa
+index 0000000..709e2ae
 --- /dev/null
 +++ b/repository_after/client/src/components/Poll.js
-@@ -0,0 +1,164 @@
+@@ -0,0 +1,181 @@
 +import React, { useState, useEffect } from 'react';
 +import './Poll.css';
 +
@@ -17738,15 +17738,32 @@ index 0000000..2b2defa
 +    }
 +
 +    try {
++      // Generate or retrieve a unique voter ID from localStorage
++      let voterId = localStorage.getItem('voterId');
++      if (!voterId) {
++        voterId = `voter_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
++        localStorage.setItem('voterId', voterId);
++      }
++
 +      const response = await fetch(`/api/polls/${pollId}/vote`, {
 +        method: 'POST',
 +        headers: {
 +          'Content-Type': 'application/json'
 +        },
-+        body: JSON.stringify({ optionIndex: selectedOption }),
++        body: JSON.stringify({ 
++          optionIndex: selectedOption,
++          voterId 
++        }),
 +      });
 +
 +      const data = await response.json();
++
++      if (response.status === 403) {
++        setError('Already voted');
++        setHasVoted(true);
++        localStorage.setItem(`voted_${pollId}`, 'true');
++        return;
++      }
 +
 +      if (!response.ok) {
 +        setError(data.error || 'Failed to vote');
@@ -17995,10 +18012,10 @@ index 0000000..b5df592
 +CMD ["node", "index.js"]
 diff --git a/repository_after/server/controllers/pollController.js b/repository_after/server/controllers/pollController.js
 new file mode 100644
-index 0000000..576ade9
+index 0000000..f1db42d
 --- /dev/null
 +++ b/repository_after/server/controllers/pollController.js
-@@ -0,0 +1,99 @@
+@@ -0,0 +1,111 @@
 +const { polls, generatePollId, calculatePercentages } = require('../utils/pollUtils');
 +
 +const createPoll = (req, res) => {
@@ -18030,7 +18047,8 @@ index 0000000..576ade9
 +  polls[pollId] = {
 +    question: question.trim(),
 +    options: options.map(opt => opt.trim()),
-+    votes: new Array(options.length).fill(0)
++    votes: new Array(options.length).fill(0),
++    voters: new Set()
 +  };
 +
 +  res.status(201).json({ pollId });
@@ -18056,11 +18074,21 @@ index 0000000..576ade9
 +
 +const vote = (req, res) => {
 +  const { id } = req.params;
-+  const { optionIndex } = req.body;
++  const { optionIndex, voterId } = req.body;
 +  const poll = polls[id];
 +
 +  if (!poll) {
 +    return res.status(404).json({ error: 'Poll not found' });
++  }
++
++  // voterId is required for duplicate vote prevention
++  if (!voterId) {
++    return res.status(400).json({ error: 'voterId is required' });
++  }
++
++  // Check if voter has already voted
++  if (poll.voters.has(voterId)) {
++    return res.status(403).json({ error: 'Already voted' });
 +  }
 +
 +  if (typeof optionIndex !== 'number' || !Number.isInteger(optionIndex) || optionIndex < 0 || optionIndex >= poll.options.length) {
@@ -18068,6 +18096,7 @@ index 0000000..576ade9
 +  }
 +
 +  poll.votes[optionIndex]++;
++  poll.voters.add(voterId);
 +
 +  const percentages = calculatePercentages(poll.votes);
 +
