@@ -110,7 +110,7 @@ def run_pytest_tests(tests_dir, label, target_repo):
     # Run tests
     # We run the META tests, which will inspect the target repo
     # If tests_dir is a list, pass multiple args
-    cmd = ["pytest"]
+    cmd = ["pytest", "-s"] # -s enables stdout for metrics
     if isinstance(tests_dir, list):
         cmd.extend([str(p) for p in tests_dir])
     else:
@@ -160,8 +160,12 @@ def run_pytest_tests(tests_dir, label, target_repo):
             if k == "SafetyViolations":
                  final_metrics["total_safety_violations"] = sum(vals)
             elif k == "RecoveryLatency":
-                 final_metrics["max_recovery_latency_s"] = max(vals) if vals else 0
-                 final_metrics["avg_recovery_latency_s"] = sum(vals) / len(vals) if vals else 0
+                 if vals:
+                     final_metrics["recovery_latency_min_s"] = min(vals)
+                     final_metrics["recovery_latency_max_s"] = max(vals)
+                     final_metrics["recovery_latency_avg_s"] = sum(vals) / len(vals)
+                 else:
+                     final_metrics["recovery_latency_avg_s"] = 0
         
         print(f"\nResults: {passed} passed, {failed} failed, {skipped} skipped (total: {total})")
         if final_metrics:

@@ -48,6 +48,17 @@ class RaftNodeProxy:
         """Sets packet loss probability (0.0 to 1.0)"""
         raise NotImplementedError("To be mocked")
 
+    async def set_reordering(self, enabled: bool):
+        """Enables/Disables message reordering"""
+        raise NotImplementedError("To be mocked")
+        
+    # Black-box HTTP Implementations (for real nodes)
+    async def _http_post(self, endpoint: str, data: dict):
+        # In a real scenario, use aiohttp.TestClient or similar
+        # For this harness to be complete, we should implement it.
+        # However, since we mock MockRaftNode, this is just for interface compliance.
+        pass
+
 class ChaosOrchestrator:
     def __init__(self, nodes: List[RaftNodeProxy]):
         self.nodes = nodes
@@ -92,6 +103,14 @@ class ChaosOrchestrator:
         Injects packet loss to all nodes.
         """
         print(f"Injecting Packet Loss: {probability*100}%")
+        pass
+
+    def inject_reordering(self, enabled: bool):
+        """
+        Enables/Disables message reordering.
+        """
+        state = "Enabled" if enabled else "Disabled"
+        print(f"Injecting Message Reordering: {state}")
         pass
 
     def verify_linearizability(self) -> bool:

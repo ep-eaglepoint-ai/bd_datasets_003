@@ -24,13 +24,22 @@ class MockRaftNode(RaftNodeProxy):
         self.current_term = 1
         self.latency = 0.0
         self.packet_loss_prob = 0.0
+        self.reordering_enabled = False
+        self._delay_queue = [] # For reordering simulation
         
     async def _simulate_network(self) -> bool:
         """Simulates network effects. Returns False if packet lost."""
         if self.is_isolated:
             return False
         
-        if self.latency > 0:
+        # Reordering: If enabled, some messages are delayed significantly more than others
+        if self.reordering_enabled:
+             # Randomly delay this call significantly (out of order delivery simulation)
+             if random.random() < 0.3:
+                  await asyncio.sleep(random.uniform(0.1, 0.4))
+             else:
+                  await asyncio.sleep(0.01)
+        elif self.latency > 0:
             await asyncio.sleep(self.latency)
         else:
             # Base network delay
@@ -100,9 +109,6 @@ class MockRaftNode(RaftNodeProxy):
 
     async def get_term(self) -> int:
         if not await self._simulate_network():
-             # If packet loss on term check, maybe just return last known or raise?
-             # Raising might break the test loop assertions.
-             # Let's say get_term is a local operation not subject to network (except latency to querying client)
              pass
         return self.current_term
 
@@ -117,12 +123,16 @@ class MockRaftNode(RaftNodeProxy):
         self.partitioned_peers.clear()
         self.latency = 0.0
         self.packet_loss_prob = 0.0
+        self.reordering_enabled = False
 
     async def set_latency(self, delay: float):
         self.latency = delay
 
     async def set_packet_loss(self, probability: float):
         self.packet_loss_prob = probability
+
+    async def set_reordering(self, enabled: bool):
+        self.reordering_enabled = enabled
 
 # --- Fixtures ---
 
@@ -191,10 +201,13 @@ async def heal_all(nodes: List[MockRaftNode]):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("fault_type, packet_loss_prob, partition_size", [
     ("random_partition", 0.0, "random"),
-    ("bridge", 0.0, "2v3"),
+    ("random_partition", 0.0, "1v4"), # Req 8: 1v4 Partition
+    ("random_partition", 0.0, "2v3"), # Req 8: 2v3 Partition
+    ("bridge", 0.0, "bridge"),
     ("cyclic", 0.0, "cyclic"),
     ("packet_loss", 0.3, "none"),
-    ("packet_loss", 0.1, "none"), # Varying packet loss severity
+    ("message_reordering", 0.0, "none"), # New Fault Type
+    ("isolate_leader", 0.0, "none"), # Req 1: Isolate Leader
 ])
 async def test_raft_system_under_chaos(cluster, orchestrator, fault_type, packet_loss_prob, partition_size):
     """
@@ -209,12 +222,14 @@ async def test_raft_system_under_chaos(cluster, orchestrator, fault_type, packet
         while time.time() - start_time < duration:
             key = f"key_{random.randint(0, 10)}"
             val = f"val_{worker_id}_{random.randint(0, 1000)}"
+            
+            # Use random node, unless we want to target leader specifically?
+            # Mock node logic mimics leader behavior if connected
             node = random.choice(cluster)
             
             op_start = time.time()
             try:
                 # REQ 8: Packet Loss Interleaving (implicit in node behavior if set)
-                # But here we just assume the node handles it.
                 if random.random() > 0.5:
                     success = await node.set_val(key, val)
                     op_end = time.time()
@@ -247,15 +262,30 @@ async def test_raft_system_under_chaos(cluster, orchestrator, fault_type, packet
             
         # Inject Fault
         if fault_type == "random_partition":
-            orchestrator.inject_random_partition()
-            ids_a, ids_b = orchestrator.inject_random_partition()
-            if ids_a:
-                 nodes_a = [n for n in cluster if n.node_id in ids_a]
-                 nodes_b = [n for n in cluster if n.node_id in ids_b]
-                 for n in nodes_a:
-                     await n.partition_from(ids_b)
-                 for n in nodes_b:
-                     await n.partition_from(ids_a)
+            # Use partition_size logic
+            nodes_shuffled = cluster[:]
+            random.shuffle(nodes_shuffled)
+            
+            if partition_size == "1v4":
+                group_a = nodes_shuffled[:1]
+                group_b = nodes_shuffled[1:]
+            elif partition_size == "2v3":
+                group_a = nodes_shuffled[:2]
+                group_b = nodes_shuffled[2:]
+            else: # Random
+                split = random.randint(1, 4)
+                group_a = nodes_shuffled[:split]
+                group_b = nodes_shuffled[split:]
+            
+            ids_a = [n.node_id for n in group_a]
+            ids_b = [n.node_id for n in group_b]
+            
+            print(f"Injecting Partition: {ids_a} <|> {ids_b}")
+            
+            for n in group_a:
+                await n.partition_from(ids_b)
+            for n in group_b:
+                await n.partition_from(ids_a)
                      
         elif fault_type == "bridge":
             await create_bridge_partition(cluster)
@@ -268,6 +298,18 @@ async def test_raft_system_under_chaos(cluster, orchestrator, fault_type, packet
             for n in cluster:
                 await n.set_packet_loss(packet_loss_prob)
 
+        elif fault_type == "message_reordering":
+            # New Fault: Reordering
+            orchestrator.inject_reordering(True)
+            for n in cluster:
+                await n.set_reordering(True)
+
+        elif fault_type == "isolate_leader":
+            # Req 1: Isolate Leader (or specific node)
+            target = cluster[0] # Assume 0 is leader-like
+            print(f"Isolating Node: {target.node_id}")
+            await target.isolate()
+
         # REQ 7: Latency interleaving (randomly introduce latency spikes)
         if random.random() < 0.3:
             latency = random.uniform(0.1, 0.5)
@@ -279,10 +321,11 @@ async def test_raft_system_under_chaos(cluster, orchestrator, fault_type, packet
         
         # Heal
         await heal_all(cluster)
-        # Clear packet loss/latency
+        # Clear packet loss/latency/reordering
         for n in cluster:
             await n.set_packet_loss(0.0)
             await n.set_latency(0.0)
+            await n.set_reordering(False)
 
         await asyncio.sleep(1) # Let system recover
         
