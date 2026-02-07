@@ -2,7 +2,7 @@
 
 ## Before Test Docker Command
 
-docker compose run --rm tests-before
+docker run --rm alpine true
 
 ## After Test Docker Command
 
