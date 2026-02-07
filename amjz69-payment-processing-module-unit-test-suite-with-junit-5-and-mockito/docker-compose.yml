@@ -3,6 +3,12 @@
 services:
   app:
     build: .
-    command: pytest -q tests
     volumes:
-      - .:/app
+      - .:/workspace
+      - maven-repo:/root/.m2
+    working_dir: /workspace
+    environment:
+      - REPO_PATH=${REPO_PATH:-repository_after}
+
+volumes:
+  maven-repo:
