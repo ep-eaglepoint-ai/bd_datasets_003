@@ -8619,11 +8619,20 @@ index b60aff7..5f0354e 100644
  })
  export class AppModule {}
 diff --git a/repository_before/src/events/events.module.ts b/repository_after/src/events/events.module.ts
-index 4805f9b..e15b53e 100644
+index 4805f9b..341a0e8 100644
 --- a/repository_before/src/events/events.module.ts
 +++ b/repository_after/src/events/events.module.ts
-@@ -5,7 +5,7 @@ import { EventsController } from './events.controller';
- import { TenantModule } from '../tenant/tenant.module';
+@@ -1,11 +1,11 @@
+-import { Module } from '@nestjs/common';
+-import { EventEmitterModule } from '@nestjs/event-emitter';
+-import { EventsService } from './events.service';
+-import { EventsController } from './events.controller';
+-import { TenantModule } from '../tenant/tenant.module';
++import { Module } from "@nestjs/common";
++import { EventEmitterModule } from "@nestjs/event-emitter";
++import { EventsService } from "./events.service";
++import { EventsController } from "./events.controller";
++import { TenantModule } from "../tenant/tenant.module";
  
  @Module({
 -  imports: [EventEmitterModule.forRoot(), TenantModule],
