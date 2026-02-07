@@ -2,11 +2,11 @@
 
 ## Before Test Docker Command
 
-docker compose run --rm -e TARGET_REPO=before tests
+docker compose run --rm tests-before
 
 ## After Test Docker Command
 
-docker compose run --rm -e TARGET_REPO=after tests
+docker compose run --rm tests-after
 
 ## Evaluation Docker Command
 

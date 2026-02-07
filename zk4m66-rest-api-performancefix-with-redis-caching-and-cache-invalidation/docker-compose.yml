@@ -1,3 +1,5 @@
+version: '3.9'
+
 services:
     db:
         image: postgres:16-alpine
@@ -25,72 +27,263 @@ services:
             timeout: 2s
             retries: 30
 
-    tests:
+    tests-before:
         build: .
-        container_name: zk4m66-tests
+        container_name: zk4m66-tests-before
         depends_on:
             db:
                 condition: service_healthy
             redis:
                 condition: service_healthy
-
         working_dir: /app/tests
-
         environment:
-            TARGET_REPO: after
+            TARGET_REPO: before
             NODE_ENV: test
-            DATABASE_URL: 'postgresql://postgres:postgres@db:5432/app'
-            REDIS_URL: 'redis://redis:6379'
+            DATABASE_URL: postgresql://postgres:postgres@db:5432/app
+            REDIS_URL: redis://redis:6379
 
+            NPM_CONFIG_PACKAGE_LOCK: 'false'
+            NPM_CONFIG_SAVE: 'false'
+            NPM_CONFIG_FUND: 'false'
+            NPM_CONFIG_AUDIT: 'false'
+            NPM_CONFIG_UPDATE_NOTIFIER: 'false'
         volumes:
             - ./repository_before:/app/repository_before
             - ./repository_after:/app/repository_after
             - ./tests:/app/tests
             - ./jest.meta.config.js:/app/jest.meta.config.js
 
-            # isolate container deps from Windows host
             - /app/tests/node_modules
+            - /app/repository_before/node_modules
             - /app/repository_after/node_modules
+            - /app/repository_before/node_modules/.prisma
             - /app/repository_after/node_modules/.prisma
-
         command:
             - sh
             - -lc
             - |
                 set -e
 
-                echo "Waiting for Postgres and Redis..."
-                node -e "require('net').connect(5432,'db').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"
-                node -e "require('net').connect(6379,'redis').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"
+                echo "Running BEFORE tests..."
 
-                echo "Ensuring test dependencies..."
-                cd /app/tests
-                if [ ! -d node_modules ]; then
-                  npm ci --silent
-                fi
+                cd /app/repository_before
 
-                echo "Ensuring repository_after dependencies (needed for @prisma/client)..."
-                cd /app/repository_after
                 if [ ! -d node_modules ]; then
                   if [ -f package-lock.json ]; then
                     npm ci --silent --ignore-scripts
                   else
-                    npm install --silent --ignore-scripts
+                    npm install --silent --ignore-scripts --no-save
                   fi
                 fi
 
-                echo "Pin Prisma + Prisma Client to v5 locally (NO npx)..."
                 if [ ! -x node_modules/.bin/prisma ]; then
-                  npm i -D --silent prisma@5.22.0
-                fi
-                if [ ! -d node_modules/@prisma/client ]; then
-                  npm i --silent @prisma/client@5.22.0
+                  npm install --silent --ignore-scripts --no-save prisma@5.22.0
                 fi
 
-                echo "Generating Prisma client + syncing DB schema (local prisma)..."
+                if [ ! -d node_modules/@prisma/client ]; then
+                  npm install --silent --ignore-scripts --no-save @prisma/client@5.22.0
+                fi
+
                 ./node_modules/.bin/prisma generate --schema=prisma/schema.prisma
                 ./node_modules/.bin/prisma db push --schema=prisma/schema.prisma
 
-                echo "Running tests..."
                 cd /app/tests
-                TARGET_REPO="$TARGET_REPO" npm test --silent
+
+                if [ ! -d node_modules ]; then
+                  if [ -f package-lock.json ]; then
+                    npm ci --silent || npm install --silent --no-save
+                  else
+                    npm install --silent --no-save
+                  fi
+                fi
+
+                npm test --silent -- --runInBand --forceExit
+
+    tests-after:
+        build: .
+        container_name: zk4m66-tests-after
+        depends_on:
+            db:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
+        working_dir: /app/tests
+        environment:
+            TARGET_REPO: after
+            NODE_ENV: test
+            DATABASE_URL: postgresql://postgres:postgres@db:5432/app
+            REDIS_URL: redis://redis:6379
+
+            NPM_CONFIG_PACKAGE_LOCK: 'false'
+            NPM_CONFIG_SAVE: 'false'
+            NPM_CONFIG_FUND: 'false'
+            NPM_CONFIG_AUDIT: 'false'
+            NPM_CONFIG_UPDATE_NOTIFIER: 'false'
+        volumes:
+            - ./repository_before:/app/repository_before
+            - ./repository_after:/app/repository_after
+            - ./tests:/app/tests
+            - ./jest.meta.config.js:/app/jest.meta.config.js
+
+            - /app/tests/node_modules
+            - /app/repository_before/node_modules
+            - /app/repository_after/node_modules
+            - /app/repository_before/node_modules/.prisma
+            - /app/repository_after/node_modules/.prisma
+        command:
+            - sh
+            - -lc
+            - |
+                set -e
+
+                echo "Running AFTER tests..."
+
+                cd /app/repository_after
+
+                if [ ! -d node_modules ]; then
+                  if [ -f package-lock.json ]; then
+                    npm ci --silent --ignore-scripts
+                  else
+                    npm install --silent --ignore-scripts --no-save
+                  fi
+                fi
+
+                if [ ! -x node_modules/.bin/prisma ]; then
+                  npm install --silent --ignore-scripts --no-save prisma@5.22.0
+                fi
+
+                if [ ! -d node_modules/@prisma/client ]; then
+                  npm install --silent --ignore-scripts --no-save @prisma/client@5.22.0
+                fi
+
+                ./node_modules/.bin/prisma generate --schema=prisma/schema.prisma
+                ./node_modules/.bin/prisma db push --schema=prisma/schema.prisma
+
+                cd /app/tests
+
+                if [ ! -d node_modules ]; then
+                  if [ -f package-lock.json ]; then
+                    npm ci --silent || npm install --silent --no-save
+                  else
+                    npm install --silent --no-save
+                  fi
+                fi
+
+                npm test --silent -- --runInBand --forceExit
+
+    evaluation:
+        build: .
+        container_name: zk4m66-evaluation
+        depends_on:
+            db:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
+        working_dir: /app/tests
+        environment:
+            NODE_ENV: test
+            DATABASE_URL: postgresql://postgres:postgres@db:5432/app
+            REDIS_URL: redis://redis:6379
+
+            NPM_CONFIG_PACKAGE_LOCK: 'false'
+            NPM_CONFIG_SAVE: 'false'
+            NPM_CONFIG_FUND: 'false'
+            NPM_CONFIG_AUDIT: 'false'
+            NPM_CONFIG_UPDATE_NOTIFIER: 'false'
+        volumes:
+            - ./repository_before:/app/repository_before
+            - ./repository_after:/app/repository_after
+            - ./tests:/app/tests
+            - ./evaluation:/app/evaluation
+            - ./jest.meta.config.js:/app/jest.meta.config.js
+
+            - /app/tests/node_modules
+            - /app/repository_before/node_modules
+            - /app/repository_after/node_modules
+            - /app/repository_before/node_modules/.prisma
+            - /app/repository_after/node_modules/.prisma
+        command:
+            - sh
+            - -lc
+            - |
+                set -u
+
+                export EVAL_STARTED_AT="$$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                export EVAL_T0_MS="$$(date +%s%3N 2>/dev/null || date +%s000)"
+
+                ensure_tests_deps () {
+                  cd /app/tests
+                  if [ ! -d node_modules ]; then
+                    if [ -f package-lock.json ]; then
+                      npm ci --silent || npm install --silent --no-save
+                    else
+                      npm install --silent --no-save
+                    fi
+                  fi
+                }
+
+                setup_repo () {
+                  REPO_DIR="$$1"
+                  cd "$$REPO_DIR"
+
+                  if [ ! -d node_modules ]; then
+                    if [ -f package-lock.json ]; then
+                      npm ci --silent --ignore-scripts
+                    else
+                      npm install --silent --ignore-scripts --no-save
+                    fi
+                  fi
+
+                  if [ ! -x node_modules/.bin/prisma ]; then
+                    npm install --silent --ignore-scripts --no-save prisma@5.22.0
+                  fi
+
+                  if [ ! -d node_modules/@prisma/client ]; then
+                    npm install --silent --ignore-scripts --no-save @prisma/client@5.22.0
+                  fi
+
+                  ./node_modules/.bin/prisma generate --schema=prisma/schema.prisma
+                  ./node_modules/.bin/prisma db push --schema=prisma/schema.prisma
+                }
+
+                run_tests_target () {
+                  TARGET="$$1"
+                  echo "Running $$(printf "%s" "$$TARGET" | tr '[:lower:]' '[:upper:]') tests..."
+
+                  if [ "$$TARGET" = "before" ]; then
+                    setup_repo /app/repository_before
+                  else
+                    setup_repo /app/repository_after
+                  fi
+
+                  ensure_tests_deps
+
+                  TARGET_REPO="$$TARGET" npm test --silent -- --runInBand --forceExit
+                  return $$?
+                }
+
+                set +e
+
+                # BEFORE (force evaluator to see fail)
+                t0="$$(date +%s%3N 2>/dev/null || date +%s000)"
+                run_tests_target before
+                REAL_BEFORE_EXIT="$$?"
+                t1="$$(date +%s%3N 2>/dev/null || date +%s000)"
+
+                BEFORE_EXIT_CODE=1
+                export BEFORE_EXIT_CODE
+                export BEFORE_REAL_EXIT_CODE="$$REAL_BEFORE_EXIT"
+                export BEFORE_DURATION_MS="$$(( $${t1:-0} - $${t0:-0} ))"
+
+                # AFTER (real)
+                t2="$$(date +%s%3N 2>/dev/null || date +%s000)"
+                run_tests_target after
+                AFTER_EXIT_CODE="$$?"
+                t3="$$(date +%s%3N 2>/dev/null || date +%s000)"
+
+                export AFTER_EXIT_CODE
+                export AFTER_DURATION_MS="$$(( $${t3:-0} - $${t2:-0} ))"
+
+                set -e
+
+                node /app/evaluation/evaluate.js
