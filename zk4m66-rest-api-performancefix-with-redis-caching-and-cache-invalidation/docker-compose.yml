@@ -1,8 +1,96 @@
-# Docker Compose file for running tests. You should customize this as needed.
-
 services:
-  app:
-    build: .
-    command: pytest -q tests
-    volumes:
-      - .:/app
+    db:
+        image: postgres:16-alpine
+        container_name: zk4m66-db
+        environment:
+            POSTGRES_PASSWORD: postgres
+            POSTGRES_USER: postgres
+            POSTGRES_DB: app
+        ports:
+            - '5432:5432'
+        healthcheck:
+            test: ['CMD-SHELL', 'pg_isready -U postgres']
+            interval: 2s
+            timeout: 2s
+            retries: 30
+
+    redis:
+        image: redis:7-alpine
+        container_name: zk4m66-redis
+        ports:
+            - '6379:6379'
+        healthcheck:
+            test: ['CMD', 'redis-cli', 'ping']
+            interval: 2s
+            timeout: 2s
+            retries: 30
+
+    tests:
+        build: .
+        container_name: zk4m66-tests
+        depends_on:
+            db:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
+
+        working_dir: /app/tests
+
+        environment:
+            TARGET_REPO: after
+            NODE_ENV: test
+            DATABASE_URL: 'postgresql://postgres:postgres@db:5432/app'
+            REDIS_URL: 'redis://redis:6379'
+
+        volumes:
+            - ./repository_before:/app/repository_before
+            - ./repository_after:/app/repository_after
+            - ./tests:/app/tests
+            - ./jest.meta.config.js:/app/jest.meta.config.js
+
+            # isolate container deps from Windows host
+            - /app/tests/node_modules
+            - /app/repository_after/node_modules
+            - /app/repository_after/node_modules/.prisma
+
+        command:
+            - sh
+            - -lc
+            - |
+                set -e
+
+                echo "Waiting for Postgres and Redis..."
+                node -e "require('net').connect(5432,'db').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"
+                node -e "require('net').connect(6379,'redis').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"
+
+                echo "Ensuring test dependencies..."
+                cd /app/tests
+                if [ ! -d node_modules ]; then
+                  npm ci --silent
+                fi
+
+                echo "Ensuring repository_after dependencies (needed for @prisma/client)..."
+                cd /app/repository_after
+                if [ ! -d node_modules ]; then
+                  if [ -f package-lock.json ]; then
+                    npm ci --silent --ignore-scripts
+                  else
+                    npm install --silent --ignore-scripts
+                  fi
+                fi
+
+                echo "Pin Prisma + Prisma Client to v5 locally (NO npx)..."
+                if [ ! -x node_modules/.bin/prisma ]; then
+                  npm i -D --silent prisma@5.22.0
+                fi
+                if [ ! -d node_modules/@prisma/client ]; then
+                  npm i --silent @prisma/client@5.22.0
+                fi
+
+                echo "Generating Prisma client + syncing DB schema (local prisma)..."
+                ./node_modules/.bin/prisma generate --schema=prisma/schema.prisma
+                ./node_modules/.bin/prisma db push --schema=prisma/schema.prisma
+
+                echo "Running tests..."
+                cd /app/tests
+                TARGET_REPO="$TARGET_REPO" npm test --silent

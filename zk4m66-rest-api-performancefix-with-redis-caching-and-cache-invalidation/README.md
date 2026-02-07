@@ -1,11 +1,13 @@
-# ZK4M66 - REST API Performancefix  with Redis Caching and Cache Invalidation
+# ZK4M66 - REST API Performancefix with Redis Caching and Cache Invalidation
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Before Test Docker Command
 
-    ## After Test Docker Command
-    <docker after command here>
+docker compose run --rm -e TARGET_REPO=before tests
 
-    ## Evaluation Docker Command
-    <evaluation command here>
-    
+## After Test Docker Command
+
+docker compose run --rm -e TARGET_REPO=after tests
+
+## Evaluation Docker Command
+
+docker compose run --rm evaluation

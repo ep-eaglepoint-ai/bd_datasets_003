@@ -1,7 +1,20 @@
-# Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
+FROM node:20-alpine
 
-FROM python:3.11-slim
 WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-CMD ["pytest", "-q", "tests"]
+ENV NODE_ENV=test
+
+RUN apk add --no-cache openssl libc6-compat
+
+COPY tests/package.json /app/tests/package.json
+COPY tests/package-lock.json /app/tests/package-lock.json
+
+WORKDIR /app/tests
+RUN npm ci --silent --ignore-scripts
+
+WORKDIR /app
+COPY tests/ /app/tests/
+COPY jest.meta.config.js /app/jest.meta.config.js
+COPY evaluation/ /app/evaluation/
+
+WORKDIR /app/tests
+CMD ["npm", "test", "--silent"]
