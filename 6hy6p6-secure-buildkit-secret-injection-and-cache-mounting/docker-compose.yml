@@ -1,0 +1,40 @@
+# Docker Compose file for running tests. You should customize this as needed.
+
+services:
+  app:
+    build:
+      context: .
+      secrets:
+        - ssh_key
+    ports:
+      - "8080:8080"
+  test:
+    build:
+      context: .
+      target: tester
+      secrets:
+        - ssh_key
+    volumes:
+      - .:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    working_dir: /app
+    command: sh -c "cd /app && go test ./tests"
+  evaluate:
+    build:
+      context: .
+      target: tester
+      secrets:
+        - ssh_key
+    volumes:
+      - .:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    working_dir: /app/evaluation
+    command: sh -c "go run evaluation.go"
+
+secrets:
+  ssh_key:
+    file: ${SSH_KEY_PATH:-./tests/secrets/ssh_key}

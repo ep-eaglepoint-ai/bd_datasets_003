@@ -1,0 +1,120 @@
+diff --git a/repository_before/.gitkeep b/repository_before/.gitkeep
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/repository_after/Dockerfile b/repository_after/Dockerfile
+new file mode 100644
+index 0000000..1938186
+--- /dev/null
++++ b/repository_after/Dockerfile
+@@ -0,0 +1,50 @@
++# syntax=docker/dockerfile:1.6
++
++FROM --platform=$BUILDPLATFORM golang:1.21-alpine@sha256:2414035b086e3c42b99654c8b26e6f5b1b1598080d65fd03c7f499552ff4dc94 AS builder
++
++WORKDIR /app
++
++RUN apk add --no-cache git openssh-client ca-certificates
++
++ARG BUILDPLATFORM
++ARG TARGETOS
++ARG TARGETARCH
++
++COPY go.mod ./
++COPY go.sum ./
++
++RUN export GIT_CONFIG_GLOBAL=/tmp/gitconfig && \
++    export GIT_CONFIG_NOSYSTEM=1 && \
++    git config --file /tmp/gitconfig user.email "buildkit@example.com" && \
++    git config --file /tmp/gitconfig user.name "buildkit" && \
++    git config --file /tmp/gitconfig url."ssh://git@github.com/".insteadOf "https://github.com/"
++
++RUN --mount=type=secret,id=ssh_key \
++    --mount=type=cache,target=/go/pkg/mod \
++    ssh-keyscan github.com >> /etc/ssh/ssh_known_hosts && \
++    GIT_CONFIG_GLOBAL=/tmp/gitconfig \
++    GIT_CONFIG_NOSYSTEM=1 \
++    GOPRIVATE=github.com/private \
++    GIT_SSH_COMMAND="ssh -i /run/secrets/ssh_key -o StrictHostKeyChecking=accept-new" \
++    go mod download
++
++COPY . /app
++
++RUN --mount=type=secret,id=ssh_key \
++    --mount=type=cache,target=/go/pkg/mod \
++    mkdir -p /app/bin && \
++    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
++    GIT_CONFIG_GLOBAL=/tmp/gitconfig \
++    GIT_CONFIG_NOSYSTEM=1 \
++    GOPRIVATE=github.com/private \
++    GIT_SSH_COMMAND="ssh -i /run/secrets/ssh_key -o StrictHostKeyChecking=accept-new" \
++    go build -trimpath -buildvcs=false -o /app/bin/secure-build ./main.go
++
++FROM gcr.io/distroless/static@sha256:972618ca78034aaddc55864342014a96b85108c607372f7cbd0dbd1361f1d841 AS final
++
++WORKDIR /
++
++COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
++COPY --from=builder /app/bin/secure-build /usr/local/bin/secure-build
++
++ENTRYPOINT ["/usr/local/bin/secure-build"]
+diff --git a/repository_after/go.mod b/repository_after/go.mod
+new file mode 100644
+index 0000000..ecb217a
+--- /dev/null
++++ b/repository_after/go.mod
+@@ -0,0 +1,8 @@
++module secure-build-kit
++
++go 1.21
++
++require (
++	github.com/google/uuid v1.6.0 // Public module for demonstration - replace with private module in production
++	github.com/private/securedep v0.1.0
++)
+diff --git a/repository_after/go.sum b/repository_after/go.sum
+new file mode 100644
+index 0000000..7790d7c
+--- /dev/null
++++ b/repository_after/go.sum
+@@ -0,0 +1,2 @@
++github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
++github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
+diff --git a/repository_after/main.go b/repository_after/main.go
+new file mode 100644
+index 0000000..8bf465c
+--- /dev/null
++++ b/repository_after/main.go
+@@ -0,0 +1,33 @@
++package main
++
++import (
++	"fmt"
++	"net/http"
++	"os"
++
++	"github.com/google/uuid"
++	"github.com/private/securedep"
++)
++
++func main() {
++	port := os.Getenv("PORT")
++	if port == "" {
++		port = "8080"
++	}
++
++	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
++		id := uuid.New().String()
++		fmt.Fprintf(
++			w,
++			"Secure Build Kit Microservice - Static Binary\nModule loaded: github.com/google/uuid v1.6.0\nPrivate dep: %s\nRequest ID: %s\n",
++			securedep.Version(),
++			id,
++		)
++	})
++
++	fmt.Printf("Starting server on port %s...\n", port)
++	if err := http.ListenAndServe(":"+port, nil); err != nil {
++		fmt.Fprintf(os.Stderr, "Server failed: %v\n", err)
++		os.Exit(1)
++	}
++}
