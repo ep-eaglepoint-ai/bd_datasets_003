@@ -48,7 +48,23 @@
                 "TestReverseWords::test_all_uppercase_words",
                 "TestReverseWords::test_words_with_underscores",
                 "TestReverseWords::test_repeated_words",
-                "TestReverseWords::test_multiple_single_char_words"
+                "TestReverseWords::test_multiple_single_char_words",
+                "TestConstraintValidation::test_no_split_method_used",
+                "TestConstraintValidation::test_no_join_method_used",
+                "TestConstraintValidation::test_no_reversed_function_used",
+                "TestConstraintValidation::test_no_negative_step_slicing",
+                "TestConstraintValidation::test_no_list_creation",
+                "TestConstraintValidation::test_exactly_one_while_loop",
+                "TestConstraintValidation::test_no_for_loops",
+                "TestConstraintValidation::test_uses_string_concatenation",
+                "TestConstraintValidation::test_required_comment_present",
+                "TestConstraintValidation::test_no_docstring_present",
+                "TestConstraintValidation::test_no_print_statements",
+                "TestConstraintValidation::test_processes_right_to_left",
+                "TestConstraintValidation::test_single_comment_only",
+                "TestConstraintValidation::test_function_signature_correct",
+                "TestConstraintValidation::test_no_list_comprehension",
+                "TestConstraintValidation::test_no_generator_to_list_conversion"
             ],
             "PASS_TO_PASS": []
         }
