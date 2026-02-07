@@ -1,44 +1,12 @@
 # Python
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-.Python
-*.so
-*.egg
-*.egg-info/
-dist/
-build/
 .venv/
-venv/
-ENV/
-env/
 .env
 
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-
-# Database
-*.db
-*.sqlite
-*.sqlite3
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
+# Node
+node_modules/
 
 # OS
 .DS_Store
-Thumbs.db
-
-# Evaluation reports
 evaluation/*.json
-evaluation/reports/
-
-# Logs
-*.log

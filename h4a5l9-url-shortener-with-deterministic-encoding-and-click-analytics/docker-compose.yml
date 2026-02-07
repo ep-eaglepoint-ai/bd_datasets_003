@@ -1,24 +1,8 @@
-# Docker Compose file for running tests
+# Docker Compose file for running tests. You should customize this as needed.
 
 services:
-  test_before:
+  app:
     build: .
+    command: pytest -q tests
     volumes:
       - .:/app
-    environment:
-      - PYTHONPATH=/app/repository_before
-    command: sh -c "python -m pytest tests -v --tb=no --no-header -q --disable-warnings || exit 0"
-  
-  test_after:
-    build: .
-    volumes:
-      - .:/app
-    environment:
-      - PYTHONPATH=/app/repository_after
-    command: python -m pytest tests -v --tb=no --no-header -q --disable-warnings
-  
-  evaluation:
-    build: .
-    volumes:
-      - .:/app
-    command: python evaluation/evaluation.py
