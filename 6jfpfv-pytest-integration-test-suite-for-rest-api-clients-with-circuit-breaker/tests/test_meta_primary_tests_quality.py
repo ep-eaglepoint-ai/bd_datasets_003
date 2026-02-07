@@ -184,3 +184,46 @@ def test_circuit_breaker_state_isolation_is_enforced_by_fixtures():
         timeout=180,
     )
     assert proc.returncode == 0, proc.stdout + "\n" + proc.stderr
+
+
+def test_branch_coverage_is_collected_for_retry_and_circuit_breaker():
+    """Reviewer: ensure branch coverage exists specifically for retry + circuit breaker.
+
+    We run pytest-cov on the package and assert that the coverage table includes
+    both modules with a non-zero Branch column.
+    """
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "--cov=repository_after",
+            "--cov-branch",
+            "repository_after",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=180,
+    )
+    assert proc.returncode == 0, proc.stdout + "\n" + proc.stderr
+
+    out = proc.stdout + "\n" + proc.stderr
+    assert "repository_after/circuit_breaker.py" in out
+    assert "repository_after/retry.py" in out
+
+    def _branches_for(module_path: str) -> int:
+        for line in out.splitlines():
+            if module_path in line:
+                parts = line.split()
+                # pytest-cov table format: Name Stmts Miss Branch BrPart Cover
+                try:
+                    return int(parts[3])
+                except Exception:
+                    return 0
+        return 0
+
+    assert _branches_for("repository_after/circuit_breaker.py") > 0
+    assert _branches_for("repository_after/retry.py") > 0

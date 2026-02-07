@@ -8,3 +8,4 @@ tenacity==8.2.0
 # Tooling needed by the benchmark harness
 pytest-cov==4.1.0
 pytest-json-report==1.5.0
+pytest-socket==0.7.0

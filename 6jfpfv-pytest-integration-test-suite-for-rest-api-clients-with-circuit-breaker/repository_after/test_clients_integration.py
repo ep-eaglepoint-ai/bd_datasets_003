@@ -234,6 +234,7 @@ async def test_user_get_user_invalid_schema_raises_validation_error(
 
         with pytest.raises(ValidationError) as exc:
             await user_client.get_user(user_id)
+        assert isinstance(exc.value.field_errors, dict)
         assert exc.value.field_errors
         assert exc.value.response_body == invalid_payload
 
@@ -249,6 +250,7 @@ async def test_user_get_user_wrong_type_raises_validation_error(
         router.get(f"{base_url}/users/{user_id}").respond(200, json=invalid_payload)
         with pytest.raises(ValidationError) as exc:
             await user_client.get_user(user_id)
+        assert isinstance(exc.value.field_errors, dict)
         assert exc.value.field_errors
 
 
@@ -586,6 +588,7 @@ async def test_payment_get_payment_invalid_schema_missing_field_raises_validatio
         router.get(f"{base_url}/payments/{payment_id}").respond(200, json=invalid_payload)
         with pytest.raises(ValidationError) as exc:
             await payment_client.get_payment(payment_id)
+        assert isinstance(exc.value.field_errors, dict)
         assert exc.value.field_errors
         assert exc.value.response_body == invalid_payload
 
@@ -602,6 +605,7 @@ async def test_payment_get_payment_invalid_schema_wrong_type_raises_validation_e
         router.get(f"{base_url}/payments/{payment_id}").respond(200, json=invalid_payload)
         with pytest.raises(ValidationError) as exc:
             await payment_client.get_payment(payment_id)
+        assert isinstance(exc.value.field_errors, dict)
         assert exc.value.field_errors
 
 
@@ -617,6 +621,7 @@ async def test_notification_get_notification_invalid_schema_missing_field_raises
         router.get(f"{base_url}/notifications/{notification_id}").respond(200, json=invalid_payload)
         with pytest.raises(ValidationError) as exc:
             await notification_client.get_notification(notification_id)
+        assert isinstance(exc.value.field_errors, dict)
         assert exc.value.field_errors
         assert exc.value.response_body == invalid_payload
 
@@ -633,4 +638,5 @@ async def test_notification_get_notification_invalid_schema_wrong_type_raises_va
         router.get(f"{base_url}/notifications/{notification_id}").respond(200, json=invalid_payload)
         with pytest.raises(ValidationError) as exc:
             await notification_client.get_notification(notification_id)
+        assert isinstance(exc.value.field_errors, dict)
         assert exc.value.field_errors

@@ -28,7 +28,7 @@ index 0000000..f419eca
 Binary files /dev/null and b/repository_after/__pycache__/circuit_breaker.cpython-311.pyc differ
 diff --git a/repository_after/__pycache__/client.cpython-311.pyc b/repository_after/__pycache__/client.cpython-311.pyc
 new file mode 100644
-index 0000000..537eb4a
+index 0000000..3dd0284
 Binary files /dev/null and b/repository_after/__pycache__/client.cpython-311.pyc differ
 diff --git a/repository_after/__pycache__/client.cpython-312.pyc b/repository_after/__pycache__/client.cpython-312.pyc
 new file mode 100644
@@ -52,7 +52,7 @@ index 0000000..c4f61b1
 Binary files /dev/null and b/repository_after/__pycache__/retry.cpython-311.pyc differ
 diff --git a/repository_after/__pycache__/test_clients_integration.cpython-311-pytest-7.4.4.pyc b/repository_after/__pycache__/test_clients_integration.cpython-311-pytest-7.4.4.pyc
 new file mode 100644
-index 0000000..3116ebb
+index 0000000..f302fab
 Binary files /dev/null and b/repository_after/__pycache__/test_clients_integration.cpython-311-pytest-7.4.4.pyc differ
 diff --git a/repository_after/circuit_breaker.py b/repository_after/circuit_breaker.py
 new file mode 100644
@@ -142,10 +142,10 @@ index 0000000..062d07e
 +            self._half_open_calls += 1
 diff --git a/repository_after/client.py b/repository_after/client.py
 new file mode 100644
-index 0000000..fbccbe5
+index 0000000..5d398f6
 --- /dev/null
 +++ b/repository_after/client.py
-@@ -0,0 +1,256 @@
+@@ -0,0 +1,314 @@
 +from __future__ import annotations
 +
 +import json
@@ -180,6 +180,24 @@ index 0000000..fbccbe5
 +
 +
 +logger = logging.getLogger(__name__)
++
++
++def _pydantic_errors_to_field_dict(errors: list[dict[str, Any]]) -> dict[str, Any]:
++    """Convert Pydantic v2 `errors()` output (a list) into the prompt's dict shape.
++
++    We keep it stable and human-readable by using dot-joined `loc` as keys.
++    """
++
++    out: dict[str, Any] = {}
++    for err in errors:
++        loc = err.get("loc")
++        if isinstance(loc, (tuple, list)):
++            key = ".".join(str(x) for x in loc)
++        else:
++            key = str(loc) if loc is not None else "__root__"
++        # Preserve useful details; callers/tests only require dict-ness.
++        out[key] = {k: v for k, v in err.items() if k != "loc"}
++    return out
 +
 +
 +class BaseClient:
@@ -325,28 +343,44 @@ index 0000000..fbccbe5
 +        try:
 +            return User.model_validate(data)
 +        except PydanticValidationError as e:
-+            raise ValidationError("Invalid response schema", field_errors=e.errors(), response_body=data)
++            raise ValidationError(
++                "Invalid response schema",
++                field_errors=_pydantic_errors_to_field_dict(e.errors()),
++                response_body=data,
++            )
 +
 +    async def create_user(self, request: CreateUserRequest) -> User:
 +        data = await self._request("POST", "/users", json_body=request.model_dump(mode="json"))
 +        try:
 +            return User.model_validate(data)
 +        except PydanticValidationError as e:
-+            raise ValidationError("Invalid response schema", field_errors=e.errors(), response_body=data)
++            raise ValidationError(
++                "Invalid response schema",
++                field_errors=_pydantic_errors_to_field_dict(e.errors()),
++                response_body=data,
++            )
 +
 +    async def update_user(self, user_id: str, request: UpdateUserRequest) -> User:
 +        data = await self._request("PUT", f"/users/{user_id}", json_body=request.model_dump(mode="json"))
 +        try:
 +            return User.model_validate(data)
 +        except PydanticValidationError as e:
-+            raise ValidationError("Invalid response schema", field_errors=e.errors(), response_body=data)
++            raise ValidationError(
++                "Invalid response schema",
++                field_errors=_pydantic_errors_to_field_dict(e.errors()),
++                response_body=data,
++            )
 +
 +    async def list_users(self, page: int = 1, limit: int = 20) -> List[User]:
 +        data = await self._request("GET", "/users", params={"page": page, "limit": limit})
 +        try:
 +            parsed = ListUsersResponse.model_validate(data)
 +        except PydanticValidationError as e:
-+            raise ValidationError("Invalid response schema", field_errors=e.errors(), response_body=data)
++            raise ValidationError(
++                "Invalid response schema",
++                field_errors=_pydantic_errors_to_field_dict(e.errors()),
++                response_body=data,
++            )
 +        return parsed.users
 +
 +
@@ -356,14 +390,22 @@ index 0000000..fbccbe5
 +        try:
 +            return Payment.model_validate(data)
 +        except PydanticValidationError as e:
-+            raise ValidationError("Invalid response schema", field_errors=e.errors(), response_body=data)
++            raise ValidationError(
++                "Invalid response schema",
++                field_errors=_pydantic_errors_to_field_dict(e.errors()),
++                response_body=data,
++            )
 +
 +    async def get_payment(self, payment_id: str) -> Payment:
 +        data = await self._request("GET", f"/payments/{payment_id}")
 +        try:
 +            return Payment.model_validate(data)
 +        except PydanticValidationError as e:
-+            raise ValidationError("Invalid response schema", field_errors=e.errors(), response_body=data)
++            raise ValidationError(
++                "Invalid response schema",
++                field_errors=_pydantic_errors_to_field_dict(e.errors()),
++                response_body=data,
++            )
 +
 +    async def refund_payment(self, request: RefundRequest) -> Payment:
 +        data = await self._request(
@@ -374,14 +416,22 @@ index 0000000..fbccbe5
 +        try:
 +            return Payment.model_validate(data)
 +        except PydanticValidationError as e:
-+            raise ValidationError("Invalid response schema", field_errors=e.errors(), response_body=data)
++            raise ValidationError(
++                "Invalid response schema",
++                field_errors=_pydantic_errors_to_field_dict(e.errors()),
++                response_body=data,
++            )
 +
 +    async def get_transaction(self, transaction_id: str) -> Transaction:
 +        data = await self._request("GET", f"/transactions/{transaction_id}")
 +        try:
 +            return Transaction.model_validate(data)
 +        except PydanticValidationError as e:
-+            raise ValidationError("Invalid response schema", field_errors=e.errors(), response_body=data)
++            raise ValidationError(
++                "Invalid response schema",
++                field_errors=_pydantic_errors_to_field_dict(e.errors()),
++                response_body=data,
++            )
 +
 +
 +class NotificationServiceClient(BaseClient):
@@ -390,14 +440,22 @@ index 0000000..fbccbe5
 +        try:
 +            return Notification.model_validate(data)
 +        except PydanticValidationError as e:
-+            raise ValidationError("Invalid response schema", field_errors=e.errors(), response_body=data)
++            raise ValidationError(
++                "Invalid response schema",
++                field_errors=_pydantic_errors_to_field_dict(e.errors()),
++                response_body=data,
++            )
 +
 +    async def get_notification(self, notification_id: str) -> Notification:
 +        data = await self._request("GET", f"/notifications/{notification_id}")
 +        try:
 +            return Notification.model_validate(data)
 +        except PydanticValidationError as e:
-+            raise ValidationError("Invalid response schema", field_errors=e.errors(), response_body=data)
++            raise ValidationError(
++                "Invalid response schema",
++                field_errors=_pydantic_errors_to_field_dict(e.errors()),
++                response_body=data,
++            )
 +
 +    async def get_notification_status(self, notification_id: str) -> Notification:
 +        # API surface only defines GET /notifications/{id} for fetching status.
@@ -1375,10 +1433,10 @@ index 81964a1..0000000
 -        return isinstance(exception, (ConnectionError, TimeoutError))
 diff --git a/repository_after/test_clients_integration.py b/repository_after/test_clients_integration.py
 new file mode 100644
-index 0000000..0cc5061
+index 0000000..3c730ec
 --- /dev/null
 +++ b/repository_after/test_clients_integration.py
-@@ -0,0 +1,636 @@
+@@ -0,0 +1,642 @@
 +from __future__ import annotations
 +
 +import asyncio
@@ -1615,6 +1673,7 @@ index 0000000..0cc5061
 +
 +        with pytest.raises(ValidationError) as exc:
 +            await user_client.get_user(user_id)
++        assert isinstance(exc.value.field_errors, dict)
 +        assert exc.value.field_errors
 +        assert exc.value.response_body == invalid_payload
 +
@@ -1630,6 +1689,7 @@ index 0000000..0cc5061
 +        router.get(f"{base_url}/users/{user_id}").respond(200, json=invalid_payload)
 +        with pytest.raises(ValidationError) as exc:
 +            await user_client.get_user(user_id)
++        assert isinstance(exc.value.field_errors, dict)
 +        assert exc.value.field_errors
 +
 +
@@ -1967,6 +2027,7 @@ index 0000000..0cc5061
 +        router.get(f"{base_url}/payments/{payment_id}").respond(200, json=invalid_payload)
 +        with pytest.raises(ValidationError) as exc:
 +            await payment_client.get_payment(payment_id)
++        assert isinstance(exc.value.field_errors, dict)
 +        assert exc.value.field_errors
 +        assert exc.value.response_body == invalid_payload
 +
@@ -1983,6 +2044,7 @@ index 0000000..0cc5061
 +        router.get(f"{base_url}/payments/{payment_id}").respond(200, json=invalid_payload)
 +        with pytest.raises(ValidationError) as exc:
 +            await payment_client.get_payment(payment_id)
++        assert isinstance(exc.value.field_errors, dict)
 +        assert exc.value.field_errors
 +
 +
@@ -1998,6 +2060,7 @@ index 0000000..0cc5061
 +        router.get(f"{base_url}/notifications/{notification_id}").respond(200, json=invalid_payload)
 +        with pytest.raises(ValidationError) as exc:
 +            await notification_client.get_notification(notification_id)
++        assert isinstance(exc.value.field_errors, dict)
 +        assert exc.value.field_errors
 +        assert exc.value.response_body == invalid_payload
 +
@@ -2014,4 +2077,5 @@ index 0000000..0cc5061
 +        router.get(f"{base_url}/notifications/{notification_id}").respond(200, json=invalid_payload)
 +        with pytest.raises(ValidationError) as exc:
 +            await notification_client.get_notification(notification_id)
++        assert isinstance(exc.value.field_errors, dict)
 +        assert exc.value.field_errors

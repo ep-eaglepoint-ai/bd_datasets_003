@@ -34,6 +34,24 @@ from .retry import RetryConfig, with_retry
 logger = logging.getLogger(__name__)
 
 
+def _pydantic_errors_to_field_dict(errors: list[dict[str, Any]]) -> dict[str, Any]:
+    """Convert Pydantic v2 `errors()` output (a list) into the prompt's dict shape.
+
+    We keep it stable and human-readable by using dot-joined `loc` as keys.
+    """
+
+    out: dict[str, Any] = {}
+    for err in errors:
+        loc = err.get("loc")
+        if isinstance(loc, (tuple, list)):
+            key = ".".join(str(x) for x in loc)
+        else:
+            key = str(loc) if loc is not None else "__root__"
+        # Preserve useful details; callers/tests only require dict-ness.
+        out[key] = {k: v for k, v in err.items() if k != "loc"}
+    return out
+
+
 class BaseClient:
     def __init__(
         self,
@@ -177,28 +195,44 @@ class UserServiceClient(BaseClient):
         try:
             return User.model_validate(data)
         except PydanticValidationError as e:
-            raise ValidationError("Invalid response schema", field_errors=e.errors(), response_body=data)
+            raise ValidationError(
+                "Invalid response schema",
+                field_errors=_pydantic_errors_to_field_dict(e.errors()),
+                response_body=data,
+            )
 
     async def create_user(self, request: CreateUserRequest) -> User:
         data = await self._request("POST", "/users", json_body=request.model_dump(mode="json"))
         try:
             return User.model_validate(data)
         except PydanticValidationError as e:
-            raise ValidationError("Invalid response schema", field_errors=e.errors(), response_body=data)
+            raise ValidationError(
+                "Invalid response schema",
+                field_errors=_pydantic_errors_to_field_dict(e.errors()),
+                response_body=data,
+            )
 
     async def update_user(self, user_id: str, request: UpdateUserRequest) -> User:
         data = await self._request("PUT", f"/users/{user_id}", json_body=request.model_dump(mode="json"))
         try:
             return User.model_validate(data)
         except PydanticValidationError as e:
-            raise ValidationError("Invalid response schema", field_errors=e.errors(), response_body=data)
+            raise ValidationError(
+                "Invalid response schema",
+                field_errors=_pydantic_errors_to_field_dict(e.errors()),
+                response_body=data,
+            )
 
     async def list_users(self, page: int = 1, limit: int = 20) -> List[User]:
         data = await self._request("GET", "/users", params={"page": page, "limit": limit})
         try:
             parsed = ListUsersResponse.model_validate(data)
         except PydanticValidationError as e:
-            raise ValidationError("Invalid response schema", field_errors=e.errors(), response_body=data)
+            raise ValidationError(
+                "Invalid response schema",
+                field_errors=_pydantic_errors_to_field_dict(e.errors()),
+                response_body=data,
+            )
         return parsed.users
 
 
@@ -208,14 +242,22 @@ class PaymentServiceClient(BaseClient):
         try:
             return Payment.model_validate(data)
         except PydanticValidationError as e:
-            raise ValidationError("Invalid response schema", field_errors=e.errors(), response_body=data)
+            raise ValidationError(
+                "Invalid response schema",
+                field_errors=_pydantic_errors_to_field_dict(e.errors()),
+                response_body=data,
+            )
 
     async def get_payment(self, payment_id: str) -> Payment:
         data = await self._request("GET", f"/payments/{payment_id}")
         try:
             return Payment.model_validate(data)
         except PydanticValidationError as e:
-            raise ValidationError("Invalid response schema", field_errors=e.errors(), response_body=data)
+            raise ValidationError(
+                "Invalid response schema",
+                field_errors=_pydantic_errors_to_field_dict(e.errors()),
+                response_body=data,
+            )
 
     async def refund_payment(self, request: RefundRequest) -> Payment:
         data = await self._request(
@@ -226,14 +268,22 @@ class PaymentServiceClient(BaseClient):
         try:
             return Payment.model_validate(data)
         except PydanticValidationError as e:
-            raise ValidationError("Invalid response schema", field_errors=e.errors(), response_body=data)
+            raise ValidationError(
+                "Invalid response schema",
+                field_errors=_pydantic_errors_to_field_dict(e.errors()),
+                response_body=data,
+            )
 
     async def get_transaction(self, transaction_id: str) -> Transaction:
         data = await self._request("GET", f"/transactions/{transaction_id}")
         try:
             return Transaction.model_validate(data)
         except PydanticValidationError as e:
-            raise ValidationError("Invalid response schema", field_errors=e.errors(), response_body=data)
+            raise ValidationError(
+                "Invalid response schema",
+                field_errors=_pydantic_errors_to_field_dict(e.errors()),
+                response_body=data,
+            )
 
 
 class NotificationServiceClient(BaseClient):
@@ -242,14 +292,22 @@ class NotificationServiceClient(BaseClient):
         try:
             return Notification.model_validate(data)
         except PydanticValidationError as e:
-            raise ValidationError("Invalid response schema", field_errors=e.errors(), response_body=data)
+            raise ValidationError(
+                "Invalid response schema",
+                field_errors=_pydantic_errors_to_field_dict(e.errors()),
+                response_body=data,
+            )
 
     async def get_notification(self, notification_id: str) -> Notification:
         data = await self._request("GET", f"/notifications/{notification_id}")
         try:
             return Notification.model_validate(data)
         except PydanticValidationError as e:
-            raise ValidationError("Invalid response schema", field_errors=e.errors(), response_body=data)
+            raise ValidationError(
+                "Invalid response schema",
+                field_errors=_pydantic_errors_to_field_dict(e.errors()),
+                response_body=data,
+            )
 
     async def get_notification_status(self, notification_id: str) -> Notification:
         # API surface only defines GET /notifications/{id} for fetching status.
