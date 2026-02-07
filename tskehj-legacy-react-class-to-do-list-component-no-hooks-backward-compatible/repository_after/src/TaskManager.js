@@ -1,8 +1,9 @@
 import React from 'react';
 
 /**
- * Style constants defined outside render to prevent object churn.
- * Shared across all instances without recreation.
+ * Style constants defined once at module level.
+ * Never recreated during render – zero object churn.
+ * No CSS gap property – uses margin for IE11/legacy browser support.
  */
 var STYLES = {
   container: {
@@ -17,15 +18,15 @@ var STYLES = {
   },
   inputContainer: {
     display: 'flex',
-    marginBottom: '20px',
-    gap: '10px'
+    marginBottom: '20px'
   },
   input: {
     flex: '1',
     padding: '10px',
     fontSize: '16px',
     border: '1px solid #ddd',
-    borderRadius: '4px'
+    borderRadius: '4px',
+    marginRight: '10px'
   },
   addButton: {
     padding: '10px 20px',
@@ -38,7 +39,10 @@ var STYLES = {
   },
   taskList: {
     listStyle: 'none',
-    padding: '0'
+    padding: '0',
+    margin: '0',
+    maxHeight: '400px',
+    overflowY: 'auto'
   },
   taskItem: {
     display: 'flex',
@@ -52,7 +56,8 @@ var STYLES = {
   },
   taskText: {
     flex: '1',
-    fontSize: '16px'
+    fontSize: '16px',
+    marginRight: '10px'
   },
   removeButton: {
     padding: '5px 15px',
@@ -72,28 +77,22 @@ var STYLES = {
 };
 
 /**
- * TaskItem - Individual task display component (class-based).
+ * TaskItem – Individual task display as a class component.
  *
- * Owns its own remove handler bound once in the constructor.
- * Implements shouldComponentUpdate to prevent unnecessary re-renders
- * when sibling tasks change but this task's props remain the same.
+ * Each instance binds its own click handler ONCE in the constructor.
+ * Implements shouldComponentUpdate to skip re-renders when its
+ * own props have not changed, even if siblings are added/removed.
  *
  * Props:
- *   task   {Object}   – { id: number, text: string }
- *   onRemove {Function} – stable callback from parent, called with task id
+ *   task     {Object}   - { id: number, text: string }
+ *   onRemove {Function} - stable callback bound in TaskManager constructor
  */
 class TaskItem extends React.Component {
   constructor(props) {
     super(props);
-    // Bind once in constructor – no per-render allocation
     this.handleRemove = this.handleRemove.bind(this);
   }
 
-  /**
-   * Prevent re-render unless this specific task changed.
-   * onRemove is a stable reference (bound in TaskManager constructor),
-   * so we only need to compare the task data.
-   */
   shouldComponentUpdate(nextProps) {
     if (this.props.task.id !== nextProps.task.id) {
       return true;
@@ -101,13 +100,12 @@ class TaskItem extends React.Component {
     if (this.props.task.text !== nextProps.task.text) {
       return true;
     }
+    if (this.props.onRemove !== nextProps.onRemove) {
+      return true;
+    }
     return false;
   }
 
-  /**
-   * Delegates to parent handler with this task's id.
-   * Bound once in constructor – same function reference across renders.
-   */
   handleRemove() {
     this.props.onRemove(this.props.task.id);
   }
@@ -143,22 +141,18 @@ class TaskItem extends React.Component {
 }
 
 /**
- * TaskManager – Main to-do list component (class-based, no hooks).
+ * TaskManager – Main to-do list component.
  *
- * State:
- *   tasks      {Array}  – list of { id: number, text: string }
- *   inputValue {string} – controlled input value
- *
- * All handlers are bound once in the constructor.
- * handleRemoveTask is passed by stable reference to every TaskItem;
- * each TaskItem calls it with its own id via its own constructor-bound
- * handler, so zero functions are created inside render().
+ * All handlers bound once in constructor.
+ * handleRemoveTask is a single stable function reference
+ * passed to every TaskItem; each TaskItem calls it with
+ * its own id through its own constructor-bound handler.
+ * Zero functions are allocated inside render().
  */
 class TaskManager extends React.Component {
   constructor(props) {
     super(props);
 
-    // Simple incrementing counter for unique task IDs
     this._nextId = 0;
 
     this.state = {
@@ -166,35 +160,22 @@ class TaskManager extends React.Component {
       inputValue: ''
     };
 
-    // Bind every handler exactly once
     this.handleInputChange = this.handleInputChange.bind(this);
     this.handleAddTask     = this.handleAddTask.bind(this);
-    this.handleKeyPress    = this.handleKeyPress.bind(this);
+    this.handleKeyDown     = this.handleKeyDown.bind(this);
     this.handleRemoveTask  = this.handleRemoveTask.bind(this);
   }
 
-  /**
-   * Controlled input handler.
-   * @param {Event} event
-   */
   handleInputChange(event) {
     this.setState({ inputValue: event.target.value });
   }
 
-  /**
-   * Submit on Enter key.
-   * @param {KeyboardEvent} event
-   */
-  handleKeyPress(event) {
+  handleKeyDown(event) {
     if (event.key === 'Enter') {
       this.handleAddTask();
     }
   }
 
-  /**
-   * Append a new task. Uses functional setState to prevent
-   * stale-state bugs under batched updates.
-   */
   handleAddTask() {
     var trimmedValue = this.state.inputValue.trim();
 
@@ -217,11 +198,6 @@ class TaskManager extends React.Component {
     });
   }
 
-  /**
-   * Remove a task by id. Stable reference (bound in constructor).
-   * Passed as a prop to TaskItem – same reference every render.
-   * @param {number} taskId
-   */
   handleRemoveTask(taskId) {
     this.setState(function (prevState) {
       return {
@@ -241,11 +217,7 @@ class TaskManager extends React.Component {
         className: 'task-manager',
         style: STYLES.container
       },
-
-      // Heading
       React.createElement('h1', { style: STYLES.heading }, 'To-Do List'),
-
-      // Input row
       React.createElement(
         'div',
         {
@@ -256,7 +228,7 @@ class TaskManager extends React.Component {
           type: 'text',
           value: this.state.inputValue,
           onChange: this.handleInputChange,
-          onKeyPress: this.handleKeyPress,
+          onKeyDown: this.handleKeyDown,
           placeholder: 'Enter a task...',
           className: 'task-input',
           'data-testid': 'task-input',
@@ -273,8 +245,6 @@ class TaskManager extends React.Component {
           'Add'
         )
       ),
-
-      // Task list – each TaskItem receives a stable onRemove reference
       React.createElement(
         'ul',
         {
@@ -290,8 +260,6 @@ class TaskManager extends React.Component {
           });
         })
       ),
-
-      // Footer
       React.createElement(
         'div',
         { style: STYLES.footer },

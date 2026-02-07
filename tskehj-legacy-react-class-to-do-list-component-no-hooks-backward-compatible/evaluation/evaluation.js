@@ -10,6 +10,7 @@ function parseTestResults(output) {
   for (var i = 0; i < lines.length; i++) {
     var line = lines[i];
 
+    // Match passed tests: ✓ Test name (XX ms)
     var passMatch = line.match(/^\s+\u2713\s+(.+?)\s+\((\d+)\s*ms\)/);
     if (passMatch) {
       tests.push({
@@ -20,6 +21,7 @@ function parseTestResults(output) {
       continue;
     }
 
+    // Match failed tests: ✕ Test name (XX ms)
     var failMatch = line.match(/^\s+\u2717\s+(.+?)\s+\((\d+)\s*ms\)/);
     if (failMatch) {
       tests.push({
@@ -147,7 +149,6 @@ function runEvaluation() {
     console.log('   Lines of Code: ' + report.after.metrics.lines_of_code);
     console.log('');
 
-    // Run tests using spawnSync to capture BOTH stdout and stderr
     console.log('Running Test Suite...');
     console.log('-'.repeat(80));
     console.log('');
@@ -162,26 +163,22 @@ function runEvaluation() {
       }
     );
 
-    // Jest writes test results to stderr, npm wrapper writes to stdout
     var stdout = result.stdout || '';
     var stderr = result.stderr || '';
     var fullOutput = stdout + '\n' + stderr;
 
     report.after.tests.return_code = result.status || 0;
-    report.after.tests.output = fullOutput.substring(0, 10000);
+    report.after.tests.output = fullOutput.substring(0, 15000);
 
-    // Parse individual test results from combined output
     var detailedResults = parseTestResults(fullOutput);
     report.after.tests.detailed_results = detailedResults;
 
-    // Extract summary
     var summary = extractTestSummary(fullOutput);
     report.after.tests.summary = summary;
     report.after.metrics.test_count = summary.total;
     report.after.metrics.passed_tests = summary.passed;
     report.after.metrics.failed_tests = summary.failed;
 
-    // Display individual test results
     console.log('Test Results:');
     console.log('');
 
@@ -193,16 +190,15 @@ function runEvaluation() {
     } else {
       console.log('    Warning: Could not parse individual test results');
       console.log('');
-      console.log('    --- Raw stdout (first 800 chars) ---');
-      console.log(stdout.substring(0, 800));
-      console.log('    --- Raw stderr (first 800 chars) ---');
-      console.log(stderr.substring(0, 800));
+      console.log('    --- Raw stdout (first 1000 chars) ---');
+      console.log(stdout.substring(0, 1000));
+      console.log('    --- Raw stderr (first 1000 chars) ---');
+      console.log(stderr.substring(0, 1000));
     }
 
     console.log('');
     console.log('-'.repeat(80));
 
-    // Determine pass/fail
     var allTestsPassed = result.status === 0 &&
                         summary.total > 0 &&
                         summary.passed === summary.total &&
@@ -229,7 +225,6 @@ function runEvaluation() {
 
     console.log('');
 
-    // Set success
     report.success = allTestsPassed;
     report.comparison.passed_gate = allTestsPassed;
 
@@ -240,7 +235,7 @@ function runEvaluation() {
 
       report.comparison.improvement_summary =
         'Successfully implemented legacy React class component with ' + summary.total + ' passing tests. ' +
-        'Component handles task management with proper state handling, event binding, and performance optimization. ' +
+        'Component uses stable handler references, shouldComponentUpdate optimization, and legacy-compatible styles. ' +
         'Test suite completed in ' + summary.duration_seconds.toFixed(2) + 's (avg ' + avgTime + 'ms per test).';
     } else if (summary.total > 0) {
       report.comparison.improvement_summary =
@@ -256,12 +251,10 @@ function runEvaluation() {
     console.error('Fatal Error: ' + error.message);
   }
 
-  // Finalize
   var endTime = Date.now();
   report.finished_at = new Date().toISOString();
   report.duration_seconds = (endTime - startTime) / 1000;
 
-  // Write report
   var now = new Date();
   var dateFolder = now.toISOString().split('T')[0];
   var timeFolder = now.toTimeString().split(' ')[0].replace(/:/g, '-');
