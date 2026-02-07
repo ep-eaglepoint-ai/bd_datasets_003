@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   tester-before:
     build:
@@ -12,7 +10,9 @@ services:
       TARGET_REPO: repository_before
     volumes:
       - .:/app
-    command: ["sh", "-c", "cd repository_before && (npm test 2>&1 || echo 'Tests failed or no tests found in repository_before') && exit 0"]
+      - /app/repository_before/node_modules
+      - /app/repository_after/node_modules
+    command: ["sh", "-c", "cd repository_before && ([ -f package.json ] && npm test || echo 'No package.json in repository_before') && exit 0"]
 
   tester-after:
     build:
@@ -25,6 +25,8 @@ services:
       TARGET_REPO: repository_after
     volumes:
       - .:/app
+      - /app/repository_before/node_modules
+      - /app/repository_after/node_modules
     command: ["sh", "-c", "cd repository_after && npm test"]
 
   evaluator:
@@ -38,4 +40,21 @@ services:
       NODE_ENV: production
     volumes:
       - .:/app
+      - /app/repository_before/node_modules
+      - /app/repository_after/node_modules
     command: ["sh", "-c", "node evaluation/evaluation.js"]
+  
+  kanban-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        TARGET_REPO: repository_after
+    container_name: kanban-app
+    ports:
+      - "3000:3000"
+      - "3001:3001"
+    volumes:
+      - .:/app
+      - /app/repository_after/node_modules
+    command: ["sh", "-c", "cd repository_after && npm run dev"]

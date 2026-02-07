@@ -785,8 +785,8 @@ diff -r -u -N -x node_modules -x .git -x package-lock.json repository_before/jes
 +};
 diff -r -u -N -x node_modules -x .git -x package-lock.json repository_before/package.json repository_after/package.json
 --- repository_before/package.json	1970-01-01 03:00:00.000000000 +0300
-+++ repository_after/package.json	2026-02-07 08:54:33.509025983 +0300
-@@ -0,0 +1,42 @@
++++ repository_after/package.json	2026-02-07 09:39:44.381262852 +0300
+@@ -0,0 +1,43 @@
 +{
 +  "name": "optimistic-kanban",
 +  "version": "1.0.0",
@@ -796,7 +796,8 @@ diff -r -u -N -x node_modules -x .git -x package-lock.json repository_before/pac
 +  "scripts": {
 +    "test": "jest",
 +    "backend": "tsx backend/server.ts",
-+    "frontend": "vite --host"
++    "frontend": "vite --host",
++    "dev": "npm run backend & npm run frontend & wait"
 +  },
 +  "dependencies": {
 +    "cors": "^2.8.5",

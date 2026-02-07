@@ -2,21 +2,21 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Install basic utilities
+# Install dependencies needed for both backend and frontend
 RUN apk add --no-cache bash
 
-# Copy the entire project
-COPY . .
-
-# Build argument to specify which repository to test
+# Build arguments
 ARG TARGET_REPO=repository_after
 ENV TARGET_REPO=${TARGET_REPO}
 
-# Install dependencies if package.json exists
-RUN if [ -f ${TARGET_REPO}/package.json ]; then \
-        cd ${TARGET_REPO} && npm install; \
-    else \
-        echo "No package.json found in ${TARGET_REPO} - skipping install"; \
+
+COPY repository_after/package*.json ./repository_after/
+RUN if [ -f repository_after/package.json ]; then \
+        cd repository_after && npm install; \
     fi
+
+COPY . .
+
+RUN chmod +x evaluation/evaluation.js 2>/dev/null || true
 
 CMD ["sh", "-c", "cd ${TARGET_REPO} && npm test"]
