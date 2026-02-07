@@ -123,7 +123,6 @@ func (w *WAL) recover() error {
 // readEntries reads all entries from the WAL file
 func (w *WAL) readEntries() error {
 	for {
-		// Read header
 		header := make([]byte, recordHeaderSize)
 		if _, err := io.ReadFull(w.file, header); err != nil {
 			if err == io.EOF {
@@ -135,18 +134,15 @@ func (w *WAL) readEntries() error {
 		crc := binary.LittleEndian.Uint32(header[:4])
 		length := binary.LittleEndian.Uint32(header[4:8])
 
-		// Read data
 		data := make([]byte, length)
 		if _, err := io.ReadFull(w.file, data); err != nil {
 			return err
 		}
 
-		// Verify CRC
 		if crc32.ChecksumIEEE(data) != crc {
 			return fmt.Errorf("CRC mismatch in WAL entry")
 		}
 
-		// Decode state
 		var state PersistentState
 		dec := gob.NewDecoder(bytes.NewReader(data))
 		if err := dec.Decode(&state); err != nil {
@@ -157,12 +153,28 @@ func (w *WAL) readEntries() error {
 		w.votedFor = state.VotedFor
 		w.entries = state.Entries
 
-		if len(w.entries) > 0 {
-			lastEntry := w.entries[len(w.entries)-1]
-			w.lastIndex = lastEntry.Index
-			w.lastTerm = lastEntry.Term
+		w.recomputeLastIndexTerm()
+	}
+}
+
+// recomputeLastIndexTerm updates lastIndex and lastTerm from entries
+func (w *WAL) recomputeLastIndexTerm() {
+	if len(w.entries) == 0 {
+		w.lastIndex = 0
+		w.lastTerm = 0
+		return
+	}
+	// Find max index entry
+	var maxIdx uint64
+	var maxTerm uint64
+	for _, e := range w.entries {
+		if e.Index > maxIdx {
+			maxIdx = e.Index
+			maxTerm = e.Term
 		}
 	}
+	w.lastIndex = maxIdx
+	w.lastTerm = maxTerm
 }
 
 // Save persists the current state to disk
@@ -172,13 +184,10 @@ func (w *WAL) Save(term uint64, votedFor string, entries []Entry) error {
 
 	w.currentTerm = term
 	w.votedFor = votedFor
-	w.entries = entries
+	w.entries = make([]Entry, len(entries))
+	copy(w.entries, entries)
 
-	if len(entries) > 0 {
-		lastEntry := entries[len(entries)-1]
-		w.lastIndex = lastEntry.Index
-		w.lastTerm = lastEntry.Term
-	}
+	w.recomputeLastIndexTerm()
 
 	return w.persist()
 }
@@ -204,7 +213,6 @@ func (w *WAL) persist() error {
 	binary.LittleEndian.PutUint32(header[:4], crc)
 	binary.LittleEndian.PutUint32(header[4:8], uint32(len(data)))
 
-	// Seek to beginning of file (overwrite strategy for simplicity)
 	if _, err := w.file.Seek(0, 0); err != nil {
 		return fmt.Errorf("failed to seek WAL file: %w", err)
 	}
@@ -224,18 +232,27 @@ func (w *WAL) persist() error {
 	return w.file.Sync()
 }
 
-// AppendEntries appends new entries to the log
+// AppendEntries appends new entries to the log, replacing any existing
+// entries at the same index (idempotent, index-aware).
 func (w *WAL) AppendEntries(entries []Entry) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	w.entries = append(w.entries, entries...)
-
-	if len(entries) > 0 {
-		lastEntry := entries[len(entries)-1]
-		w.lastIndex = lastEntry.Index
-		w.lastTerm = lastEntry.Term
+	for _, newEntry := range entries {
+		replaced := false
+		for i, existing := range w.entries {
+			if existing.Index == newEntry.Index {
+				w.entries[i] = newEntry
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			w.entries = append(w.entries, newEntry)
+		}
 	}
+
+	w.recomputeLastIndexTerm()
 
 	return w.persist()
 }
@@ -265,7 +282,8 @@ func (w *WAL) GetEntry(index uint64) *Entry {
 
 	for _, entry := range w.entries {
 		if entry.Index == index {
-			return &entry
+			entryCopy := entry
+			return &entryCopy
 		}
 	}
 	return nil
@@ -279,7 +297,8 @@ func (w *WAL) GetLastEntry() *Entry {
 	if len(w.entries) == 0 {
 		return nil
 	}
-	return &w.entries[len(w.entries)-1]
+	entryCopy := w.entries[len(w.entries)-1]
+	return &entryCopy
 }
 
 // GetLastIndex returns the last log index
@@ -341,19 +360,12 @@ func (w *WAL) TruncateAfter(index uint64) error {
 	}
 	w.entries = newEntries
 
-	if len(w.entries) > 0 {
-		lastEntry := w.entries[len(w.entries)-1]
-		w.lastIndex = lastEntry.Index
-		w.lastTerm = lastEntry.Term
-	} else {
-		w.lastIndex = 0
-		w.lastTerm = 0
-	}
+	w.recomputeLastIndexTerm()
 
 	return w.persist()
 }
 
-// SaveSnapshot saves a snapshot to disk
+// SaveSnapshot saves a snapshot to disk and compacts the log
 func (w *WAL) SaveSnapshot(snapshot Snapshot) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -391,7 +403,7 @@ func (w *WAL) SaveSnapshot(snapshot Snapshot) error {
 		return fmt.Errorf("failed to sync snapshot file: %w", err)
 	}
 
-	// Compact log entries that are included in snapshot
+	// Compact log entries included in snapshot
 	var newEntries []Entry
 	for _, entry := range w.entries {
 		if entry.Index > snapshot.Metadata.LastIncludedIndex {
@@ -399,6 +411,8 @@ func (w *WAL) SaveSnapshot(snapshot Snapshot) error {
 		}
 	}
 	w.entries = newEntries
+
+	w.recomputeLastIndexTerm()
 
 	return w.persist()
 }

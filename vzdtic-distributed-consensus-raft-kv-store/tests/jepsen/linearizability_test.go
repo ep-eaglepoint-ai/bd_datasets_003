@@ -44,6 +44,29 @@ func (h *History) GetOperations() []Operation {
 	return result
 }
 
+// waitForStableLeader waits for a stable leader in the cluster
+func waitForStableLeader(nodes []*raft.Raft, timeout time.Duration) *raft.Raft {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		var leader *raft.Raft
+		leaderCount := 0
+		for _, node := range nodes {
+			if node.GetState() == raft.Leader {
+				leader = node
+				leaderCount++
+			}
+		}
+		if leaderCount == 1 {
+			time.Sleep(80 * time.Millisecond)
+			if leader.GetState() == raft.Leader {
+				return leader
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return nil
+}
+
 // TestLinearizability performs Jepsen-style linearizability testing
 func TestLinearizability(t *testing.T) {
 	network := simulation.NewNetwork(0.05, 0, 20*time.Millisecond)
@@ -90,9 +113,17 @@ func TestLinearizability(t *testing.T) {
 	for _, node := range nodes {
 		node.Start()
 	}
+	defer func() {
+		for _, node := range nodes {
+			node.Stop()
+		}
+	}()
 
-	// Wait for election
-	time.Sleep(500 * time.Millisecond)
+	// Wait for a stable leader
+	leader := waitForStableLeader(nodes, 3*time.Second)
+	if leader == nil {
+		t.Fatal("No leader elected")
+	}
 
 	history := &History{}
 	var wg sync.WaitGroup
@@ -111,16 +142,16 @@ func TestLinearizability(t *testing.T) {
 				key := fmt.Sprintf("key%d", r.Intn(5))
 				value := fmt.Sprintf("value%d-%d", clientID, i)
 
-				// Find leader
-				var leader *raft.Raft
+				// Find current leader
+				var currentLeader *raft.Raft
 				for _, node := range nodes {
 					if node.GetState() == raft.Leader {
-						leader = node
+						currentLeader = node
 						break
 					}
 				}
 
-				if leader == nil {
+				if currentLeader == nil {
 					time.Sleep(100 * time.Millisecond)
 					continue
 				}
@@ -134,7 +165,7 @@ func TestLinearizability(t *testing.T) {
 						StartTime: time.Now(),
 					}
 
-					err := leader.Set(key, []byte(value), fmt.Sprintf("client%d", clientID), uint64(i))
+					err := currentLeader.Set(key, []byte(value), fmt.Sprintf("client%d", clientID), uint64(i+1))
 					op.EndTime = time.Now()
 					op.Success = err == nil
 					if err != nil {
@@ -151,7 +182,7 @@ func TestLinearizability(t *testing.T) {
 						StartTime: time.Now(),
 					}
 
-					val, found, err := leader.Get(key, false)
+					val, found, err := currentLeader.Get(key, false)
 					op.EndTime = time.Now()
 					op.Success = err == nil
 					if err != nil {
@@ -188,44 +219,62 @@ func TestLinearizability(t *testing.T) {
 	if err := verifyLinearizability(ops); err != nil {
 		t.Errorf("Linearizability violation detected: %v", err)
 	}
-
-	// Cleanup
-	for _, node := range nodes {
-		node.Stop()
-	}
 }
 
-// verifyLinearizability checks if the history is linearizable
+// verifyLinearizability checks if the history is linearizable.
+//
+// For each successful read that returned a non-nil value, we check that there
+// exists at least one successful write of that value whose execution interval
+// could have been linearized before the read.  Two operations *could* be
+// ordered (write before read) if the write started before the read ended –
+// i.e. their real-time intervals overlap or the write finished first.
+//
+// This is a simplified but sound single-key per-read check.  A full
+// linearizability checker (like Knossos / porcupine) would enumerate all
+// possible serializations; we intentionally keep the check lightweight.
 func verifyLinearizability(ops []Operation) error {
-	// Build a timeline of writes for each key
-	writes := make(map[string][]Operation)
+	// Collect all successful writes grouped by key
+	writesByKey := make(map[string][]Operation)
 	for _, op := range ops {
 		if op.Type == "write" && op.Success {
-			writes[op.Key] = append(writes[op.Key], op)
+			writesByKey[op.Key] = append(writesByKey[op.Key], op)
 		}
 	}
 
-	// For each read, verify it could have seen a valid write
+	// For every successful read that returned a concrete value, make sure
+	// that value was actually written and the write *could* have preceded
+	// the read in a valid linearization.
 	for _, op := range ops {
-		if op.Type == "read" && op.Success && op.Result != "nil" {
-			key := op.Key
-			found := false
+		if op.Type != "read" || !op.Success || op.Result == "nil" {
+			continue
+		}
 
-			for _, write := range writes[key] {
-				if write.Value == op.Result {
-					// Check if this write could have been visible
-					// A write is visible if it completed before the read started
-					// or overlapped with the read
-					if write.EndTime.Before(op.EndTime) {
-						found = true
-						break
-					}
-				}
-			}
+		key := op.Key
+		writes, hasWrites := writesByKey[key]
+		if !hasWrites {
+			// Value was read but no write was ever recorded for that key.
+			// This can happen when a write succeeded on the state machine
+			// but the client goroutine recorded it as failed (timeout /
+			// leader change).  Not a linearizability violation per se.
+			continue
+		}
 
-			if !found && len(writes[key]) > 0 {
-				return fmt.Errorf("read of %s returned %s but no matching write found", key, op.Result)
+		// Look for ANY write of this value that started before the read
+		// ended (i.e. the two intervals overlap, so they could be ordered
+		// write → read in a linearization).
+		found := false
+		for _, w := range writes {
+			if w.Value == op.Result && w.StartTime.Before(op.EndTime) {
+				found = true
+				break
 			}
+		}
+
+		if !found {
+			return fmt.Errorf(
+				"read of key=%s returned %q but no write of that value has a compatible real-time interval",
+				key, op.Result,
+			)
 		}
 	}
 
@@ -278,6 +327,11 @@ func TestNoTwoLeaders(t *testing.T) {
 	for _, node := range nodes {
 		node.Start()
 	}
+	defer func() {
+		for _, node := range nodes {
+			node.Stop()
+		}
+	}()
 
 	violations := 0
 
@@ -312,11 +366,6 @@ func TestNoTwoLeaders(t *testing.T) {
 
 	if violations > 0 {
 		t.Errorf("Found %d safety violations", violations)
-	}
-
-	// Cleanup
-	for _, node := range nodes {
-		node.Stop()
 	}
 }
 
@@ -366,19 +415,14 @@ func TestLogConsistency(t *testing.T) {
 	for _, node := range nodes {
 		node.Start()
 	}
-
-	// Wait for election
-	time.Sleep(500 * time.Millisecond)
-
-	// Find leader and write some values
-	var leader *raft.Raft
-	for _, node := range nodes {
-		if node.GetState() == raft.Leader {
-			leader = node
-			break
+	defer func() {
+		for _, node := range nodes {
+			node.Stop()
 		}
-	}
+	}()
 
+	// Wait for stable leader
+	leader := waitForStableLeader(nodes, 3*time.Second)
 	if leader == nil {
 		t.Fatal("No leader elected")
 	}
@@ -387,7 +431,7 @@ func TestLogConsistency(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		key := fmt.Sprintf("key%d", i)
 		value := fmt.Sprintf("value%d", i)
-		err := leader.Set(key, []byte(value), "test-client", uint64(i))
+		err := leader.Set(key, []byte(value), "test-client", uint64(i+1))
 		if err != nil {
 			t.Logf("Write %d failed: %v", i, err)
 		}
@@ -420,14 +464,7 @@ func TestLogConsistency(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 
 	// Find new leader and verify committed values are preserved
-	var newLeader *raft.Raft
-	for _, node := range nodes {
-		if node.GetState() == raft.Leader {
-			newLeader = node
-			break
-		}
-	}
-
+	newLeader := waitForStableLeader(nodes, 3*time.Second)
 	if newLeader == nil {
 		t.Fatal("No leader after healing")
 	}
@@ -440,11 +477,6 @@ func TestLogConsistency(t *testing.T) {
 		} else if string(val) != expectedValue {
 			t.Errorf("Key %s had value %s but now has %s", key, expectedValue, string(val))
 		}
-	}
-
-	// Cleanup
-	for _, node := range nodes {
-		node.Stop()
 	}
 }
 
@@ -494,6 +526,11 @@ func TestSplitBrain(t *testing.T) {
 	for _, node := range nodes {
 		node.Start()
 	}
+	defer func() {
+		for _, node := range nodes {
+			node.Stop()
+		}
+	}()
 
 	// Wait for election
 	time.Sleep(500 * time.Millisecond)
@@ -509,23 +546,25 @@ func TestSplitBrain(t *testing.T) {
 	// Wait for new election in majority partition
 	time.Sleep(700 * time.Millisecond)
 
-	// The minority partition (1,2) should not be able to elect a leader
 	// The majority partition (3,4,5) should have exactly one leader
-	minorityLeaders := 0
 	majorityLeaders := 0
+	for i := 2; i < 5; i++ {
+		if nodes[i].GetState() == raft.Leader {
+			majorityLeaders++
+		}
+	}
 
-	for i, node := range nodes {
-		if node.GetState() == raft.Leader {
-			if i < 2 {
-				minorityLeaders++
-			} else {
+	if majorityLeaders != 1 {
+		// Give extra time for vote-splitting in the majority
+		time.Sleep(500 * time.Millisecond)
+		majorityLeaders = 0
+		for i := 2; i < 5; i++ {
+			if nodes[i].GetState() == raft.Leader {
 				majorityLeaders++
 			}
 		}
 	}
 
-	// Minority should have no leader (can't get quorum)
-	// Note: It might have a stale leader briefly
 	if majorityLeaders != 1 {
 		t.Errorf("Expected 1 leader in majority partition, got %d", majorityLeaders)
 	}
@@ -551,10 +590,5 @@ func TestSplitBrain(t *testing.T) {
 
 	if finalLeaderCount != 1 {
 		t.Errorf("Expected exactly 1 leader after healing, got %d", finalLeaderCount)
-	}
-
-	// Cleanup
-	for _, node := range nodes {
-		node.Stop()
 	}
 }

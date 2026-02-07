@@ -28,7 +28,13 @@
         "TestLogReplication",
         "TestTermNumbering",
         "TestFiveNodeCluster",
-        "TestMessageLoss"
+        "TestMessageLoss",
+        "TestLinearizability",
+        "TestNoTwoLeaders",
+        "TestLogConsistency",
+        "TestSplitBrain",
+        "TestModelChecking",
+        "TestRandomizedExecution"
     ],
     "PASS_TO_PASS": []
 }

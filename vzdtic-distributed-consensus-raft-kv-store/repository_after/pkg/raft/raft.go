@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/vzdtic/raft-kv-store/repository_after/pkg/kv"
@@ -42,60 +43,6 @@ type ApplyResult struct {
 	Index    uint64
 	Response interface{}
 	Error    error
-}
-
-// Raft implements the Raft consensus algorithm
-type Raft struct {
-	mu     sync.RWMutex
-	config *Config
-	state  *NodeState
-	wal    *wal.WAL
-	kv     *kv.Store
-
-	// Channels
-	applyCh   chan ApplyResult
-	shutdownC chan struct{}
-
-	// RPC interface
-	transport Transport
-
-	// Pending requests
-	pendingMu sync.Mutex
-	pending   map[uint64]chan ApplyResult
-
-	// Read index for linearizable reads
-	readIndexMu   sync.Mutex
-	readIndexReqs []readIndexRequest
-
-	// Cluster configuration
-	clusterMu     sync.RWMutex
-	clusterConfig ClusterConfig
-
-	// Random source for election timeout
-	rand *rand.Rand
-
-	// Logger
-	logger *log.Logger
-}
-
-// readIndexRequest represents a pending read index request
-type readIndexRequest struct {
-	index  uint64
-	respCh chan error
-}
-
-// ClusterConfig holds the cluster configuration
-type ClusterConfig struct {
-	Members  map[string]ClusterMember
-	IsJoint  bool
-	OldNodes map[string]ClusterMember // For joint consensus
-}
-
-// ClusterMember represents a cluster member
-type ClusterMember struct {
-	NodeID  string
-	Address string
-	Voting  bool
 }
 
 // Transport defines the RPC transport interface
@@ -170,6 +117,68 @@ type InstallSnapshotResponse struct {
 	Term uint64
 }
 
+// ClusterConfig holds the cluster configuration
+type ClusterConfig struct {
+	Members  map[string]ClusterMember
+	IsJoint  bool
+	OldNodes map[string]ClusterMember
+}
+
+// ClusterMember represents a cluster member
+type ClusterMember struct {
+	NodeID  string
+	Address string
+	Voting  bool
+}
+
+// ConfigChangeType defines the type of configuration change
+type ConfigChangeType int
+
+const (
+	ConfigChangeAdd ConfigChangeType = iota
+	ConfigChangeRemove
+)
+
+// ConfigChange represents a cluster configuration change
+type ConfigChange struct {
+	Type    ConfigChangeType
+	NodeID  string
+	Address string
+}
+
+// Raft implements the Raft consensus algorithm
+type Raft struct {
+	mu     sync.RWMutex
+	config *Config
+	state  *NodeState
+	wal    *wal.WAL
+	kv     *kv.Store
+
+	// Channels
+	applyCh   chan ApplyResult
+	shutdownC chan struct{}
+
+	// RPC interface
+	transport Transport
+
+	// Pending requests waiting for commit
+	pendingMu sync.Mutex
+	pending   map[uint64]chan ApplyResult
+
+	// Cluster configuration
+	clusterMu     sync.RWMutex
+	clusterConfig ClusterConfig
+
+	// Heartbeat acknowledgment tracking for linearizable reads
+	heartbeatAckCount int64 // atomic
+
+	// Random source for election timeout
+	rand *rand.Rand
+
+	// Logger
+	logger *log.Logger
+}
+
 // New creates a new Raft instance
 func New(config *Config, transport Transport, logger *log.Logger) (*Raft, error) {
 	walInstance, err := wal.New(config.WALDir)
@@ -205,7 +214,7 @@ func New(config *Config, transport Transport, logger *log.Logger) (*Raft, error)
 	// Add self to cluster
 	r.clusterConfig.Members[config.NodeID] = ClusterMember{
 		NodeID:  config.NodeID,
-		Address: "", // Self doesn't need address
+		Address: "",
 		Voting:  true,
 	}
 
@@ -236,7 +245,7 @@ func (r *Raft) recoverState() error {
 	entries := r.wal.GetAllEntries()
 	for _, entry := range entries {
 		if entry.Index > r.state.GetLastApplied() && entry.Index <= r.state.GetCommitIndex() {
-			if entry.Type == wal.EntryNormal {
+			if entry.Type == wal.EntryNormal && len(entry.Command) > 0 {
 				if _, err := r.kv.Apply(entry.Command); err != nil {
 					r.logger.Printf("Failed to apply entry %d: %v", entry.Index, err)
 				}
@@ -305,15 +314,11 @@ func (r *Raft) runFollower() {
 func (r *Raft) runCandidate() {
 	r.logger.Printf("[%s] Running as Candidate", r.config.NodeID)
 
-	// Increment term
 	newTerm := r.state.GetCurrentTerm() + 1
 	r.state.SetCurrentTerm(newTerm)
 	r.state.SetVotedFor(r.config.NodeID)
-
-	// Persist state
 	r.persistState()
 
-	// Start election
 	electionDone := make(chan bool, 1)
 	go r.startElection(electionDone)
 
@@ -329,11 +334,13 @@ func (r *Raft) runCandidate() {
 		if won {
 			r.becomeLeader()
 		} else {
-			r.state.SetState(Follower)
+			if r.state.GetState() == Candidate {
+				r.state.SetState(Follower)
+			}
 		}
 	case <-timer.C:
 		r.logger.Printf("[%s] Election timeout, retrying", r.config.NodeID)
-		// Stay in candidate state for retry
+		// Stay candidate for retry
 	}
 }
 
@@ -351,9 +358,10 @@ func (r *Raft) startElection(done chan<- bool) {
 
 	lastLogIndex := r.wal.GetLastIndex()
 	lastLogTerm := r.wal.GetLastTerm()
+	currentTerm := r.state.GetCurrentTerm()
 
 	req := &RequestVoteRequest{
-		Term:         r.state.GetCurrentTerm(),
+		Term:         currentTerm,
 		CandidateID:  r.config.NodeID,
 		LastLogIndex: lastLogIndex,
 		LastLogTerm:  lastLogTerm,
@@ -364,14 +372,7 @@ func (r *Raft) startElection(done chan<- bool) {
 
 	for _, peer := range peers {
 		go func(peerId string) {
-			addr, ok := r.config.Peers[peerId]
-			if !ok {
-				r.clusterMu.RLock()
-				if member, exists := r.clusterConfig.Members[peerId]; exists {
-					addr = member.Address
-				}
-				r.clusterMu.RUnlock()
-			}
+			addr := r.getPeerAddress(peerId)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 			defer cancel()
@@ -418,7 +419,6 @@ func (r *Raft) becomeLeader() {
 	r.state.SetState(Leader)
 	r.state.SetLeaderId(r.config.NodeID)
 
-	// Initialize leader state
 	lastLogIndex := r.wal.GetLastIndex()
 
 	r.clusterMu.RLock()
@@ -433,6 +433,7 @@ func (r *Raft) becomeLeader() {
 	r.state.ResetLeaderState(peers, lastLogIndex)
 
 	// Append a no-op entry to commit entries from previous terms
+	// This also serves as the first leadership confirmation
 	r.appendNoopEntry()
 }
 
@@ -464,12 +465,11 @@ func (r *Raft) runLeader() {
 			return
 		case <-heartbeatTicker.C:
 			r.sendHeartbeats()
-			r.checkReadIndex()
 		}
 	}
 }
 
-// sendHeartbeats sends heartbeats to all peers
+// sendHeartbeats sends heartbeats/entries to all peers and tracks acks
 func (r *Raft) sendHeartbeats() {
 	r.clusterMu.RLock()
 	peers := make([]string, 0)
@@ -480,6 +480,9 @@ func (r *Raft) sendHeartbeats() {
 	}
 	r.clusterMu.RUnlock()
 
+	// Reset ack count (self counts as 1)
+	atomic.StoreInt64(&r.heartbeatAckCount, 1)
+
 	for _, peer := range peers {
 		go r.replicateToFollower(peer)
 	}
@@ -487,6 +490,10 @@ func (r *Raft) sendHeartbeats() {
 
 // replicateToFollower replicates log entries to a follower
 func (r *Raft) replicateToFollower(peerId string) {
+	if r.state.GetState() != Leader {
+		return
+	}
+
 	nextIndex := r.state.GetNextIndex(peerId)
 	if nextIndex == 0 {
 		nextIndex = 1
@@ -519,16 +526,7 @@ func (r *Raft) replicateToFollower(peerId string) {
 		LeaderCommit: r.state.GetCommitIndex(),
 	}
 
-	r.clusterMu.RLock()
-	addr := ""
-	if member, ok := r.clusterConfig.Members[peerId]; ok {
-		addr = member.Address
-	}
-	r.clusterMu.RUnlock()
-
-	if addr == "" {
-		addr = r.config.Peers[peerId]
-	}
+	addr := r.getPeerAddress(peerId)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
@@ -544,6 +542,9 @@ func (r *Raft) replicateToFollower(peerId string) {
 	}
 
 	if resp.Success {
+		// Count heartbeat ack for leadership confirmation
+		atomic.AddInt64(&r.heartbeatAckCount, 1)
+
 		if len(entries) > 0 {
 			newMatchIndex := entries[len(entries)-1].Index
 			r.state.SetMatchIndex(peerId, newMatchIndex)
@@ -551,7 +552,7 @@ func (r *Raft) replicateToFollower(peerId string) {
 			r.updateCommitIndex()
 		}
 	} else {
-		// Log inconsistency - decrement nextIndex
+		// Log inconsistency - use accelerated backtracking
 		if resp.ConflictIndex > 0 {
 			r.state.SetNextIndex(peerId, resp.ConflictIndex)
 		} else if nextIndex > 1 {
@@ -600,16 +601,7 @@ func (r *Raft) sendSnapshot(peerId string, snapshot *wal.Snapshot) {
 		Configuration:     members,
 	}
 
-	r.clusterMu.RLock()
-	addr := ""
-	if member, ok := r.clusterConfig.Members[peerId]; ok {
-		addr = member.Address
-	}
-	r.clusterMu.RUnlock()
-
-	if addr == "" {
-		addr = r.config.Peers[peerId]
-	}
+	addr := r.getPeerAddress(peerId)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -636,7 +628,7 @@ func (r *Raft) updateCommitIndex() {
 
 	matchIndices := make([]uint64, 0, nodeCount)
 
-	// Add self match index
+	// Add self match index (leader always has its own entries)
 	matchIndices = append(matchIndices, r.wal.GetLastIndex())
 
 	// Add peer match indices
@@ -652,11 +644,11 @@ func (r *Raft) updateCommitIndex() {
 		return matchIndices[i] > matchIndices[j]
 	})
 
-	// Find the median (majority)
+	// The index at position quorum-1 (0-indexed) is replicated on a majority
 	majorityIdx := len(matchIndices) / 2
 	newCommitIndex := matchIndices[majorityIdx]
 
-	// Only commit entries from current term
+	// Safety: only commit entries from current term (Raft §5.4.2)
 	if newCommitIndex > r.state.GetCommitIndex() {
 		entry := r.wal.GetEntry(newCommitIndex)
 		if entry != nil && entry.Term == r.state.GetCurrentTerm() {
@@ -681,15 +673,22 @@ func (r *Raft) applyCommittedEntries() {
 		var result ApplyResult
 		result.Index = entry.Index
 
-		if entry.Type == wal.EntryNormal && len(entry.Command) > 0 {
-			resp, err := r.kv.Apply(entry.Command)
-			result.Response = resp
-			result.Error = err
+		switch wal.EntryType(entry.Type) {
+		case wal.EntryNormal:
+			if len(entry.Command) > 0 {
+				resp, err := r.kv.Apply(entry.Command)
+				result.Response = resp
+				result.Error = err
+			}
+		case wal.EntryConfigChange:
+			r.applyConfigChange(entry.Command)
+		case wal.EntryNoop:
+			// No-op entries need no application but DO resolve pending channels
 		}
 
 		r.state.SetLastApplied(lastApplied)
 
-		// Notify pending requests
+		// Notify pending requests (including read-barrier no-ops)
 		r.pendingMu.Lock()
 		if ch, ok := r.pending[entry.Index]; ok {
 			ch <- result
@@ -702,6 +701,34 @@ func (r *Raft) applyCommittedEntries() {
 		if r.wal.Size() > r.config.SnapshotThreshold {
 			go r.takeSnapshot()
 		}
+	}
+}
+
+// applyConfigChange applies a configuration change entry
+func (r *Raft) applyConfigChange(command []byte) {
+	if len(command) == 0 {
+		return
+	}
+
+	var change ConfigChange
+	dec := gob.NewDecoder(bytes.NewReader(command))
+	if err := dec.Decode(&change); err != nil {
+		r.logger.Printf("[%s] Failed to decode config change: %v", r.config.NodeID, err)
+		return
+	}
+
+	r.clusterMu.Lock()
+	defer r.clusterMu.Unlock()
+
+	switch change.Type {
+	case ConfigChangeAdd:
+		r.clusterConfig.Members[change.NodeID] = ClusterMember{
+			NodeID:  change.NodeID,
+			Address: change.Address,
+			Voting:  true,
+		}
+	case ConfigChangeRemove:
+		delete(r.clusterConfig.Members, change.NodeID)
 	}
 }
 
@@ -767,6 +794,19 @@ func (r *Raft) randomElectionTimeout() time.Duration {
 	return r.config.ElectionTimeout + time.Duration(r.rand.Int63n(int64(r.config.ElectionTimeout)))
 }
 
+// getPeerAddress returns the address for a peer
+func (r *Raft) getPeerAddress(peerId string) string {
+	if addr, ok := r.config.Peers[peerId]; ok {
+		return addr
+	}
+	r.clusterMu.RLock()
+	defer r.clusterMu.RUnlock()
+	if member, ok := r.clusterConfig.Members[peerId]; ok {
+		return member.Address
+	}
+	return peerId
+}
+
 // HandleRequestVote handles a RequestVote RPC
 func (r *Raft) HandleRequestVote(req *RequestVoteRequest) *RequestVoteResponse {
 	r.mu.Lock()
@@ -790,10 +830,10 @@ func (r *Raft) HandleRequestVote(req *RequestVoteRequest) *RequestVoteResponse {
 	lastLogIndex := r.wal.GetLastIndex()
 	lastLogTerm := r.wal.GetLastTerm()
 
-	// Check if we can vote for this candidate
+	// §5.2, §5.4: Grant vote if haven't voted or already voted for this candidate,
+	// AND candidate's log is at least as up-to-date as ours
 	canVote := (votedFor == "" || votedFor == req.CandidateID)
 
-	// Check log up-to-dateness
 	logUpToDate := req.LastLogTerm > lastLogTerm ||
 		(req.LastLogTerm == lastLogTerm && req.LastLogIndex >= lastLogIndex)
 
@@ -807,7 +847,7 @@ func (r *Raft) HandleRequestVote(req *RequestVoteRequest) *RequestVoteResponse {
 	return resp
 }
 
-// HandleAppendEntries handles an AppendEntries RPC
+// HandleAppendEntries handles an AppendEntries RPC (Raft §5.3)
 func (r *Raft) HandleAppendEntries(req *AppendEntriesRequest) *AppendEntriesResponse {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -817,11 +857,12 @@ func (r *Raft) HandleAppendEntries(req *AppendEntriesRequest) *AppendEntriesResp
 		Success: false,
 	}
 
+	// 1. Reply false if term < currentTerm
 	if req.Term < r.state.GetCurrentTerm() {
 		return resp
 	}
 
-	// Valid leader
+	// Valid AppendEntries from current or newer leader
 	r.state.SetLastHeartbeat(time.Now())
 	r.state.SetLeaderId(req.LeaderID)
 
@@ -834,65 +875,81 @@ func (r *Raft) HandleAppendEntries(req *AppendEntriesRequest) *AppendEntriesResp
 		r.state.SetState(Follower)
 	}
 
-	// Check log consistency
+	// 2. Reply false if log doesn't contain an entry at prevLogIndex with prevLogTerm
 	if req.PrevLogIndex > 0 {
-		entry := r.wal.GetEntry(req.PrevLogIndex)
-		if entry == nil {
+		prevEntry := r.wal.GetEntry(req.PrevLogIndex)
+		if prevEntry == nil {
+			// We don't have an entry at prevLogIndex
 			resp.ConflictIndex = r.wal.GetLastIndex() + 1
+			resp.ConflictTerm = 0
 			return resp
 		}
-		if entry.Term != req.PrevLogTerm {
-			resp.ConflictTerm = entry.Term
-			// Find first index with conflict term
-			for i := req.PrevLogIndex; i > 0; i-- {
-				e := r.wal.GetEntry(i)
+		if prevEntry.Term != req.PrevLogTerm {
+			// Entry at prevLogIndex has wrong term
+			resp.ConflictTerm = prevEntry.Term
+			// Find the first index with the conflicting term for fast backtrack
+			resp.ConflictIndex = req.PrevLogIndex
+			for idx := req.PrevLogIndex - 1; idx > 0; idx-- {
+				e := r.wal.GetEntry(idx)
 				if e == nil || e.Term != resp.ConflictTerm {
-					resp.ConflictIndex = i + 1
+					resp.ConflictIndex = idx + 1
 					break
 				}
+				if idx == 1 {
+					resp.ConflictIndex = 1
+				}
 			}
+			// Truncate from the conflict point
 			r.wal.TruncateAfter(req.PrevLogIndex - 1)
 			return resp
 		}
 	}
 
-	// Append new entries
+	// 3. If an existing entry conflicts with a new one (same index, different terms),
+	//    delete the existing entry and all that follow it.
+	// 4. Append any new entries not already in the log.
 	if len(req.Entries) > 0 {
-		newEntries := make([]wal.Entry, len(req.Entries))
-		for i, e := range req.Entries {
-			newEntries[i] = wal.Entry{
-				Term:    e.Term,
-				Index:   e.Index,
-				Command: e.Command,
-				Type:    wal.EntryType(e.Type),
+		newWALEntries := make([]wal.Entry, 0, len(req.Entries))
+
+		for _, reqEntry := range req.Entries {
+			existing := r.wal.GetEntry(reqEntry.Index)
+			if existing != nil {
+				if existing.Term == reqEntry.Term {
+					// Already have this entry with same term - skip
+					continue
+				}
+				// Conflict: different term at same index
+				// Truncate this and everything after
+				r.wal.TruncateAfter(reqEntry.Index - 1)
 			}
+			// From this point on, all entries are new
+			newWALEntries = append(newWALEntries, wal.Entry{
+				Term:    reqEntry.Term,
+				Index:   reqEntry.Index,
+				Command: reqEntry.Command,
+				Type:    wal.EntryType(reqEntry.Type),
+			})
 		}
 
-		// Check for conflicts and append
-		for _, entry := range newEntries {
-			existing := r.wal.GetEntry(entry.Index)
-			if existing != nil && existing.Term != entry.Term {
-				r.wal.TruncateAfter(entry.Index - 1)
+		if len(newWALEntries) > 0 {
+			if err := r.wal.AppendEntries(newWALEntries); err != nil {
+				r.logger.Printf("[%s] Failed to append entries: %v", r.config.NodeID, err)
+				return resp
 			}
-		}
-
-		if err := r.wal.AppendEntries(newEntries); err != nil {
-			r.logger.Printf("[%s] Failed to append entries: %v", r.config.NodeID, err)
-			return resp
 		}
 	}
 
 	resp.Success = true
 	resp.MatchIndex = r.wal.GetLastIndex()
 
-	// Update commit index
+	// 5. If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)
 	if req.LeaderCommit > r.state.GetCommitIndex() {
 		lastIndex := r.wal.GetLastIndex()
-		if req.LeaderCommit < lastIndex {
-			r.state.SetCommitIndex(req.LeaderCommit)
-		} else {
-			r.state.SetCommitIndex(lastIndex)
+		newCommitIndex := req.LeaderCommit
+		if lastIndex < newCommitIndex {
+			newCommitIndex = lastIndex
 		}
+		r.state.SetCommitIndex(newCommitIndex)
 		r.applyCommittedEntries()
 	}
 
@@ -920,13 +977,13 @@ func (r *Raft) HandleInstallSnapshot(req *InstallSnapshotRequest) *InstallSnapsh
 	r.state.SetLastHeartbeat(time.Now())
 	r.state.SetLeaderId(req.LeaderID)
 
-	// Restore snapshot
+	// Restore snapshot to state machine
 	if err := r.kv.Restore(req.Data); err != nil {
 		r.logger.Printf("[%s] Failed to restore snapshot: %v", r.config.NodeID, err)
 		return resp
 	}
 
-	// Update cluster configuration
+	// Update cluster configuration from snapshot
 	r.clusterMu.Lock()
 	r.clusterConfig.Members = make(map[string]ClusterMember)
 	for _, m := range req.Configuration {
@@ -934,7 +991,7 @@ func (r *Raft) HandleInstallSnapshot(req *InstallSnapshotRequest) *InstallSnapsh
 	}
 	r.clusterMu.Unlock()
 
-	// Save snapshot
+	// Save snapshot to WAL
 	members := make([]wal.ClusterMember, len(req.Configuration))
 	for i, m := range req.Configuration {
 		members[i] = wal.ClusterMember{
@@ -1001,49 +1058,56 @@ func (r *Raft) Propose(command []byte) (uint64, <-chan ApplyResult) {
 	return index, ch
 }
 
-// checkReadIndex processes pending read index requests
-func (r *Raft) checkReadIndex() {
-	r.readIndexMu.Lock()
-	defer r.readIndexMu.Unlock()
-
-	for i := len(r.readIndexReqs) - 1; i >= 0; i-- {
-		req := r.readIndexReqs[i]
-		if r.state.GetCommitIndex() >= req.index {
-			req.respCh <- nil
-			close(req.respCh)
-			r.readIndexReqs = append(r.readIndexReqs[:i], r.readIndexReqs[i+1:]...)
-		}
-	}
-}
-
-// ReadIndex implements linearizable reads
+// ReadIndex implements linearizable reads by writing a no-op barrier through
+// the log. This confirms leadership: if the no-op commits, this node is the
+// real leader and the state machine is up-to-date.
 func (r *Raft) ReadIndex() error {
+	r.mu.Lock()
 	if r.state.GetState() != Leader {
+		r.mu.Unlock()
 		return fmt.Errorf("not leader")
 	}
 
-	readIndex := r.state.GetCommitIndex()
-	respCh := make(chan error, 1)
+	// Propose a no-op read barrier entry
+	index := r.wal.GetLastIndex() + 1
+	entry := wal.Entry{
+		Term:    r.state.GetCurrentTerm(),
+		Index:   index,
+		Command: nil,
+		Type:    wal.EntryNoop,
+	}
 
-	r.readIndexMu.Lock()
-	r.readIndexReqs = append(r.readIndexReqs, readIndexRequest{
-		index:  readIndex,
-		respCh: respCh,
-	})
-	r.readIndexMu.Unlock()
+	if err := r.wal.AppendEntries([]wal.Entry{entry}); err != nil {
+		r.mu.Unlock()
+		return fmt.Errorf("failed to append read barrier: %w", err)
+	}
 
-	// Verify leadership with heartbeats
-	r.sendHeartbeats()
+	ch := make(chan ApplyResult, 1)
+	r.pendingMu.Lock()
+	r.pending[index] = ch
+	r.pendingMu.Unlock()
 
+	r.mu.Unlock()
+
+	// Trigger replication so the no-op gets committed
+	go r.sendHeartbeats()
+
+	// Wait for the no-op to be committed (proves we are still leader)
 	select {
-	case err := <-respCh:
-		return err
-	case <-time.After(r.config.ElectionTimeout * 2):
-		return fmt.Errorf("read index timeout")
+	case result := <-ch:
+		return result.Error
+	case <-time.After(r.config.ElectionTimeout * 3):
+		// Clean up pending
+		r.pendingMu.Lock()
+		delete(r.pending, index)
+		r.pendingMu.Unlock()
+		return fmt.Errorf("read index timeout - may have lost leadership")
+	case <-r.shutdownC:
+		return fmt.Errorf("shutting down")
 	}
 }
 
-// Get retrieves a value (linearizable)
+// Get retrieves a value (optionally linearizable)
 func (r *Raft) Get(key string, linearizable bool) ([]byte, bool, error) {
 	if linearizable {
 		if err := r.ReadIndex(); err != nil {
@@ -1054,7 +1118,7 @@ func (r *Raft) Get(key string, linearizable bool) ([]byte, bool, error) {
 	return value, found, nil
 }
 
-// Set sets a key-value pair
+// Set sets a key-value pair (linearizable write)
 func (r *Raft) Set(key string, value []byte, clientID string, requestID uint64) error {
 	cmd, err := kv.EncodeCommand(kv.CommandSet, key, value, clientID, requestID)
 	if err != nil {
@@ -1078,7 +1142,7 @@ func (r *Raft) Delete(key string, clientID string, requestID uint64) error {
 	return result.Error
 }
 
-// AddNode adds a new node to the cluster
+// AddNode adds a new node to the cluster (leader only)
 func (r *Raft) AddNode(nodeID, address string) error {
 	if r.state.GetState() != Leader {
 		return fmt.Errorf("not leader")
@@ -1092,7 +1156,6 @@ func (r *Raft) AddNode(nodeID, address string) error {
 	}
 	r.clusterMu.Unlock()
 
-	// Replicate config change
 	configChange := ConfigChange{
 		Type:    ConfigChangeAdd,
 		NodeID:  nodeID,
@@ -1115,7 +1178,7 @@ func (r *Raft) AddNode(nodeID, address string) error {
 	return r.wal.AppendEntries([]wal.Entry{entry})
 }
 
-// RemoveNode removes a node from the cluster
+// RemoveNode removes a node from the cluster (leader only)
 func (r *Raft) RemoveNode(nodeID string) error {
 	if r.state.GetState() != Leader {
 		return fmt.Errorf("not leader")
@@ -1125,7 +1188,6 @@ func (r *Raft) RemoveNode(nodeID string) error {
 	delete(r.clusterConfig.Members, nodeID)
 	r.clusterMu.Unlock()
 
-	// Replicate config change
 	configChange := ConfigChange{
 		Type:   ConfigChangeRemove,
 		NodeID: nodeID,
@@ -1145,21 +1207,6 @@ func (r *Raft) RemoveNode(nodeID string) error {
 	}
 
 	return r.wal.AppendEntries([]wal.Entry{entry})
-}
-
-// ConfigChangeType defines the type of configuration change
-type ConfigChangeType int
-
-const (
-	ConfigChangeAdd ConfigChangeType = iota
-	ConfigChangeRemove
-)
-
-// ConfigChange represents a cluster configuration change
-type ConfigChange struct {
-	Type    ConfigChangeType
-	NodeID  string
-	Address string
 }
 
 // GetClusterInfo returns information about the cluster

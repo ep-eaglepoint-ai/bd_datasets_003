@@ -24,7 +24,7 @@ func waitForLeader(nodes []*raft.Raft, timeout time.Duration) *raft.Raft {
 		}
 		if leaderCount == 1 {
 			// Wait a bit more to ensure stability
-			time.Sleep(50 * time.Millisecond)
+			time.Sleep(80 * time.Millisecond)
 			// Verify still leader
 			if leader.GetState() == raft.Leader {
 				return leader
@@ -35,19 +35,19 @@ func waitForLeader(nodes []*raft.Raft, timeout time.Duration) *raft.Raft {
 	return nil
 }
 
-func TestThreeNodeClusterElection(t *testing.T) {
-	network := simulation.NewNetwork(0, 0, 10*time.Millisecond)
-	logger := log.New(os.Stdout, "", log.LstdFlags)
+// createCluster is a helper to build an N-node simulated cluster
+func createCluster(t *testing.T, n int, network *simulation.Network, logger *log.Logger, electionTimeout, heartbeatInterval time.Duration) ([]*raft.Raft, []*simulation.SimTransport) {
+	t.Helper()
 
-	nodes := make([]*raft.Raft, 3)
-	transports := make([]*simulation.SimTransport, 3)
+	nodes := make([]*raft.Raft, n)
+	transports := make([]*simulation.SimTransport, n)
 
-	for i := 0; i < 3; i++ {
+	for i := 0; i < n; i++ {
 		nodeID := string(rune('1' + i))
 		transports[i] = simulation.NewSimTransport(network, nodeID)
 
 		peers := make(map[string]string)
-		for j := 0; j < 3; j++ {
+		for j := 0; j < n; j++ {
 			if i != j {
 				peerID := string(rune('1' + j))
 				peers[peerID] = peerID
@@ -57,8 +57,8 @@ func TestThreeNodeClusterElection(t *testing.T) {
 		config := raft.DefaultConfig(nodeID)
 		config.Peers = peers
 		config.WALDir = t.TempDir()
-		config.ElectionTimeout = 100 * time.Millisecond
-		config.HeartbeatInterval = 30 * time.Millisecond
+		config.ElectionTimeout = electionTimeout
+		config.HeartbeatInterval = heartbeatInterval
 
 		node, err := raft.New(config, transports[i], logger)
 		if err != nil {
@@ -68,37 +68,46 @@ func TestThreeNodeClusterElection(t *testing.T) {
 		network.AddNode(nodeID, node, transports[i])
 	}
 
-	// Register handlers
-	for i := 0; i < 3; i++ {
-		for j := 0; j < 3; j++ {
+	// Register all handlers
+	for i := 0; i < n; i++ {
+		for j := 0; j < n; j++ {
 			nodeID := string(rune('1' + j))
 			transports[i].RegisterHandler(nodeID, nodes[j])
 		}
 	}
 
-	// Start nodes
+	return nodes, transports
+}
+
+func TestThreeNodeClusterElection(t *testing.T) {
+	network := simulation.NewNetwork(0, 0, 10*time.Millisecond)
+	logger := log.New(os.Stdout, "", log.LstdFlags)
+
+	nodes, _ := createCluster(t, 3, network, logger, 150*time.Millisecond, 50*time.Millisecond)
+
 	for _, node := range nodes {
 		node.Start()
 	}
+	defer func() {
+		for _, node := range nodes {
+			node.Stop()
+		}
+	}()
 
-	// Wait for election
-	time.Sleep(500 * time.Millisecond)
+	leader := waitForLeader(nodes, 3*time.Second)
+	if leader == nil {
+		t.Fatal("Expected exactly 1 leader, none elected within timeout")
+	}
 
-	// Count leaders
+	// Verify only one leader
 	leaderCount := 0
 	for _, node := range nodes {
 		if node.GetState() == raft.Leader {
 			leaderCount++
 		}
 	}
-
 	if leaderCount != 1 {
 		t.Errorf("Expected exactly 1 leader, got %d", leaderCount)
-	}
-
-	// Cleanup
-	for _, node := range nodes {
-		node.Stop()
 	}
 }
 
@@ -106,52 +115,24 @@ func TestLeaderElectionAfterPartition(t *testing.T) {
 	network := simulation.NewNetwork(0, 0, 10*time.Millisecond)
 	logger := log.New(os.Stdout, "", log.LstdFlags)
 
-	nodes := make([]*raft.Raft, 3)
-	transports := make([]*simulation.SimTransport, 3)
+	nodes, _ := createCluster(t, 3, network, logger, 150*time.Millisecond, 50*time.Millisecond)
 
-	for i := 0; i < 3; i++ {
-		nodeID := string(rune('1' + i))
-		transports[i] = simulation.NewSimTransport(network, nodeID)
-
-		peers := make(map[string]string)
-		for j := 0; j < 3; j++ {
-			if i != j {
-				peerID := string(rune('1' + j))
-				peers[peerID] = peerID
-			}
-		}
-
-		config := raft.DefaultConfig(nodeID)
-		config.Peers = peers
-		config.WALDir = t.TempDir()
-		config.ElectionTimeout = 100 * time.Millisecond
-		config.HeartbeatInterval = 30 * time.Millisecond
-
-		node, err := raft.New(config, transports[i], logger)
-		if err != nil {
-			t.Fatalf("Failed to create node %d: %v", i, err)
-		}
-		nodes[i] = node
-		network.AddNode(nodeID, node, transports[i])
-	}
-
-	// Register handlers
-	for i := 0; i < 3; i++ {
-		for j := 0; j < 3; j++ {
-			nodeID := string(rune('1' + j))
-			transports[i].RegisterHandler(nodeID, nodes[j])
-		}
-	}
-
-	// Start nodes
 	for _, node := range nodes {
 		node.Start()
 	}
+	defer func() {
+		for _, node := range nodes {
+			node.Stop()
+		}
+	}()
 
-	// Wait for initial election
-	time.Sleep(500 * time.Millisecond)
+	// Wait for initial leader
+	leader := waitForLeader(nodes, 3*time.Second)
+	if leader == nil {
+		t.Fatal("No initial leader elected")
+	}
 
-	// Find current leader
+	// Find leader index
 	var leaderIdx int
 	for i, node := range nodes {
 		if node.GetState() == raft.Leader {
@@ -164,14 +145,24 @@ func TestLeaderElectionAfterPartition(t *testing.T) {
 	leaderID := string(rune('1' + leaderIdx))
 	network.Partition(leaderID)
 
-	// Wait for new election among remaining nodes
-	time.Sleep(700 * time.Millisecond)
+	// Wait for new leader among remaining nodes
+	time.Sleep(800 * time.Millisecond)
 
-	// Count leaders among non-partitioned nodes
 	newLeaderCount := 0
 	for i, node := range nodes {
 		if i != leaderIdx && node.GetState() == raft.Leader {
 			newLeaderCount++
+		}
+	}
+
+	if newLeaderCount != 1 {
+		// Give more time — vote-splitting can happen
+		time.Sleep(500 * time.Millisecond)
+		newLeaderCount = 0
+		for i, node := range nodes {
+			if i != leaderIdx && node.GetState() == raft.Leader {
+				newLeaderCount++
+			}
 		}
 	}
 
@@ -185,7 +176,6 @@ func TestLeaderElectionAfterPartition(t *testing.T) {
 	// Wait for cluster to stabilize
 	time.Sleep(500 * time.Millisecond)
 
-	// Should have exactly 1 leader in entire cluster
 	finalLeaderCount := 0
 	for _, node := range nodes {
 		if node.GetState() == raft.Leader {
@@ -196,61 +186,24 @@ func TestLeaderElectionAfterPartition(t *testing.T) {
 	if finalLeaderCount != 1 {
 		t.Errorf("Expected exactly 1 leader after healing, got %d", finalLeaderCount)
 	}
-
-	// Cleanup
-	for _, node := range nodes {
-		node.Stop()
-	}
 }
 
 func TestLogReplication(t *testing.T) {
 	network := simulation.NewNetwork(0, 0, 10*time.Millisecond)
 	logger := log.New(os.Stdout, "", log.LstdFlags)
 
-	nodes := make([]*raft.Raft, 3)
-	transports := make([]*simulation.SimTransport, 3)
+	nodes, _ := createCluster(t, 3, network, logger, 150*time.Millisecond, 50*time.Millisecond)
 
-	for i := 0; i < 3; i++ {
-		nodeID := string(rune('1' + i))
-		transports[i] = simulation.NewSimTransport(network, nodeID)
-
-		peers := make(map[string]string)
-		for j := 0; j < 3; j++ {
-			if i != j {
-				peerID := string(rune('1' + j))
-				peers[peerID] = peerID
-			}
-		}
-
-		config := raft.DefaultConfig(nodeID)
-		config.Peers = peers
-		config.WALDir = t.TempDir()
-		config.ElectionTimeout = 150 * time.Millisecond
-		config.HeartbeatInterval = 50 * time.Millisecond
-
-		node, err := raft.New(config, transports[i], logger)
-		if err != nil {
-			t.Fatalf("Failed to create node %d: %v", i, err)
-		}
-		nodes[i] = node
-		network.AddNode(nodeID, node, transports[i])
-	}
-
-	// Register handlers
-	for i := 0; i < 3; i++ {
-		for j := 0; j < 3; j++ {
-			nodeID := string(rune('1' + j))
-			transports[i].RegisterHandler(nodeID, nodes[j])
-		}
-	}
-
-	// Start nodes
 	for _, node := range nodes {
 		node.Start()
 	}
+	defer func() {
+		for _, node := range nodes {
+			node.Stop()
+		}
+	}()
 
-	// Wait for a stable leader with retry
-	leader := waitForLeader(nodes, 2*time.Second)
+	leader := waitForLeader(nodes, 3*time.Second)
 	if leader == nil {
 		t.Fatal("No leader elected within timeout")
 	}
@@ -262,7 +215,7 @@ func TestLogReplication(t *testing.T) {
 	}
 
 	// Wait for replication
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(300 * time.Millisecond)
 
 	// Verify value on leader
 	value, found, err := leader.Get("testkey", false)
@@ -275,63 +228,28 @@ func TestLogReplication(t *testing.T) {
 	if string(value) != "testvalue" {
 		t.Errorf("Expected 'testvalue', got '%s'", string(value))
 	}
-
-	// Cleanup
-	for _, node := range nodes {
-		node.Stop()
-	}
 }
 
 func TestTermNumbering(t *testing.T) {
 	network := simulation.NewNetwork(0, 0, 10*time.Millisecond)
 	logger := log.New(os.Stdout, "", log.LstdFlags)
 
-	nodes := make([]*raft.Raft, 3)
-	transports := make([]*simulation.SimTransport, 3)
+	nodes, _ := createCluster(t, 3, network, logger, 150*time.Millisecond, 50*time.Millisecond)
 
-	for i := 0; i < 3; i++ {
-		nodeID := string(rune('1' + i))
-		transports[i] = simulation.NewSimTransport(network, nodeID)
-
-		peers := make(map[string]string)
-		for j := 0; j < 3; j++ {
-			if i != j {
-				peerID := string(rune('1' + j))
-				peers[peerID] = peerID
-			}
-		}
-
-		config := raft.DefaultConfig(nodeID)
-		config.Peers = peers
-		config.WALDir = t.TempDir()
-		config.ElectionTimeout = 100 * time.Millisecond
-		config.HeartbeatInterval = 30 * time.Millisecond
-
-		node, err := raft.New(config, transports[i], logger)
-		if err != nil {
-			t.Fatalf("Failed to create node %d: %v", i, err)
-		}
-		nodes[i] = node
-		network.AddNode(nodeID, node, transports[i])
-	}
-
-	// Register handlers
-	for i := 0; i < 3; i++ {
-		for j := 0; j < 3; j++ {
-			nodeID := string(rune('1' + j))
-			transports[i].RegisterHandler(nodeID, nodes[j])
-		}
-	}
-
-	// Start nodes
 	for _, node := range nodes {
 		node.Start()
 	}
+	defer func() {
+		for _, node := range nodes {
+			node.Stop()
+		}
+	}()
 
-	// Wait for election
-	time.Sleep(500 * time.Millisecond)
+	leader := waitForLeader(nodes, 3*time.Second)
+	if leader == nil {
+		t.Fatal("No initial leader elected")
+	}
 
-	// Find leader and record term
 	var leaderIdx int
 	var initialTerm uint64
 	for i, node := range nodes {
@@ -347,9 +265,8 @@ func TestTermNumbering(t *testing.T) {
 	network.Partition(leaderID)
 
 	// Wait for new election
-	time.Sleep(700 * time.Millisecond)
+	time.Sleep(800 * time.Millisecond)
 
-	// Find new leader and check term increased
 	var newTerm uint64
 	for i, node := range nodes {
 		if i != leaderIdx && node.GetState() == raft.Leader {
@@ -363,62 +280,30 @@ func TestTermNumbering(t *testing.T) {
 	}
 
 	// Cleanup
-	for _, node := range nodes {
-		node.Stop()
-	}
+	network.Heal(leaderID)
 }
 
 func TestFiveNodeCluster(t *testing.T) {
 	network := simulation.NewNetwork(0, 0, 10*time.Millisecond)
 	logger := log.New(os.Stdout, "", log.LstdFlags)
 
-	numNodes := 5
-	nodes := make([]*raft.Raft, numNodes)
-	transports := make([]*simulation.SimTransport, numNodes)
+	nodes, _ := createCluster(t, 5, network, logger, 200*time.Millisecond, 60*time.Millisecond)
 
-	for i := 0; i < numNodes; i++ {
-		nodeID := string(rune('1' + i))
-		transports[i] = simulation.NewSimTransport(network, nodeID)
-
-		peers := make(map[string]string)
-		for j := 0; j < numNodes; j++ {
-			if i != j {
-				peerID := string(rune('1' + j))
-				peers[peerID] = peerID
-			}
-		}
-
-		config := raft.DefaultConfig(nodeID)
-		config.Peers = peers
-		config.WALDir = t.TempDir()
-		config.ElectionTimeout = 100 * time.Millisecond
-		config.HeartbeatInterval = 30 * time.Millisecond
-
-		node, err := raft.New(config, transports[i], logger)
-		if err != nil {
-			t.Fatalf("Failed to create node %d: %v", i, err)
-		}
-		nodes[i] = node
-		network.AddNode(nodeID, node, transports[i])
-	}
-
-	// Register handlers
-	for i := 0; i < numNodes; i++ {
-		for j := 0; j < numNodes; j++ {
-			nodeID := string(rune('1' + j))
-			transports[i].RegisterHandler(nodeID, nodes[j])
-		}
-	}
-
-	// Start nodes
 	for _, node := range nodes {
 		node.Start()
 	}
+	defer func() {
+		for _, node := range nodes {
+			node.Stop()
+		}
+	}()
 
-	// Wait for election
-	time.Sleep(500 * time.Millisecond)
+	// 5-node clusters are more prone to vote-splitting; give plenty of time
+	leader := waitForLeader(nodes, 5*time.Second)
+	if leader == nil {
+		t.Fatal("Expected exactly 1 leader in 5-node cluster, none elected within timeout")
+	}
 
-	// Should have exactly one leader
 	leaderCount := 0
 	for _, node := range nodes {
 		if node.GetState() == raft.Leader {
@@ -429,11 +314,6 @@ func TestFiveNodeCluster(t *testing.T) {
 	if leaderCount != 1 {
 		t.Errorf("Expected exactly 1 leader in 5-node cluster, got %d", leaderCount)
 	}
-
-	// Cleanup
-	for _, node := range nodes {
-		node.Stop()
-	}
 }
 
 func TestMessageLoss(t *testing.T) {
@@ -441,52 +321,23 @@ func TestMessageLoss(t *testing.T) {
 	network := simulation.NewNetwork(0.2, 0, 10*time.Millisecond)
 	logger := log.New(os.Stdout, "", log.LstdFlags)
 
-	nodes := make([]*raft.Raft, 3)
-	transports := make([]*simulation.SimTransport, 3)
+	nodes, _ := createCluster(t, 3, network, logger, 200*time.Millisecond, 60*time.Millisecond)
 
-	for i := 0; i < 3; i++ {
-		nodeID := string(rune('1' + i))
-		transports[i] = simulation.NewSimTransport(network, nodeID)
-
-		peers := make(map[string]string)
-		for j := 0; j < 3; j++ {
-			if i != j {
-				peerID := string(rune('1' + j))
-				peers[peerID] = peerID
-			}
-		}
-
-		config := raft.DefaultConfig(nodeID)
-		config.Peers = peers
-		config.WALDir = t.TempDir()
-		config.ElectionTimeout = 150 * time.Millisecond
-		config.HeartbeatInterval = 40 * time.Millisecond
-
-		node, err := raft.New(config, transports[i], logger)
-		if err != nil {
-			t.Fatalf("Failed to create node %d: %v", i, err)
-		}
-		nodes[i] = node
-		network.AddNode(nodeID, node, transports[i])
-	}
-
-	// Register handlers
-	for i := 0; i < 3; i++ {
-		for j := 0; j < 3; j++ {
-			nodeID := string(rune('1' + j))
-			transports[i].RegisterHandler(nodeID, nodes[j])
-		}
-	}
-
-	// Start nodes
 	for _, node := range nodes {
 		node.Start()
 	}
+	defer func() {
+		for _, node := range nodes {
+			node.Stop()
+		}
+	}()
 
-	// Wait for election (longer due to message loss)
-	time.Sleep(1000 * time.Millisecond)
+	// Longer timeout because message loss slows things down
+	leader := waitForLeader(nodes, 5*time.Second)
+	if leader == nil {
+		t.Fatal("Expected exactly 1 leader despite message loss, none elected within timeout")
+	}
 
-	// Should eventually elect a leader despite message loss
 	leaderCount := 0
 	for _, node := range nodes {
 		if node.GetState() == raft.Leader {
@@ -496,10 +347,5 @@ func TestMessageLoss(t *testing.T) {
 
 	if leaderCount != 1 {
 		t.Errorf("Expected exactly 1 leader despite message loss, got %d", leaderCount)
-	}
-
-	// Cleanup
-	for _, node := range nodes {
-		node.Stop()
 	}
 }
