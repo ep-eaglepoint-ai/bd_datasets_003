@@ -1,0 +1,9 @@
+# Add your Python dependencies here if the project is Python-based. If it is not Python-based, you can remove this file and configure the requirements accordingly.
+
+JDK_Version=21
+Build_Tool=Maven 3.9.6
+Platform=Docker/Linux
+jackson-databind:2.15.2
+junit-jupiter-api:5.9.3
+junit-jupiter-engine:5.9.3
+Docker_Base_Image=maven:3.9.6-eclipse-temurin-21

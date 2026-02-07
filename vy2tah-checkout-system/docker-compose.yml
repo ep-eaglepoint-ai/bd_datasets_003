@@ -1,0 +1,16 @@
+# Docker Compose file for running tests. You should customize this as needed.
+
+services:
+  app:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/app
+      - maven-cache:/root/.m2 
+    working_dir: /app/repository_after
+    environment:
+      - TARGET_REPO=repository_after
+
+volumes:
+  maven-cache:
