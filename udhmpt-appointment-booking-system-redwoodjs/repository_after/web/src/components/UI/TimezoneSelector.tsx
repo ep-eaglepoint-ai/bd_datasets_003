@@ -37,6 +37,16 @@ export const TimezoneSelector: React.FC<Props> = ({
     setIsOpen(false);
   };
 
+  const getOffsetLabel = (tzValue: string) => {
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: tzValue,
+      timeZoneName: 'short'
+    });
+    const parts = formatter.formatToParts(now);
+    return parts.find(part => part.type === 'timeZoneName')?.value || '';
+  };
+
   const currentTimezoneInfo = selectedTimezone === timezone ? timezoneInfo : null;
 
   const renderSelect = () => (
@@ -52,15 +62,7 @@ export const TimezoneSelector: React.FC<Props> = ({
         {commonTimezones.map((tz: { value: string; label: string }) => (
           <option key={tz.value} value={tz.value}>
             {tz.label}
-            {showOffset && (
-              ` (${(() => {
-                const now = new Date();
-                const offset = new Intl.DateTimeFormat('en-US', {
-                  timeZone: tz.value,
-                  timeZoneName: 'short'
-                }).formatToParts(now).find(part => part.type === 'timeZoneName')?.value || ''
-              })})`
-            )}
+            {showOffset && ` (${getOffsetLabel(tz.value)})`}
           </option>
         ))}
       </select>
@@ -104,16 +106,7 @@ export const TimezoneSelector: React.FC<Props> = ({
               <div>{tz.label}</div>
               {showOffset && (
                 <div className="text-xs text-gray-500">
-                  {(() => {
-                    const now = new Date();
-                    const formatter = new Intl.DateTimeFormat('en-US', {
-                      timeZone: tz.value,
-                      timeZoneName: 'short'
-                    });
-                    const parts = formatter.formatToParts(now);
-                    const offset = parts.find(part => part.type === 'timeZoneName')?.value || '';
-                    return offset;
-                  })()}
+                  {getOffsetLabel(tz.value)}
                 </div>
               )}
             </button>
@@ -148,16 +141,7 @@ export const TimezoneSelector: React.FC<Props> = ({
           >
             <div className="font-medium">{tz.label.split(' ')[0]}</div>
             <div className="text-xs text-gray-500">
-              {(() => {
-                const now = new Date();
-                const formatter = new Intl.DateTimeFormat('en-US', {
-                  timeZone: tz.value,
-                  timeZoneName: 'short'
-                });
-                const parts = formatter.formatToParts(now);
-                const offset = parts.find(part => part.type === 'timeZoneName')?.value || '';
-                return offset;
-              })()}
+              {getOffsetLabel(tz.value)}
             </div>
           </button>
         ))}

@@ -1,14 +1,15 @@
 import React, { useState } from 'react'
 import { DateTime } from 'luxon'
 import { navigate } from '@redwoodjs/router'
-import { useMutation, useQuery } from '@redwoodjs/web'
+import { gql, useMutation, useQuery } from '@redwoodjs/web'
 import { toast } from '@redwoodjs/web/toast'
 
 import { BookingsCell } from 'src/components/BookingsCell/BookingsCell'
 import BookingPanel from 'src/components/ProviderCalendar/BookingPanel'
 import BookingActions from 'src/components/Booking/BookingActions'
-import ServicesCell from 'src/components/ServicesCell'
-import AvailabilityCell from 'src/components/Availability/AvailabilityCell'
+import ServicesPicker from 'src/components/ServicesPicker/ServicesPicker'
+import RealTimeSlotListing from 'src/components/Availability/RealTimeSlotListing'
+import BookingConfirmation from 'src/components/Booking/BookingConfirmation'
 import { useAuth } from 'src/auth/AuthContext'
 import { useTimezone } from 'src/hooks/useTimezone'
 import TimezoneSelector from 'src/components/UI/TimezoneSelector'
@@ -68,9 +69,18 @@ export const BookingPage = ({ providerId = 1, customerEmail = 'customer@example.
     providerId: number
     name: string
     durationMinutes: number
+    bufferBeforeMinutes?: number
+    bufferAfterMinutes?: number
+    capacity?: number
   } | null>(null)
   const [selectedSlot, setSelectedSlot] = useState<any>(null)
   const [selectedBooking, setSelectedBooking] = useState<any>(null)
+  const [confirmation, setConfirmation] = useState<{
+    reference: string
+    startUtc: string
+    endUtc: string
+    serviceName?: string
+  } | null>(null)
   const [startDate, setStartDate] = useState(DateTime.now().toISODate())
   const [endDate, setEndDate] = useState(DateTime.now().plus({ days: 7 }).toISODate())
   const [selectedProviderId, setSelectedProviderId] = useState<string>('')
@@ -89,6 +99,12 @@ export const BookingPage = ({ providerId = 1, customerEmail = 'customer@example.
   const [createBooking, { loading: creating }] = useMutation(CREATE_BOOKING_MUTATION, {
     onCompleted: (data) => {
       toast.success(`Booking confirmed! Reference: ${data.createBooking.reference}`)
+      setConfirmation({
+        reference: data.createBooking.reference,
+        startUtc: data.createBooking.startUtc,
+        endUtc: data.createBooking.endUtc,
+        serviceName: selectedService?.name,
+      })
       setSelectedSlot(null)
     },
     onError: (error) => {
@@ -245,29 +261,49 @@ export const BookingPage = ({ providerId = 1, customerEmail = 'customer@example.
         />
       </div>
 
-      <ServicesCell
+      <ServicesPicker
         providerId={selectedProviderId ? Number(selectedProviderId) : undefined}
         durationMinutes={durationFilter ? Number(durationFilter) : null}
         selectedService={selectedService}
         onSelectService={(service) => {
           setSelectedService(service)
           setSelectedSlot(null)
+          setConfirmation(null)
         }}
       />
 
       {selectedService && (
         <div className="mb-6">
           <h3 className="text-lg font-medium mb-3">Available Slots</h3>
-          <AvailabilityCell
-            input={{
-              providerId: selectedService.providerId,
-              serviceId: selectedService.id,
-              startISO: `${startDate}T00:00:00Z`,
-              endISO: `${endDate}T23:59:59Z`,
-              customerTz: customerTimezone
-            }}
-            onSelectSlot={(slot) => setSelectedSlot(slot)}
+          <RealTimeSlotListing
+            providerId={selectedService.providerId}
+            service={selectedService}
+            startISO={`${startDate}T00:00:00Z`}
+            endISO={`${endDate}T23:59:59Z`}
+            customerTz={customerTimezone}
+            onSlotSelect={(slot) => setSelectedSlot(slot)}
+            autoRefresh
           />
+        </div>
+      )}
+
+      {confirmation && (
+        <div className="mt-6 border-t pt-6">
+          <BookingConfirmation
+            reference={confirmation.reference}
+            startUtc={confirmation.startUtc}
+            endUtc={confirmation.endUtc}
+            serviceName={confirmation.serviceName}
+            customerTz={customerTimezone}
+          />
+          <div className="mt-4">
+            <button
+              onClick={() => setConfirmation(null)}
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 text-sm"
+            >
+              Book another appointment
+            </button>
+          </div>
         </div>
       )}
 

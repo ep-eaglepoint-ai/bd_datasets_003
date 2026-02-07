@@ -32,6 +32,14 @@ export const getAuthenticatedUser = (): AuthenticatedUser => {
   return context.currentUser as AuthenticatedUser
 }
 
+export const enforceAuth = (user: AuthenticatedUser | null, roles?: string[]) => {
+  if (!user) throw new Error('Not authenticated')
+  if (roles && roles.length > 0 && !roles.includes(user.role)) {
+    throw new Error('Forbidden')
+  }
+  return true
+}
+
 export const isAdmin = (user: AuthenticatedUser) => user.role === 'ADMIN'
 export const isProvider = (user: AuthenticatedUser) => user.role === 'PROVIDER'
 

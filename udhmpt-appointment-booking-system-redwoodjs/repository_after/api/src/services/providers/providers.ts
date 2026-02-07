@@ -1,6 +1,7 @@
 import { db } from '../../lib/db'
 import { context } from '@redwoodjs/graphql-server'
 import { getAuthenticatedUser, isProvider } from '../../lib/auth'
+import { normalizeTimezone } from '../../lib/timezone'
 
 export const providerProfiles = () => {
   return db.providerProfile.findMany()
@@ -19,11 +20,18 @@ export const myProviderProfile = async () => {
 
 export const createProviderProfile = async ({ input }: { input: any }) => {
   if (!context.currentUser) throw new Error('Not authenticated')
+  if ((context.currentUser as any)?.role !== 'PROVIDER') {
+    throw new Error('User is not a service provider')
+  }
 
   const existing = await db.providerProfile.findUnique({
     where: { userId: (context.currentUser as any)?.id },
   })
   if (existing) return existing
+
+  if (input?.timezone) {
+    normalizeTimezone(input.timezone, { label: 'provider timezone' })
+  }
 
   // Attach userId from context
   return db.providerProfile.create({
@@ -42,6 +50,10 @@ export const updateProviderProfile = async ({ input }: { input: any }) => {
     where: { userId },
   })
   if (!existing) throw new Error('Provider profile not found')
+
+  if (input?.timezone) {
+    normalizeTimezone(input.timezone, { label: 'provider timezone' })
+  }
 
   return db.providerProfile.update({
     where: { id: existing.id },

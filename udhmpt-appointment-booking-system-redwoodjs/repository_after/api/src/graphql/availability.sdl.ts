@@ -66,7 +66,7 @@ export const schema = gql`
 
   input SearchAvailabilityInput {
     providerId: Int!
-    serviceId: Int
+    serviceId: Int!
     startISO: String!
     endISO: String!
     customerTz: String!
@@ -96,6 +96,6 @@ export const schema = gql`
   }
 
   type Subscription {
-    availabilityUpdated(providerId: Int!): [Slot!]! @skipAuth
+    availabilityUpdated(input: SearchAvailabilityInput!): [Slot!]! @skipAuth
   }
 `

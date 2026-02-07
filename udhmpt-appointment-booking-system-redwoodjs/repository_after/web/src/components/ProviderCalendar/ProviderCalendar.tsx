@@ -3,7 +3,8 @@ import { DateTime } from 'luxon'
 import { useMutation } from '@redwoodjs/web'
 import gql from 'graphql-tag'
 import { useAuth } from '../../auth/AuthContext'
-import BookingsCell from '../BookingsCell/BookingsCell'
+import { BookingsCell } from '../BookingsCell/BookingsCell'
+import { toast } from '@redwoodjs/web/toast'
 
 const CREATE_MANUAL_BLOCK = gql`
   mutation CreateManualBlockMutation($input: ManualBlockInput!) {
@@ -33,11 +34,7 @@ const ProviderCalendar: React.FC<ProviderCalendarProps> = ({
   const { user } = useAuth()
 
   const effectiveProviderId = useMemo(() => {
-    return (
-      providerId ||
-      (user as any)?.providerProfileId ||
-      (user?.role === 'PROVIDER' ? user.id : 1)
-    )
+    return providerId || (user as any)?.providerProfileId
   }, [providerId, user])
 
   const dateRange = useMemo(() => {
@@ -49,7 +46,7 @@ const ProviderCalendar: React.FC<ProviderCalendarProps> = ({
       }
     }
     if (view === 'week') {
-      const monday = dt.startOf('week').plus({ days: 1 })
+      const monday = dt.startOf('week')
       return {
         start: monday.startOf('day').toUTC().toISO()!,
         end: monday.plus({ days: 6 }).endOf('day').toUTC().toISO()!,
@@ -66,7 +63,8 @@ const ProviderCalendar: React.FC<ProviderCalendarProps> = ({
 
   const [createManualBlock] = useMutation(CREATE_MANUAL_BLOCK, {
     refetchQueries: ['BookingsQuery'],
-    onCompleted: () => alert('Time block created successfully'),
+    onCompleted: () => toast.success('Time block created'),
+    onError: (error) => toast.error(error.message),
   })
 
   const handleManualBlock = () => {
@@ -86,6 +84,14 @@ const ProviderCalendar: React.FC<ProviderCalendarProps> = ({
         },
       },
     })
+  }
+
+  if (!effectiveProviderId) {
+    return (
+      <div className="bg-white border rounded-lg p-6 text-sm text-gray-600">
+        Provider profile not found. Please complete onboarding.
+      </div>
+    )
   }
 
   return (

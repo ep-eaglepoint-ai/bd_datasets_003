@@ -20,6 +20,11 @@ export const schema = gql`
     timezone: String
     bookingLeadTimeHours: Int
     maxBookingsPerDay: Int
+    cancellationWindowHours: Int
+    rescheduleWindowHours: Int
+    cancellationFeeCents: Int
+    rescheduleFeeCents: Int
+    penaltiesApplyForLateCancel: Boolean
   }
 
   input UpdateProviderProfileInput {
@@ -28,6 +33,11 @@ export const schema = gql`
     timezone: String
     bookingLeadTimeHours: Int
     maxBookingsPerDay: Int
+    cancellationWindowHours: Int
+    rescheduleWindowHours: Int
+    cancellationFeeCents: Int
+    rescheduleFeeCents: Int
+    penaltiesApplyForLateCancel: Boolean
   }
 
   input CreateServiceInput {
@@ -44,7 +54,7 @@ export const schema = gql`
   }
 
   type Mutation {
-    createProviderProfile(input: CreateProviderProfileInput!): ProviderProfile! @requireAuth
+    createProviderProfile(input: CreateProviderProfileInput!): ProviderProfile! @requireAuth(roles: ["PROVIDER"])
     updateProviderProfile(input: UpdateProviderProfileInput!): ProviderProfile! @requireAuth(roles: ["PROVIDER"])
     createService(input: CreateServiceInput!): Service! @requireAuth(roles: ["PROVIDER"])
   }

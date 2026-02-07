@@ -8,12 +8,35 @@ import {
   validateBookingAccess,
   getOwnProviderProfileId,
 } from '../../lib/auth'
-import { expandWeeklyRules, mergeOverrides, resolveAvailability } from '../availability/availability'
+import {
+  expandWeeklyRules,
+  mergeOverrides,
+  resolveAvailability,
+  generateSlots,
+} from '../availability/availability'
 import { context } from '@redwoodjs/graphql-server'
+import { normalizeTimezone } from '../../lib/timezone'
 
 /**
  * Optimistic locking helper with automatic retry for concurrency conflicts.
  */
+const isConcurrencyConflict = (error: unknown) => {
+  return (
+    (error instanceof Prisma.PrismaClientKnownRequestError &&
+      [
+        'P2025', // Record not found (stale version)
+        'P2002', // Unique constraint failed (race on slot)
+        'P2033', // Large number (unexpected lock state)
+        'P2024', // Pool timeout (connection peak)
+        'P2034', // Transaction write conflict
+        'P2028', // Transaction failed/closed
+      ].includes(error.code)) ||
+    (error instanceof Error &&
+      (error.message.includes('Transaction closed') ||
+        error.message.includes('Database is locked')))
+  )
+}
+
 const withOptimisticLock = async <T>(
   operation: () => Promise<T>,
   maxRetries = 3
@@ -22,21 +45,7 @@ const withOptimisticLock = async <T>(
     try {
       return await operation()
     } catch (error) {
-      const isConcurrencyConflict =
-        (error instanceof Prisma.PrismaClientKnownRequestError &&
-          [
-            'P2025', // Record not found (stale version)
-            'P2002', // Unique constraint failed (race on slot)
-            'P2033', // Large number (unexpected lock state)
-            'P2024', // Pool timeout (connection peak)
-            'P2034', // Transaction write conflict
-            'P2028', // Transaction failed/closed
-          ].includes(error.code)) ||
-        (error instanceof Error &&
-          (error.message.includes('Transaction closed') ||
-            error.message.includes('Database is locked')))
-
-      if (isConcurrencyConflict && attempt < maxRetries - 1) {
+      if (isConcurrencyConflict(error) && attempt < maxRetries - 1) {
         // Jittered exponential backoff
         await new Promise((resolve) =>
           setTimeout(resolve, Math.pow(2, attempt) * 100 + Math.random() * 50)
@@ -152,14 +161,31 @@ export const createBooking = async ({
           },
         })
 
-        if (existingBookings.some((b) => b.serviceId !== serviceId)) {
+        const existingServiceIds = Array.from(
+          new Set(existingBookings.map((b: any) => b.serviceId))
+        )
+        const existingServices = existingServiceIds.length
+          ? await tx.service.findMany({ where: { id: { in: existingServiceIds } } })
+          : []
+        const serviceById = new Map(existingServices.map((s: any) => [s.id, s]))
+
+        const overlapsWithBuffers = existingBookings.filter((b: any) => {
+          const bookingService = serviceById.get(b.serviceId)
+          const bookingBufferBefore = bookingService?.bufferBeforeMinutes ?? 0
+          const bookingBufferAfter = bookingService?.bufferAfterMinutes ?? 0
+          const bStart = DateTime.fromJSDate(b.startUtc).minus({ minutes: bookingBufferBefore })
+          const bEnd = DateTime.fromJSDate(b.endUtc).plus({ minutes: bookingBufferAfter })
+          return bEnd > effectiveStart && bStart < effectiveEnd
+        })
+
+        if (overlapsWithBuffers.some((b: any) => b.serviceId !== serviceId)) {
           throw new Error('Provider is already booked for that time')
         }
 
         const capacity = svc.capacity ?? 1
         const usedSlots = new Set(
-          existingBookings
-            .filter((b) => b.serviceId === serviceId)
+          overlapsWithBuffers
+            .filter((b: any) => b.serviceId === serviceId)
             .map((b) => (b as any).capacitySlot as number ?? -1)
         )
 
@@ -176,8 +202,11 @@ export const createBooking = async ({
         }
 
         if (profile?.maxBookingsPerDay && profile.maxBookingsPerDay > 0) {
-          const dayStart = startDt.startOf('day').toJSDate()
-          const dayEnd = startDt.endOf('day').toJSDate()
+          const providerTz = normalizeTimezone(profile.timezone || 'UTC', {
+            label: 'provider timezone',
+          })
+          const dayStart = startDt.setZone(providerTz).startOf('day').toUTC().toJSDate()
+          const dayEnd = startDt.setZone(providerTz).endOf('day').toUTC().toJSDate()
           const countThatDay = await tx.booking.count({
             where: {
               providerId,
@@ -221,23 +250,27 @@ export const createBooking = async ({
 }
 
 export const cancelBooking = async ({ id }: { id: number }) => {
-  const booking = await validateBookingAccess(id)
-  if (booking.canceledAt) throw new Error('Booking already canceled')
-
-  const provider = await db.providerProfile.findUnique({
-    where: { id: booking.providerId },
-  })
-  const now = DateTime.utc()
-  const startDt = DateTime.fromJSDate(booking.startUtc)
-
-  const windowHours = provider?.cancellationWindowHours ?? 24
-  const penaltiesApply = provider?.penaltiesApplyForLateCancel ?? false
-  const cancellationFee = provider?.cancellationFeeCents ?? 0
-  const isLate = now.plus({ hours: windowHours }) > startDt
-
-  let fee = isLate && penaltiesApply ? cancellationFee : 0
-
   return withOptimisticLock(async () => {
+    const booking = await validateBookingAccess(id)
+    if (booking.canceledAt) throw new Error('Booking already canceled')
+
+    const provider = await db.providerProfile.findUnique({
+      where: { id: booking.providerId },
+    })
+    const now = DateTime.utc()
+    const startDt = DateTime.fromJSDate(booking.startUtc, { zone: 'utc' })
+
+    const windowHours = provider?.cancellationWindowHours ?? 24
+    const penaltiesApply = provider?.penaltiesApplyForLateCancel ?? false
+    const cancellationFee = provider?.cancellationFeeCents ?? 0
+    const isLate = now.plus({ hours: windowHours }) > startDt
+
+    if (isLate && !penaltiesApply) {
+      throw new Error(`Cannot cancel within ${windowHours} hour(s) of the appointment`)
+    }
+
+    let fee = isLate && penaltiesApply ? cancellationFee : 0
+
     const result = await (db.booking as any).update({
       where: { id, version: booking.version },
       data: {
@@ -268,46 +301,50 @@ export const rescheduleBooking = async ({
   newStartUtcISO: string
   newEndUtcISO: string
 }) => {
-  const original = await validateBookingAccess(id)
-  if (original.canceledAt) throw new Error('Booking already canceled')
-
-  const provider = await db.providerProfile.findUnique({
-    where: { id: original.providerId },
-  })
-  if (!provider) throw new Error('Provider not found')
-
-  const svc = await db.service.findUnique({ where: { id: original.serviceId } })
-  if (!svc) throw new Error('Service not found')
-
-  const newStart = DateTime.fromISO(newStartUtcISO, { zone: 'utc' })
-  const newEnd = DateTime.fromISO(newEndUtcISO, { zone: 'utc' })
-  const now = DateTime.utc()
-
-  const leadTime = (provider as any).bookingLeadTimeHours ?? 1
-  if (newStart <= now.plus({ hours: leadTime })) {
-    throw new Error(`Must reschedule at least ${leadTime} hour(s) in advance`)
-  }
-
-  const windowHours = provider.rescheduleWindowHours ?? 24
-  const penaltiesApply = provider.penaltiesApplyForLateCancel ?? false
-  const rescheduleFee = provider.rescheduleFeeCents ?? 0
-  const originalStart = DateTime.fromJSDate(original.startUtc)
-  const isLate = now.plus({ hours: windowHours }) > originalStart
-
-  let fee = isLate && penaltiesApply ? rescheduleFee : 0
-
-  await validateSlotAvailability({
-    providerId: original.providerId,
-    serviceId: original.serviceId,
-    startUtcISO: newStartUtcISO,
-    endUtcISO: newEndUtcISO,
-    providerTimezone: provider.timezone || 'UTC',
-    bufferBeforeMinutes: svc.bufferBeforeMinutes ?? 0,
-    bufferAfterMinutes: svc.bufferAfterMinutes ?? 0,
-    durationMinutes: svc.durationMinutes,
-  })
-
   return withOptimisticLock(async () => {
+    const original = await validateBookingAccess(id)
+    if (original.canceledAt) throw new Error('Booking already canceled')
+
+    const provider = await db.providerProfile.findUnique({
+      where: { id: original.providerId },
+    })
+    if (!provider) throw new Error('Provider not found')
+
+    const svc = await db.service.findUnique({ where: { id: original.serviceId } })
+    if (!svc) throw new Error('Service not found')
+
+    const newStart = DateTime.fromISO(newStartUtcISO, { zone: 'utc' })
+    const newEnd = DateTime.fromISO(newEndUtcISO, { zone: 'utc' })
+    const now = DateTime.utc()
+
+    const leadTime = (provider as any).bookingLeadTimeHours ?? 1
+    if (newStart <= now.plus({ hours: leadTime })) {
+      throw new Error(`Must reschedule at least ${leadTime} hour(s) in advance`)
+    }
+
+    const windowHours = provider.rescheduleWindowHours ?? 24
+    const penaltiesApply = provider.penaltiesApplyForLateCancel ?? false
+    const rescheduleFee = provider.rescheduleFeeCents ?? 0
+    const originalStart = DateTime.fromJSDate(original.startUtc, { zone: 'utc' })
+    const isLate = now.plus({ hours: windowHours }) > originalStart
+
+    if (isLate && !penaltiesApply) {
+      throw new Error(`Cannot reschedule within ${windowHours} hour(s) of the appointment`)
+    }
+
+    let fee = isLate && penaltiesApply ? rescheduleFee : 0
+
+    await validateSlotAvailability({
+      providerId: original.providerId,
+      serviceId: original.serviceId,
+      startUtcISO: newStartUtcISO,
+      endUtcISO: newEndUtcISO,
+      providerTimezone: provider.timezone || 'UTC',
+      bufferBeforeMinutes: svc.bufferBeforeMinutes ?? 0,
+      bufferAfterMinutes: svc.bufferAfterMinutes ?? 0,
+      durationMinutes: svc.durationMinutes,
+    })
+
     const result = await db.$transaction(
       async (tx) => {
         const bufferBefore = svc.bufferBeforeMinutes ?? 0
@@ -325,15 +362,53 @@ export const rescheduleBooking = async ({
           },
         })
 
-        if (overlapping.some((b) => b.serviceId !== original.serviceId)) {
+        const overlappingServiceIds = Array.from(
+          new Set(overlapping.map((b: any) => b.serviceId))
+        )
+        const overlappingServices = overlappingServiceIds.length
+          ? await tx.service.findMany({ where: { id: { in: overlappingServiceIds } } })
+          : []
+        const overlappingServiceById = new Map(
+          overlappingServices.map((s: any) => [s.id, s])
+        )
+
+        const overlapsWithBuffers = overlapping.filter((b: any) => {
+          const bookingService = overlappingServiceById.get(b.serviceId)
+          const bookingBufferBefore = bookingService?.bufferBeforeMinutes ?? 0
+          const bookingBufferAfter = bookingService?.bufferAfterMinutes ?? 0
+          const bStart = DateTime.fromJSDate(b.startUtc).minus({ minutes: bookingBufferBefore })
+          const bEnd = DateTime.fromJSDate(b.endUtc).plus({ minutes: bookingBufferAfter })
+          return bEnd > effectiveStart && bStart < effectiveEnd
+        })
+
+        if (overlapsWithBuffers.some((b: any) => b.serviceId !== original.serviceId)) {
           throw new Error('Provider is already booked for that time')
+        }
+
+        if (provider.maxBookingsPerDay && provider.maxBookingsPerDay > 0) {
+          const providerTz = normalizeTimezone(provider.timezone || 'UTC', {
+            label: 'provider timezone',
+          })
+          const dayStart = newStart.setZone(providerTz).startOf('day').toUTC().toJSDate()
+          const dayEnd = newStart.setZone(providerTz).endOf('day').toUTC().toJSDate()
+          const countThatDay = await tx.booking.count({
+            where: {
+              providerId: original.providerId,
+              id: { not: id },
+              startUtc: { gte: dayStart, lte: dayEnd },
+              canceledAt: null,
+            },
+          })
+          if (countThatDay >= provider.maxBookingsPerDay) {
+            throw new Error('Maximum bookings per day reached for this provider')
+          }
         }
 
         const capacity = svc.capacity ?? 1
         const usedSlots = new Set(
-          overlapping
-            .filter((b) => b.serviceId === original.serviceId)
-            .map((b) => (b as any).capacitySlot ?? -1)
+          overlapsWithBuffers
+            .filter((b: any) => b.serviceId === original.serviceId)
+            .map((b: any) => (b as any).capacitySlot ?? -1)
         )
 
         let availableSlot = -1
@@ -370,7 +445,7 @@ export const rescheduleBooking = async ({
     )
 
       // Notify subscribers AFTER successful transaction commit
-      ; (context as any).pubSub?.publish('availabilityUpdated', original.providerId)
+      ; (context as any).pubSub?.publish('availabilityUpdated', result.providerId)
 
     return result
   })
@@ -383,9 +458,8 @@ export const updateBooking = async ({
   id: number
   input: { status?: string; notes?: string }
 }) => {
-  const booking = await validateBookingAccess(id)
-
   return withOptimisticLock(async () => {
+    const booking = await validateBookingAccess(id)
     return (db.booking as any).update({
       where: { id, version: booking.version },
       data: {
@@ -416,6 +490,9 @@ const validateSlotAvailability = async ({
   bufferAfterMinutes: number
   durationMinutes: number
 }) => {
+  const normalizedProviderTz = normalizeTimezone(providerTimezone, {
+    label: 'provider timezone',
+  })
   const startUtc = DateTime.fromISO(startUtcISO, { zone: 'utc' })
   const endUtc = DateTime.fromISO(endUtcISO, { zone: 'utc' })
 
@@ -429,10 +506,20 @@ const validateSlotAvailability = async ({
   }
 
   const recurring = await db.recurringAvailability.findMany({ where: { providerId } })
+  const providerDayStartUtc = startUtc
+    .setZone(normalizedProviderTz)
+    .startOf('day')
+    .toUTC()
+    .toJSDate()
+  const providerDayEndUtc = startUtc
+    .setZone(normalizedProviderTz)
+    .endOf('day')
+    .toUTC()
+    .toJSDate()
   const customs = await db.customDayAvailability.findMany({
     where: {
       providerId,
-      date: { gte: startUtc.startOf('day').toJSDate(), lte: startUtc.endOf('day').toJSDate() },
+      date: { gte: providerDayStartUtc, lte: providerDayEndUtc },
     },
   })
   const exceptions = await db.availabilityException.findMany({
@@ -450,18 +537,20 @@ const validateSlotAvailability = async ({
     },
   })
 
-  const localStart = startUtc.setZone(providerTimezone)
+  const localStart = startUtc.setZone(normalizedProviderTz)
   const weekStart = localStart.startOf('week').toISODate()!
   const rules = recurring.map((r: any) => ({
     weekday: r.weekday,
     startLocal: r.startLocal,
     endLocal: r.endLocal,
-    tz: providerTimezone,
+    tz: normalizedProviderTz,
   }))
 
   const expanded = expandWeeklyRules(rules, weekStart)
   const customDaysFormatted = customs.map((c: any) => ({
-    dateISO: DateTime.fromJSDate(c.date).toISODate()!,
+    dateISO: DateTime.fromJSDate(c.date, { zone: 'utc' })
+      .setZone(normalizedProviderTz)
+      .toISODate()!,
     startUtcISO: c.startUtc.toISOString(),
     endUtcISO: c.endUtc.toISOString(),
   }))
@@ -477,6 +566,22 @@ const validateSlotAvailability = async ({
   }))
 
   const available = resolveAvailability(merged, excFormatted, blkFormatted)
+
+  const normalizedStart = startUtc.toISO()!
+  const normalizedEnd = endUtc.toISO()!
+  const generatedSlots = generateSlots(
+    available,
+    durationMinutes,
+    bufferBeforeMinutes,
+    bufferAfterMinutes,
+    'UTC'
+  )
+  const slotMatch = generatedSlots.some(
+    (slot) => slot.startUtcISO === normalizedStart && slot.endUtcISO === normalizedEnd
+  )
+  if (!slotMatch) {
+    throw new Error('Requested time is not aligned to available slots')
+  }
 
   const slotFits = available.some((w) => {
     const windowStart = DateTime.fromISO(w.startUtcISO, { zone: 'utc' })

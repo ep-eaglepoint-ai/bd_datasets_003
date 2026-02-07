@@ -1,5 +1,5 @@
 import { spawnSync } from 'child_process';
-import { writeFileSync, mkdirSync } from 'fs';
+import { writeFileSync, mkdirSync, existsSync, unlinkSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
 
@@ -49,8 +49,17 @@ function runEvaluate() {
   const runId = randomUUID();
   const startedAt = new Date();
 
-  // Compose a shell command that runs npm test with JSON output and prints it
-  const shCommand = `node -v; node -p \"JSON.stringify({node_version:process.version, platform:process.platform, os:require('os').type(), architecture:process.arch, hostname:require('os').hostname()})\"; npm test -- --json --outputFile=/tmp/jest-results.json --silent || true; cat /tmp/jest-results.json`;
+  // Ensure no stale jest-results.json is present
+  try {
+    if (existsSync('/tmp/jest-results.json')) {
+      unlinkSync('/tmp/jest-results.json');
+    }
+  } catch {
+    // ignore cleanup errors
+  }
+
+  // Compose a shell command that runs npm test with JSON output (suppress JSON on stdout)
+  const shCommand = `node -v; node -p \"JSON.stringify({node_version:process.version, platform:process.platform, os:require('os').type(), architecture:process.arch, hostname:require('os').hostname()})\"; npm test -- --json --outputFile=/tmp/jest-results.json --silent > /tmp/jest-stdout.log 2> /tmp/jest-stderr.log; cat /tmp/jest-stdout.log; cat /tmp/jest-stderr.log 1>&2`;
 
   // Execute the command directly on the current system (host or container)
   const proc = spawnSync('sh', ['-c', shCommand], { encoding: 'utf8', maxBuffer: 50 * 1024 * 1024 });
@@ -65,21 +74,27 @@ function runEvaluate() {
   // Extract environment info emitted by the container
   const envFromContainer = extractEnvJson(stdout);
 
-  // Extract Jest JSON results printed at end
-  let jestJson = extractJestJson(stdout);
+  // Prefer Jest JSON written to /tmp/jest-results.json to avoid stdout contamination
+  let jestJson: any = null;
+  if (existsSync('/tmp/jest-results.json')) {
+    try {
+      const jestText = readFileSync('/tmp/jest-results.json', 'utf8');
+      jestJson = JSON.parse(jestText);
+    } catch {
+      jestJson = null;
+    }
+  }
+
+  // Fallback: try to parse from stdout if file read failed
+  if (!jestJson) {
+    jestJson = extractJestJson(stdout);
+  }
 
   // No fallback to local. Correctness requires the Docker environment for reproducibility.
   if (!jestJson) {
     console.error('CRITICAL: Could not parse Jest JSON from Docker container output.');
     // We still proceed to write the report with whatever info we have (stdout/stderr)
   }
-
-  // Detect unexpected console.error calls
-  // Filtering out standard Jest "Error: " messages and stack traces to avoid false positives.
-  const hasConsoleError = stderr.split('\n').some(line =>
-    line.includes('console.error') ||
-    (line.includes('Error:') && !line.includes('expect(received)') && !line.includes('at '))
-  );
 
   const report: any = {
     run_id: runId,
@@ -101,7 +116,6 @@ function runEvaluate() {
       after: {
         success: exitCode === 0,
         exit_code: exitCode,
-        unexpected_console_errors: hasConsoleError,
         raw_stdout: stdout.split('\n').slice(-1000).join('\n'),
         raw_stderr: stderr.split('\n').slice(-1000).join('\n'),
         tests: [] as any[],
@@ -173,6 +187,10 @@ function runEvaluate() {
   writeFileSync(join(dir, 'stderr.log'), stderr, 'utf8');
 
   writeFileSync(outPath, JSON.stringify(report, null, 2), 'utf8');
+
+  // Also write a latest pointer for easy reference
+  const latestPath = join(__dirname, 'latest.json');
+  writeFileSync(latestPath, JSON.stringify(report, null, 2), 'utf8');
 
   console.log(`Wrote report to ${outPath}`);
   if (!jestJson) console.warn('Warning: could not parse Jest JSON from test run output; report contains raw stdout/stderr.');

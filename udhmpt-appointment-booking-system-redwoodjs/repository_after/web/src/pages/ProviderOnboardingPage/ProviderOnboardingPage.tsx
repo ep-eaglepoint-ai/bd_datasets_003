@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { navigate } from '@redwoodjs/router'
 import { useMutation, useQuery } from '@redwoodjs/web'
+import { toast } from '@redwoodjs/web/toast'
 import gql from 'graphql-tag'
 
 import { useAuth } from 'src/auth/AuthContext'
@@ -15,6 +16,11 @@ const MY_PROVIDER_PROFILE = gql`
       timezone
       bookingLeadTimeHours
       maxBookingsPerDay
+      cancellationWindowHours
+      rescheduleWindowHours
+      cancellationFeeCents
+      rescheduleFeeCents
+      penaltiesApplyForLateCancel
     }
   }
 `
@@ -28,6 +34,11 @@ const CREATE_PROVIDER_PROFILE = gql`
       timezone
       bookingLeadTimeHours
       maxBookingsPerDay
+      cancellationWindowHours
+      rescheduleWindowHours
+      cancellationFeeCents
+      rescheduleFeeCents
+      penaltiesApplyForLateCancel
     }
   }
 `
@@ -41,6 +52,11 @@ const UPDATE_PROVIDER_PROFILE = gql`
       timezone
       bookingLeadTimeHours
       maxBookingsPerDay
+      cancellationWindowHours
+      rescheduleWindowHours
+      cancellationFeeCents
+      rescheduleFeeCents
+      penaltiesApplyForLateCancel
     }
   }
 `
@@ -161,6 +177,11 @@ const ProviderOnboardingPage: React.FC = () => {
   const [profileTimezone, setProfileTimezone] = useState(defaultTimezone)
   const [bookingLeadTimeHours, setBookingLeadTimeHours] = useState('1')
   const [maxBookingsPerDay, setMaxBookingsPerDay] = useState('')
+  const [cancellationWindowHours, setCancellationWindowHours] = useState('24')
+  const [rescheduleWindowHours, setRescheduleWindowHours] = useState('24')
+  const [cancellationFeeCents, setCancellationFeeCents] = useState('0')
+  const [rescheduleFeeCents, setRescheduleFeeCents] = useState('0')
+  const [penaltiesApply, setPenaltiesApply] = useState(false)
 
   const [serviceName, setServiceName] = useState('')
   const [serviceDuration, setServiceDuration] = useState('30')
@@ -202,14 +223,18 @@ const ProviderOnboardingPage: React.FC = () => {
     useMutation(CREATE_PROVIDER_PROFILE, {
       onCompleted: () => {
         refetchProfile()
+        toast.success('Provider profile created')
       },
+      onError: (error) => toast.error(error.message),
     })
 
   const [updateProviderProfile, { loading: updatingProfile, error: updateError }] =
     useMutation(UPDATE_PROVIDER_PROFILE, {
       onCompleted: () => {
         refetchProfile()
+        toast.success('Profile updated')
       },
+      onError: (error) => toast.error(error.message),
     })
 
   const [createService, { loading: creatingService, error: serviceError }] =
@@ -221,7 +246,9 @@ const ProviderOnboardingPage: React.FC = () => {
         setServiceCapacity('1')
         setServiceBufferBefore('0')
         setServiceBufferAfter('0')
+        toast.success('Service added')
       },
+      onError: (error) => toast.error(error.message),
     })
 
   const {
@@ -255,14 +282,18 @@ const ProviderOnboardingPage: React.FC = () => {
     useMutation(CREATE_RECURRING, {
       onCompleted: () => {
         refetchRecurring()
+        toast.success('Recurring availability added')
       },
+      onError: (error) => toast.error(error.message),
     })
 
   const [createCustom, { loading: creatingCustom, error: customError }] =
     useMutation(CREATE_CUSTOM, {
       onCompleted: () => {
         refetchCustom()
+        toast.success('Custom day availability added')
       },
+      onError: (error) => toast.error(error.message),
     })
 
   const [createException, { loading: creatingException, error: exceptionError }] =
@@ -272,13 +303,17 @@ const ProviderOnboardingPage: React.FC = () => {
         setExceptionStart('')
         setExceptionEnd('')
         setExceptionReason('')
+        toast.success('Availability exception added')
       },
+      onError: (error) => toast.error(error.message),
     })
 
   const [deleteException] = useMutation(DELETE_EXCEPTION, {
     onCompleted: () => {
       refetchExceptions()
+      toast.success('Exception removed')
     },
+    onError: (error) => toast.error(error.message),
   })
 
   const handleCreateProfile = (event: React.FormEvent) => {
@@ -292,6 +327,11 @@ const ProviderOnboardingPage: React.FC = () => {
           timezone: profileTimezone.trim() || undefined,
           bookingLeadTimeHours: Number(bookingLeadTimeHours) || 1,
           maxBookingsPerDay: maxBookingsPerDay ? Number(maxBookingsPerDay) : null,
+          cancellationWindowHours: Number(cancellationWindowHours) || 24,
+          rescheduleWindowHours: Number(rescheduleWindowHours) || 24,
+          cancellationFeeCents: Number(cancellationFeeCents) || 0,
+          rescheduleFeeCents: Number(rescheduleFeeCents) || 0,
+          penaltiesApplyForLateCancel: penaltiesApply,
         },
       },
     })
@@ -308,6 +348,11 @@ const ProviderOnboardingPage: React.FC = () => {
           timezone: profileTimezone.trim() || undefined,
           bookingLeadTimeHours: Number(bookingLeadTimeHours) || 1,
           maxBookingsPerDay: maxBookingsPerDay ? Number(maxBookingsPerDay) : null,
+          cancellationWindowHours: Number(cancellationWindowHours) || 24,
+          rescheduleWindowHours: Number(rescheduleWindowHours) || 24,
+          cancellationFeeCents: Number(cancellationFeeCents) || 0,
+          rescheduleFeeCents: Number(rescheduleFeeCents) || 0,
+          penaltiesApplyForLateCancel: penaltiesApply,
         },
       },
     })
@@ -419,9 +464,14 @@ const ProviderOnboardingPage: React.FC = () => {
 
   return (
     <div className="max-w-3xl mx-auto p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Provider Onboarding</h1>
-        <p className="text-gray-600">Create your profile and the services you offer.</p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Provider Onboarding</h1>
+          <p className="text-gray-600">Create your profile and the services you offer.</p>
+        </div>
+        <button type="button" onClick={() => navigate('/provider')}>
+          Go to Provider
+        </button>
       </div>
 
       {!providerProfile ? (
@@ -480,6 +530,62 @@ const ProviderOnboardingPage: React.FC = () => {
                 className="w-full px-3 py-2 border rounded-md"
                 placeholder="Leave blank for unlimited"
               />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Cancellation Window (hours)</label>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={cancellationWindowHours}
+                onChange={(e) => setCancellationWindowHours(e.target.value)}
+                className="w-full px-3 py-2 border rounded-md"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Reschedule Window (hours)</label>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={rescheduleWindowHours}
+                onChange={(e) => setRescheduleWindowHours(e.target.value)}
+                className="w-full px-3 py-2 border rounded-md"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Cancellation Fee (cents)</label>
+              <input
+                type="number"
+                min={0}
+                step={50}
+                value={cancellationFeeCents}
+                onChange={(e) => setCancellationFeeCents(e.target.value)}
+                className="w-full px-3 py-2 border rounded-md"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Reschedule Fee (cents)</label>
+              <input
+                type="number"
+                min={0}
+                step={50}
+                value={rescheduleFeeCents}
+                onChange={(e) => setRescheduleFeeCents(e.target.value)}
+                className="w-full px-3 py-2 border rounded-md"
+              />
+            </div>
+            <div className="flex items-center space-x-2">
+              <input
+                id="penaltiesApplyCreate"
+                type="checkbox"
+                checked={penaltiesApply}
+                onChange={(e) => setPenaltiesApply(e.target.checked)}
+                className="h-4 w-4"
+              />
+              <label htmlFor="penaltiesApplyCreate" className="text-sm font-medium">
+                Apply penalties for late cancel/reschedule
+              </label>
             </div>
           </div>
 
@@ -547,6 +653,71 @@ const ProviderOnboardingPage: React.FC = () => {
                   className="w-full px-3 py-2 border rounded-md"
                   placeholder="Leave blank for unlimited"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Cancellation Window (hours)</label>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={
+                    cancellationWindowHours ||
+                    String(providerProfile.cancellationWindowHours ?? 24)
+                  }
+                  onChange={(e) => setCancellationWindowHours(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-md"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Reschedule Window (hours)</label>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={
+                    rescheduleWindowHours ||
+                    String(providerProfile.rescheduleWindowHours ?? 24)
+                  }
+                  onChange={(e) => setRescheduleWindowHours(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-md"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Cancellation Fee (cents)</label>
+                <input
+                  type="number"
+                  min={0}
+                  step={50}
+                  value={cancellationFeeCents || String(providerProfile.cancellationFeeCents ?? 0)}
+                  onChange={(e) => setCancellationFeeCents(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-md"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Reschedule Fee (cents)</label>
+                <input
+                  type="number"
+                  min={0}
+                  step={50}
+                  value={rescheduleFeeCents || String(providerProfile.rescheduleFeeCents ?? 0)}
+                  onChange={(e) => setRescheduleFeeCents(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-md"
+                />
+              </div>
+              <div className="flex items-center space-x-2">
+                <input
+                  id="penaltiesApplyUpdate"
+                  type="checkbox"
+                  checked={
+                    penaltiesApply ||
+                    Boolean(providerProfile.penaltiesApplyForLateCancel)
+                  }
+                  onChange={(e) => setPenaltiesApply(e.target.checked)}
+                  className="h-4 w-4"
+                />
+                <label htmlFor="penaltiesApplyUpdate" className="text-sm font-medium">
+                  Apply penalties for late cancel/reschedule
+                </label>
               </div>
               {updateError && (
                 <p className="text-sm text-red-600">{updateError.message}</p>

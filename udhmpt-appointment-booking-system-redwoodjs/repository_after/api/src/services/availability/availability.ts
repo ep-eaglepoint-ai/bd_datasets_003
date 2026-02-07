@@ -1,6 +1,8 @@
 import { DateTime } from 'luxon'
 import { context } from '@redwoodjs/graphql-server'
 import { db } from '../../lib/db'
+import { normalizeTimezone } from '../../lib/timezone'
+import { getAuthenticatedUser, isAdmin, isProvider } from '../../lib/auth'
 
 type RecurringInput = {
   weekday: number
@@ -17,7 +19,7 @@ type CustomDayInput = {
 type SearchParams = {
   input: {
     providerId: number
-    serviceId?: number
+    serviceId: number
     startISO: string
     endISO: string
     customerTz: string
@@ -33,34 +35,46 @@ export const searchAvailability = async ({ input }: SearchParams) => {
   }
 
   const profile = await db.providerProfile.findUnique({ where: { id: providerId } })
-  const providerTz = profile?.timezone || 'UTC'
+  const providerTz = normalizeTimezone(profile?.timezone || 'UTC', {
+    label: 'provider timezone',
+  })
+  const normalizedCustomerTz = normalizeTimezone(customerTz, {
+    fallback: 'UTC',
+    label: 'customer timezone',
+  })
+  const leadTimeHours = profile?.bookingLeadTimeHours ?? 0
+  const maxBookingsPerDay = profile?.maxBookingsPerDay ?? null
 
   // Fetch service to determine duration and buffer times
   let duration: number | undefined
   let bufferBefore = 0
   let bufferAfter = 0
 
-  let svc: any = null
-  if (serviceId) {
-    svc = await db.service.findUnique({ where: { id: serviceId } })
-    if (!svc) {
-      throw new Error(`Service with ID ${serviceId} not found`)
-    }
-    duration = svc.durationMinutes
-    bufferBefore = svc.bufferBeforeMinutes
-    bufferAfter = svc.bufferAfterMinutes
+  const svc = await db.service.findUnique({ where: { id: serviceId } })
+  if (!svc) {
+    throw new Error(`Service with ID ${serviceId} not found`)
   }
-
-  if (!duration) {
-    throw new Error('serviceId or implicit duration required to search availability')
-  }
+  duration = svc.durationMinutes
+  bufferBefore = svc.bufferBeforeMinutes
+  bufferAfter = svc.bufferAfterMinutes
 
   // Get data from DB
   const recurring = await db.recurringAvailability.findMany({ where: { providerId } })
+  const providerRangeStart = DateTime.fromISO(startISO, { zone: 'utc' })
+    .setZone(providerTz)
+    .startOf('day')
+    .toUTC()
+    .toJSDate()
+  const providerRangeEnd = DateTime.fromISO(endISO, { zone: 'utc' })
+    .setZone(providerTz)
+    .endOf('day')
+    .toUTC()
+    .toJSDate()
+
   const customs = await db.customDayAvailability.findMany({
     where: {
       providerId,
-      date: { gte: new Date(startISO), lte: new Date(endISO) },
+      date: { gte: providerRangeStart, lte: providerRangeEnd },
     },
   })
   const exceptions = await db.availabilityException.findMany({
@@ -88,6 +102,27 @@ export const searchAvailability = async ({ input }: SearchParams) => {
     },
   })
 
+  // For max-per-day logic, we need all bookings in the provider-local day range,
+  // even if the query window is only a partial day.
+  const bookingsForDayCounts =
+    maxBookingsPerDay && maxBookingsPerDay > 0
+      ? await db.booking.findMany({
+          where: {
+            providerId,
+            canceledAt: null,
+            startUtc: { gte: providerRangeStart, lte: providerRangeEnd },
+          },
+        })
+      : []
+
+  const existingServiceIds = Array.from(
+    new Set(existingBookings.map((b: any) => b.serviceId))
+  )
+  const existingServices = existingServiceIds.length
+    ? await db.service.findMany({ where: { id: { in: existingServiceIds } } })
+    : []
+  const serviceById = new Map(existingServices.map((s: any) => [s.id, s]))
+
   // Expand weekly rules with timezone robustness
   // Convert UTC range to Provider Local range to find logical week boundaries
   const localStart = DateTime.fromISO(startISO, { zone: 'utc' }).setZone(providerTz)
@@ -114,7 +149,7 @@ export const searchAvailability = async ({ input }: SearchParams) => {
 
   // Group customs
   const customDaysFormatted = customs.map((c: any) => ({
-    dateISO: DateTime.fromJSDate(c.date).toISODate()!,
+    dateISO: DateTime.fromJSDate(c.date, { zone: 'utc' }).setZone(providerTz).toISODate()!,
     startUtcISO: c.startUtc.toISOString(),
     endUtcISO: c.endUtc.toISOString(),
   }))
@@ -146,45 +181,88 @@ export const searchAvailability = async ({ input }: SearchParams) => {
     duration,
     bufferBefore,
     bufferAfter,
-    customerTz
+    normalizedCustomerTz
   )
 
   // Filter out slots that are full based on existing bookings
   const capacity = svc?.capacity ?? 1
   const finalSlots = slots.filter((slot) => {
-    const slotStart = DateTime.fromISO(slot.startUtcISO)
-    const slotEnd = DateTime.fromISO(slot.endUtcISO)
+    const slotStart = DateTime.fromISO(slot.startUtcISO, { zone: 'utc' })
+    const slotEnd = DateTime.fromISO(slot.endUtcISO, { zone: 'utc' })
+
+    const slotStartWithBuffer = slotStart.minus({ minutes: bufferBefore })
+    const slotEndWithBuffer = slotEnd.plus({ minutes: bufferAfter })
 
     const overlapping = existingBookings.filter((b: any) => {
-      const bStart = DateTime.fromJSDate(b.startUtc)
-      const bEnd = DateTime.fromJSDate(b.endUtc)
-      return bEnd > slotStart && bStart < slotEnd
+      const bookingService = serviceById.get(b.serviceId)
+      const bookingBufferBefore = bookingService?.bufferBeforeMinutes ?? 0
+      const bookingBufferAfter = bookingService?.bufferAfterMinutes ?? 0
+      const bStart = DateTime.fromJSDate(b.startUtc).minus({ minutes: bookingBufferBefore })
+      const bEnd = DateTime.fromJSDate(b.endUtc).plus({ minutes: bookingBufferAfter })
+      return bEnd > slotStartWithBuffer && bStart < slotEndWithBuffer
     })
 
-    // Block if provider is booked for a different service
     if (overlapping.some((b: any) => b.serviceId !== serviceId)) {
       return false
     }
 
-    // Count overlapping bookings for the same service
     const overlappingCount = overlapping.filter((b: any) => b.serviceId === serviceId).length
+    if (overlappingCount >= capacity) return false
 
-    return overlappingCount < capacity
+    return true
   })
 
   // Re-filter slots to ensure they are strictly inside range
+  const now = DateTime.utc()
+  const cutoff = now.plus({ hours: leadTimeHours })
+
+  const bookingsByDay = new Map<string, number>()
+  if (maxBookingsPerDay && maxBookingsPerDay > 0) {
+    for (const booking of bookingsForDayCounts) {
+      const dayKey = DateTime.fromJSDate(booking.startUtc)
+        .setZone(providerTz)
+        .toISODate()!
+      bookingsByDay.set(dayKey, (bookingsByDay.get(dayKey) || 0) + 1)
+    }
+  }
+
   return finalSlots.filter((s) => {
-    const sStart = DateTime.fromISO(s.startUtcISO)
-    const sEnd = DateTime.fromISO(s.endUtcISO)
-    return sStart >= rangeStart && sEnd <= rangeEnd
+    const sStart = DateTime.fromISO(s.startUtcISO, { zone: 'utc' })
+    const sEnd = DateTime.fromISO(s.endUtcISO, { zone: 'utc' })
+    if (sStart <= cutoff) return false
+    if (!(sStart >= rangeStart && sEnd <= rangeEnd)) return false
+
+    if (maxBookingsPerDay && maxBookingsPerDay > 0) {
+      const dayKey = sStart.setZone(providerTz).toISODate()!
+      if ((bookingsByDay.get(dayKey) || 0) >= maxBookingsPerDay) {
+        return false
+      }
+    }
+
+    return true
   })
 }
 
+const assertProviderOwnership = async (providerId: number) => {
+  const user = getAuthenticatedUser()
+  if (isAdmin(user)) return
+  if (!isProvider(user)) throw new Error('Forbidden')
+
+  const provider = await db.providerProfile.findUnique({
+    where: { userId: user.id },
+  })
+  if (!provider || provider.id !== providerId) {
+    throw new Error('Forbidden')
+  }
+}
+
 export const recurringAvailabilities = async ({ providerId }: { providerId: number }) => {
+  await assertProviderOwnership(providerId)
   return db.recurringAvailability.findMany({ where: { providerId } })
 }
 
 export const customDayAvailabilities = async ({ providerId }: { providerId: number }) => {
+  await assertProviderOwnership(providerId)
   return db.customDayAvailability.findMany({
     where: { providerId },
     orderBy: { date: 'asc' },
@@ -192,6 +270,7 @@ export const customDayAvailabilities = async ({ providerId }: { providerId: numb
 }
 
 export const availabilityExceptions = async ({ providerId }: { providerId: number }) => {
+  await assertProviderOwnership(providerId)
   return db.availabilityException.findMany({
     where: { providerId },
     orderBy: { startUtc: 'asc' },
@@ -209,6 +288,7 @@ export const createManualBlock = async ({
   const provider = await db.providerProfile.findUnique({ where: { userId } })
   if (!provider) throw new Error('Provider profile not found')
 
+  normalizeTimezone(provider.timezone, { label: 'provider timezone' })
   const start = DateTime.fromISO(input.startUtcISO).toUTC()
   const end = DateTime.fromISO(input.endUtcISO).toUTC()
 
@@ -255,6 +335,17 @@ export const createRecurringAvailability = async ({
   if (!provider) throw new Error('Provider profile not found')
 
   if (input.weekday < 1 || input.weekday > 7) throw new Error('Invalid weekday')
+  const tz = normalizeTimezone(provider.timezone, { label: 'provider timezone' })
+
+  const sampleDate = DateTime.utc().set({ year: 2026, month: 1, day: 1 })
+  const start = DateTime.fromISO(`${sampleDate.toISODate()}T${input.startLocal}`, { zone: tz })
+  const end = DateTime.fromISO(`${sampleDate.toISODate()}T${input.endLocal}`, { zone: tz })
+  if (!start.isValid || !end.isValid) {
+    throw new Error('Invalid time format')
+  }
+  if (end <= start) {
+    throw new Error('end must be after start')
+  }
 
   return db.recurringAvailability.create({
     data: {
@@ -262,7 +353,7 @@ export const createRecurringAvailability = async ({
       weekday: input.weekday,
       startLocal: input.startLocal,
       endLocal: input.endLocal,
-      tz: provider.timezone,
+      tz,
     },
   })
 }
@@ -278,16 +369,22 @@ export const createCustomDayAvailability = async ({
   const provider = await db.providerProfile.findUnique({ where: { userId } })
   if (!provider) throw new Error('Provider profile not found')
 
-  const tz = provider.timezone
-  const start = DateTime.fromISO(`${input.date}T${input.startLocal}`, { zone: tz }).toUTC()
-  const end = DateTime.fromISO(`${input.date}T${input.endLocal}`, { zone: tz }).toUTC()
+  const tz = normalizeTimezone(provider.timezone, { label: 'provider timezone' })
+  const startLocal = DateTime.fromISO(`${input.date}T${input.startLocal}`, { zone: tz })
+  const endLocal = DateTime.fromISO(`${input.date}T${input.endLocal}`, { zone: tz })
+
+  if (!startLocal.isValid || !endLocal.isValid) {
+    throw new Error('Invalid time format')
+  }
+  const start = startLocal.toUTC()
+  const end = endLocal.toUTC()
 
   if (end <= start) throw new Error('end must be after start')
 
   return db.customDayAvailability.create({
     data: {
       providerId: provider.id,
-      date: new Date(input.date),
+      date: DateTime.fromISO(input.date, { zone: tz }).startOf('day').toUTC().toJSDate(),
       startUtc: start.toJSDate(),
       endUtc: end.toJSDate(),
       tz,
@@ -306,6 +403,7 @@ export const createAvailabilityException = async ({
   const provider = await db.providerProfile.findUnique({ where: { userId } })
   if (!provider) throw new Error('Provider profile not found')
 
+  normalizeTimezone(provider.timezone, { label: 'provider timezone' })
   const start = DateTime.fromISO(input.startUtcISO).toUTC()
   const end = DateTime.fromISO(input.endUtcISO).toUTC()
 
@@ -337,9 +435,11 @@ export const deleteAvailabilityException = async ({ id }: { id: number }) => {
 }
 
 export const availabilityUpdated = {
-  subscribe: (_: any, { providerId }: { providerId: number }) =>
-    (context as any).pubSub?.subscribe('availabilityUpdated', providerId),
-  resolve: (payload: any) => payload,
+  subscribe: (_: any, { input }: { input: SearchParams['input'] }) =>
+    (context as any).pubSub?.subscribe('availabilityUpdated', input.providerId),
+  resolve: async (_payload: any, { input }: { input: SearchParams['input'] }) => {
+    return searchAvailability({ input })
+  },
 }
 
 // Logic helpers (Deterministic internal functions)
@@ -392,26 +492,16 @@ export function mergeOverrides(
   expandedWeekly: ExtendedWindow[],
   customDays: Array<{ dateISO: string; startUtcISO: string; endUtcISO: string }>
 ) {
-  const customByDate = new Map<string, Array<{ startUtcISO: string; endUtcISO: string }>>()
-  for (const c of customDays) {
-    if (!customByDate.has(c.dateISO)) customByDate.set(c.dateISO, [])
-    customByDate.get(c.dateISO)!.push({ startUtcISO: c.startUtcISO, endUtcISO: c.endUtcISO })
-  }
-
   const merged: Array<{ startUtc: string; endUtc: string }> = []
 
-  // Add recurring windows if not overridden by a custom day
+  // Always include recurring windows (base availability)
   for (const e of expandedWeekly) {
-    if (!customByDate.has(e.localDateISO)) {
-      merged.push({ startUtc: e.startUtc, endUtc: e.endUtc })
-    }
+    merged.push({ startUtc: e.startUtc, endUtc: e.endUtc })
   }
 
-  // Add custom day windows
-  for (const [_, arr] of customByDate.entries()) {
-    for (const a of arr) {
-      merged.push({ startUtc: a.startUtcISO, endUtc: a.endUtcISO })
-    }
+  // Add custom day windows as additive overrides
+  for (const c of customDays) {
+    merged.push({ startUtc: c.startUtcISO, endUtc: c.endUtcISO })
   }
 
   return merged.sort((a, b) => a.startUtc.localeCompare(b.startUtc))

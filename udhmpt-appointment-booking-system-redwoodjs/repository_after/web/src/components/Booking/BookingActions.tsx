@@ -3,6 +3,7 @@ import { DateTime } from 'luxon';
 import { LoadingState } from '../UI/LoadingState';
 import { ErrorMessage } from '../UI/ErrorMessage';
 import { ErrorBoundary } from '../UI/ErrorBoundary';
+import { toast } from '@redwoodjs/web/toast';
 
 type Booking = {
   id: number;
@@ -57,11 +58,11 @@ export const BookingActions: React.FC<Props> = ({
   const localStart = bookingStart.setZone(customerTz);
 
   // Check if actions are allowed based on policies
-  const canCancel = !booking.canceledAt && 
-    now.plus({ hours: policy.cancellationWindowHours }) < bookingStart;
+  const canCancel = !booking.canceledAt &&
+    now.plus({ hours: policy.cancellationWindowHours }) <= bookingStart;
 
-  const canReschedule = !booking.canceledAt && 
-    now.plus({ hours: policy.rescheduleWindowHours }) < bookingStart;
+  const canReschedule = !booking.canceledAt &&
+    now.plus({ hours: policy.rescheduleWindowHours }) <= bookingStart;
 
   const handleCancel = async () => {
     if (!onCancel) return;
@@ -73,8 +74,10 @@ export const BookingActions: React.FC<Props> = ({
       await onCancel(booking.id, cancelReason || 'Customer requested cancellation');
       setShowCancelModal(false);
       setCancelReason('');
+      toast.success('Booking cancelled');
     } catch (err) {
       setError(err instanceof Error ? err : 'Failed to cancel booking');
+      toast.error('Failed to cancel booking');
     } finally {
       setIsLoading(false);
     }
@@ -89,8 +92,10 @@ export const BookingActions: React.FC<Props> = ({
     try {
       await onReschedule(booking.id, newStartUtc, newEndUtc);
       setShowRescheduleModal(false);
+      toast.success('Booking rescheduled');
     } catch (err) {
       setError(err instanceof Error ? err : 'Failed to reschedule booking');
+      toast.error('Failed to reschedule booking');
     } finally {
       setIsLoading(false);
     }

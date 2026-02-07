@@ -14,6 +14,15 @@ describe('One-off overrides and manual blocks', () => {
     expect(resolved.some(r => r.startUtcISO.includes('13:00'))).toBe(true);
   });
 
+  test('Custom day dateISO respects provider timezone when date stored in UTC midnight', () => {
+    const providerTz = 'America/Los_Angeles';
+    const storedUtcMidnight = DateTime.fromISO('2021-11-03T00:00:00Z', { zone: 'utc' });
+    const dateISO = storedUtcMidnight.setZone(providerTz).toISODate();
+
+    // Nov 3 UTC midnight is Nov 2 in Los Angeles (PST/PDT depending on date).
+    expect(dateISO).toBe('2021-11-02');
+  });
+
   test('Override removes availability (exception)', () => {
     const rules = [{ weekday: 4, startLocal: '09:00', endLocal: '11:00', tz: 'UTC' }];
     const expanded = expandWeeklyRules(rules, '2021-11-01');

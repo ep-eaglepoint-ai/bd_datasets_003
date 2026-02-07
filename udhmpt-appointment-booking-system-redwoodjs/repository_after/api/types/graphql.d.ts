@@ -80,8 +80,13 @@ export type CreateBookingInput = {
 export type CreateProviderProfileInput = {
   bio?: InputMaybe<Scalars['String']>;
   bookingLeadTimeHours?: InputMaybe<Scalars['Int']>;
+  cancellationFeeCents?: InputMaybe<Scalars['Int']>;
+  cancellationWindowHours?: InputMaybe<Scalars['Int']>;
   maxBookingsPerDay?: InputMaybe<Scalars['Int']>;
   name: Scalars['String'];
+  penaltiesApplyForLateCancel?: InputMaybe<Scalars['Boolean']>;
+  rescheduleFeeCents?: InputMaybe<Scalars['Int']>;
+  rescheduleWindowHours?: InputMaybe<Scalars['Int']>;
   timezone?: InputMaybe<Scalars['String']>;
 };
 
@@ -340,7 +345,7 @@ export type SearchAvailabilityInput = {
   customerTz: Scalars['String'];
   endISO: Scalars['String'];
   providerId: Scalars['Int'];
-  serviceId?: InputMaybe<Scalars['Int']>;
+  serviceId: Scalars['Int'];
   startISO: Scalars['String'];
 };
 
@@ -370,7 +375,7 @@ export type Subscription = {
 
 
 export type SubscriptionavailabilityUpdatedArgs = {
-  providerId: Scalars['Int'];
+  input: SearchAvailabilityInput;
 };
 
 export type UpdateBookingInput = {
@@ -381,8 +386,13 @@ export type UpdateBookingInput = {
 export type UpdateProviderProfileInput = {
   bio?: InputMaybe<Scalars['String']>;
   bookingLeadTimeHours?: InputMaybe<Scalars['Int']>;
+  cancellationFeeCents?: InputMaybe<Scalars['Int']>;
+  cancellationWindowHours?: InputMaybe<Scalars['Int']>;
   maxBookingsPerDay?: InputMaybe<Scalars['Int']>;
   name?: InputMaybe<Scalars['String']>;
+  penaltiesApplyForLateCancel?: InputMaybe<Scalars['Boolean']>;
+  rescheduleFeeCents?: InputMaybe<Scalars['Int']>;
+  rescheduleWindowHours?: InputMaybe<Scalars['Int']>;
   timezone?: InputMaybe<Scalars['String']>;
 };
 
@@ -818,11 +828,11 @@ export type SlotRelationResolvers<ContextType = RedwoodGraphQLContext, ParentTyp
 };
 
 export type SubscriptionResolvers<ContextType = RedwoodGraphQLContext, ParentType extends ResolversParentTypes['Subscription'] = ResolversParentTypes['Subscription']> = {
-  availabilityUpdated: SubscriptionResolver<Array<ResolversTypes['Slot']>, "availabilityUpdated", ParentType, ContextType, RequireFields<SubscriptionavailabilityUpdatedArgs, 'providerId'>>;
+  availabilityUpdated: SubscriptionResolver<Array<ResolversTypes['Slot']>, "availabilityUpdated", ParentType, ContextType, RequireFields<SubscriptionavailabilityUpdatedArgs, 'input'>>;
 };
 
 export type SubscriptionRelationResolvers<ContextType = RedwoodGraphQLContext, ParentType extends ResolversParentTypes['Subscription'] = ResolversParentTypes['Subscription']> = {
-  availabilityUpdated: SubscriptionResolver<Array<ResolversTypes['Slot']>, "availabilityUpdated", ParentType, ContextType, RequireFields<SubscriptionavailabilityUpdatedArgs, 'providerId'>>;
+  availabilityUpdated: SubscriptionResolver<Array<ResolversTypes['Slot']>, "availabilityUpdated", ParentType, ContextType, RequireFields<SubscriptionavailabilityUpdatedArgs, 'input'>>;
 };
 
 export interface TimeScalarConfig extends GraphQLScalarTypeConfig<ResolversTypes['Time'], any> {

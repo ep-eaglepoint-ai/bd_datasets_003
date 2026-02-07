@@ -27,3 +27,7 @@ node_modules/
 *.log
 .pnp
 .pnp.js
+
+
+#evaluation
+evaluation/????-??-??/

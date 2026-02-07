@@ -49,8 +49,8 @@ const SEARCH_AVAILABILITY = gql`
 `;
 
 const AVAILABILITY_SUBSCRIPTION = gql`
-  subscription AvailabilitySubscription($providerId: Int!) {
-    availabilityUpdated(providerId: $providerId) {
+  subscription AvailabilitySubscription($input: SearchAvailabilityInput!) {
+    availabilityUpdated(input: $input) {
       startUtcISO
       endUtcISO
       startLocalISO
@@ -84,6 +84,7 @@ export const RealTimeSlotListing: React.FC<Props> = ({
         customerTz,
       },
     },
+    skip: !service?.id,
     onCompleted: (data) => {
       setLastUpdated(DateTime.utc());
       setSlots((data?.searchAvailability || []).map((s: any) => ({
@@ -95,7 +96,15 @@ export const RealTimeSlotListing: React.FC<Props> = ({
   });
 
   useSubscription(AVAILABILITY_SUBSCRIPTION, {
-    variables: { providerId },
+    variables: {
+      input: {
+        providerId,
+        serviceId: service?.id,
+        startISO,
+        endISO,
+        customerTz,
+      },
+    },
     onData: ({ data }) => {
       if (data?.data?.availabilityUpdated) {
         setLastUpdated(DateTime.utc());
@@ -106,7 +115,7 @@ export const RealTimeSlotListing: React.FC<Props> = ({
         })));
       }
     },
-    skip: !autoRefresh,
+    skip: !autoRefresh || !service?.id,
   });
 
   const handleSlotClick = (slot: Slot) => {
@@ -147,7 +156,13 @@ export const RealTimeSlotListing: React.FC<Props> = ({
 
         <div className="card-body">
           <LoadingState isLoading={loading && slots.length === 0} error={error} variant="full">
-            {slots.length === 0 && !loading && (
+            {!service && (
+              <div className="text-center py-6 text-gray-500">
+                <p className="mt-2">Select a service to view available slots.</p>
+              </div>
+            )}
+
+            {service && slots.length === 0 && !loading && (
               <div className="text-center py-8 text-gray-500">
                 <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />

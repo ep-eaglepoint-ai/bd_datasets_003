@@ -1,6 +1,10 @@
 import { Router, Route } from '@redwoodjs/router'
 
 import LoginPage from 'src/auth/LoginPage'
+import BookingsPage from 'src/pages/BookingsPage/BookingsPage'
+import ProviderCalendarPage from 'src/pages/ProviderCalendarPage/ProviderCalendarPage'
+import ProviderOnboardingPage from 'src/pages/ProviderOnboardingPage/ProviderOnboardingPage'
+import NotFoundPage from 'src/pages/NotFoundPage/NotFoundPage'
 
 const Routes = () => {
     return (

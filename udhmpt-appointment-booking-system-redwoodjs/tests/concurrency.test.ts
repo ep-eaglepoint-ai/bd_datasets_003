@@ -1,18 +1,45 @@
-import { db } from '../repository_after/api/src/lib/db'
-import { createBooking } from '../repository_after/api/src/services/bookings/bookings'
-import { context } from '@redwoodjs/graphql-server'
 import { DateTime } from 'luxon'
+import fs from 'fs'
+import path from 'path'
+import { execSync } from 'child_process'
 
-// This test uses the REAL database (SQLite dev.db) to verify concurrency logic.
-// It ensures that the UNIQUE(providerId, startUtc, capacitySlot) constraint
-// prevents double-bookings even when parallel requests are fired.
+// This test uses an isolated copy of the SQLite database to verify concurrency logic.
+// It ensures provider-level overlap protection and optimistic locking prevent double-bookings.
 
 describe('Real DB Concurrency Integration', () => {
+    let db: any
+    let createBooking: any
+    let context: any
+    let tempDbPath: string
     let providerId: number
     let serviceId: number
     let userId: number
+    let bookingUserId: number
 
     beforeAll(async () => {
+        jest.resetModules()
+        tempDbPath = path.resolve(
+            __dirname,
+            `../repository_after/api/db/dev.test-${Date.now()}-${Math.random()
+                .toString(36)
+                .slice(2)}.db`
+        )
+        fs.writeFileSync(tempDbPath, '')
+        process.env.DATABASE_URL = `file:${tempDbPath}`
+
+        execSync('npx prisma migrate deploy --schema repository_after/api/db/schema.prisma', {
+            stdio: 'ignore',
+            env: {
+                ...process.env,
+                DATABASE_URL: `file:${tempDbPath}`,
+            },
+        })
+
+        const dbModule = require('../repository_after/api/src/lib/db')
+        db = dbModule.db
+        context = require('@redwoodjs/graphql-server').context
+        createBooking = require('../repository_after/api/src/services/bookings/bookings').createBooking
+
         // Enable WAL mode and busy_timeout to reduce "database is locked" flakiness
         try {
             await db.$queryRawUnsafe('PRAGMA journal_mode = WAL;')
@@ -30,6 +57,14 @@ describe('Real DB Concurrency Integration', () => {
         })
         userId = user.id
 
+        const bookingUser = await db.user.create({
+            data: {
+                email: `concurrency-booker-${Date.now()}@test.com`,
+                role: 'CUSTOMER'
+            }
+        })
+        bookingUserId = bookingUser.id
+
         // 2. Create a provider
         const providerUser = await db.user.create({
             data: {
@@ -40,7 +75,9 @@ describe('Real DB Concurrency Integration', () => {
         const profile = await db.providerProfile.create({
             data: {
                 userId: providerUser.id,
-                name: 'Concurrency Test Provider'
+                name: 'Concurrency Test Provider',
+                timezone: 'UTC',
+                bookingLeadTimeHours: 1,
             }
         })
         providerId = profile.id
@@ -55,18 +92,44 @@ describe('Real DB Concurrency Integration', () => {
             }
         })
         serviceId = service.id
+
+        const day30 = DateTime.utc().plus({ days: 30 }).startOf('day')
+        const day31 = DateTime.utc().plus({ days: 31 }).startOf('day')
+        await db.customDayAvailability.create({
+            data: {
+                providerId,
+                date: day30.toJSDate(),
+                startUtc: day30.plus({ hours: 8 }).toJSDate(),
+                endUtc: day30.plus({ hours: 18 }).toJSDate(),
+                tz: 'UTC',
+            }
+        })
+        await db.customDayAvailability.create({
+            data: {
+                providerId,
+                date: day31.toJSDate(),
+                startUtc: day31.plus({ hours: 8 }).toJSDate(),
+                endUtc: day31.plus({ hours: 18 }).toJSDate(),
+                tz: 'UTC',
+            }
+        })
     })
 
     test('Parallel createBooking calls should correctly allocate capacitySlot and prevent double-booking', async () => {
         // Mock authenticated user as the customer we created
         context.currentUser = {
-            id: userId,
+            id: bookingUserId,
             email: 'customer@test.com',
             role: 'CUSTOMER'
         }
 
-        const startUtcISO = DateTime.utc().plus({ days: 30 }).startOf('hour').toISO()!
-        const endUtcISO = DateTime.utc().plus({ days: 30 }).startOf('hour').plus({ hours: 1 }).toISO()!
+        const startUtcISO = DateTime.utc()
+            .plus({ days: 30 })
+            .set({ hour: 10, minute: 0, second: 0, millisecond: 0 })
+            .toISO()!
+        const endUtcISO = DateTime.fromISO(startUtcISO, { zone: 'utc' })
+            .plus({ hours: 1 })
+            .toISO()!
 
         // Trigger 5 parallel attempts (reduced from 10 to fit within SQLite limits while proving concurrency)
         const attempts = 5
@@ -131,25 +194,31 @@ describe('Real DB Concurrency Integration', () => {
         // Fail if we have infra errors
         expect(infraErrors.length).toBe(0)
 
-        // Confirm logic errors: Must be either capacity or unique constraint
+        // Confirm logic errors: Must be capacity or unique/overlap constraint
         expect(failureMessages.every((m: any) =>
             m.includes('Capacity exceeded') ||
+            m.includes('Overlapping booking') ||
             m.includes('Unique constraint failed') || // P2002
             m.includes('P2002') ||
             m.includes('P2033') // Number overflow
         )).toBe(true)
     }, 30000)
 
-    test('Parallel createBooking with DIFFERENT services should SUCCEED (Overlaps allowed)', async () => {
+    test('Overlapping bookings across different services are rejected', async () => {
         // Mock authenticated user
         context.currentUser = {
-            id: userId,
+            id: bookingUserId,
             email: 'customer@test.com',
             role: 'CUSTOMER'
         }
 
-        const startUtcISO = DateTime.utc().plus({ days: 31 }).startOf('hour').toISO()!
-        const endUtcISO = DateTime.utc().plus({ days: 31 }).startOf('hour').plus({ hours: 1 }).toISO()!
+        const startUtcISO = DateTime.utc()
+            .plus({ days: 31 })
+            .set({ hour: 10, minute: 0, second: 0, millisecond: 0 })
+            .toISO()!
+        const endUtcISO = DateTime.fromISO(startUtcISO, { zone: 'utc' })
+            .plus({ hours: 1 })
+            .toISO()!
 
         // Create a SECOND service
         const service2 = await db.service.create({
@@ -172,8 +241,8 @@ describe('Real DB Concurrency Integration', () => {
             }
         })
 
-        // Book Service 2 at SAME time (should SUCCEED)
-        const b2 = await createBooking({
+        // Book Service 2 at SAME time (should FAIL now)
+        await expect(createBooking({
             input: {
                 providerId,
                 serviceId: service2.id,
@@ -181,8 +250,7 @@ describe('Real DB Concurrency Integration', () => {
                 endUtcISO,
                 customerEmail: 'user2@test.com'
             }
-        })
-        expect(b2.id).toBeDefined()
+        })).rejects.toThrow(/Provider is already booked|Overlapping booking/)
     })
 
     afterAll(async () => {
@@ -195,7 +263,11 @@ describe('Real DB Concurrency Integration', () => {
             await db.availabilityException.deleteMany({ where: { providerId } })
             await db.manualBlock.deleteMany({ where: { providerId } })
             await db.providerProfile.delete({ where: { id: providerId } })
-            await db.user.delete({ where: { id: userId } })
+            await db.user.deleteMany({ where: { id: { in: [userId, bookingUserId] } } })
+            await db.$disconnect()
+            if (tempDbPath && fs.existsSync(tempDbPath)) {
+                fs.unlinkSync(tempDbPath)
+            }
         } catch (e) {
             console.warn('Cleanup failed:', (e as any).message)
         }

@@ -9,7 +9,7 @@ import { DateTime } from 'luxon';
 jest.mock('../repository_after/web/src/components/BookingsCell/BookingsCell', () => {
   return {
     __esModule: true,
-    default: jest.fn(() => <div data-testid="bookings-cell">Bookings</div>),
+    BookingsCell: jest.fn(() => <div data-testid="bookings-cell">Bookings</div>),
   };
 });
 
@@ -20,7 +20,7 @@ jest.mock('@redwoodjs/web', () => ({
 }), { virtual: true });
 
 // @ts-ignore
-import BookingsCell from '../repository_after/web/src/components/BookingsCell/BookingsCell';
+import { BookingsCell } from '../repository_after/web/src/components/BookingsCell/BookingsCell';
 
 jest.mock('../repository_after/web/src/auth/AuthContext', () => ({
   useAuth: () => ({
@@ -46,10 +46,9 @@ describe('ProviderCalendar UI', () => {
 
     await waitFor(() => expect(BookingsCell).toHaveBeenCalled());
     const weekCall = (BookingsCell as jest.Mock).mock.calls[0][0];
-    // Week view logic: gets start of week + 1 day (Monday) -> start of day. 
-    // Just verify it's not the same as day view.
+    // Week view logic: ISO week starts on Monday.
     const weekStartWeekday = DateTime.fromISO(weekCall.startISO).weekday;
-    expect([1, 2]).toContain(weekStartWeekday); // Depending on locale/implementation
+    expect(weekStartWeekday).toBe(1);
 
     (BookingsCell as jest.Mock).mockClear();
     rerender(<ProviderCalendar view="month" currentDateISO={anchor} providerId={1} />);

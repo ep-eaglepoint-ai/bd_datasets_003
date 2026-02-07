@@ -1,0 +1,388 @@
+{
+  "run_id": "4aa5294d-c456-4309-b826-be8c1394a1bb",
+  "started_at": "2026-02-07T15:46:09.708Z",
+  "finished_at": "2026-02-07T15:46:23.036Z",
+  "duration_seconds": 13.328,
+  "success": true,
+  "error": null,
+  "environment": {
+    "node_version": "v18.20.8",
+    "platform": "linux",
+    "os": "Linux",
+    "architecture": "arm64",
+    "hostname": "68e3e6e1ede7"
+  },
+  "results": {
+    "after": {
+      "success": true,
+      "exit_code": 0,
+      "raw_stdout": "v18.20.8\n{\"node_version\":\"v18.20.8\",\"platform\":\"linux\",\"os\":\"Linux\",\"architecture\":\"arm64\",\"hostname\":\"68e3e6e1ede7\"}\n\n> udhmpt-appointment-booking-system-foundation@0.0.0 test\n> npx jest --runInBand tests/provider_onboarding.test.ts tests/availability_recurring.test.ts tests/availability_overrides.test.ts tests/booking_creation.test.ts tests/booking_confirmation.test.tsx tests/booking_cancel_reschedule.test.ts tests/booking_policies_capacity.test.ts tests/search_availability.test.ts tests/realtime_slot_listing.test.tsx tests/calendar_ui.test.tsx tests/booking_details_panel.test.tsx tests/concurrency.test.ts tests/slot_generation.test.ts tests/timezone/cross_timezone_scenarios.test.ts tests/timezone/dst_edge_cases.test.ts tests/timezone/invalid_timezone_handling.test.ts tests/integration/end_to_end_workflows.test.ts tests/integration/auth_header_rbac.test.ts --silent --json --outputFile=/tmp/jest-results.json --silent\n\n",
+      "raw_stderr": "PASS tests/concurrency.test.ts (5.393 s)\nPASS tests/integration/end_to_end_workflows.test.ts\nPASS tests/booking_policies_capacity.test.ts\nPASS tests/booking_cancel_reschedule.test.ts\nPASS tests/search_availability.test.ts\nPASS tests/timezone/invalid_timezone_handling.test.ts\nPASS tests/availability_overrides.test.ts\nPASS tests/realtime_slot_listing.test.tsx\nPASS tests/timezone/dst_edge_cases.test.ts\nPASS tests/slot_generation.test.ts\nPASS tests/availability_recurring.test.ts\nPASS tests/calendar_ui.test.tsx\nPASS tests/booking_creation.test.ts\nPASS tests/timezone/cross_timezone_scenarios.test.ts\nPASS tests/booking_details_panel.test.tsx\nPASS tests/provider_onboarding.test.ts\nPASS tests/booking_confirmation.test.tsx\nPASS tests/integration/auth_header_rbac.test.ts\n\nTest Suites: 18 passed, 18 total\nTests:       58 passed, 58 total\nSnapshots:   0 total\nTime:        12.139 s\nTest results written to: ../tmp/jest-results.json\n",
+      "tests": [
+        {
+          "name": "Real DB Concurrency Integration Parallel createBooking calls should correctly allocate capacitySlot and prevent double-booking",
+          "status": "passed",
+          "duration": 36,
+          "failureMessages": []
+        },
+        {
+          "name": "Real DB Concurrency Integration Overlapping bookings across different services are rejected",
+          "status": "passed",
+          "duration": 44,
+          "failureMessages": []
+        },
+        {
+          "name": "End-to-End User Workflows Customer lifecycle: search -> book -> cancel",
+          "status": "passed",
+          "duration": 13,
+          "failureMessages": []
+        },
+        {
+          "name": "End-to-End User Workflows Provider onboarding: profile -> service -> availability setup",
+          "status": "passed",
+          "duration": 1,
+          "failureMessages": []
+        },
+        {
+          "name": "End-to-End User Workflows Reschedule respects policy windows and availability",
+          "status": "passed",
+          "duration": 4,
+          "failureMessages": []
+        },
+        {
+          "name": "End-to-End User Workflows Overlapping booking across services is rejected",
+          "status": "passed",
+          "duration": 25,
+          "failureMessages": []
+        },
+        {
+          "name": "Booking policies and capacity rejects booking within provider lead time",
+          "status": "passed",
+          "duration": 36,
+          "failureMessages": []
+        },
+        {
+          "name": "Booking policies and capacity enforces max bookings per day",
+          "status": "passed",
+          "duration": 3,
+          "failureMessages": []
+        },
+        {
+          "name": "Booking policies and capacity allocates a different capacity slot for group sessions",
+          "status": "passed",
+          "duration": 2,
+          "failureMessages": []
+        },
+        {
+          "name": "Booking policies and capacity rejects booking when capacity is exceeded",
+          "status": "passed",
+          "duration": 2,
+          "failureMessages": []
+        },
+        {
+          "name": "Booking policies and capacity buffer time blocks near-adjacent booking",
+          "status": "passed",
+          "duration": 3,
+          "failureMessages": []
+        },
+        {
+          "name": "Cancel and Reschedule rules Cancel cases",
+          "status": "passed",
+          "duration": 7,
+          "failureMessages": []
+        },
+        {
+          "name": "Cancel and Reschedule rules Cancel within window is rejected when penalties disabled",
+          "status": "passed",
+          "duration": 29,
+          "failureMessages": []
+        },
+        {
+          "name": "Cancel and Reschedule rules Cancel within window applies fee when penalties enabled",
+          "status": "passed",
+          "duration": 1,
+          "failureMessages": []
+        },
+        {
+          "name": "Cancel and Reschedule rules Reschedule enforces window and updates when valid",
+          "status": "passed",
+          "duration": 5,
+          "failureMessages": []
+        },
+        {
+          "name": "Cancel and Reschedule rules Reschedule within window applies fee when penalties enabled",
+          "status": "passed",
+          "duration": 2,
+          "failureMessages": []
+        },
+        {
+          "name": "searchAvailability returns slots",
+          "status": "passed",
+          "duration": 7,
+          "failureMessages": []
+        },
+        {
+          "name": "searchAvailability filters slots inside lead time cutoff",
+          "status": "passed",
+          "duration": 4,
+          "failureMessages": []
+        },
+        {
+          "name": "searchAvailability removes slots that overlap existing bookings (bookable slots only)",
+          "status": "passed",
+          "duration": 3,
+          "failureMessages": []
+        },
+        {
+          "name": "Invalid Timezone Handling - Functional Boundaries System handles malformed and edge-case timezones without crashing",
+          "status": "passed",
+          "duration": 7,
+          "failureMessages": []
+        },
+        {
+          "name": "Invalid Timezone Handling - Functional Boundaries Availability helpers process invalid zones safely",
+          "status": "passed",
+          "duration": 4,
+          "failureMessages": []
+        },
+        {
+          "name": "Invalid Timezone Handling - Functional Boundaries searchAvailability falls back to UTC for invalid customerTz",
+          "status": "passed",
+          "duration": 4,
+          "failureMessages": []
+        },
+        {
+          "name": "Invalid Timezone Handling - Functional Boundaries searchAvailability rejects invalid provider timezone",
+          "status": "passed",
+          "duration": 37,
+          "failureMessages": []
+        },
+        {
+          "name": "Invalid Timezone Handling - Functional Boundaries Timezone validation is performant under rapid invalid input",
+          "status": "passed",
+          "duration": 5,
+          "failureMessages": []
+        },
+        {
+          "name": "One-off overrides and manual blocks Override adds availability (custom day present)",
+          "status": "passed",
+          "duration": 6,
+          "failureMessages": []
+        },
+        {
+          "name": "One-off overrides and manual blocks Custom day dateISO respects provider timezone when date stored in UTC midnight",
+          "status": "passed",
+          "duration": 1,
+          "failureMessages": []
+        },
+        {
+          "name": "One-off overrides and manual blocks Override removes availability (exception)",
+          "status": "passed",
+          "duration": 3,
+          "failureMessages": []
+        },
+        {
+          "name": "One-off overrides and manual blocks Manual block always hides availability",
+          "status": "passed",
+          "duration": 2,
+          "failureMessages": []
+        },
+        {
+          "name": "One-off overrides and manual blocks Overlapping overrides resolve deterministically (merge)",
+          "status": "passed",
+          "duration": 1,
+          "failureMessages": []
+        },
+        {
+          "name": "Real-time slot listing configures subscription when autoRefresh is true",
+          "status": "passed",
+          "duration": 23,
+          "failureMessages": []
+        },
+        {
+          "name": "Real-time slot listing after initial load shows either slots list or empty state",
+          "status": "passed",
+          "duration": 118,
+          "failureMessages": []
+        },
+        {
+          "name": "Real-time slot listing displays Live badge when autoRefresh is enabled",
+          "status": "passed",
+          "duration": 6,
+          "failureMessages": []
+        },
+        {
+          "name": "DST Edge Cases - Simple Should handle basic timezone operations",
+          "status": "passed",
+          "duration": 1,
+          "failureMessages": []
+        },
+        {
+          "name": "DST Edge Cases - Simple Should handle slot generation with timezone",
+          "status": "passed",
+          "duration": 5,
+          "failureMessages": []
+        },
+        {
+          "name": "DST Edge Cases - Simple Should handle different timezones",
+          "status": "passed",
+          "duration": 4,
+          "failureMessages": []
+        },
+        {
+          "name": "DST Edge Cases - Simple Should handle edge case timezones",
+          "status": "passed",
+          "duration": 3,
+          "failureMessages": []
+        },
+        {
+          "name": "DST Edge Cases - Simple Should handle invalid timezone gracefully",
+          "status": "passed",
+          "duration": null,
+          "failureMessages": []
+        },
+        {
+          "name": "DST Edge Cases - Simple Should handle buffer times correctly",
+          "status": "passed",
+          "duration": 1,
+          "failureMessages": []
+        },
+        {
+          "name": "Slot generation Buffer removes adjacent slots",
+          "status": "passed",
+          "duration": 5,
+          "failureMessages": []
+        },
+        {
+          "name": "Slot generation DST day generates correct slot count",
+          "status": "passed",
+          "duration": 4,
+          "failureMessages": []
+        },
+        {
+          "name": "Slot generation Cross-TZ provider/customer conversion",
+          "status": "passed",
+          "duration": 7,
+          "failureMessages": []
+        },
+        {
+          "name": "Slot generation No overlapping slots",
+          "status": "passed",
+          "duration": 1,
+          "failureMessages": []
+        },
+        {
+          "name": "Recurring availability rules Multiple windows/day persist correctly (simulated)",
+          "status": "passed",
+          "duration": 4,
+          "failureMessages": []
+        },
+        {
+          "name": "Recurring availability rules Weekly rule expansion is deterministic",
+          "status": "passed",
+          "duration": 3,
+          "failureMessages": []
+        },
+        {
+          "name": "Recurring availability rules Custom day overrides weekly",
+          "status": "passed",
+          "duration": 1,
+          "failureMessages": []
+        },
+        {
+          "name": "Recurring availability rules DST week does not shift times (local times preserved)",
+          "status": "passed",
+          "duration": 3,
+          "failureMessages": []
+        },
+        {
+          "name": "ProviderCalendar UI Calendar fetch correctness for day/week/month",
+          "status": "passed",
+          "duration": 22,
+          "failureMessages": []
+        },
+        {
+          "name": "Booking creation should create booking",
+          "status": "passed",
+          "duration": 6,
+          "failureMessages": []
+        },
+        {
+          "name": "Cross-Timezone Scenarios Search handles timezone conversions correctly",
+          "status": "passed",
+          "duration": 12,
+          "failureMessages": []
+        },
+        {
+          "name": "Booking details panel renders booking details and allows notes update",
+          "status": "passed",
+          "duration": 58,
+          "failureMessages": []
+        },
+        {
+          "name": "Provider Onboarding Correctly creates profile and validates service constraints",
+          "status": "passed",
+          "duration": 1,
+          "failureMessages": []
+        },
+        {
+          "name": "Provider Onboarding Rejects onboarding for non-provider role",
+          "status": "passed",
+          "duration": 7,
+          "failureMessages": []
+        },
+        {
+          "name": "Booking confirmation screen displays confirmation message and booking reference after successful book",
+          "status": "passed",
+          "duration": 6,
+          "failureMessages": []
+        },
+        {
+          "name": "Booking confirmation screen displays service name and time when provided",
+          "status": "passed",
+          "duration": 10,
+          "failureMessages": []
+        },
+        {
+          "name": "Auth header + RBAC integration rejects @requireAuth without token",
+          "status": "passed",
+          "duration": 8,
+          "failureMessages": []
+        },
+        {
+          "name": "Auth header + RBAC integration rejects invalid token",
+          "status": "passed",
+          "duration": 2,
+          "failureMessages": []
+        },
+        {
+          "name": "Auth header + RBAC integration derives role from JWT and enforces @requireAuth roles",
+          "status": "passed",
+          "duration": 5,
+          "failureMessages": []
+        },
+        {
+          "name": "Auth header + RBAC integration allows provider role through @requireAuth roles",
+          "status": "passed",
+          "duration": 2,
+          "failureMessages": []
+        }
+      ],
+      "summary": {
+        "total": 58,
+        "passed": 58,
+        "failed": 0,
+        "xfailed": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "comparison": {
+      "after_tests_passed": true,
+      "after_total": 58,
+      "after_passed": 58,
+      "after_failed": 0,
+      "after_xfailed": 0
+    }
+  }
+}

@@ -10,7 +10,7 @@ import BookingActions from 'src/components/Booking/BookingActions'
 import { useAuth } from 'src/auth/AuthContext'
 
 const MY_PROVIDER_PROFILE = gql`
-  query MyProviderProfileQuery {
+  query MyProviderCalendarProfileQuery {
     myProviderProfile {
       id
       timezone

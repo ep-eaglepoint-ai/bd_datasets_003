@@ -37,6 +37,14 @@ describe('Real-time slot listing', () => {
     render(
       <RealTimeSlotListing
         providerId={123}
+        service={{
+          id: 99,
+          name: 'Consultation',
+          durationMinutes: 30,
+          capacity: 1,
+          bufferBeforeMinutes: 0,
+          bufferAfterMinutes: 0,
+        }}
         startISO="2026-02-10T00:00:00Z"
         endISO="2026-02-10T23:59:59Z"
         customerTz="UTC"
@@ -46,7 +54,18 @@ describe('Real-time slot listing', () => {
 
     expect(mockUseSubscription).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ variables: { providerId: 123 }, skip: false })
+      expect.objectContaining({
+        variables: {
+          input: {
+            providerId: 123,
+            serviceId: 99,
+            startISO: "2026-02-10T00:00:00Z",
+            endISO: "2026-02-10T23:59:59Z",
+            customerTz: "UTC",
+          }
+        },
+        skip: false
+      })
     );
   });
 
@@ -54,6 +73,14 @@ describe('Real-time slot listing', () => {
     render(
       <RealTimeSlotListing
         providerId={1}
+        service={{
+          id: 1,
+          name: 'Consultation',
+          durationMinutes: 30,
+          capacity: 1,
+          bufferBeforeMinutes: 0,
+          bufferAfterMinutes: 0,
+        }}
         startISO="2026-02-10T00:00:00Z"
         endISO="2026-02-10T23:59:59Z"
         customerTz="UTC"
@@ -67,7 +94,7 @@ describe('Real-time slot listing', () => {
     });
 
     await waitFor(() => {
-      const hasSlots = screen.queryByText('Total Slots');
+      const hasSlots = screen.queryByText('Total Showing');
       const hasEmpty = screen.queryByText('No available time slots found');
       expect(hasSlots || hasEmpty).toBeTruthy();
     });
@@ -77,6 +104,14 @@ describe('Real-time slot listing', () => {
     render(
       <RealTimeSlotListing
         providerId={1}
+        service={{
+          id: 1,
+          name: 'Consultation',
+          durationMinutes: 30,
+          capacity: 1,
+          bufferBeforeMinutes: 0,
+          bufferAfterMinutes: 0,
+        }}
         startISO="2026-02-10T00:00:00Z"
         endISO="2026-02-10T23:59:59Z"
         customerTz="UTC"

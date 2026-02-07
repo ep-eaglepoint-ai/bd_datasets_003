@@ -12,7 +12,7 @@
     "scripts": {
         "build": "rw build",
         "dev": "rw dev",
-        "test": "rw test"
+        "test": "npx jest --config ../jest.config.cjs --runInBand ../tests/provider_onboarding.test.ts ../tests/availability_recurring.test.ts ../tests/availability_overrides.test.ts ../tests/booking_creation.test.ts ../tests/booking_confirmation.test.tsx ../tests/booking_cancel_reschedule.test.ts ../tests/booking_policies_capacity.test.ts ../tests/search_availability.test.ts ../tests/realtime_slot_listing.test.tsx ../tests/calendar_ui.test.tsx ../tests/booking_details_panel.test.tsx ../tests/concurrency.test.ts ../tests/slot_generation.test.ts ../tests/timezone/cross_timezone_scenarios.test.ts ../tests/timezone/dst_edge_cases.test.ts ../tests/timezone/invalid_timezone_handling.test.ts ../tests/integration/end_to_end_workflows.test.ts ../tests/integration/auth_header_rbac.test.ts --silent"
     },
     "devDependencies": {
         "@redwoodjs/core": "6.0.7",
@@ -20,6 +20,6 @@
         "yarn": "^1.22.22"
     },
     "dependencies": {
-        "@prisma/client": "^5.0.0"
+        "@prisma/client": "^5.22.0"
     }
 }
