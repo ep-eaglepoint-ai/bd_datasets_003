@@ -1,0 +1,11 @@
+{
+            "instance_id": "J1PE6B",
+            "problem_statement": "A message processing system needs a producer-consumer queue where producer threads add work items and consumer threads process them. The queue must have a fixed maximum size to prevent memory exhaustion when producers outpace consumers during traffic spikes. Using Java's ArrayBlockingQueue is not allowed because the team wants engineers to understand how blocking coordination between threads works using wait and notify mechanisms. The current implementation has race conditions where elements get lost or duplicated, and deadlocks occur when all threads are waiting. The team has seen issues where notify wakes the wrong type of thread, where the queue size becomes negative, and where threads remain blocked forever when the queue is shut down. They need a clean implementation that handles all these edge cases correctly.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/j1pe6b-bounded-block-queue",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
