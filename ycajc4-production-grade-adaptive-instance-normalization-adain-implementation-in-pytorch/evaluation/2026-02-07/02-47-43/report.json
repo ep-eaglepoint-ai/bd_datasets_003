@@ -1,0 +1,1507 @@
+{
+  "run_id": "b164e26f-9072-423c-8580-8dd6108687a1",
+  "started_at": "2026-02-07T02:47:39.636490Z",
+  "finished_at": "2026-02-07T02:47:43.959271Z",
+  "duration_seconds": 4.323,
+  "success": true,
+  "error": null,
+  "environment": {
+    "python_version": "3.9.25",
+    "platform": "linux",
+    "os": "Linux",
+    "architecture": "aarch64",
+    "hostname": "556c7b989f5f",
+    "torch_version": "2.0.1",
+    "pytest_version": "8.0.0"
+  },
+  "project": {
+    "name": "Adaptive Instance Normalization (AdaIN)",
+    "description": "Production-grade AdaIN implementation in PyTorch",
+    "features": [
+      "Strict input validation",
+      "Arbitrary spatial dimensions",
+      "Style batch broadcasting",
+      "Optional mask support",
+      "Numerical stability protection",
+      "Mixed precision safety (fp16/bf16)",
+      "Alpha interpolation",
+      "Gradient detachment",
+      "nn.Module wrapper"
+    ]
+  },
+  "results": {
+    "after": {
+      "success": true,
+      "exit_code": 0,
+      "tests": [
+        {
+          "name": "tests/test_alpha_requirements.py::test_alpha_zero_returns_content",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_alpha_requirements.py::test_alpha_one_returns_full_adain",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_alpha_requirements.py::test_alpha_half_interpolates_correctly",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_alpha_requirements.py::test_alpha_below_zero_fails",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_alpha_requirements.py::test_alpha_above_one_fails",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_alpha_requirements.py::test_alpha_scalar_tensor",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_alpha_requirements.py::test_alpha_with_masks",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_api.py::test_module_instantiation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_api.py::test_module_instantiation_with_params",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_api.py::test_module_forward_basic",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_api.py::test_module_forward_with_init_params",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_api.py::test_module_forward_override_params",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_api.py::test_module_with_masks",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_api.py::test_module_equivalence_functional",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_api.py::test_module_equivalence_with_params",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_api.py::test_module_parameter_precedence",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_api.py::test_module_batch_broadcast",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_api.py::test_module_mixed_precision",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_api.py::test_module_gradients",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_api.py::test_module_style_detach",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_arbitrary_spatial_dimensions.py::test_5d_spatial_dimensions",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_arbitrary_spatial_dimensions.py::test_5d_spatial_with_alpha",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_arbitrary_spatial_dimensions.py::test_5d_spatial_mixed_precision",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_arbitrary_spatial_dimensions.py::test_5d_spatial_with_masks",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_arbitrary_spatial_dimensions.py::test_6d_spatial_dimensions",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_arbitrary_spatial_dimensions.py::test_1d_spatial_dimensions",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_arbitrary_spatial_dimensions.py::test_non_cubic_spatial_dimensions",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_batch_incompatibility.py::test_style_batch_incompatible_raises",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_batch_incompatibility.py::test_style_batch_larger_than_content_raises",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_batch_incompatibility.py::test_style_batch_smaller_than_content_not_one_raises",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_batch_incompatibility.py::test_error_message_contains_batch_sizes",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_batch_rules.py::test_style_batch_size_one_broadcast",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_batch_rules.py::test_style_batch_size_match_content",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_batch_rules.py::test_style_batch_size_larger_than_content",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_batch_rules.py::test_style_batch_size_smaller_than_content_not_one",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_batch_rules.py::test_style_batch_size_zero",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_batch_rules.py::test_content_batch_size_zero",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_batch_rules.py::test_single_style_multiple_content",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_batch_rules.py::test_single_style_single_content",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_batch_rules.py::test_large_batch_broadcast",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_batch_rules.py::test_different_spatial_dims_broadcast",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_batch_rules.py::test_3d_spatial_broadcast",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_batch_rules.py::test_broadcast_statistics_independence",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_batch_rules.py::test_error_message_content",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_batch_rules.py::test_style_broadcast_memory_efficiency",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_bf16_mixed_precision.py::test_bf16_inputs",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_bf16_mixed_precision.py::test_bf16_mixed_dtypes",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_bf16_mixed_precision.py::test_bf16_with_masks",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_bf16_mixed_precision.py::test_bf16_with_alpha",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_bf16_mixed_precision.py::test_bf16_zero_variance",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_bf16_mixed_precision.py::test_bf16_autocast",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_combined_features.py::test_broadcast_masks_gradients_combined",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_combined_features.py::test_broadcast_masks_gradients_detach",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_combined_features.py::test_everything_at_once",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_detach_style_requirements.py::test_detach_style_blocks_gradients",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_detach_style_requirements.py::test_style_gradient_flows_when_not_detached",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_detach_style_requirements.py::test_detach_style_with_masks",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_detach_style_requirements.py::test_detach_style_type_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_gradients.py::test_style_detach_false_default",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_gradients.py::test_style_detach_true",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_gradients.py::test_style_detach_none_default",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_gradients.py::test_style_detach_with_masks",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_gradients.py::test_style_detach_with_alpha",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_gradients.py::test_style_detach_batch_broadcast",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_gradients.py::test_style_detach_mixed_precision",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_gradients.py::test_style_detach_3d_spatial",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_gradients.py::test_style_detach_zero_variance",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_gradients.py::test_style_detach_type_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_gradients.py::test_style_detach_content_only",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_gradients.py::test_style_detach_style_only",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_gradients.py::test_style_detach_no_global_nograd",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_input_nan_inf_validation.py::test_content_nan_raises",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_input_nan_inf_validation.py::test_content_inf_raises",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_input_nan_inf_validation.py::test_style_nan_raises",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_input_nan_inf_validation.py::test_style_inf_raises",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_input_nan_inf_validation.py::test_content_mask_nan_raises",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_input_nan_inf_validation.py::test_style_mask_nan_raises",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_input_nan_inf_validation.py::test_content_mask_inf_raises",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_input_nan_inf_validation.py::test_style_mask_inf_raises",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_content_mask_none",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_style_mask_none",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_content_mask_type_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_style_mask_type_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_content_mask_dimensionality_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_style_mask_dimensionality_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_content_mask_batch_size_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_style_mask_batch_size_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_content_mask_channel_count_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_style_mask_channel_count_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_content_mask_spatial_dimension_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_style_mask_spatial_dimension_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_content_mask_dtype_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_style_mask_dtype_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_content_mask_value_range_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_style_mask_value_range_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_mask_single_channel",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_mask_multi_channel",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_mask_partial_coverage",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_mask_all_zeros",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_mask_all_ones",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_mask_statistics_correctness",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_mask_3d_spatial",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_mask_broadcast_single_style",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_mask_equivalence_with_none",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_mask_statistical_accuracy_verification",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_mask_edge_case_all_zeros_statistical_behavior",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_mask_edge_case_all_ones_statistical_behavior",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_mask_mixed_precision_statistics",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_mask_mixed_precision_mixed_dtypes",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_mask_broadcasting_statistical_correctness",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_mask_single_channel_statistical_correctness",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_mask_partial_coverage_statistical_verification",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_mask_3d_spatial_statistical_correctness",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_mask_gradient_flow_statistical_verification",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_mixed_precision_requirements.py::test_mixed_precision_autocast_fp16",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_mixed_precision_requirements.py::test_mixed_precision_autocast_bf16",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_mixed_precision_requirements.py::test_mixed_precision_fp16_inputs",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_mixed_precision_requirements.py::test_mixed_precision_bf16_inputs",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_mixed_precision_requirements.py::test_mixed_precision_mixed_dtypes",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_mixed_precision_requirements.py::test_mixed_precision_numerical_stability",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_mixed_precision_requirements.py::test_mixed_precision_with_masks",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_mixed_precision_requirements.py::test_mixed_precision_autocast_gpu_fp16",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_mixed_precision_requirements.py::test_mixed_precision_autocast_gpu_bf16",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_mixed_precision_requirements.py::test_mixed_precision_mask_precision_preservation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_mixed_precision_requirements.py::test_mixed_precision_gradient_behavior_with_detachment",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_mixed_precision_requirements.py::test_mixed_precision_epsilon_values_fp16",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_mixed_precision_requirements.py::test_mixed_precision_epsilon_values_bf16",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_mixed_precision_requirements.py::test_mixed_precision_epsilon_values_fp32",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_mixed_precision_requirements.py::test_mixed_precision_with_alpha_interpolation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_mixed_precision_requirements.py::test_mixed_precision_batch_broadcast",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_mixed_precision_requirements.py::test_mixed_precision_extreme_values",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_nn_module_real.py::test_module_forward_equivalence_functional",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_nn_module_real.py::test_module_with_init_params",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_nn_module_real.py::test_module_parameter_override",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_nn_module_real.py::test_module_gradient_flow",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_nn_module_real.py::test_module_detach_style",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_nn_module_real.py::test_module_dtype_preservation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_nn_module_wrapper.py::test_module_instantiation_without_parameters",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_nn_module_wrapper.py::test_module_instantiation_with_alpha_parameter",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_nn_module_wrapper.py::test_module_instantiation_with_style_detach_parameter",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_nn_module_wrapper.py::test_module_instantiation_with_both_parameters",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_nn_module_wrapper.py::test_module_forward_basic_functionality",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_nn_module_wrapper.py::test_module_forward_with_init_alpha",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_nn_module_wrapper.py::test_module_forward_with_init_style_detach",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_nn_module_wrapper.py::test_module_forward_parameter_override",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_nn_module_wrapper.py::test_module_forward_with_masks",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_nn_module_wrapper.py::test_module_forward_batch_broadcast",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_nn_module_wrapper.py::test_module_forward_mixed_precision",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_nn_module_wrapper.py::test_module_gradient_flow",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_nn_module_wrapper.py::test_module_style_detach_blocks_gradients",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_nn_module_wrapper.py::test_module_equivalence_with_functional_api",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_output_finiteness.py::test_output_contains_no_nan_values",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_output_finiteness.py::test_output_contains_no_inf_values",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_output_finiteness.py::test_output_finiteness_with_zero_variance_content",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_output_finiteness.py::test_output_finiteness_with_zero_variance_style",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_output_finiteness.py::test_output_finiteness_with_both_zero_variance",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_output_finiteness.py::test_output_finiteness_with_mixed_precision_fp16",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_output_finiteness.py::test_output_finiteness_with_mixed_precision_bf16",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_output_finiteness.py::test_output_finiteness_with_masks",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_output_finiteness.py::test_output_finiteness_with_alpha_interpolation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_output_finiteness.py::test_output_finiteness_with_style_detach",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_output_finiteness.py::test_output_finiteness_with_batch_broadcast",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_output_finiteness.py::test_output_finiteness_with_arbitrary_spatial_dimensions",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_self_executable.py::test_adain_file_executable",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_spatial_dimensionality.py::test_spatial_dimensions_1d",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_spatial_dimensionality.py::test_spatial_dimensions_2d",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_spatial_dimensionality.py::test_spatial_dimensions_3d",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_spatial_dimensionality.py::test_spatial_dimensions_4d",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_spatial_dimensionality.py::test_spatial_dimensions_mismatch",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_spatial_dimensionality.py::test_spatial_dimensions_single_pixel",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_spatial_dimensionality.py::test_spatial_dimensions_large_resolution",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_spatial_dimensionality.py::test_spatial_dimensions_non_square",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_spatial_dimensionality.py::test_spatial_dimensions_odd_dimensions",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_spatial_dimensionality.py::test_spatial_dimensions_even_dimensions",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_spatial_dimensionality.py::test_spatial_dimensions_minimum_size",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_spatial_dimensionality.py::test_spatial_dimensions_maximum_size",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_spatial_dimensionality.py::test_spatial_dimensions_aspect_ratio",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_spatial_dimensionality.py::test_spatial_dimensions_zero_spatial",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_spatial_dimensionality.py::test_spatial_dimensions_negative_spatial",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_spatial_dims.py::test_1d_spatial_dimensions",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_spatial_dims.py::test_2d_spatial_dimensions",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_spatial_dims.py::test_3d_spatial_dimensions",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_spatial_dims.py::test_4d_spatial_dimensions",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_spatial_dims.py::test_different_spatial_sizes",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_spatial_dims.py::test_single_spatial_dimension",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_spatial_dims.py::test_large_spatial_dimensions",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_spatial_dims.py::test_non_square_spatial",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_spatial_dims.py::test_odd_spatial_dimensions",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_spatial_dims.py::test_even_spatial_dimensions",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_spatial_dims.py::test_invalid_0d_spatial",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_spatial_dims.py::test_invalid_0d_spatial_style",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_spatial_dims.py::test_identical_spatial_dimensions",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_spatial_dims.py::test_statistics_computation_1d",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_spatial_dims.py::test_statistics_computation_3d",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_validation.py::test_content_tensor_type_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_validation.py::test_style_tensor_type_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_validation.py::test_content_floating_point_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_validation.py::test_style_floating_point_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_validation.py::test_content_dimensionality_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_validation.py::test_style_dimensionality_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_validation.py::test_channel_count_mismatch_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_validation.py::test_content_nan_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_validation.py::test_content_inf_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_validation.py::test_style_nan_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_validation.py::test_style_inf_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_validation.py::test_valid_inputs_no_failure",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_validation.py::test_valid_3d_inputs",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_validation.py::test_valid_5d_inputs",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_validation.py::test_valid_different_dtypes",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_validation.py::test_alpha_non_scalar_tensor_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_validation.py::test_alpha_multi_dimensional_tensor_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_validation.py::test_alpha_empty_tensor_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_validation.py::test_content_empty_tensor_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_validation.py::test_style_empty_tensor_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_validation.py::test_extremely_large_tensor_handling",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_validation.py::test_memory_efficiency_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_validation.py::test_alpha_string_type_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_validation.py::test_alpha_complex_type_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_validation.py::test_style_detach_string_type_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_validation.py::test_style_detach_int_type_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_validation.py::test_style_detach_float_type_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_validation.py::test_content_zero_channels_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_validation.py::test_style_zero_channels_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_validation.py::test_content_zero_spatial_dimension_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_validation.py::test_style_zero_spatial_dimension_validation",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_zero_variance_protection.py::test_zero_variance_content_protection",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_zero_variance_protection.py::test_zero_variance_style_protection",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_zero_variance_protection.py::test_both_zero_variance_protection",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_zero_variance_protection.py::test_zero_variance_with_masks",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_zero_variance_protection.py::test_zero_variance_mixed_precision",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_zero_variance_protection.py::test_numerical_stability_extreme_values",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_zero_variance_protection.py::test_numerical_stability_tiny_values",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_zero_variance_protection.py::test_numerical_stability_mixed_precision_extreme",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_zero_variance_protection.py::test_numerical_stability_bf16_extreme",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_zero_variance_protection.py::test_numerical_stability_mask_based_zero_variance",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_zero_variance_protection.py::test_numerical_stability_mask_all_zeros",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_zero_variance_protection.py::test_numerical_stability_mixed_variance_channels",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_zero_variance_protection.py::test_numerical_stability_3d_spatial",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_zero_variance_protection.py::test_numerical_stability_high_dimensional",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_zero_variance_protection.py::test_numerical_stability_statistical_accuracy",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_zero_variance_protection.py::test_numerical_stability_with_alpha_extreme",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_zero_variance_protection.py::test_numerical_stability_gradient_flow",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        }
+      ],
+      "summary": {
+        "total": 242,
+        "passed": 242,
+        "failed": 0,
+        "xfailed": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "comparison": {
+      "after_tests_passed": true,
+      "after_total": 242,
+      "after_passed": 242,
+      "after_failed": 0,
+      "after_xfailed": 0
+    }
+  }
+}

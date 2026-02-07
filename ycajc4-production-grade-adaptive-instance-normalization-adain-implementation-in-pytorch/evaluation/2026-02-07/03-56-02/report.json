@@ -1,8 +1,8 @@
 {
-  "run_id": "ebc10a0b-177b-4b56-9b38-296e9869f478",
-  "started_at": "2026-02-04T11:17:15.205874Z",
-  "finished_at": "2026-02-04T11:17:19.033752Z",
-  "duration_seconds": 3.828,
+  "run_id": "e730e102-f527-4cce-958e-78cf4ba18f83",
+  "started_at": "2026-02-07T03:55:59.091876Z",
+  "finished_at": "2026-02-07T03:56:02.631787Z",
+  "duration_seconds": 3.54,
   "success": true,
   "error": null,
   "environment": {
@@ -10,7 +10,7 @@
     "platform": "linux",
     "os": "Linux",
     "architecture": "aarch64",
-    "hostname": "c3e88a5d5871",
+    "hostname": "1058c8bcc974",
     "torch_version": "2.0.1",
     "pytest_version": "8.0.0"
   },
@@ -671,6 +671,18 @@
           "failureMessages": []
         },
         {
+          "name": "tests/test_masks.py::test_mask_all_zeros_fp16",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_masks.py::test_mask_all_zeros_bf16",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
           "name": "tests/test_masks.py::test_mask_edge_case_all_ones_statistical_behavior",
           "status": "passed",
           "duration": 0,
@@ -714,6 +726,66 @@
         },
         {
           "name": "tests/test_masks.py::test_mask_gradient_flow_statistical_verification",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_mixed_precision_mask_stability.py::TestMixedPrecisionMaskStability::test_mixed_precision_mask_all_zero_regions[dtype0]",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_mixed_precision_mask_stability.py::TestMixedPrecisionMaskStability::test_mixed_precision_mask_all_zero_regions[dtype1]",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_mixed_precision_mask_stability.py::TestMixedPrecisionMaskStability::test_mixed_precision_mask_all_zero_regions[dtype2]",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_mixed_precision_mask_stability.py::TestMixedPrecisionMaskStability::test_mixed_precision_partial_zero_masks[dtype0]",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_mixed_precision_mask_stability.py::TestMixedPrecisionMaskStability::test_mixed_precision_partial_zero_masks[dtype1]",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_mixed_precision_mask_stability.py::TestMixedPrecisionMaskStability::test_mixed_precision_tiny_values_with_zero_masks[dtype0]",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_mixed_precision_mask_stability.py::TestMixedPrecisionMaskStability::test_mixed_precision_tiny_values_with_zero_masks[dtype1]",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_mixed_precision_mask_stability.py::TestMixedPrecisionMaskStability::test_mixed_precision_extreme_values_zero_masks[dtype0]",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_mixed_precision_mask_stability.py::TestMixedPrecisionMaskStability::test_mixed_precision_extreme_values_zero_masks[dtype1]",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "tests/test_mixed_precision_mask_stability.py::TestMixedPrecisionMaskStability::test_mixed_precision_dtype_consistency",
           "status": "passed",
           "duration": 0,
           "failureMessages": []
@@ -1488,8 +1560,8 @@
         }
       ],
       "summary": {
-        "total": 242,
-        "passed": 242,
+        "total": 254,
+        "passed": 254,
         "failed": 0,
         "xfailed": 0,
         "errors": 0,
@@ -1498,8 +1570,8 @@
     },
     "comparison": {
       "after_tests_passed": true,
-      "after_total": 242,
-      "after_passed": 242,
+      "after_total": 254,
+      "after_passed": 254,
       "after_failed": 0,
       "after_xfailed": 0
     }
