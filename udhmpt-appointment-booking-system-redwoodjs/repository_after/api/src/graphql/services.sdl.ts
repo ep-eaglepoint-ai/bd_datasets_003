@@ -10,7 +10,7 @@ export const schema = gql`
   }
 
   type Query {
-    services(providerId: Int!): [Service!]! @skipAuth
+    services(providerId: Int): [Service!]! @skipAuth
     service(id: Int!): Service @skipAuth
   }
 `

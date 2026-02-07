@@ -8,6 +8,7 @@ import {
   validateBookingAccess,
   getOwnProviderProfileId,
 } from '../../lib/auth'
+import { expandWeeklyRules, mergeOverrides, resolveAvailability } from '../availability/availability'
 import { context } from '@redwoodjs/graphql-server'
 
 /**
@@ -111,6 +112,17 @@ export const createBooking = async ({
   })
   if (!profile) throw new Error('Provider profile not found')
 
+  await validateSlotAvailability({
+    providerId,
+    serviceId,
+    startUtcISO,
+    endUtcISO,
+    providerTimezone: profile.timezone || 'UTC',
+    bufferBeforeMinutes: svc.bufferBeforeMinutes ?? 0,
+    bufferAfterMinutes: svc.bufferAfterMinutes ?? 0,
+    durationMinutes: svc.durationMinutes,
+  })
+
   return withOptimisticLock(async () => {
     const result = await db.$transaction(
       async (tx) => {
@@ -139,6 +151,10 @@ export const createBooking = async ({
             endUtc: { gt: effectiveStart.toJSDate() },
           },
         })
+
+        if (existingBookings.some((b) => b.serviceId !== serviceId)) {
+          throw new Error('Provider is already booked for that time')
+        }
 
         const capacity = svc.capacity ?? 1
         const usedSlots = new Set(
@@ -280,6 +296,17 @@ export const rescheduleBooking = async ({
 
   let fee = isLate && penaltiesApply ? rescheduleFee : 0
 
+  await validateSlotAvailability({
+    providerId: original.providerId,
+    serviceId: original.serviceId,
+    startUtcISO: newStartUtcISO,
+    endUtcISO: newEndUtcISO,
+    providerTimezone: provider.timezone || 'UTC',
+    bufferBeforeMinutes: svc.bufferBeforeMinutes ?? 0,
+    bufferAfterMinutes: svc.bufferAfterMinutes ?? 0,
+    durationMinutes: svc.durationMinutes,
+  })
+
   return withOptimisticLock(async () => {
     const result = await db.$transaction(
       async (tx) => {
@@ -297,6 +324,10 @@ export const rescheduleBooking = async ({
             endUtc: { gt: effectiveStart.toJSDate() },
           },
         })
+
+        if (overlapping.some((b) => b.serviceId !== original.serviceId)) {
+          throw new Error('Provider is already booked for that time')
+        }
 
         const capacity = svc.capacity ?? 1
         const usedSlots = new Set(
@@ -364,4 +395,99 @@ export const updateBooking = async ({
       },
     })
   })
+}
+
+const validateSlotAvailability = async ({
+  providerId,
+  serviceId,
+  startUtcISO,
+  endUtcISO,
+  providerTimezone,
+  bufferBeforeMinutes,
+  bufferAfterMinutes,
+  durationMinutes,
+}: {
+  providerId: number
+  serviceId: number
+  startUtcISO: string
+  endUtcISO: string
+  providerTimezone: string
+  bufferBeforeMinutes: number
+  bufferAfterMinutes: number
+  durationMinutes: number
+}) => {
+  const startUtc = DateTime.fromISO(startUtcISO, { zone: 'utc' })
+  const endUtc = DateTime.fromISO(endUtcISO, { zone: 'utc' })
+
+  if (endUtc <= startUtc) {
+    throw new Error('End must be after start')
+  }
+
+  const slotDuration = Math.round(endUtc.diff(startUtc, 'minutes').minutes)
+  if (slotDuration !== durationMinutes) {
+    throw new Error('Requested slot does not match service duration')
+  }
+
+  const recurring = await db.recurringAvailability.findMany({ where: { providerId } })
+  const customs = await db.customDayAvailability.findMany({
+    where: {
+      providerId,
+      date: { gte: startUtc.startOf('day').toJSDate(), lte: startUtc.endOf('day').toJSDate() },
+    },
+  })
+  const exceptions = await db.availabilityException.findMany({
+    where: {
+      providerId,
+      startUtc: { lte: endUtc.toJSDate() },
+      endUtc: { gte: startUtc.toJSDate() },
+    },
+  })
+  const blocks = await db.manualBlock.findMany({
+    where: {
+      providerId,
+      startUtc: { lte: endUtc.toJSDate() },
+      endUtc: { gte: startUtc.toJSDate() },
+    },
+  })
+
+  const localStart = startUtc.setZone(providerTimezone)
+  const weekStart = localStart.startOf('week').toISODate()!
+  const rules = recurring.map((r: any) => ({
+    weekday: r.weekday,
+    startLocal: r.startLocal,
+    endLocal: r.endLocal,
+    tz: providerTimezone,
+  }))
+
+  const expanded = expandWeeklyRules(rules, weekStart)
+  const customDaysFormatted = customs.map((c: any) => ({
+    dateISO: DateTime.fromJSDate(c.date).toISODate()!,
+    startUtcISO: c.startUtc.toISOString(),
+    endUtcISO: c.endUtc.toISOString(),
+  }))
+  const merged = mergeOverrides(expanded, customDaysFormatted)
+
+  const excFormatted = exceptions.map((e: any) => ({
+    startUtcISO: e.startUtc.toISOString(),
+    endUtcISO: e.endUtc.toISOString(),
+  }))
+  const blkFormatted = blocks.map((b: any) => ({
+    startUtcISO: b.startUtc.toISOString(),
+    endUtcISO: b.endUtc.toISOString(),
+  }))
+
+  const available = resolveAvailability(merged, excFormatted, blkFormatted)
+
+  const slotFits = available.some((w) => {
+    const windowStart = DateTime.fromISO(w.startUtcISO, { zone: 'utc' })
+    const windowEnd = DateTime.fromISO(w.endUtcISO, { zone: 'utc' })
+    const earliestStart = windowStart.plus({ minutes: bufferBeforeMinutes })
+    const latestEnd = windowEnd.minus({ minutes: bufferAfterMinutes })
+
+    return startUtc >= earliestStart && endUtc <= latestEnd
+  })
+
+  if (!slotFits) {
+    throw new Error('Requested time is not available')
+  }
 }

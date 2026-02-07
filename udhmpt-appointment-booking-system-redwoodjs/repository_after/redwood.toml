@@ -1,8 +1,13 @@
+[common]
+  side = ["api", "web"]
 [web]
   port = 8910
-  apiUrl = "http://localhost:8911"
+  apiUrl = "/.redwood/functions"
   includeEnvironmentVariables = ["NODE_ENV"]
+  path = "web"
 [api]
   port = 8911
+  path = "api"
+  schemaPath = "api/db/schema.prisma"
 [browser]
-  open = true
+  open = false

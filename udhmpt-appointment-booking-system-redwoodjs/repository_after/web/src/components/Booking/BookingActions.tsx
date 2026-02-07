@@ -22,6 +22,7 @@ type Policy = {
   rescheduleWindowHours: number;
   cancellationFee?: number;
   rescheduleFee?: number;
+  penaltiesApply?: boolean;
   maxReschedules?: number;
 };
 
@@ -231,11 +232,11 @@ export const BookingActions: React.FC<Props> = ({
                 <ul className="text-sm text-blue-700 space-y-1">
                   <li>• Cancel up to {policy.cancellationWindowHours} hours before appointment</li>
                   <li>• Reschedule up to {policy.rescheduleWindowHours} hours before appointment</li>
-                  {policy.cancellationFee && (
-                    <li>• Cancellation fee: {policy.cancellationFee}%</li>
+                  {policy.cancellationFee && policy.penaltiesApply && (
+                    <li>• Cancellation fee: {policy.cancellationFee} cents</li>
                   )}
-                  {policy.rescheduleFee && (
-                    <li>• Reschedule fee: {policy.rescheduleFee}%</li>
+                  {policy.rescheduleFee && policy.penaltiesApply && (
+                    <li>• Reschedule fee: {policy.rescheduleFee} cents</li>
                   )}
                   {policy.maxReschedules && (
                     <li>• Maximum reschedules: {policy.maxReschedules}</li>
@@ -308,9 +309,9 @@ export const BookingActions: React.FC<Props> = ({
                       <p className="text-sm text-gray-500">
                         Are you sure you want to cancel this booking? This action cannot be undone.
                       </p>
-                      {policy.cancellationFee && (
+                      {policy.cancellationFee && policy.penaltiesApply && (
                         <p className="text-sm text-red-600 mt-2">
-                          Note: A {policy.cancellationFee}% cancellation fee may apply.
+                          Note: A {policy.cancellationFee} cent cancellation fee may apply.
                         </p>
                       )}
                     </div>
@@ -423,9 +424,9 @@ const RescheduleModal: React.FC<RescheduleModalProps> = ({
                   <p className="text-sm text-gray-500">
                     Current booking: {currentLocalStart.toLocaleString(DateTime.DATETIME_FULL)}
                   </p>
-                  {policy.rescheduleFee && (
+                  {policy.rescheduleFee && policy.penaltiesApply && (
                     <p className="text-sm text-blue-600 mt-2">
-                      Note: A {policy.rescheduleFee}% reschedule fee may apply.
+                      Note: A {policy.rescheduleFee} cent reschedule fee may apply.
                     </p>
                   )}
                 </div>

@@ -19,12 +19,16 @@ interface ProviderCalendarProps {
   view: View
   currentDateISO: string
   providerId?: number
+  onSelectBooking?: (booking: any) => void
+  timezone?: string
 }
 
 const ProviderCalendar: React.FC<ProviderCalendarProps> = ({
   view,
   currentDateISO,
   providerId,
+  onSelectBooking,
+  timezone = 'UTC',
 }) => {
   const { user } = useAuth()
 
@@ -37,25 +41,25 @@ const ProviderCalendar: React.FC<ProviderCalendarProps> = ({
   }, [providerId, user])
 
   const dateRange = useMemo(() => {
-    const dt = DateTime.fromISO(currentDateISO, { zone: 'utc' })
+    const dt = DateTime.fromISO(currentDateISO, { zone: timezone })
     if (view === 'day') {
       return {
-        start: dt.startOf('day').toISO()!,
-        end: dt.endOf('day').toISO()!,
+        start: dt.startOf('day').toUTC().toISO()!,
+        end: dt.endOf('day').toUTC().toISO()!,
       }
     }
     if (view === 'week') {
       const monday = dt.startOf('week').plus({ days: 1 })
       return {
-        start: monday.startOf('day').toISO()!,
-        end: monday.plus({ days: 6 }).endOf('day').toISO()!,
+        start: monday.startOf('day').toUTC().toISO()!,
+        end: monday.plus({ days: 6 }).endOf('day').toUTC().toISO()!,
       }
     }
     return {
-      start: dt.startOf('month').toISO()!,
-      end: dt.endOf('month').toISO()!,
+      start: dt.startOf('month').toUTC().toISO()!,
+      end: dt.endOf('month').toUTC().toISO()!,
     }
-  }, [view, currentDateISO])
+  }, [view, currentDateISO, timezone])
 
   // Hourly grid for day view
   const hours = Array.from({ length: 14 }, (_, i) => i + 8) // 8 AM to 9 PM
@@ -90,7 +94,7 @@ const ProviderCalendar: React.FC<ProviderCalendarProps> = ({
         <div>
           <h3 className="text-lg font-bold text-gray-800 capitalize">{view} Schedule</h3>
           <p className="text-sm text-gray-500">
-            Showing availability for {DateTime.fromISO(currentDateISO).toLocaleString(DateTime.DATE_HUGE)}
+            Showing availability for {DateTime.fromISO(currentDateISO, { zone: timezone }).toLocaleString(DateTime.DATE_HUGE)}
           </p>
         </div>
         <button
@@ -113,12 +117,12 @@ const ProviderCalendar: React.FC<ProviderCalendarProps> = ({
                   {hours.map((hour) => (
                     <React.Fragment key={hour}>
                       <div className="h-20 border-b border-r border-gray-100 flex items-start justify-center pt-2 text-xs font-medium text-gray-400">
-                        {DateTime.fromObject({ hour }).toFormat('h a')}
+                        {DateTime.fromObject({ hour }, { zone: timezone }).toFormat('h a')}
                       </div>
                       <div className="h-20 border-b border-gray-50 relative group hover:bg-white transition-colors">
                         {bookings
                           .filter((b) => {
-                            const bStart = DateTime.fromISO(b.startUtc)
+                            const bStart = DateTime.fromISO(b.startUtc, { zone: 'utc' }).setZone(timezone)
                             return bStart.hour === hour
                           })
                           .map((b) => (
@@ -128,13 +132,14 @@ const ProviderCalendar: React.FC<ProviderCalendarProps> = ({
                                 top: `${(DateTime.fromISO(b.startUtc).minute / 60) * 100}%`,
                                 height: `${(DateTime.fromISO(b.endUtc).diff(DateTime.fromISO(b.startUtc), 'minutes').minutes / 60) * 100}%`,
                               }}
+                              onClick={() => onSelectBooking?.(b)}
                               className="absolute left-1 right-1 bg-blue-500/10 border-l-4 border-blue-500 p-2 overflow-hidden z-10 rounded-r shadow-sm cursor-pointer hover:bg-blue-500/20 transition-all"
                             >
                               <div className="text-[10px] font-bold text-blue-700 truncate">
                                 {b.customerEmail}
                               </div>
                               <div className="text-[9px] text-blue-600/80">
-                                {DateTime.fromISO(b.startUtc).toFormat('h:mm')} - {DateTime.fromISO(b.endUtc).toFormat('h:mm a')}
+                                {DateTime.fromISO(b.startUtc, { zone: 'utc' }).setZone(timezone).toFormat('h:mm')} - {DateTime.fromISO(b.endUtc, { zone: 'utc' }).setZone(timezone).toFormat('h:mm a')}
                               </div>
                             </div>
                           ))}
@@ -155,8 +160,8 @@ const ProviderCalendar: React.FC<ProviderCalendarProps> = ({
                   {Array.from({ length: view === 'week' ? 7 : 42 }).map((_, i) => {
                     const cellDate = DateTime.fromISO(dateRange.start, {
                       zone: 'utc',
-                    }).plus({ days: i })
-                    const isOtherMonth = view === 'month' && cellDate.month !== DateTime.fromISO(currentDateISO).month
+                    }).setZone(timezone).plus({ days: i })
+                    const isOtherMonth = view === 'month' && cellDate.month !== DateTime.fromISO(currentDateISO, { zone: timezone }).month
 
                     return (
                       <div
@@ -170,16 +175,17 @@ const ProviderCalendar: React.FC<ProviderCalendarProps> = ({
                         <div className="space-y-1">
                           {bookings
                             .filter((b) =>
-                              DateTime.fromISO(b.startUtc).hasSame(cellDate, 'day')
+                              DateTime.fromISO(b.startUtc, { zone: 'utc' }).setZone(timezone).hasSame(cellDate, 'day')
                             )
                             .map((b) => (
                               <div
                                 key={b.id}
-                                className="text-[9px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-100 truncate shadow-sm"
-                                title={`${DateTime.fromISO(b.startUtc).toFormat('h:mm a')} - ${b.customerEmail}`}
+                                onClick={() => onSelectBooking?.(b)}
+                                className="text-[9px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-100 truncate shadow-sm cursor-pointer hover:bg-blue-100"
+                                title={`${DateTime.fromISO(b.startUtc, { zone: 'utc' }).setZone(timezone).toFormat('h:mm a')} - ${b.customerEmail}`}
                               >
                                 <span className="font-bold mr-1">
-                                  {DateTime.fromISO(b.startUtc).toFormat('HH:mm')}
+                                  {DateTime.fromISO(b.startUtc, { zone: 'utc' }).setZone(timezone).toFormat('HH:mm')}
                                 </span>
                                 {b.customerEmail.split('@')[0]}
                               </div>

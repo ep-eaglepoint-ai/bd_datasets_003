@@ -2,9 +2,21 @@
 services:
   app:
     build: .
-    command: -q
+    working_dir: /app/repository_after
+    environment:
+      - RWJS_CWD=/app/repository_after
+      - DATABASE_URL=file:/app/repository_after/api/db/dev.db
+      - REDWOOD_DISABLE_TELEMETRY=1
+    ports:
+      - "8910:8910"
+      - "8911:8911"
     volumes:
       - .:/app
+      - /app/node_modules
+      - /app/repository_after/node_modules
+      - /app/repository_after/api/node_modules
+      - /app/repository_after/web/node_modules
+    command: sh -c "cd /app/repository_after && npm install --legacy-peer-deps && npx rw dev"
 
   test:
     build: .
@@ -17,7 +29,7 @@ services:
       - /app/repository_after/node_modules
       - /app/repository_after/api/node_modules
       - /app/repository_after/web/node_modules
-    command: npm test --silent
+    command: sh -c "npm install --silent && npm test --silent"
 
   evaluate:
     build: .
@@ -30,4 +42,4 @@ services:
       - /app/repository_after/node_modules
       - /app/repository_after/api/node_modules
       - /app/repository_after/web/node_modules
-    command: npx ts-node evaluation/evaluation.ts
+    command: sh -c "npm install --silent && npx ts-node evaluation/evaluation.ts"

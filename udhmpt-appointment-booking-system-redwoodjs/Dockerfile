@@ -13,12 +13,14 @@ COPY repository_after/api/package.json repository_after/api/package-lock.json* .
 COPY repository_after/web/package.json ./repository_after/web/
 RUN cd repository_after && npm install --silent --legacy-peer-deps
 
+# Ensure API subpackage dependencies are installed so Prisma artifacts exist
+RUN cd repository_after/api && npm install --silent --legacy-peer-deps || true
+
 # Copy rest of the source
 COPY . .
 
-# Pre-generate Prisma client during build
-# Running inside api dir helps Prisma resolve its internal engines correctly
-RUN cd repository_after/api && npx prisma generate --schema db/schema.prisma
+# Pre-generate Prisma client during build (requires API deps installed)
+RUN cd repository_after && npx prisma generate --schema api/db/schema.prisma
 
 # Default command
 CMD ["npm", "test", "--silent"]

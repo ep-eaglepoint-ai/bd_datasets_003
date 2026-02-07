@@ -32,6 +32,14 @@ export const schema = gql`
     reason: String
   }
 
+  type AvailabilityException {
+    id: Int!
+    providerId: Int!
+    startUtc: DateTime!
+    endUtc: DateTime!
+    reason: String
+  }
+
   input ManualBlockInput {
     startUtcISO: String!
     endUtcISO: String!
@@ -50,6 +58,12 @@ export const schema = gql`
     endLocal: String!
   }
 
+  input AvailabilityExceptionInput {
+    startUtcISO: String!
+    endUtcISO: String!
+    reason: String
+  }
+
   input SearchAvailabilityInput {
     providerId: Int!
     serviceId: Int
@@ -60,6 +74,9 @@ export const schema = gql`
 
   type Query {
     searchAvailability(input: SearchAvailabilityInput!): [Slot!]! @skipAuth
+    recurringAvailabilities(providerId: Int!): [RecurringAvailability!]! @requireAuth(roles: ["PROVIDER"])
+    customDayAvailabilities(providerId: Int!): [CustomDayAvailability!]! @requireAuth(roles: ["PROVIDER"])
+    availabilityExceptions(providerId: Int!): [AvailabilityException!]! @requireAuth(roles: ["PROVIDER"])
   }
 
   type Mutation {
@@ -69,6 +86,10 @@ export const schema = gql`
     createCustomDayAvailability(
       input: CustomDayAvailabilityInput!
     ): CustomDayAvailability! @requireAuth(roles: ["PROVIDER"])
+    createAvailabilityException(
+      input: AvailabilityExceptionInput!
+    ): AvailabilityException! @requireAuth(roles: ["PROVIDER"])
+    deleteAvailabilityException(id: Int!): AvailabilityException! @requireAuth(roles: ["PROVIDER"])
     createManualBlock(input: ManualBlockInput!): ManualBlock!
       @requireAuth(roles: ["PROVIDER"])
     deleteManualBlock(id: Int!): ManualBlock! @requireAuth(roles: ["PROVIDER"])

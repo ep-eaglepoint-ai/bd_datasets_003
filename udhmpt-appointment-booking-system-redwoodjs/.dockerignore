@@ -1,0 +1,10 @@
+node_modules
+.git
+repository_after/node_modules
+repository_after/api/node_modules
+repository_after/web/node_modules
+evaluation/*/report.json
+evaluation/*/stdout.log
+evaluation/*/stderr.log
+.redwood
+dist

@@ -1,5 +1,5 @@
-import { db } from '../../src/lib/db'
-import { bookings, booking as getBooking } from '../../src/services/bookings/bookings'
+import { db } from '../repository_after/api/src/lib/db'
+import { bookings, booking as getBooking } from '../repository_after/api/src/services/bookings/bookings'
 import { context } from '@redwoodjs/graphql-server'
 
 // This test verifies that RBAC logic is correctly integrated with real DB records.
@@ -46,13 +46,13 @@ describe('Real DB RBAC Integration', () => {
     test('Customer 1 should find their own booking via list', async () => {
         context.currentUser = { id: customer1Id, email: 'c1@test.com', role: 'CUSTOMER' }
         const result = await bookings({})
-        expect(result.some(b => b.id === bookingId)).toBe(true)
+        expect(result.some((b: any) => b.id === bookingId)).toBe(true)
     })
 
     test('Customer 2 should NOT see Customer 1 booking in list', async () => {
         context.currentUser = { id: customer2Id, email: 'c2@test.com', role: 'CUSTOMER' }
         const result = await bookings({})
-        expect(result.some(b => b.id === bookingId)).toBe(false)
+        expect(result.some((b: any) => b.id === bookingId)).toBe(false)
     })
 
     test('Customer 1 should be able to fetch their specific booking', async () => {
@@ -69,13 +69,13 @@ describe('Real DB RBAC Integration', () => {
     test('Provider should see the booking assigned to them', async () => {
         context.currentUser = { id: providerUserId, email: 'p@test.com', role: 'PROVIDER' }
         const result = await bookings({ providerId })
-        expect(result.some(b => b.id === bookingId)).toBe(true)
+        expect(result.some((b: any) => b.id === bookingId)).toBe(true)
     })
 
     test('Admin should see everything', async () => {
         context.currentUser = { id: 999, email: 'admin@test.com', role: 'ADMIN', roles: ['ADMIN'] }
         const result = await bookings({})
-        expect(result.some(b => b.id === bookingId)).toBe(true)
+        expect(result.some((b: any) => b.id === bookingId)).toBe(true)
     })
 
     afterAll(async () => {
@@ -83,7 +83,12 @@ describe('Real DB RBAC Integration', () => {
         try {
             await db.booking.deleteMany({ where: { providerId } })
             await db.service.deleteMany({ where: { providerId } })
+            await db.recurringAvailability.deleteMany({ where: { providerId } })
+            await db.customDayAvailability.deleteMany({ where: { providerId } })
+            await db.availabilityException.deleteMany({ where: { providerId } })
+            await db.manualBlock.deleteMany({ where: { providerId } })
             await db.providerProfile.delete({ where: { id: providerId } })
+            await db.user.deleteMany({ where: { id: { in: [providerUserId, customer1Id, customer2Id] } } })
         } catch (e) {
             console.warn('RBAC Cleanup failed:', (e as any).message)
         }

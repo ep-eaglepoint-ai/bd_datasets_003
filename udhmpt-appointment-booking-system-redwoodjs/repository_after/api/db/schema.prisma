@@ -132,5 +132,5 @@ model Booking {
   service  Service          @relation(fields: [serviceId], references: [id])
   user     User             @relation(fields: [userId], references: [id])
 
-  @@unique([serviceId, startUtc, capacitySlot])
+  @@unique([providerId, startUtc, capacitySlot])
 }

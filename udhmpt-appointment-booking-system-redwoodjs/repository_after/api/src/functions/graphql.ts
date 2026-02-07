@@ -8,6 +8,22 @@ import { db, initDb } from 'src/lib/db'
 import { logger } from 'src/lib/logger'
 
 import { getCurrentUser } from 'src/lib/auth'
+import jwt from 'jsonwebtoken'
+
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production'
+const authDecoder = async (token: string) => {
+    try {
+        const decoded: any = jwt.verify(token, JWT_SECRET)
+        if (!decoded) return null
+        return {
+            id: decoded.userId ?? decoded.id,
+            email: decoded.email,
+            role: decoded.role,
+        }
+    } catch {
+        return null
+    }
+}
 
 // Initialize DB settings (WAL mode, timeouts)
 initDb()
@@ -18,6 +34,7 @@ export const handler = createGraphQLHandler({
     sdls,
     services,
     getCurrentUser,
+    authDecoder,
     realtime: {
         subscriptions: {
             subscriptions: [], // Will be populated by resolvers automatically in v6+

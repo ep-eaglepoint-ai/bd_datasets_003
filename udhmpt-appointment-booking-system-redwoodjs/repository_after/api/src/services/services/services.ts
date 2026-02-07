@@ -1,8 +1,10 @@
 import { context } from '@redwoodjs/graphql-server'
 import { db } from '../../lib/db'
 
-export const services = ({ providerId }: { providerId: number }) => {
-    return db.service.findMany({ where: { providerId } })
+export const services = ({ providerId }: { providerId?: number }) => {
+    return db.service.findMany({
+        where: providerId ? { providerId } : undefined,
+    })
 }
 
 export const service = ({ id }: { id: number }) => {

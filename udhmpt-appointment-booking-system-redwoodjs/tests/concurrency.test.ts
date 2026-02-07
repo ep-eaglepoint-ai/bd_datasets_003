@@ -1,5 +1,5 @@
-import { db } from '../../src/lib/db'
-import { createBooking } from '../../src/services/bookings/bookings'
+import { db } from '../repository_after/api/src/lib/db'
+import { createBooking } from '../repository_after/api/src/services/bookings/bookings'
 import { context } from '@redwoodjs/graphql-server'
 import { DateTime } from 'luxon'
 
@@ -82,7 +82,7 @@ describe('Real DB Concurrency Integration', () => {
                         endUtcISO,
                         customerEmail: `concurrent-user-${i}@test.com`
                     }
-                }).catch(e => {
+                }).catch((e: any) => {
                     return e
                 })
             )
@@ -90,8 +90,8 @@ describe('Real DB Concurrency Integration', () => {
 
         const results = await Promise.all(promises)
 
-        const successes = results.filter(r => r && typeof r === 'object' && 'id' in r)
-        const failures = results.filter(r => r instanceof Error)
+        const successes = results.filter((r: any) => r && typeof r === 'object' && 'id' in r)
+        const failures = results.filter((r: any) => r instanceof Error)
 
         // Log finding
         console.log(`Concurrency Test Results: ${successes.length} successes, ${failures.length} failures out of ${attempts} attempts.`)
@@ -115,8 +115,8 @@ describe('Real DB Concurrency Integration', () => {
 
         // Check failure messages: MUST be valid domain/schema errors.
         // REJECT "database is locked" or timeouts as FAILURES of the test environment.
-        const failureMessages = failures.map(f => f.message)
-        const infraErrors = failureMessages.filter(m =>
+        const failureMessages = failures.map((f: any) => f.message)
+        const infraErrors = failureMessages.filter((m: any) =>
             m.toLowerCase().includes('database is locked') ||
             m.toLowerCase().includes('timed out') ||
             m.toLowerCase().includes('close') ||
@@ -132,7 +132,7 @@ describe('Real DB Concurrency Integration', () => {
         expect(infraErrors.length).toBe(0)
 
         // Confirm logic errors: Must be either capacity or unique constraint
-        expect(failureMessages.every(m =>
+        expect(failureMessages.every((m: any) =>
             m.includes('Capacity exceeded') ||
             m.includes('Unique constraint failed') || // P2002
             m.includes('P2002') ||
@@ -190,6 +190,10 @@ describe('Real DB Concurrency Integration', () => {
         try {
             await db.booking.deleteMany({ where: { providerId } })
             await db.service.deleteMany({ where: { providerId } })
+            await db.recurringAvailability.deleteMany({ where: { providerId } })
+            await db.customDayAvailability.deleteMany({ where: { providerId } })
+            await db.availabilityException.deleteMany({ where: { providerId } })
+            await db.manualBlock.deleteMany({ where: { providerId } })
             await db.providerProfile.delete({ where: { id: providerId } })
             await db.user.delete({ where: { id: userId } })
         } catch (e) {

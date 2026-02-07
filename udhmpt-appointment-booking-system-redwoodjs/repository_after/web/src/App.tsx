@@ -2,14 +2,17 @@ import { RedwoodProvider } from '@redwoodjs/web'
 import { RedwoodApolloProvider } from '@redwoodjs/web/apollo'
 
 import Routes from 'src/Routes'
+import { AuthProvider, useAuth } from 'src/auth/AuthContext'
 
-import './index.css'
+import './styles/globals.css'
 
 const App = () => (
   <RedwoodProvider>
-    <RedwoodApolloProvider>
-      <Routes />
-    </RedwoodApolloProvider>
+    <AuthProvider>
+      <RedwoodApolloProvider useAuth={useAuth}>
+        <Routes />
+      </RedwoodApolloProvider>
+    </AuthProvider>
   </RedwoodProvider>
 )
 

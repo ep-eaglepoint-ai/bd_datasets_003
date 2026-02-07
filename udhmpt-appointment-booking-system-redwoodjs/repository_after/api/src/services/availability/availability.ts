@@ -78,10 +78,10 @@ export const searchAvailability = async ({ input }: SearchParams) => {
     },
   })
 
-  // Fetch existing bookings to subtract them
+  // Fetch existing bookings to subtract them (provider-level overlap)
   const existingBookings = await db.booking.findMany({
     where: {
-      serviceId,
+      providerId,
       canceledAt: null,
       startUtc: { lte: new Date(endISO) },
       endUtc: { gte: new Date(startISO) },
@@ -155,12 +155,19 @@ export const searchAvailability = async ({ input }: SearchParams) => {
     const slotStart = DateTime.fromISO(slot.startUtcISO)
     const slotEnd = DateTime.fromISO(slot.endUtcISO)
 
-    // Count overlapping bookings
-    const overlappingCount = existingBookings.filter((b: any) => {
+    const overlapping = existingBookings.filter((b: any) => {
       const bStart = DateTime.fromJSDate(b.startUtc)
       const bEnd = DateTime.fromJSDate(b.endUtc)
       return bEnd > slotStart && bStart < slotEnd
-    }).length
+    })
+
+    // Block if provider is booked for a different service
+    if (overlapping.some((b: any) => b.serviceId !== serviceId)) {
+      return false
+    }
+
+    // Count overlapping bookings for the same service
+    const overlappingCount = overlapping.filter((b: any) => b.serviceId === serviceId).length
 
     return overlappingCount < capacity
   })
@@ -170,6 +177,24 @@ export const searchAvailability = async ({ input }: SearchParams) => {
     const sStart = DateTime.fromISO(s.startUtcISO)
     const sEnd = DateTime.fromISO(s.endUtcISO)
     return sStart >= rangeStart && sEnd <= rangeEnd
+  })
+}
+
+export const recurringAvailabilities = async ({ providerId }: { providerId: number }) => {
+  return db.recurringAvailability.findMany({ where: { providerId } })
+}
+
+export const customDayAvailabilities = async ({ providerId }: { providerId: number }) => {
+  return db.customDayAvailability.findMany({
+    where: { providerId },
+    orderBy: { date: 'asc' },
+  })
+}
+
+export const availabilityExceptions = async ({ providerId }: { providerId: number }) => {
+  return db.availabilityException.findMany({
+    where: { providerId },
+    orderBy: { startUtc: 'asc' },
   })
 }
 
@@ -268,6 +293,47 @@ export const createCustomDayAvailability = async ({
       tz,
     },
   })
+}
+
+export const createAvailabilityException = async ({
+  input,
+}: {
+  input: { startUtcISO: string; endUtcISO: string; reason?: string }
+}) => {
+  const userId = (context.currentUser as any)?.id
+  if (!userId) throw new Error('Not authenticated')
+
+  const provider = await db.providerProfile.findUnique({ where: { userId } })
+  if (!provider) throw new Error('Provider profile not found')
+
+  const start = DateTime.fromISO(input.startUtcISO).toUTC()
+  const end = DateTime.fromISO(input.endUtcISO).toUTC()
+
+  if (end <= start) throw new Error('End must be after start')
+
+  return db.availabilityException.create({
+    data: {
+      providerId: provider.id,
+      startUtc: start.toJSDate(),
+      endUtc: end.toJSDate(),
+      reason: input.reason,
+    },
+  })
+}
+
+export const deleteAvailabilityException = async ({ id }: { id: number }) => {
+  const userId = (context.currentUser as any)?.id
+  if (!userId) throw new Error('Not authenticated')
+
+  const provider = await db.providerProfile.findUnique({ where: { userId } })
+  if (!provider) throw new Error('Provider profile not found')
+
+  const exception = await db.availabilityException.findUnique({ where: { id } })
+  if (!exception || exception.providerId !== provider.id) {
+    throw new Error('Exception not found or unauthorized')
+  }
+
+  return db.availabilityException.delete({ where: { id } })
 }
 
 export const availabilityUpdated = {

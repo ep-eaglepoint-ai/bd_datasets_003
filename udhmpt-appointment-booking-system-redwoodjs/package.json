@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "test": "npx jest --runInBand tests/provider_onboarding.test.ts tests/security/authentication_authorization.test.ts tests/security/sql_injection_prevention.test.ts tests/performance/large_dataset_handling.test.ts tests/performance/realtime_update_performance.test.ts tests/integration/end_to_end_workflows.test.ts --silent"
+    "test": "npx jest --runInBand tests/provider_onboarding.test.ts tests/availability_recurring.test.ts tests/availability_overrides.test.ts tests/booking_creation.test.ts tests/booking_confirmation.test.tsx tests/booking_cancel_reschedule.test.ts tests/booking_policies_capacity.test.ts tests/search_availability.test.ts tests/realtime_slot_listing.test.tsx tests/calendar_ui.test.tsx tests/booking_details_panel.test.tsx tests/concurrency.test.ts tests/slot_generation.test.ts tests/timezone/cross_timezone_scenarios.test.ts tests/timezone/dst_edge_cases.test.ts tests/timezone/invalid_timezone_handling.test.ts tests/integration/end_to_end_workflows.test.ts tests/integration/auth_header_rbac.test.ts --silent"
   },
   "dependencies": {
     "@prisma/client": "5.22.0",

@@ -15,6 +15,11 @@
         "test": "rw test"
     },
     "devDependencies": {
-        "@redwoodjs/core": "6.0.7"
+        "@redwoodjs/core": "6.0.7",
+        "prisma": "5.22.0",
+        "yarn": "^1.22.22"
+    },
+    "dependencies": {
+        "@prisma/client": "^5.0.0"
     }
 }
