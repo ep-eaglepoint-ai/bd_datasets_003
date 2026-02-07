@@ -18,12 +18,12 @@
     "experimentalDecorators": true,
     "strictPropertyInitialization": false,
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": "./repository_after/src",
     "skipLibCheck": true,
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "moduleResolution": "node"
   },
-  "include": ["src/**/*"],
+  "include": ["repository_after/src/**/*"],
   "exclude": ["node_modules", "dist"]
 }

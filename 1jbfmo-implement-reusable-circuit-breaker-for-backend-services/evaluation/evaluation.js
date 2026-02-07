@@ -120,7 +120,7 @@ function runTests() {
   console.log('Tests directory: /app/tests');
   
   // Run Jest tests using npm test with JSON reporter
-  const result = spawnSync('npx', ['jest', '--json', '--no-coverage', '--config', 'repository_after/jest.config.js'], {
+  const result = spawnSync('npx', ['jest', '--json', '--no-coverage'], {
     cwd: '/app',
     encoding: 'utf8',
     maxBuffer: 50 * 1024 * 1024,
