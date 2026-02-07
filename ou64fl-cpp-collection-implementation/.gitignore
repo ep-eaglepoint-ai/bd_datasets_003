@@ -10,3 +10,33 @@ node_modules/
 # OS
 .DS_Store
 evaluation/*.json
+evaluation/reports/report.json
+
+build/
+evaluation_build/
+*.o
+*.a
+*.so
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# Executables
+record_processor
+record_processor_tests
+evaluate
+
+# Coverage reports
+*.gcda
+*.gcno
+*.gcov
+

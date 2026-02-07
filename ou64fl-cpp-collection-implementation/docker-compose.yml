@@ -3,6 +3,6 @@
 services:
   app:
     build: .
-    command: pytest -q tests
+    command: sh -c "cmake -S . -B build && cmake --build build && ./build/bin/record_processor"
     volumes:
       - .:/app
