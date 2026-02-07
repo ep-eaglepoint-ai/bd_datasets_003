@@ -1,0 +1,46 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        TARGET_REPO: ${REPO:-repository_after}
+    container_name: gratitude-app
+    ports:
+      - "5173:5173"
+    environment:
+      NODE_ENV: development
+      TARGET_REPO: ${REPO:-repository_after}
+    volumes:
+      - .:/app
+      - /app/repository_after/node_modules
+    command: ["sh", "-c", "npm --prefix $${TARGET_REPO:-repository_after} run dev -- --host"]
+
+  tester:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        TARGET_REPO: repository_after
+    container_name: gratitude-tester
+    environment:
+      NODE_ENV: development
+      TARGET_REPO: ${REPO:-repository_after}
+    volumes:
+      - .:/app
+      - /app/repository_after/node_modules
+    command: ["sh", "-c", "./repository_after/node_modules/.bin/vite-node tests/journal.test.ts && ./repository_after/node_modules/.bin/vitest run tests/logic.test.ts"]
+
+  evaluator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        TARGET_REPO: repository_after
+    container_name: gratitude-evaluator
+    environment:
+      NODE_ENV: development
+    volumes:
+      - .:/app
+      - /app/repository_after/node_modules
+    command: ["./repository_after/node_modules/.bin/vite-node", "evaluation/evaluation.ts"]

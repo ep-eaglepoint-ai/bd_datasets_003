@@ -1,0 +1,12 @@
+{
+            "instance_id": "1MW4KX",
+            "problem_statement": "Build a minimalist gratitude journaling app with Remix and TypeScript that presents a calm, focused interface for daily reflection on three grateful items, auto‑saves entries, and allows browsing past entries. Use SQLite/Prisma ORM for data, generate word‑clouds of recurring themes, and implement “On this day” reminders showing previous years’ entries. The application must provide a distraction‑free writing experience, gentle prompts, and meaningful reflection tools to encourage consistent positive journaling.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/1mw4kx-gratitude-journaling-app",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
