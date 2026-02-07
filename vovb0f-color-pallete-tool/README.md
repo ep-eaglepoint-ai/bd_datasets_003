@@ -12,7 +12,7 @@ cd "/mnt/c/Users/teshi/Desktop/Projects/Eaglepoint AI/day one/bd_datasets_003/vo
 
 ## 1. Repository Before (Docker Compose)
 
-Run the requirement test suite against the **baseline** state (`repository_before`) using Docker Compose. Use `sh` (Alpine image has no `bash`).
+
 
 ```bash
 docker compose run --rm -e REPO_PATH=repository_before app sh -c 'npm test || true'
@@ -22,7 +22,7 @@ docker compose run --rm -e REPO_PATH=repository_before app sh -c 'npm test || tr
 
 ## 2. Repository After (Docker Compose)
 
-Run the requirement test suite against the **solution** state (`repository_after`) using Docker Compose.
+
 
 ```bash
 docker compose run --rm -e REPO_PATH=repository_after app npm test
@@ -32,22 +32,11 @@ docker compose run --rm -e REPO_PATH=repository_after app npm test
 
 ## 3. Evaluation (Docker Compose)
 
-Run the evaluation script inside the Docker Compose `app` service.
+
 
 ```bash
 docker compose run --rm app node evaluation/evaluate.js
 ```
 
-After this, `evaluation/report.json` is created (or updated) in the `evaluation` folder. It is listed in `.gitignore`.
 
----
 
-## Without Docker
-
-From this folder:
-
-```bash
-npm install
-npm test
-npm run evaluate
-```

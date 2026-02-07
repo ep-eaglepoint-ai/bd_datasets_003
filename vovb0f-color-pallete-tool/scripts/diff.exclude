@@ -1,0 +1,51 @@
+# Paths/patterns to exclude when generating patches/diff.patch.
+# One pattern per line; applied under repository_before/ and repository_after/.
+# These keep the patch to source and config only (no build artifacts or secrets).
+
+# Dependencies (re-installed by npm install)
+node_modules/
+.pnp
+.pnp.*
+.yarn/
+
+# Next.js build and cache
+.next/
+out/
+build/
+
+# Env and secrets (never in patch)
+.env
+.env.*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs and debug
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# OS and IDE
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Vercel
+.vercel/
+
+# TypeScript build info (generated)
+*.tsbuildinfo
+next-env.d.ts
+
+# Coverage and test output
+coverage/
+.nyc_output/
+
+# Misc
+*.pem
+.chrome-devtools-workspace-uuid
