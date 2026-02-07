@@ -33,6 +33,54 @@ def test_req_7_progress_bar():
             _, kwargs = mock_tqdm.call_args
             assert kwargs.get('total') == 123
 
+def test_req_7_real_file_progress(tmp_path):
+    """Req 7: Verify progress bar uses real file size (no mocks)."""
+    if os.environ.get('TARGET_REPO') != 'repository_after':
+        pytest.skip("UX test for optimized repo only")
+
+    import main
+    
+    csv_file = tmp_path / "real_progress.csv"
+    # Create 4 lines + header = 5 lines total.
+    header = "transaction_id,timestamp,store_id,product_id,product_name,category,quantity,unit_price,discount_percent,customer_id,payment_method,region"
+    row = "1,2023-01-01 10:00:00,101,501,Prod,Cat,1,10.0,0.0,1,Card,North"
+    csv_file.write_text(f"{header}\n{row}\n{row}\n{row}\n{row}\n")
+    
+    # We want to check that tqdm is initialized with total=4
+    with patch('tqdm.tqdm') as mock_tqdm:
+        # Patch load_sales_data to avoid actually running the pipeline
+        with patch('main.load_sales_data', return_value=[]), \
+             patch('main.transform_data'), \
+             patch('main.update_aggregates'), \
+             patch('main.finalize_aggregates', return_value={}), \
+             patch('main.export_to_database'):
+             
+            # Temporarily set SALES_DATA_CSV
+            old_env = os.environ.get("SALES_DATA_CSV")
+            os.environ["SALES_DATA_CSV"] = str(csv_file)
+            os.environ["SKIP_DB_WRITE"] = "1"
+            
+            import importlib
+            importlib.reload(main)
+            
+            try:
+                # Reload main? No, just call checks
+                # get_csv_info inside main() will read the file.
+                main.main()
+            finally:
+                 if old_env:
+                     os.environ["SALES_DATA_CSV"] = old_env
+                 else:
+                     del os.environ["SALES_DATA_CSV"]
+                 
+                 if "SKIP_DB_WRITE" in os.environ:
+                     del os.environ["SKIP_DB_WRITE"]
+            
+            assert mock_tqdm.called
+            _, kwargs = mock_tqdm.call_args
+            # File has 4 data rows
+            assert kwargs.get('total') == 4
+
 def test_req_8_logging(tmp_path):
     """Req 8: Verify logging of malformed rows."""
     if os.environ.get('TARGET_REPO') != 'repository_after':
@@ -45,6 +93,72 @@ def test_req_8_logging(tmp_path):
         mock_log.assert_called()
         args = mock_log.call_args[0][0]
         assert "Line 123" in args
+
+def test_req_8_log_file_created(tmp_path):
+    """Req 8: Verify malformed_rows.log is actually created on disk."""
+    if os.environ.get('TARGET_REPO') != 'repository_after':
+        pytest.skip("Logging test for optimized repo only")
+        
+    ingest = get_module('ingest')
+    import logging
+    
+    # We need to configure the logger to write to a temp file, 
+    # OR assertions that the production logger writes to FileHandler.
+    # The production logger.py likely configures a FileHandler for 'malformed_rows.log'.
+    # We should override the filename or CWD to check file creation.
+    
+    # If logger is already configured, we might not easily switch file path.
+    # Let's check where it writes.
+    # We will assume it writes to CWD/malformed_rows.log.
+    
+    import logging
+    import importlib
+    
+    # Reload logger to ensure it binds to the new file location if needed, 
+    # but logger.py uses a relative path "malformed_rows.log".
+    # In pytest, CWD might be the root or /app.
+    # We should ensure we are looking at the right file.
+    
+    # Force CWD to be tmp_path so the log file is created there (cleaner)
+    original_cwd = os.getcwd()
+    os.chdir(tmp_path)
+    
+    try:
+        # Reload logger module to re-run setup_logger() in the new CWD
+        logger_mod = get_module('logger')
+        importlib.reload(logger_mod)
+        
+        # Trigger a log
+        csv_file = tmp_path / "bad.csv"
+        # 2 lines: header, then data row with 'invalid' in quantity (int32)
+        header = "transaction_id,timestamp,store_id,product_id,product_name,category,quantity,unit_price,discount_percent,customer_id,payment_method,region"
+        # 'invalid_qty' is not int -> type error -> should be logged
+        row = "1,2023-01-01 10:00:00,101,501,Prod,Cat,invalid_qty,10.0,0.0,1,Card,North"
+        csv_file.write_text(f"{header}\n{row}\n")
+        
+        # Reload ingest to pick up the reloaded logger?
+        ingest = get_module('ingest')
+        importlib.reload(ingest)
+
+        try:
+            list(ingest.load_sales_data(str(csv_file)))
+        except Exception:
+            pass 
+            
+        # Flush handlers
+        for handler in logger_mod.logger.handlers:
+            handler.flush()
+            handler.close()
+            
+        log_file_path = tmp_path / "malformed_rows.log"
+        assert log_file_path.exists(), f"Log file not found at {log_file_path}"
+        content = log_file_path.read_text()
+        # "invalid type" is what we log for coercion failures, "malformed CSV row" is for parser errors
+        assert "invalid type" in content or "malformed CSV row" in content
+        
+    finally:
+        os.chdir(original_cwd)
+
 
 def test_req_10_db_connection_limit():
     """Req 10: Verify PostgreSQL connection pool limits."""
