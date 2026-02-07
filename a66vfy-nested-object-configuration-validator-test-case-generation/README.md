@@ -1,11 +1,18 @@
 # A66VFY - Nested Object Configuration Validator – Test Case Generation
 
-    ## Before Test Docker Command
-    <docker before command here>
+## Before Test Docker Command
 
-    ## After Test Docker Command
-    <docker after command here>
+```bash
+docker compose run --rm before-test
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
+## After Test Docker Command  
+```bash
+docker compose run --rm after-test
+```
+
+## Evaluation Docker Command
+```bash
+docker compose run --rm evaluation
+```
     

@@ -1,12 +1,12 @@
 services:
-  test:
+  before-test:
     build: .
-    command: ["npx", "jest", "--config", "jest.config.ts", "--verbose"]
+    command: ["sh", "-c", "echo 'No implementation in repository_before'"]
     volumes:
       - .:/app
       - /app/node_modules
 
-  meta-test:
+  after-test:
     build: .
     command: ["npx", "jest", "--config", "jest.meta.config.ts", "--verbose"]
     volumes:
@@ -15,7 +15,7 @@ services:
 
   evaluation:
     build: .
-    command: ["bash", "evaluation/evaluate.sh"]
+    command: ["npx", "ts-node", "evaluation/evaluate.ts"]
     volumes:
       - .:/app
       - /app/node_modules
