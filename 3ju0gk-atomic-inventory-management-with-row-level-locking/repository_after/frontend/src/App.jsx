@@ -57,9 +57,9 @@ function App() {
               <p style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#e63946' }}>
                 ${parseFloat(product.price).toFixed(2)}
               </p>
-              <p style={{ color: '#666' }}>
+              {/* <p style={{ color: '#666' }}>
                 Stock Available: <span style={{ fontWeight: 'bold' }}>{product.stock}</span>
-              </p>
+              </p> */}
 
               <BuyButton 
                 userId={userId} 
