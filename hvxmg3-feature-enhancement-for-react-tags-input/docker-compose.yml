@@ -1,0 +1,23 @@
+
+# Docker Compose file for running tests and evaluation
+
+services:
+  tests:
+    build: .
+    command: npm test
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=test
+    network_mode: host
+
+  evaluate:
+    build: .
+    command: node evaluation/evaluation.js
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=test
+    network_mode: host
