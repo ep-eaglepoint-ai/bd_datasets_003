@@ -1,0 +1,11 @@
+{
+            "instance_id": "2S99H8",
+            "problem_statement": "Refactor a legacy Go-based HTTP reverse proxy that utilizes a heavy, lock-based circuit breaker. The existing implementation suffers from extreme mutex contention on a 2-CPU gateway, bottlenecking throughput. You must replace the synchronization primitives with lock-free atomic operations and implement a more robust 3-state machine with a sliding window for failure tracking.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/2s99h8-l7-circuit-breaker-proxy-refactor",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
