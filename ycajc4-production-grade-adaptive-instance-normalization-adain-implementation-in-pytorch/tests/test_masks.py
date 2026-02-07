@@ -168,9 +168,8 @@ def test_mask_all_zeros():
     content = torch.randn(2, 3, 32, 32)
     style = torch.randn(2, 3, 32, 32)
     content_mask = torch.zeros(2, 3, 32, 32)
-    result = adain(content, style, content_mask=content_mask, style_mask=None)
-    assert result.shape == content.shape
-    assert torch.isfinite(result).all()
+    with pytest.raises(ValueError, match="content_mask must cover at least one spatial element per channel"):
+        adain(content, style, content_mask=content_mask, style_mask=None)
 
 
 def test_mask_all_ones():
@@ -263,13 +262,26 @@ def test_mask_edge_case_all_zeros_statistical_behavior():
     content = torch.randn(2, 3, 32, 32)
     style = torch.randn(2, 3, 32, 32)
     content_mask = torch.zeros(2, 3, 32, 32)
-    
-    result = adain(content, style, content_mask=content_mask)
-    
-    assert result.shape == content.shape
-    assert torch.isfinite(result).all()
-    
-    assert torch.isfinite(result).all()
+    with pytest.raises(ValueError, match="content_mask must cover at least one spatial element per channel"):
+        adain(content, style, content_mask=content_mask)
+
+
+def test_mask_all_zeros_fp16():
+    content = torch.randn(2, 3, 32, 32, dtype=torch.float16)
+    style = torch.randn(2, 3, 32, 32, dtype=torch.float16)
+    content_mask = torch.zeros(2, 3, 32, 32, dtype=torch.float16)
+
+    with pytest.raises(ValueError, match="content_mask must cover at least one spatial element per channel"):
+        adain(content, style, content_mask=content_mask)
+
+
+def test_mask_all_zeros_bf16():
+    content = torch.randn(2, 3, 32, 32, dtype=torch.bfloat16)
+    style = torch.randn(2, 3, 32, 32, dtype=torch.bfloat16)
+    content_mask = torch.zeros(2, 3, 32, 32, dtype=torch.bfloat16)
+
+    with pytest.raises(ValueError, match="content_mask must cover at least one spatial element per channel"):
+        adain(content, style, content_mask=content_mask)
 
 
 def test_mask_edge_case_all_ones_statistical_behavior():

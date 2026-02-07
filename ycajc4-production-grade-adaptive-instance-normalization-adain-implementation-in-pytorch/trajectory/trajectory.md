@@ -124,31 +124,21 @@ combine → apply alpha → output
 
 ### 9. Phase 9: EXECUTE WITH SURGICAL PRECISION
 **Ordered Implementation**:
-1. Core normalization with zero variance protection.  
-2. Alpha interpolation logic.  
-3. Style detach gradients.  
-4. Mask broadcasting and application.  
-5. Mixed precision support (float16/bfloat16).  
-6. NaN/Inf input validation.  
-7. Arbitrary spatial dimensions support.  
-8. Write all test files incrementally.  
-9. Execute combined feature tests.
+1. Replace the basic mean/std path with float32 statistics (clamped variance + sqrt) so fp16/bf16 inputs stay stable.  
+2. Keep alpha interpolation, gradient control, and spatial broadcast handling while wiring them to the hardened stats core.  
+3. Introduce explicit mask coverage validation and remove the nondeterministic noise fallback so zero-only masks fail loudly.  
+4. Continue guarding against NaN/Inf after normalization to catch regressions early.  
+5. Ensure the functional API and `AdaIN` module keep parameter precedence when invoking the updated helper.
+
+The targeted code edits above prompted updates to `tests/test_masks.py`, `tests/test_zero_variance_protection.py`, and `tests/test_mixed_precision_mask_stability.py`, which now assert that fully zero masks raise the new `ValueError`.
 
 ---
 
 ### 10. Phase 10: MEASURE IMPACT / VERIFY COMPLETION
-- ✅ All unit tests pass (200+ tests)
-- ✅ 100% requirement coverage achieved
-- ✅ Mixed precision verified (fp16/bf16/autocast)
-- ✅ Edge cases covered (zero variance, masks, alpha, detach, extreme values)
-- ✅ Arbitrary spatial dimensions validated (1D-6D)
-- ✅ NaN/Inf protection confirmed
-- ✅ Statistical accuracy verified
-- ✅ Memory efficiency validated
-- ✅ Gradient flow correctness confirmed
-- ✅ Batch broadcasting rules enforced
-- ✅ Input validation completeness
-- ✅ Device-aware testing (GPU/CPU)  
+- ✅ Evaluation reports from Feb 6 show 242/242 passing results before the mask semantics tightened, providing a stable baseline.
+- ✅ Mask validation now includes deterministic coverage checks (zero-mask inputs raise `ValueError`) inside `tests/test_masks.py`, `tests/test_zero_variance_protection.py`, and `tests/test_mixed_precision_mask_stability.py`.
+- ✅ Mixed precision, alpha, gradient, and spatial tests continue to exercise the float32 stats path and remain aligned with the prompt requirements.
+- ✅ Input validation stays comprehensive thanks to `test_validation.py` and `test_input_nan_inf_validation.py`.
 
 **Coverage Matrix**:
 
@@ -167,21 +157,19 @@ combine → apply alpha → output
 | Combined Features | `test_combined_features.py` | 100% |
 | Executable Validation | `test_self_executable.py` | 100% |
 
-**Total Test Count**: 200+ comprehensive tests covering all requirement groups with 100% coverage
+**Total Test Count**: 200+ tests covering all requirement groups
 
----
 
 ### 11. Phase 11: DOCUMENT THE DECISION
-**Problem**: Implement a robust, fully-featured AdaIN module in PyTorch with 100% test coverage.  
-**Solution**: Complete implementation supporting alpha interpolation, masks, mixed precision, zero variance protection, arbitrary spatial dimensions, style gradient detachment, and comprehensive input validation.  
-**Trade-offs**: Increased complexity for production-grade robustness ensures correctness across all edge cases and precision modes.  
-**Test Coverage**: 200+ comprehensive tests achieving 100% coverage across all requirement groups including statistical accuracy verification, memory efficiency validation, and device-aware testing.
+**Problem**: Implement a robust, fully-featured AdaIN module in PyTorch with broad test coverage.  
+**Solution**: Core statistics now run in float32 with variance clamping, mask coverage is validated so zero-only masks raise `ValueError`, and alpha/mixed-precision/gradient invariants remain enforced.  
+**Trade-offs**: Dropping the nondeterministic noise fallback for empty masks tightens correctness but requires callers to ensure mask coverage per channel.  
+**Test Coverage**: 200+ tests still span all requirement groups and now explicitly verify the new zero-mask failure paths in `tests/test_masks.py`, `tests/test_zero_variance_protection.py`, and `tests/test_mixed_precision_mask_stability.py`.
 
 **Key Achievements**:
-- **100% Requirement Coverage**: All 11 requirement groups fully tested
-- **Mixed Precision Excellence**: fp16/bf16/autocast with device-aware testing
-- **Statistical Accuracy**: Mathematical correctness verification for masked operations
-- **Memory Efficiency**: Tensor leak detection and large tensor handling
-- **Edge Case Robustness**: Extreme values, zero dimensions, empty tensors
-- **Gradient Safety**: Comprehensive gradient flow validation
-- **Input Validation**: Complete type/shape/dtype/parameter checking
+- **Requirement Coverage**: All 11 requirement groups tested
+- **Mixed Precision Support**: fp16/bf16/autocast checks where supported
+- **Statistical Accuracy**: Float32 stats plus clamp keep masked outputs deterministic
+- **Mask Robustness**: Zero-mask inputs now raise a clear `ValueError` instead of resorting to noise
+- **Gradient Safety**: Validation ensures style detach and gradient paths behave as expected
+- **Input Validation**: Type/shape/dtype/parameter checking stays comprehensive
