@@ -1,31 +1,25 @@
 # Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
 
-FROM alpine:3.19
+FROM python:3.11-slim
 
-# Install minimal packages
-RUN apk add --no-cache \
-    build-base \
-    cmake \
-    make \
-    bash \
-    git \
-    catch2
+# Install build tools and Catch2
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        cmake \
+        make \
+        bash \
+        git \
+        libcatch2-dev && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 # Copy everything
 COPY . .
 
-# Create build directory and build
-RUN mkdir -p build && \
-    cd build && \
-    cmake .. && \
-    make
-
-# Build evaluation binary for direct execution
-RUN cmake -S evaluation -B evaluation/build && \
-    cmake --build evaluation/build && \
-    cp evaluation/build/evaluate evaluation/evaluate
+# Install Python deps if present
+RUN if [ -f requirements.txt ]; then pip install --no-cache-dir -r requirements.txt; fi
 
 # Default command - run the main program
 CMD ["./build/bin/record_processor"]
