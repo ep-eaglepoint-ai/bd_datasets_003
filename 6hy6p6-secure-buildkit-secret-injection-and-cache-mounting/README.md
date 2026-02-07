@@ -4,7 +4,6 @@
 ```bash
 docker compose run --rm test
 ```
-
 ## Evaluation Command (Required, Generates Report)
 ```bash
 docker compose run --rm evaluate

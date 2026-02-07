@@ -169,6 +169,9 @@ func TestGoCache(t *testing.T) {
 	if !strings.Contains(content, "--mount=type=cache,target=/go/pkg/mod") {
 		t.Fatal("Dockerfile must contain --mount=type=cache,target=/go/pkg/mod")
 	}
+	if strings.Contains(content, "rm -rf /go/pkg/mod/cache/vcs") {
+		t.Fatal("Dockerfile must not delete the Go module VCS cache when using a cache mount")
+	}
 
 	copyGoMod := strings.Index(content, "COPY repository_after/go.mod ./")
 	copyAll := strings.Index(content, "COPY repository_after/ .")
@@ -258,6 +261,9 @@ func TestCrossBuild(t *testing.T) {
 	if !strings.Contains(content, "CGO_ENABLED=0") {
 		t.Fatal("go build must set CGO_ENABLED=0")
 	}
+	if !strings.Contains(content, "-trimpath") || !strings.Contains(content, "-buildvcs=false") {
+		t.Fatal("go build must include -trimpath and -buildvcs=false for deterministic builds")
+	}
 	if !strings.Contains(content, "FROM --platform=$BUILDPLATFORM") {
 		t.Fatal("builder stage must use --platform=$BUILDPLATFORM for multi-arch builds")
 	}
@@ -271,6 +277,21 @@ func TestGoSum(t *testing.T) {
 	}
 	if !strings.Contains(content, "github.com/google/uuid") {
 		t.Fatal("go.sum must contain checksum for required module")
+	}
+}
+
+func TestPinnedBaseImages(t *testing.T) {
+	content := readFile(t, "Dockerfile")
+	fromRe := regexp.MustCompile(`(?m)^FROM\s+(?:--platform=\S+\s+)?(\S+)`)
+	matches := fromRe.FindAllStringSubmatch(content, -1)
+	if len(matches) == 0 {
+		t.Fatal("Dockerfile must contain FROM lines")
+	}
+	for _, m := range matches {
+		image := m[1]
+		if !strings.Contains(image, "@sha256:") {
+			t.Fatalf("Base images must be pinned by digest for determinism: %s", image)
+		}
 	}
 }
 

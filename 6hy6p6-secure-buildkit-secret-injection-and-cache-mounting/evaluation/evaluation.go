@@ -85,7 +85,7 @@ func runTests() TestResults {
 
 	tests := []Test{
 		{
-			Name:            "go test ./tests",
+			Name:            "Go unit tests: ./tests (Dockerfile + repository_after validation)",
 			Status:          status,
 			Duration:        0,
 			FailureMessages: failureMsg,
