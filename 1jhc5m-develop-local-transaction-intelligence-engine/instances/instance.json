@@ -1,0 +1,12 @@
+{
+            "instance_id": "1JHC5M",
+            "problem_statement": "The goal is to engineer a localized, high-precision parsing engine that converts unstructured financial SMS notifications into high-fidelity JSON metadata. The system must operate without any external API calls to ensure user privacy, requiring a sophisticated rule-based approach to navigate the high variance of global banking templates. The core challenge lies in the deterministic extraction of transaction amounts, currency codes, and merchant entities from messages that frequently include distracting numeric data such as masked account numbers, date strings, and transaction reference IDs.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/1jhc5m-develop-local-transaction-intelligence-engine",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
