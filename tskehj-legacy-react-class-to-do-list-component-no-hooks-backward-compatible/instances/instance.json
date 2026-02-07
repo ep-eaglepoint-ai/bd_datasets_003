@@ -1,0 +1,25 @@
+{
+    "instance_id": "TSKEHJ",
+    "problem_statement": "Build a reliable to-do list UI as a legacy React class component that can be embedded into older enterprise React codebases that do not support Hooks. The component must let users add tasks, display them in a list, and remove tasks immediately, while keeping state stable across re-renders during the browser session (in-memory only). The implementation must avoid common legacy pitfalls such as lost this context, direct state mutation, handler rebinding in render, and unnecessary re-renders. It must remain responsive with 100+ items and work correctly with rapid user actions.",
+    "base_commit": "repository_before/",
+    "test_patch": "tests/",
+    "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/tskehj-legacy-react-class-to-do-list-component-no-hooks-backward-compatible",
+    "environment_setup": "Dockerfile",
+    "FAIL_TO_PASS": [
+        "Initial render shows empty list with input and Add button",
+        "Type \"Buy groceries\" and click Add",
+        "Add multiple tasks in order",
+        "Add and remove a task",
+        "Add 10 items, remove 3 from different positions, verify relative order",
+        "Attempt to add empty string",
+        "Add 100 items and verify performance within 5s",
+        "Rapid clicks handling",
+        "Enter key (keyDown) adds task",
+        "No hooks or lifecycle console warnings",
+        "Source code contains no hooks, no arrow functions, uses class syntax",
+        "TaskItem is a class component with shouldComponentUpdate",
+        "Stable onRemove reference across renders (no per-render allocation)",
+        "index.js exports renderApp and TaskManager"
+    ],
+    "PASS_TO_PASS": []
+}

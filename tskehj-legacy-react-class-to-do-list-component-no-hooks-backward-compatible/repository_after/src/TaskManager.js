@@ -1,0 +1,273 @@
+import React from 'react';
+
+/**
+ * Style constants defined once at module level.
+ * Never recreated during render – zero object churn.
+ * No CSS gap property – uses margin for IE11/legacy browser support.
+ */
+var STYLES = {
+  container: {
+    maxWidth: '600px',
+    margin: '20px auto',
+    padding: '20px',
+    fontFamily: 'Arial, sans-serif'
+  },
+  heading: {
+    textAlign: 'center',
+    color: '#333'
+  },
+  inputContainer: {
+    display: 'flex',
+    marginBottom: '20px'
+  },
+  input: {
+    flex: '1',
+    padding: '10px',
+    fontSize: '16px',
+    border: '1px solid #ddd',
+    borderRadius: '4px',
+    marginRight: '10px'
+  },
+  addButton: {
+    padding: '10px 20px',
+    fontSize: '16px',
+    backgroundColor: '#4CAF50',
+    color: 'white',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer'
+  },
+  taskList: {
+    listStyle: 'none',
+    padding: '0',
+    margin: '0',
+    maxHeight: '400px',
+    overflowY: 'auto'
+  },
+  taskItem: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '10px',
+    marginBottom: '8px',
+    backgroundColor: '#f9f9f9',
+    border: '1px solid #ddd',
+    borderRadius: '4px'
+  },
+  taskText: {
+    flex: '1',
+    fontSize: '16px',
+    marginRight: '10px'
+  },
+  removeButton: {
+    padding: '5px 15px',
+    fontSize: '14px',
+    backgroundColor: '#f44336',
+    color: 'white',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer'
+  },
+  footer: {
+    marginTop: '20px',
+    textAlign: 'center',
+    color: '#666',
+    fontSize: '14px'
+  }
+};
+
+/**
+ * TaskItem – Individual task display as a class component.
+ *
+ * Each instance binds its own click handler ONCE in the constructor.
+ * Implements shouldComponentUpdate to skip re-renders when its
+ * own props have not changed, even if siblings are added/removed.
+ *
+ * Props:
+ *   task     {Object}   - { id: number, text: string }
+ *   onRemove {Function} - stable callback bound in TaskManager constructor
+ */
+class TaskItem extends React.Component {
+  constructor(props) {
+    super(props);
+    this.handleRemove = this.handleRemove.bind(this);
+  }
+
+  shouldComponentUpdate(nextProps) {
+    if (this.props.task.id !== nextProps.task.id) {
+      return true;
+    }
+    if (this.props.task.text !== nextProps.task.text) {
+      return true;
+    }
+    if (this.props.onRemove !== nextProps.onRemove) {
+      return true;
+    }
+    return false;
+  }
+
+  handleRemove() {
+    this.props.onRemove(this.props.task.id);
+  }
+
+  render() {
+    return React.createElement(
+      'li',
+      {
+        className: 'task-item',
+        'data-testid': 'task-item',
+        style: STYLES.taskItem
+      },
+      React.createElement(
+        'span',
+        {
+          className: 'task-text',
+          style: STYLES.taskText
+        },
+        this.props.task.text
+      ),
+      React.createElement(
+        'button',
+        {
+          onClick: this.handleRemove,
+          className: 'remove-button',
+          'data-testid': 'remove-button',
+          style: STYLES.removeButton
+        },
+        'Remove'
+      )
+    );
+  }
+}
+
+/**
+ * TaskManager – Main to-do list component.
+ *
+ * All handlers bound once in constructor.
+ * handleRemoveTask is a single stable function reference
+ * passed to every TaskItem; each TaskItem calls it with
+ * its own id through its own constructor-bound handler.
+ * Zero functions are allocated inside render().
+ */
+class TaskManager extends React.Component {
+  constructor(props) {
+    super(props);
+
+    this._nextId = 0;
+
+    this.state = {
+      tasks: [],
+      inputValue: ''
+    };
+
+    this.handleInputChange = this.handleInputChange.bind(this);
+    this.handleAddTask     = this.handleAddTask.bind(this);
+    this.handleKeyDown     = this.handleKeyDown.bind(this);
+    this.handleRemoveTask  = this.handleRemoveTask.bind(this);
+  }
+
+  handleInputChange(event) {
+    this.setState({ inputValue: event.target.value });
+  }
+
+  handleKeyDown(event) {
+    if (event.key === 'Enter') {
+      this.handleAddTask();
+    }
+  }
+
+  handleAddTask() {
+    var trimmedValue = this.state.inputValue.trim();
+
+    if (trimmedValue === '') {
+      return;
+    }
+
+    this._nextId = this._nextId + 1;
+
+    var newTask = {
+      id: this._nextId,
+      text: trimmedValue
+    };
+
+    this.setState(function (prevState) {
+      return {
+        tasks: prevState.tasks.concat([newTask]),
+        inputValue: ''
+      };
+    });
+  }
+
+  handleRemoveTask(taskId) {
+    this.setState(function (prevState) {
+      return {
+        tasks: prevState.tasks.filter(function (task) {
+          return task.id !== taskId;
+        })
+      };
+    });
+  }
+
+  render() {
+    var self = this;
+
+    return React.createElement(
+      'div',
+      {
+        className: 'task-manager',
+        style: STYLES.container
+      },
+      React.createElement('h1', { style: STYLES.heading }, 'To-Do List'),
+      React.createElement(
+        'div',
+        {
+          className: 'input-container',
+          style: STYLES.inputContainer
+        },
+        React.createElement('input', {
+          type: 'text',
+          value: this.state.inputValue,
+          onChange: this.handleInputChange,
+          onKeyDown: this.handleKeyDown,
+          placeholder: 'Enter a task...',
+          className: 'task-input',
+          'data-testid': 'task-input',
+          style: STYLES.input
+        }),
+        React.createElement(
+          'button',
+          {
+            onClick: this.handleAddTask,
+            className: 'add-button',
+            'data-testid': 'add-button',
+            style: STYLES.addButton
+          },
+          'Add'
+        )
+      ),
+      React.createElement(
+        'ul',
+        {
+          className: 'task-list',
+          'data-testid': 'task-list',
+          style: STYLES.taskList
+        },
+        this.state.tasks.map(function (task) {
+          return React.createElement(TaskItem, {
+            key: task.id,
+            task: task,
+            onRemove: self.handleRemoveTask
+          });
+        })
+      ),
+      React.createElement(
+        'div',
+        { style: STYLES.footer },
+        'Total tasks: ' + this.state.tasks.length
+      )
+    );
+  }
+}
+
+export { TaskItem };
+export default TaskManager;
