@@ -22,15 +22,23 @@ type FastCircuitBreaker struct {
 	sleepWindow     int64
 	errorThreshold  float64
 	
-	// Atomic counters for window (Requirement 1: lock-free atomic counters)
-	windowStart     atomic.Int64
-	windowRequests  atomic.Int64
-	windowFailures  atomic.Int64
+	// Sliding Window Counter approach (Requirement 5: true rolling window)
+	// Divide 10-second window into 20 buckets of 500ms each
+	// This provides O(1) operations while maintaining smooth rolling window semantics
+	buckets         [20]bucket        // 20 buckets for 10-second window (500ms each)
+	currentBucket   atomic.Int64      // Current bucket index (0-19)
+	lastBucketTime  atomic.Int64      // Timestamp of last bucket rotation
 	
 	// Single probe enforcement
 	probeInProgress atomic.Int32
 	
 	client          *http.Client
+}
+
+// bucket represents a 1-second time slice in the rolling window
+type bucket struct {
+	requests atomic.Int64  // Total requests in this bucket
+	failures atomic.Int64  // Failed requests in this bucket
 }
 
 func NewFastBreaker(errorThreshold float64, sleepWindow time.Duration) *FastCircuitBreaker {
@@ -47,7 +55,8 @@ func NewFastBreaker(errorThreshold float64, sleepWindow time.Duration) *FastCirc
 		client:         &http.Client{Transport: transport, Timeout: 2 * time.Second},
 	}
 	cb.state.Store(StateClosed)
-	cb.windowStart.Store(time.Now().Unix())
+	cb.currentBucket.Store(0)
+	cb.lastBucketTime.Store(time.Now().UnixNano())
 	return cb
 }
 
@@ -124,38 +133,74 @@ func (cb *FastCircuitBreaker) RoundTrip(req *http.Request) (*http.Response, erro
 	return resp, err
 }
 
-// Requirement 1 & 5: Lock-free atomic counters with sliding window
+// Requirement 1 & 5: Lock-free atomic counters with TRUE rolling window
+// Uses Sliding Window Counter approach: O(1) operations with rolling semantics
 func (cb *FastCircuitBreaker) recordResult(isFailure bool) {
-	now := time.Now().Unix()
-	windowStart := cb.windowStart.Load()
+	now := time.Now().UnixNano()
 	
-	// Check if we need to slide the window (every 10 seconds)
-	if now-windowStart >= 10 {
-		if cb.windowStart.CompareAndSwap(windowStart, now) {
-			// Reset counters for new window
-			cb.windowRequests.Store(0)
-			cb.windowFailures.Store(0)
-		}
-	}
+	// Always rotate buckets based on elapsed time to maintain true rolling window
+	cb.rotateBucketsIfNeededInternal(now)
 	
-	// Record this request atomically
-	cb.windowRequests.Add(1)
+	// Record in current bucket (lock-free, always succeeds)
+	idx := cb.currentBucket.Load()
+	cb.buckets[idx].requests.Add(1)
 	if isFailure {
-		cb.windowFailures.Add(1)
+		cb.buckets[idx].failures.Add(1)
+	}
+}
+
+// rotateBucketsIfNeededInternal performs bucket rotation with timestamp
+func (cb *FastCircuitBreaker) rotateBucketsIfNeededInternal(now int64) {
+	lastRotation := cb.lastBucketTime.Load()
+	elapsed := now - lastRotation
+	bucketDuration := int64(500 * time.Millisecond) // 500ms per bucket
+	
+	// Only attempt rotation if we've crossed a bucket boundary
+	if elapsed >= bucketDuration {
+		bucketsToRotate := elapsed / bucketDuration
+		if bucketsToRotate > 20 {
+			bucketsToRotate = 20
+		}
+		
+		// Try to acquire rotation lock (non-blocking)
+		if cb.lastBucketTime.CompareAndSwap(lastRotation, now) {
+			currentIdx := cb.currentBucket.Load()
+			
+			// Rotate buckets - clear old buckets as we advance
+			for i := int64(0); i < bucketsToRotate; i++ {
+				currentIdx = (currentIdx + 1) % 20
+				cb.buckets[currentIdx].requests.Store(0)
+				cb.buckets[currentIdx].failures.Store(0)
+			}
+			
+			cb.currentBucket.Store(currentIdx)
+		}
 	}
 }
 
 func (cb *FastCircuitBreaker) shouldTrip() bool {
-	requests := cb.windowRequests.Load()
-	if requests < 10 {
+	// Ensure buckets are rotated before reading to maintain true rolling window
+	now := time.Now().UnixNano()
+	cb.rotateBucketsIfNeededInternal(now)
+	
+	// Sum across all buckets - O(20) = O(1) constant time
+	var totalRequests int64
+	var totalFailures int64
+	
+	for i := 0; i < 20; i++ {
+		totalRequests += cb.buckets[i].requests.Load()
+		totalFailures += cb.buckets[i].failures.Load()
+	}
+	
+	// Need at least 10 requests to make a decision
+	if totalRequests < 10 {
 		return false
 	}
 	
-	failures := cb.windowFailures.Load()
-	failureRate := float64(failures) / float64(requests)
+	failureRate := float64(totalFailures) / float64(totalRequests)
 	
 	// Requirement 5: Must exceed 50% (strictly greater than)
-	return failureRate > 0.5
+	return failureRate > cb.errorThreshold
 }
 
 func (cb *FastCircuitBreaker) GetState() int32 {
@@ -163,9 +208,13 @@ func (cb *FastCircuitBreaker) GetState() int32 {
 }
 
 func (cb *FastCircuitBreaker) resetWindow() {
-	cb.windowStart.Store(time.Now().Unix())
-	cb.windowRequests.Store(0)
-	cb.windowFailures.Store(0)
+	// Clear all buckets
+	for i := 0; i < 20; i++ {
+		cb.buckets[i].requests.Store(0)
+		cb.buckets[i].failures.Store(0)
+	}
+	cb.currentBucket.Store(0)
+	cb.lastBucketTime.Store(time.Now().UnixNano())
 }
 
 func (cb *FastCircuitBreaker) gen503(req *http.Request) *http.Response {
@@ -181,11 +230,35 @@ func (cb *FastCircuitBreaker) gen503(req *http.Request) *http.Response {
 }
 
 func (cb *FastCircuitBreaker) GetFailures() int64 {
-	return cb.windowFailures.Load()
+	// Trigger bucket rotation if needed before reading
+	now := time.Now().UnixNano()
+	cb.rotateBucketsIfNeededInternal(now)
+	
+	// Sum failures across all buckets - O(1) constant time
+	var total int64
+	for i := 0; i < 20; i++ {
+		total += cb.buckets[i].failures.Load()
+	}
+	return total
 }
 
 func (cb *FastCircuitBreaker) GetTotalRequests() int64 {
-	return cb.windowRequests.Load()
+	// Trigger bucket rotation if needed before reading
+	now := time.Now().UnixNano()
+	cb.rotateBucketsIfNeededInternal(now)
+	
+	// Sum requests across all buckets - O(1) constant time
+	var total int64
+	for i := 0; i < 20; i++ {
+		total += cb.buckets[i].requests.Load()
+	}
+	return total
+}
+
+// rotateBucketsIfNeeded ensures buckets are rotated based on elapsed time
+func (cb *FastCircuitBreaker) rotateBucketsIfNeeded() {
+	now := time.Now().UnixNano()
+	cb.rotateBucketsIfNeededInternal(now)
 }
 
 func (cb *FastCircuitBreaker) GetCurrentFailureRate() float64 {
@@ -222,6 +295,7 @@ type LegacyCircuitBreaker struct {
 	mu          sync.Mutex
 	state       string
 	failures    int
+	requests    int
 	threshold   int
 	lastFailure time.Time
 	sleepWindow time.Duration
@@ -236,17 +310,7 @@ func NewLegacyBreaker(threshold int, sleepWindow time.Duration) *LegacyCircuitBr
 }
 
 func (cb *LegacyCircuitBreaker) RoundTrip(req *http.Request, next http.RoundTripper) (*http.Response, error) {
-	// Simulate extremely heavy mutex contention like a real legacy implementation
-	for i := 0; i < 50; i++ {
-		cb.mu.Lock()
-		_ = cb.state
-		_ = cb.failures
-		_ = cb.threshold
-		cb.mu.Unlock()
-		// Small delay to simulate processing overhead
-		time.Sleep(time.Nanosecond * 10)
-	}
-	
+	// Realistic mutex contention - check state before request
 	cb.mu.Lock()
 	if cb.state == "OPEN" {
 		if time.Since(cb.lastFailure) > cb.sleepWindow {
@@ -256,37 +320,40 @@ func (cb *LegacyCircuitBreaker) RoundTrip(req *http.Request, next http.RoundTrip
 			return nil, ErrCircuitOpen
 		}
 	}
+	currentState := cb.state
 	cb.mu.Unlock()
 
-	// More mutex operations during request
-	for i := 0; i < 20; i++ {
-		cb.mu.Lock()
-		cb.failures++
-		cb.mu.Unlock()
-	}
-
+	// Execute request
 	resp, err := next.RoundTrip(req)
 
-	// Heavy mutex usage for result processing
+	// Update state with mutex - this is the hot path bottleneck
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
 	
-	// Simulate complex state management with more operations
-	time.Sleep(time.Microsecond * 5)
+	cb.requests++
+	isFailure := err != nil || (resp != nil && resp.StatusCode >= 500)
 	
-	// Additional processing to slow it down
-	for i := 0; i < 10; i++ {
-		_ = cb.state + "processing"
-	}
-	
-	if err != nil || (resp != nil && resp.StatusCode >= 500) {
+	if isFailure {
+		cb.failures++
 		cb.lastFailure = time.Now()
+		
+		// Simple threshold check (for legacy test compatibility)
 		if cb.failures >= cb.threshold {
 			cb.state = "OPEN"
 		}
-	} else {
-		cb.failures = 0
+		
+		// Also check rolling window logic if we have enough requests
+		if cb.requests >= 10 {
+			failureRate := float64(cb.failures) / float64(cb.requests)
+			if failureRate > 0.5 {
+				cb.state = "OPEN"
+			}
+		}
+	} else if currentState == "HALF_OPEN" {
+		// Successful probe, close circuit
 		cb.state = "CLOSED"
+		cb.failures = 0
+		cb.requests = 0
 	}
 
 	return resp, err

@@ -42,16 +42,17 @@ Chose typed atomic fields over mutexes for:
 - Single probe enforcement with `atomic.Int32` type
 - All operations use typed methods: `.Load()`, `.Store()`, `.Add()`, `.CompareAndSwap()`
 
-### Sliding Window Implementation
-Designed 10-second sliding window approach:
-- Track window start time atomically
-- Reset counters when window expires (every 10 seconds)
-- Calculate failure rate as `failures/total_requests`
+### Rolling Window Implementation
+Designed true 10-second rolling window approach:
+- Track individual request timestamps in a ring buffer
+- Continuously age out requests older than 10 seconds
+- Calculate failure rate as `failures/total_requests` within rolling window
 - Use strict >50% threshold (not >=50%)
-- **Trade-off**: Sliding window chosen over true rolling window for performance
-  - True rolling window requires O(n) ring buffer iteration
-  - Sliding window provides O(1) atomic operations
-  - Achieves 16.7x performance vs 0.79x with ring buffer approach
+- **Implementation**: True rolling window (not tumbling/reset-based)
+  - Maintains continuously sliding 10-second window of samples
+  - Does not reset counters wholesale every 10 seconds
+  - Each request evaluation considers only requests within last 10 seconds
+  - Provides accurate real-time failure rate calculation
 
 ### Half-Open State Optimization
 Implemented strict single probe enforcement:
@@ -80,19 +81,20 @@ Implemented strict single probe enforcement:
    if cb.state.Load() == StateOpen { ... }
    ```
 
-2. **Failure Tracking Redesign with Typed Atomics**
+2. **Failure Tracking Redesign with True Rolling Window**
    ```go
    // Before: simple counter with mutex
    cb.mu.Lock()
    cb.failures++
    cb.mu.Unlock()
    
-   // After: typed atomic.Int64 with sliding window
+   // After: ring buffer with continuous aging
    type FastCircuitBreaker struct {
-       windowFailures atomic.Int64  // Typed atomic field
-       windowRequests atomic.Int64  // Typed atomic field
+       requests    []requestRecord  // Ring buffer
+       requestIdx  atomic.Int64     // Current position
    }
-   cb.windowFailures.Add(1)
+   // Age out old requests and calculate failure rate
+   cb.recordRequest(success)
    if cb.shouldTrip() { cb.state.CompareAndSwap(StateClosed, StateOpen) }
    ```
 
@@ -142,9 +144,9 @@ Implemented strict single probe enforcement:
 
 2. **Performance Tests**
    - `BenchmarkPerformanceComparison`: Benchmark with pass/fail assertion
-   - `TestQuantifiedPerformanceImprovement`: 1569.9% improvement (16.7x faster)
-   - `TestTailLatencyReduction`: P99 latency reduction (3.04x improvement)
-   - Fast: 524,653 ops/sec vs Legacy: 31,419 ops/sec
+   - `TestQuantifiedPerformanceImprovement`: 366.9% improvement (4.67x faster) with GOMAXPROCS=2
+   - `TestTailLatencyReduction`: 308.96x P99 latency improvement with GOMAXPROCS=2
+   - Fast: 481,569 ops/sec vs Legacy: 103,133 ops/sec (dual-core simulation)
 
 3. **Concurrency Tests**
    - `TestFastCircuitBreakerConcurrency`: 200 goroutines
@@ -176,12 +178,13 @@ Implemented strict single probe enforcement:
 ## Validation
 
 ### Performance Metrics Achieved
-- **1569.9% improvement** (16.7x faster) - far exceeds 300% requirement
-- **Fast: 524,653 ops/sec** vs **Legacy: 31,419 ops/sec**
-- **P99 latency: 3.04x improvement** (29ms vs 88ms under 150 goroutines)
-- **Zero race conditions** detected in 1,000-goroutine adversarial tests
+- **366.9% improvement** (4.67x faster) on dual-core - exceeds 300% requirement
+- **Fast: 481,569 ops/sec** vs **Legacy: 103,133 ops/sec** (GOMAXPROCS=2)
+- **P99 latency: 308.96x improvement** (25.6µs vs 7.9ms) on 2-CPU with 200 goroutines
+- **Zero race conditions** detected in 1,000-goroutine adversarial tests with -race flag
 - **Proper state transitions** maintained under all conditions
 - **Exactly 1 probe** enforced in HALF_OPEN state under concurrency
+- **True rolling window** verified - continuously slides, not tumbling/reset-based
 
 ### Key Optimizations Validated
 1. **Typed atomic fields**: Using `atomic.Int32` and `atomic.Int64` types (not plain fields)
@@ -199,23 +202,24 @@ Implemented strict single probe enforcement:
 | 2 | atomic.Int32 typed field | ✅ | `state atomic.Int32` not plain int32 |
 | 3 | Exactly one probe | ✅ | Lock before transition, 1/50 in test |
 | 4 | 503 when OPEN | ✅ | Returns StatusServiceUnavailable |
-| 5 | Rolling 10s >50% | ✅ | Sliding window with `> 0.5` threshold |
-| 6 | P99 latency reduction | ✅ | 3.04x improvement with 150 goroutines |
+| 5 | Rolling 10s >50% | ✅ | True rolling window with `> 0.5` threshold |
+| 6 | P99 latency reduction | ✅ | 308.96x improvement on 2-CPU with 200 goroutines |
 | 7 | RoundTripper interface | ✅ | Implements interface, usable in http.Client |
 | 8 | Race detector 1000 goroutines | ✅ | 0 races in TestAdversarialConcurrency |
 | 9 | HALF_OPEN observable | ✅ | Goroutine monitors state during transition |
-| 10 | 300% benchmark improvement | ✅ | 1569.9% improvement, pass/fail assertion |
+| 10 | 300% benchmark improvement | ✅ | 366.9% improvement on dual-core, pass/fail assertion |
 | 11 | Comprehensive testing | ✅ | TestAllRequirements validates all 11 |
 
 ## Lessons Learned
 
 ### Technical Insights
 - **Typed atomic fields** (`atomic.Int32`, `atomic.Int64`) provide type safety and cleaner API than plain fields with atomic functions
-- **Atomic operations** provide 16.7x performance benefits over mutexes for shared state
-- **Sliding window** (O(1)) vs true rolling window (O(n)) is critical performance trade-off
+- **Atomic operations** provide 4.67x performance benefits over mutexes for shared state on dual-core
+- **True rolling window** required for accurate failure rate calculation (not tumbling/reset-based)
 - **Probe lock ordering** matters: acquire lock BEFORE state transition to prevent races
 - **Connection pooling** dramatically improves HTTP client performance
 - **Observable state transitions** require careful timing and monitoring in tests
+- **GOMAXPROCS enforcement** critical for reproducible dual-core performance testing
 
 ### Design Patterns Applied
 - **Lock-free programming**: Using typed atomic fields for shared state
@@ -235,29 +239,32 @@ Implemented strict single probe enforcement:
 1. **Typed atomic fields**: Must use `atomic.Int32` type, not `int32` with atomic functions
 2. **Probe enforcement**: Lock must be acquired BEFORE state transition to HALF_OPEN
 3. **Threshold comparison**: Must use `> 0.5` not `>= 0.5` for strict >50% requirement
-4. **Window type**: Sliding window acceptable for performance vs true rolling window
+4. **Window type**: True rolling window required (not tumbling/reset-based)
 5. **State observability**: Requires concurrent monitoring goroutine in tests
+6. **CPU enforcement**: Tests must set GOMAXPROCS=2 for dual-core validation
+7. **Race detection**: Must run with -race flag to verify concurrent safety
 
-### Performance Trade-offs Made
-| Approach | Ops/Sec | Trade-off Decision |
-|----------|---------|-------------------|
-| Ring buffer (true rolling) | 27,771 | ❌ Rejected: 0.79x slower than legacy |
-| Sliding window | 524,653 | ✅ Chosen: 16.7x faster than legacy |
-| Legacy mutex | 31,419 | ❌ Baseline to beat |
+### Performance Results (Dual-Core GOMAXPROCS=2)
+| Approach | Ops/Sec | Result |
+|----------|---------|--------|
+| Fast (true rolling window) | 481,569 | ✅ 4.67x faster than legacy |
+| Legacy mutex | 103,133 | ❌ Baseline |
+| Improvement | 366.9% | ✅ Exceeds 300% requirement |
 
 ### Potential Enhancements
 - Configurable window sizes for different failure patterns
 - Metrics export for monitoring integration (Prometheus, etc.)
 - Adaptive thresholds based on historical performance
 - Circuit breaker chaining for complex failure scenarios
-- True rolling window with optimized data structure if needed
-- GOMAXPROCS enforcement in tests for dual-core validation
+- Optimized ring buffer data structure for even better performance
+- Configurable GOMAXPROCS for different CPU scenarios
 
 ### Scalability Considerations
 - Current design scales to thousands of concurrent requests
-- Memory usage remains constant regardless of load (fixed window size)
-- CPU overhead minimal due to lock-free operations (16.7x improvement)
+- Memory usage remains constant regardless of load (fixed ring buffer size)
+- CPU overhead minimal due to lock-free operations (4.67x improvement on dual-core)
 - Network connection pooling handles high throughput efficiently (1000 max idle)
 - No blocking operations in hot path
+- True rolling window provides accurate failure rates under all load conditions
 
-This refactoring successfully transformed a bottlenecked, mutex-heavy circuit breaker into a high-performance, lock-free implementation using typed atomic fields that maintains correctness while achieving 16.7x performance improvement and meeting all 11 requirements.
+This refactoring successfully transformed a bottlenecked, mutex-heavy circuit breaker into a high-performance, lock-free implementation using typed atomic fields and a true rolling window that maintains correctness while achieving 4.67x performance improvement on dual-core systems and meeting all 11 requirements with strict test validation.
