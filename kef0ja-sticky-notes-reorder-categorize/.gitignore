@@ -3,6 +3,7 @@ node_modules/
 *.log
 .DS_Store
 report.json
+evaluation/reports/
 evaluation/reports/*
 !evaluation/reports/.gitkeep
 build/

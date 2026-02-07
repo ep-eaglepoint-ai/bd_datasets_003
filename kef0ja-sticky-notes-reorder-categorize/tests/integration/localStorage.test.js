@@ -9,7 +9,7 @@ const getComponents = () => {
 };
 
 const repoPath = process.env.REPO_PATH || 'repository_after';
-const describeAfter = repoPath === 'repository_after' ? describe : describe.skip;
+const describeAfter = describe;
 const describeBefore = repoPath === 'repository_before' ? describe : describe.skip;
 
 describeBefore('LocalStorage Integration - repository_before (baseline)', () => {
@@ -121,8 +121,6 @@ describeAfter('LocalStorage Integration - repository_after', () => {
 
     const addButton = screen.getAllByRole('button', { name: /add new note/i })[0];
     fireEvent.click(addButton);
-
-    // Open the note's category dropdown (button with title="Category") and choose Work.
     const noteCategoryButton = screen.getAllByTitle('Category')[0];
     fireEvent.click(noteCategoryButton);
 

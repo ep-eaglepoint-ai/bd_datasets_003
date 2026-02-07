@@ -1,7 +1,7 @@
 FROM node:18-alpine
 WORKDIR /app
 
-COPY tests/package.json tests/package-lock.json ./tests/
+COPY tests/package*.json ./tests/
 RUN npm --prefix tests ci
 
 COPY . .

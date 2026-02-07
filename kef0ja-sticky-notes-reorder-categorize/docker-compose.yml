@@ -7,3 +7,21 @@ services:
     volumes:
       - .:/app
       - /app/tests/node_modules
+
+  after_test:
+    build: .
+    working_dir: /app
+    environment:
+      - REPO_PATH=repository_after
+    volumes:
+      - .:/app
+      - /app/tests/node_modules
+    command: ["npm", "--prefix", "tests", "run", "test:after"]
+
+  test_and_report:
+    build: .
+    working_dir: /app
+    volumes:
+      - .:/app
+      - /app/tests/node_modules
+    command: ["node", "evaluation/evaluation.js"]

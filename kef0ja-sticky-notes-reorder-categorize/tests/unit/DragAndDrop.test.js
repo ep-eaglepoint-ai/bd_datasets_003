@@ -9,7 +9,7 @@ const getComponents = () => {
 };
 
 const repoPath = process.env.REPO_PATH || 'repository_after';
-const describeAfter = repoPath === 'repository_after' ? describe : describe.skip;
+const describeAfter = describe;
 const describeBefore = repoPath === 'repository_before' ? describe : describe.skip;
 
 describeBefore('Baseline (no DnD) - repository_before', () => {

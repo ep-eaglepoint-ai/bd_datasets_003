@@ -1,4 +1,5 @@
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const { randomUUID } = require('crypto');
@@ -9,6 +10,9 @@ const REPORTS_DIR = path.join(ROOT, 'evaluation', 'reports');
 if (!fs.existsSync(REPORTS_DIR)) {
   fs.mkdirSync(REPORTS_DIR, { recursive: true });
 }
+
+const SEARCH_HIGHLIGHTS_TAGS_NOTE =
+  'The Search functionality is not implemented in the repository. Consequently, there are no tags for highlighting matching search terms';
 
 function die_oom() {
   try {
@@ -27,25 +31,80 @@ function getEnvironmentInfo() {
   };
 }
 
+function tryReadJson(filePath) {
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8');
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function summarizeJestJson(details) {
+  if (!details || typeof details !== 'object') return null;
+  return {
+    numTotalTests: details.numTotalTests ?? 0,
+    numPassedTests: details.numPassedTests ?? 0,
+    numFailedTests: details.numFailedTests ?? 0,
+    numPendingTests: details.numPendingTests ?? 0,
+    numTodoTests: details.numTodoTests ?? 0,
+    numTotalTestSuites: details.numTotalTestSuites ?? 0,
+    numPassedTestSuites: details.numPassedTestSuites ?? 0,
+    numFailedTestSuites: details.numFailedTestSuites ?? 0,
+    numPendingTestSuites: details.numPendingTestSuites ?? 0,
+  };
+}
+
+function getJestBinPath() {
+  return path.join(testFolder, 'node_modules', 'jest', 'bin', 'jest.js');
+}
+
+function getTempJestOutputFile(repoPath) {
+  const safeRepo = String(repoPath).replace(/[^a-zA-Z0-9_.-]/g, '_');
+  const name = `jest-results-${safeRepo}-${process.pid}-${Date.now()}.json`;
+  return path.join(os.tmpdir(), name);
+}
+
 function runTests(repoPath) {
   return new Promise((resolve) => {
     console.log(`Running tests for: ${repoPath}`);
 
-    const npmCmd = process.platform === 'win32' ? 'cmd.exe' : 'npm';
-    const script = repoPath === 'repository_before' ? 'test:before' : 'test:after';
+    const jestOutputFile = getTempJestOutputFile(repoPath);
+    try {
+      fs.unlinkSync(jestOutputFile);
+    } catch {
+    }
 
-    const args =
-      process.platform === 'win32'
-        ? ['/d', '/s', '/c', `npm run ${script}`]
-        : ['run', script];
-
-    const testProcess = spawn(npmCmd, args, {
-      cwd: testFolder,
-      env: {
-        ...process.env,
-        CI: 'true'
-      }
-    });
+    let testProcess;
+    try {
+      const cmd = process.execPath;
+      const args = [
+        getJestBinPath(),
+        '--watchAll=false',
+        '--testTimeout=10000',
+        '--silent',
+        '--runInBand',
+        '--json',
+        `--outputFile=${jestOutputFile}`,
+      ];
+      testProcess = spawn(cmd, args, {
+        cwd: testFolder,
+        env: {
+          ...process.env,
+          CI: 'true',
+          REPO_PATH: repoPath,
+        },
+      });
+    } catch (e) {
+      resolve({
+        passed: false,
+        return_code: 1,
+        output: `Failed to start test process: ${e && e.message ? e.message : String(e)}`,
+        raw_output: '',
+        details: null,
+      });
+      return;
+    }
 
     let stdout = '';
     let stderr = '';
@@ -84,7 +143,6 @@ function runTests(repoPath) {
       try {
         testProcess.kill();
       } catch {
-        // ignore
       }
       resolve({
         passed: false,
@@ -113,12 +171,21 @@ function runTests(repoPath) {
       let passed = code === 0;
       const output = passed ? 'All tests passed.' : 'Some tests failed.';
 
+      const rawDetails = tryReadJson(jestOutputFile);
+      const details = summarizeJestJson(rawDetails);
+
+      try {
+        fs.unlinkSync(jestOutputFile);
+      } catch {
+        // ignore
+      }
+
       resolve({
         passed,
         return_code: code,
         output: output.substring(0, 1000), 
         raw_output: stdout + stderr,
-        details: null
+        details
       });
     });
   });
@@ -171,7 +238,8 @@ async function runEvaluation() {
         output_summary: beforeResult.output,
         test_count: beforeResult.details?.numTotalTests || 0,
         passed_count: beforeResult.details?.numPassedTests || 0,
-        failed_count: beforeResult.details?.numFailedTests || 0
+        failed_count: beforeResult.details?.numFailedTests || 0,
+        skipped_count: (beforeResult.details?.numPendingTests || 0) + (beforeResult.details?.numTodoTests || 0)
       }
     },  
     after_state: {
@@ -182,7 +250,8 @@ async function runEvaluation() {
         output_summary: afterResult.output,
         test_count: afterResult.details?.numTotalTests || 0,
         passed_count: afterResult.details?.numPassedTests || 0,
-        failed_count: afterResult.details?.numFailedTests || 0
+        failed_count: afterResult.details?.numFailedTests || 0,
+        skipped_count: (afterResult.details?.numPendingTests || 0) + (afterResult.details?.numTodoTests || 0)
       }
     },
     
@@ -195,7 +264,11 @@ async function runEvaluation() {
         'localStorage_persistence',
         'keyboard_navigation',
         'mobile_touch_support'
-      ]
+      ],
+      search_highlights: {
+        tags: [],
+        note: SEARCH_HIGHLIGHTS_TAGS_NOTE
+      }
     },
     
     success: passedGate,
@@ -203,19 +276,13 @@ async function runEvaluation() {
   };
 
   const reportPath = path.join(REPORTS_DIR, 'report.json');
-  const reportPathTopLevel = path.join(ROOT, 'evaluation', 'report.json');
   fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
-  try {
-    fs.writeFileSync(reportPathTopLevel, JSON.stringify(report, null, 2));
-  } catch {
-  }
 
   console.log('\n=== Evaluation Complete ===');
   console.log(`Duration: ${durationSeconds} seconds`);
   console.log(`Result: ${passedGate ? 'PASS' : 'FAIL'}`);
   console.log(`Summary: ${improvementSummary}`);
   console.log(`Report written to: ${reportPath}`);
-  console.log(`Report copy written to: ${reportPathTopLevel}`);
   console.log(`\n=== Evaluation Finished ===`);
   process.exit(passedGate ? 0 : 1);
 }
@@ -231,7 +298,7 @@ process.on("unhandledRejection", (e) => {
     process.stderr.write(`evaluation: unhandled rejection: ${msg}\n`);
   } catch {
   }
-  process.exit(0);
+  process.exit(1);
 });
 
 process.on('uncaughtException', (e) => {
@@ -241,7 +308,7 @@ process.on('uncaughtException', (e) => {
     process.stderr.write(`evaluation: uncaught exception: ${msg}\n`);
   } catch {
   }
-  process.exit(0);
+  process.exit(1);
 });
 
 try {
@@ -253,5 +320,5 @@ try {
   } catch {
 
   }
-  process.exit(0);
+  process.exit(1);
 }

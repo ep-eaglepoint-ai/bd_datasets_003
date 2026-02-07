@@ -1,0 +1,1159 @@
+﻿After test: docker compose run --rm after_test
+Test + rediff --no-prefix repository_before repository_after
+
+diff --no-prefix repository_before/jest.config.js repository_after/jest.config.js
+--- repository_before/jest.config.js
++++ repository_after/jest.config.js
+@@ -1,13 +1,10 @@
+ module.exports = {
+-  testEnvironment: 'jsdom',
+-  setupFilesAfterEnv: ['<rootDir>/src/setupTests.js'],
+-   roots: ['<rootDir>/src', '<rootDir>/../../tests'],
++  roots: ['<rootDir>/src', '<rootDir>/../../tests'],
+   testMatch: [
+     '<rootDir>/src/**/__tests__/**/*.{js,jsx,ts,tsx}',
+     '<rootDir>/src/**/*.{spec,test}.{js,jsx,ts,tsx}',
+     '<rootDir>/../../tests/**/*.{spec,test}.{js,jsx,ts,tsx}'
+   ],
+-  
+-  // Optional: Setup file if you have one
+-  setupFilesAfterEnv: ['<rootDir>/../../tests/setup.js']
++  testPathIgnorePatterns: ['/node_modules/'],
++  setupFilesAfterEnv: ['<rootDir>/src/setupTests.js']
+ };
+\ No newline at end of file
+diff --no-prefix repository_before/package.json repository_after/package.json
+--- repository_before/package.json
++++ repository_after/package.json
+@@ -14,7 +14,7 @@
+   "scripts": {
+     "start": "react-scripts start",
+     "build": "react-scripts build",
+-    "test": "react-scripts test",
++    "test": "react-scripts test --watchAll=false --testPathPattern=../../tests",
+     "eject": "react-scripts eject"
+   },
+   "eslintConfig": {
+diff --no-prefix repository_before/src/App.js repository_after/src/App.js
+--- repository_before/src/App.js
++++ repository_after/src/App.js
+@@ -3,6 +3,7 @@ import Header from "./components/Header";
+ import StickyNotesGrid from "./components/StickyNotesGrid";
+ import StickyNotesProvider from "./context/StickyNotesContext";
+ import "./index.css";
++
+ function App() {
+   return (
+     <StickyNotesProvider>
+@@ -15,4 +16,4 @@ function App() {
+   );
+ }
+ 
+-export default App;
++export default App;
+\ No newline at end of file
+diff --no-prefix repository_before/src/components/ColorCustomizer.css repository_after/src/components/ColorCustomizer.css
+--- repository_before/src/components/ColorCustomizer.css
++++ repository_after/src/components/ColorCustomizer.css
+@@ -11,6 +11,8 @@
+     position: absolute;
+     top: 55px;
+     right: 60px;
++    z-index: 100; 
++    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+   }
+   
+   .color-customizer-color {
+@@ -26,4 +28,9 @@
+     justify-content: center;
+     align-items: center;
+     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
++    transition: transform 0.2s ease;
++
++    &:hover {
++        transform: scale(1.2);
++    }
+   }
+\ No newline at end of file
+diff --no-prefix repository_before/src/components/EmptyNotes.css repository_after/src/components/EmptyNotes.css
+--- repository_before/src/components/EmptyNotes.css
++++ repository_after/src/components/EmptyNotes.css
+@@ -3,29 +3,34 @@
+     grid-template-columns: 1fr;
+     grid-template-rows: 1fr;
+     gap: 1rem;
+-    margin: 5rem;
++    margin: 5rem auto;
+     place-items: center;
++    max-width: 600px;
++    text-align: center;
+ }
+ 
+ .empty-notes {
+     display: flex;
+     justify-content: center;
+     align-items: center;
+-    font-size: 1rem;
++    font-size: 1.1rem;
+     color: #706c60;
++    line-height: 1.6;
++    padding: 0 1rem;
+ }
+ 
+ .empty-notes-image {
+     width: 280px;
+     height: 250px;
++    margin-bottom: 1rem;
+ }
+ 
+ .add-note-button {
+     display: flex;
+     justify-content: space-between;
+     align-items: center;
+-    margin-top: 1rem;
+-    padding: 0.7rem 1rem;
++    margin-top: 1.5rem;
++    padding: 0.7rem 1.5rem;
+     border: none;
+     border-radius: 5px;
+     background-color: #ffd500;
+@@ -34,10 +39,17 @@
+     font-weight: 600;
+     cursor: pointer;
+     transition: all 0.2s ease-in-out;
++    gap: 0.5rem;
+ 
+     &:hover {
+         background-color: #f5ba13;
+-        opacity: 0.8;
+-        scale: 1.1;
++        opacity: 0.9;
++        transform: scale(1.05);
++        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+     }
++}
++
++.plus-svg-icon {
++    width: 20px;
++    height: 20px;
+ }
+\ No newline at end of file
+diff --no-prefix repository_before/src/components/EmptyNotes.js repository_after/src/components/EmptyNotes.js
+--- repository_before/src/components/EmptyNotes.js
++++ repository_after/src/components/EmptyNotes.js
+@@ -4,15 +4,20 @@ import { PlusSvgIcon } from './SvgIcons';
+ import "./EmptyNotes.css"
+ 
+ const EmptyNotes = () => {
+-    const { notes, addNewNote } = useStickyNotes();
+-
+-    // If there are notes, return null
++    const { notes, addNewNote, selectedCategory } = useStickyNotes();
+     if (notes.length > 0) return null
++    const getMessage = () => {
++        if (selectedCategory === 'all') {
++            return "No notes yet. Please add a new note by clicking the button below.";
++        } else {
++            return `No notes in this category. Try changing the filter or add a new note.`;
++        }
++    }
+ 
+     return (
+         <div className='empty-notes-container'>
+             <img className="empty-notes-image" src="add_new_note.png" alt="empty notes" />
+-            <div className="empty-notes">Not notes yet. Please add a new note clicking on the button below.</div>
++            <div className="empty-notes">{getMessage()}</div>
+             <button className="add-note-button" onClick={addNewNote}>
+                 <PlusSvgIcon />
+                 Add new note
+diff --no-prefix repository_before/src/components/Header.css repository_after/src/components/Header.css
+--- repository_before/src/components/Header.css
++++ repository_after/src/components/Header.css
+@@ -9,7 +9,8 @@
+     height: 80px;
+     position: fixed;
+     top: 0;
+-    z-index: 1;
++    z-index: 3; 
++    margin-bottom: 60px;
+ }
+ 
+ .logo-container {
+@@ -39,4 +40,10 @@
+     display: flex;
+     align-items: center;
+     justify-content: space-between;
++
++    &:hover {
++        background-color: #f5ba13;
++        transform: scale(1.05);
++        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
++    }
+ }
+\ No newline at end of file
+diff --no-prefix repository_before/src/components/StickyNote.css repository_after/src/components/StickyNote.css
+--- repository_before/src/components/StickyNote.css
++++ repository_after/src/components/StickyNote.css
+@@ -5,10 +5,22 @@
+   margin: 8px;
+   height: 300px;
+   position: relative;
++  cursor: default;
++  transition: transform 0.2s ease, box-shadow 0.2s ease;
++  outline: none;
++  z-index: 1;
+ 
+   &:hover {
+     background-color: #f5ba13;
+     opacity: 0.8;
++    transform: translateY(-2px);
++    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
++  }
++
++  &.dragging {
++    opacity: 0.5;
++    transform: scale(0.95);
++    z-index: 1000; 
+   }
+ 
+   &::after {
+@@ -32,6 +44,7 @@
+   margin-bottom: 10px;
+ }
+ 
++
+ .sticky-note-circular-button {
+   width: 30px;
+   height: 30px;
+@@ -46,61 +59,104 @@
+   justify-content: center;
+   align-items: center;
+   box-shadow: 1px 2px 4px rgba(0, 0, 0, 0.1);
++  transition: transform 0.2s ease;
+ 
+   &:hover {
+-    scale: 1.1;
++    transform: scale(1.1);
++  }
++
++  &.drag-handle {
++    cursor: grab;
++    
++    &:active {
++      cursor: grabbing;
++    }
+   }
+ }
+ 
+-.sticky-note-title {
+-  font-size: 1.2em;
+-  font-weight: bold;
+-  margin-bottom: 10px;
+-  color: #fff;
++.drag-handle svg {
++  width: 16px;
++  height: 16px;
++  fill: #666;
+ }
+ 
+-.sticky-note-content {
+-  font-size: 1em;
+-  font-weight: normal;
+-  margin-bottom: 10px;
+-  max-height: 165px;
+-  overflow-y: auto;
+-  color: #fff;
++.category-badge {
++  width: 12px;
++  height: 12px;
++  border-radius: 50%;
+ }
+ 
+-.sticky-note-title-input {
+-  border: none;
+-  outline: none;
+-  font-size: 1.2em;
+-  font-weight: bold;
+-  margin-bottom: 10px;
+-  padding: 5px;
+-  background-color: #fff;
+-  border-radius: 3px;
+-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
++.category-display {
++  position: absolute;
++  bottom: 10px;
++  left: 10px;
+ }
+ 
+-.sticky-note-content-input {
+-  border: none;
+-  outline: none;
+-  font-size: 1em;
+-  font-weight: normal;
+-  margin-bottom: 10px;
++.category-badge-small {
++  padding: 2px 8px;
++  border-radius: 10px;
++  font-size: 0.7rem;
++  color: white;
++  font-weight: 600;
++  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
++}
++
++.category-dropdown {
++  position: absolute;
++  top: 50px;
++  right: 10px;
++  background: white;
++  border-radius: 8px;
++  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+   padding: 5px;
+-  background-color: #fff;
+-  border-radius: 3px;
+-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
++  z-index: 10;
++  min-width: 120px;
+ }
+ 
+-textarea {
+-  resize: none;
++.category-dropdown-item {
++  width: 100%;
++  padding: 8px 12px;
+   border: none;
+-  outline: none;
+-  font-size: 1.2em;
+-  font-weight: bold;
+-  margin-bottom: 10px;
+-  padding: 5px;
+-  background-color: #fff;
+-  border-radius: 3px;
+-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
++  border-radius: 4px;
++  background: none;
++  color: #333;
++  text-align: left;
++  cursor: pointer;
++  font-size: 0.9rem;
++  margin: 2px 0;
++  transition: background-color 0.2s;
++
++  &:hover {
++    background-color: rgba(0, 0, 0, 0.05);
++  }
++}
++
++.drop-zone {
++  position: relative;
++}
++
++.drop-zone-active::before {
++  content: '';
++  position: absolute;
++  top: 0;
++  left: 0;
++  right: 0;
++  bottom: 0;
++  border: 2px dashed #4A90D9;
++  border-radius: 7px;
++  pointer-events: none;
++}
++
++.sticky-note-title,
++.sticky-note-content {
++  user-select: none;
++}
++
++.sticky-note-title-input,
++.sticky-note-content-input {
++  user-select: text;
++}
++
++.touch-ghost {
++  transition: none;
+ }
+\ No newline at end of file
+diff --no-prefix repository_before/src/components/StickyNote.js repository_after/src/components/StickyNote.js
+--- repository_before/src/components/StickyNote.js
++++ repository_after/src/components/StickyNote.js
+@@ -1,30 +1,73 @@
+-import React, { useEffect, useState } from 'react'
++import React, { useEffect, useState, useRef } from 'react'
+ import useDebounce from '../hooks/useDebounce'
+ import ColorCustomizer from './ColorCustomizer'
+-import { ColorSvgIcon, CrossSvgIcon } from './SvgIcons'
++import { useStickyNotes } from '../context/StickyNotesContext'
++import { ColorSvgIcon, CrossSvgIcon, DragSvgIcon } from './SvgIcons'
+ import "./StickyNote.css"
+ 
+ const StickyNote = (props) => {
++    const { categories, updateNoteCategory } = useStickyNotes();
+     const [title, setTitle] = useState(props.note.title);
+     const [content, setContent] = useState(props.note.content);
+     const [editingTitle, setEditingTitle] = useState(false);
+     const [editingContent, setEditingContent] = useState(false);
+     const [isColorCustomizerVisible, setIsColorCustomizerVisible] = useState(false);
+-
+-    // Debounce the title and content so that we only update the context once the user has stopped typing
++    const [isCategoryDropdownVisible, setIsCategoryDropdownVisible] = useState(false);
++    const [isDragging, setIsDragging] = useState(false);
++    
++    const dragHandleRef = useRef(null);
++    const noteRef = useRef(null);
+     const debouncedTitle = useDebounce(title, 500);
+     const debouncedContent = useDebounce(content, 500);
+-    // Update the context with the new title and content if they have changed
+     useEffect(() => {
+-        // Don't send an update if the title or content is empty
+         if (debouncedTitle === '' || debouncedContent === '') return;
+-        // Don't send an update if the title and content have not changed
+         if (debouncedTitle === props.note.title && debouncedContent === props.note.content) return;
+-        // Send the update to the context
+         props.onNoteChange({ id: props.note.id, title: debouncedTitle, content: debouncedContent });
+     }, [debouncedTitle, debouncedContent, props]);
++    const currentCategory = categories.find(cat => cat.id === props.note.category) || categories[4];
++    const handleDragStart = (e) => {
++        if (editingTitle || editingContent) {
++            e.preventDefault();
++            return;
++        }
++        
++        setIsDragging(true);
++        props.onDragStartIndex?.(props.index);
++        e.dataTransfer.setData('text/plain', String(props.index));
++        e.dataTransfer.effectAllowed = 'move';
++        if (noteRef.current && e.dataTransfer?.setDragImage) {
++            const ghost = noteRef.current.cloneNode(true);
++            ghost.style.opacity = '0.5';
++            ghost.style.position = 'absolute';
++            ghost.style.top = '-1000px';
++            document.body.appendChild(ghost);
++            try {
++                e.dataTransfer.setDragImage(ghost, 0, 0);
++            } finally {
++                ghost.remove();
++            }
++        }
++    };
++
++    const handleDragEnd = () => {
++        setIsDragging(false);
++        props.onDragEnd?.();
++    };
+ 
++    const handlePointerDown = (e) => {
++        if (editingTitle || editingContent) return;
++        if (e.pointerType === 'mouse') return;
++        if (!noteRef.current) return;
+ 
++        e.preventDefault();
++        props.onTouchDragStart?.({
++            fromIndex: props.index,
++            noteElement: noteRef.current,
++            pointerId: e.pointerId,
++            clientX: e.clientX,
++            clientY: e.clientY,
++        });
++    };
+     function handleOnTitleChange(e) {
+         setTitle(e.target.value);
+     }
+@@ -49,6 +92,10 @@ const StickyNote = (props) => {
+             }
+             setEditingTitle(false);
+         }
++        if (e.key === 'Escape') {
++            setEditingTitle(false);
++            setTitle(props.note.title);
++        }
+     }
+ 
+     function handleTextAreaOnBlur() {
+@@ -59,25 +106,114 @@ const StickyNote = (props) => {
+         setEditingContent(false)
+     }
+ 
++    function handleTextAreaKeyDown(e) {
++        if (e.key === 'Escape') {
++            setEditingContent(false);
++            setContent(props.note.content);
++        }
++    }
++
+     function handleOnColorChange(color) {
+         props.onNoteChange({ id: props.note.id, color });
+         setIsColorCustomizerVisible(false);
+     }
+ 
++    function handleCategoryChange(categoryId) {
++        updateNoteCategory(props.note.id, categoryId);
++        setIsCategoryDropdownVisible(false);
++    }
++    const handleNoteKeyDown = (e) => {
++        if (e.key === 'Enter') {
++            if (!editingTitle && !editingContent) {
++                setEditingTitle(true);
++            }
++        }
++    };
++
+     return (
+-        <div className='sticky-note' style={{ backgroundColor: props.note.color }}>
++        <div 
++            ref={noteRef}
++            className={`sticky-note ${isDragging ? 'dragging' : ''}`}
++            style={{ backgroundColor: props.note.color }}
++            draggable={false}
++            tabIndex={0}
++            onKeyDown={handleNoteKeyDown}
++        >
+             <div className='sticky-header'>
+-                <button className='sticky-note-circular-button' title="Color" onClick={() => setIsColorCustomizerVisible(!isColorCustomizerVisible)}>
++                <button 
++                    ref={dragHandleRef}
++                    className='sticky-note-circular-button drag-handle'
++                    title="Drag to reorder"
++                    draggable={!editingTitle && !editingContent}
++                    onDragStart={handleDragStart}
++                    onDragEnd={handleDragEnd}
++                    onPointerDown={handlePointerDown}
++                >
++                    <DragSvgIcon />
++                </button>
++                
++                <button 
++                    className='sticky-note-circular-button' 
++                    title="Category"
++                    onClick={() => setIsCategoryDropdownVisible(!isCategoryDropdownVisible)}
++                >
++                    <div className="category-badge" style={{ backgroundColor: currentCategory.color }} />
++                </button>
++                
++                <button 
++                    className='sticky-note-circular-button' 
++                    title="Color"
++                    onClick={() => setIsColorCustomizerVisible(!isColorCustomizerVisible)}
++                >
+                     <ColorSvgIcon />
+                 </button>
+-                <button className='sticky-note-circular-button' title='Delete' onClick={() => props.onDelete(props.note.id)}>
++                
++                <button 
++                    className='sticky-note-circular-button' 
++                    title='Delete' 
++                    onClick={() => props.onDelete(props.note.id)}
++                >
+                     <CrossSvgIcon />
+                 </button>
+             </div>
++            
+             {isColorCustomizerVisible && <ColorCustomizer onColorChange={handleOnColorChange} />}
++            
++            {isCategoryDropdownVisible && (
++                <div className="category-dropdown" style={{ top: isColorCustomizerVisible ? '120px' : '50px' }}>
++                    {categories.map(category => (
++                        <button
++                            key={category.id}
++                            className="category-dropdown-item"
++                            style={{ backgroundColor: category.color }}
++                            onClick={() => handleCategoryChange(category.id)}
++                        >
++                            {category.name}
++                        </button>
++                    ))}
++                </div>
++            )}
++
++            
++            <div className="category-display">
++                <span 
++                    className="category-badge-small"
++                    style={{ backgroundColor: currentCategory.color }}
++                >
++                    {currentCategory.name}
++                </span>
++            </div>
++            
+             <>
+-                {!editingTitle && <div className='sticky-note-title' onClick={() => !isColorCustomizerVisible && setEditingTitle(true)}>{title}</div>}
+-                {editingTitle && !isColorCustomizerVisible &&
++                {!editingTitle && (
++                    <div 
++                        className='sticky-note-title' 
++                        onClick={() => !isColorCustomizerVisible && !isCategoryDropdownVisible && setEditingTitle(true)}
++                    >
++                        {title}
++                    </div>
++                )}
++                {editingTitle && !isColorCustomizerVisible && !isCategoryDropdownVisible && (
+                     <input
+                         className='sticky-note-title-input'
+                         autoFocus
+@@ -87,11 +223,19 @@ const StickyNote = (props) => {
+                         onBlur={handleInputOnBlur}
+                         onKeyDown={handleInputKeyDown}
+                     />
+-                }
++                )}
+             </>
++            
+             <>
+-                {!editingContent && <div className='sticky-note-content' onClick={() => !isColorCustomizerVisible && setEditingContent(true)}>{content}</div>}
+-                {editingContent && !isColorCustomizerVisible &&
++                {!editingContent && (
++                    <div 
++                        className='sticky-note-content' 
++                        onClick={() => !isColorCustomizerVisible && !isCategoryDropdownVisible && setEditingContent(true)}
++                    >
++                        {content}
++                    </div>
++                )}
++                {editingContent && !isColorCustomizerVisible && !isCategoryDropdownVisible && (
+                     <textarea
+                         className='sticky-note-content-input'
+                         cols={30}
+@@ -99,8 +243,10 @@ const StickyNote = (props) => {
+                         autoFocus
+                         value={content}
+                         onChange={handleOnContentChange}
+-                        onBlur={handleTextAreaOnBlur} />
+-                }
++                        onBlur={handleTextAreaOnBlur}
++                        onKeyDown={handleTextAreaKeyDown}
++                    />
++                )}
+             </>
+         </div>
+     )
+diff --no-prefix repository_before/src/components/StickyNotesGrid.css repository_after/src/components/StickyNotesGrid.css
+--- repository_before/src/components/StickyNotesGrid.css
++++ repository_after/src/components/StickyNotesGrid.css
+@@ -2,7 +2,37 @@
+     display: grid;
+     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+     width: 100%;
+-    height: 100vh;
+     gap: 30px;
+-    margin-top: 80px;
++    margin-top: 160px;
++    padding: 20px;
++    min-height: calc(100vh - 160px);
+ }
++
++.note-container {
++    position: relative;
++    transition: transform 0.3s ease;
++}
++
++.drop-indicator {
++    height: 10px;
++    border-radius: 6px;
++    margin: 2px 8px;
++    transition: background-color 0.15s ease, box-shadow 0.15s ease;
++}
++
++.drop-indicator.active {
++    background-color: rgba(74, 144, 217, 0.15);
++    box-shadow: inset 0 0 0 2px rgba(74, 144, 217, 0.8);
++}
++
++@media (max-width: 768px) {
++    .grid-container {
++        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
++        gap: 20px;
++        margin-top: 140px;
++    }
++    
++    .drag-handle {
++        touch-action: none;
++    }
++}
+\ No newline at end of file
+diff --no-prefix repository_before/src/components/StickyNotesGrid.js repository_after/src/components/StickyNotesGrid.js
+--- repository_before/src/components/StickyNotesGrid.js
++++ repository_after/src/components/StickyNotesGrid.js
+@@ -1,23 +1,224 @@
+-import React from 'react'
++import React, { useEffect, useMemo, useRef, useState } from 'react'
+ import "./StickyNotesGrid.css"
+ import StickyNote from './StickyNote'
+-import { useStickyNotes } from '../context/StickyNotesContext';
++import { useStickyNotes } from '../context/StickyNotesContext'
++import CategoryFilter from './CategoryFilter'
+ 
+ const StickyNotesGrid = () => {
+-    const { notes, updateNote, deleteNote } = useStickyNotes();
+-    if (notes.length === 0) return null
++    const { notes, updateNote, deleteNote, moveNote } = useStickyNotes();
++    const [dragInsertIndex, setDragInsertIndex] = useState(null);
++    const [draggingIndex, setDraggingIndex] = useState(null);
++    const [isTouchDragging, setIsTouchDragging] = useState(false);
++    const gridRef = useRef(null);
++    const touchDragRef = useRef({
++        pointerId: null,
++        fromIndex: null,
++        ghostEl: null,
++        offsetX: 0,
++        offsetY: 0,
++    });
++
++    const noteCount = notes.length;
++    const dropZones = useMemo(() => Array.from({ length: noteCount + 1 }, (_, i) => i), [noteCount]);
++
++    const clearDragState = () => {
++        setDragInsertIndex(null);
++        setDraggingIndex(null);
++        setIsTouchDragging(false);
++        const { ghostEl } = touchDragRef.current;
++        if (ghostEl) ghostEl.remove();
++        touchDragRef.current = { pointerId: null, fromIndex: null, ghostEl: null, offsetX: 0, offsetY: 0 };
++    };
++
++    const insertionIndexAfterRemoval = (fromIndex, insertIndexWithDragged) => {
++        if (typeof fromIndex !== 'number' || typeof insertIndexWithDragged !== 'number') return null;
++        if (insertIndexWithDragged > fromIndex) return insertIndexWithDragged - 1;
++        return insertIndexWithDragged;
++    };
++
++    const handleDragOver = (e) => {
++        e.preventDefault();
++        e.dataTransfer.dropEffect = 'move';
++    };
++
++    const handleDropOnZone = (e, insertIndexWithDragged) => {
++        e.preventDefault();
++        const draggedIndexRaw = e.dataTransfer.getData('text/plain');
++        const draggedIndex = Number.parseInt(draggedIndexRaw, 10);
++        if (Number.isNaN(draggedIndex)) {
++            clearDragState();
++            return;
++        }
++
++        const insertAfterRemoval = insertionIndexAfterRemoval(draggedIndex, insertIndexWithDragged);
++        if (insertAfterRemoval == null) {
++            clearDragState();
++            return;
++        }
++
++        if (draggedIndex === insertAfterRemoval) {
++            clearDragState();
++            return;
++        }
++
++        moveNote(draggedIndex, insertAfterRemoval);
++        clearDragState();
++    };
++
++    const handleDragEnterZone = (insertIndex) => {
++        setDragInsertIndex(insertIndex);
++    };
++
++    const handleDragLeaveZone = (e) => {
++        if (e.currentTarget.contains(e.relatedTarget)) return;
++    };
++
++    const handleGlobalKeyDown = (e) => {
++        if (e.key === 'Escape') {
++            clearDragState();
++        }
++    };
++
++    useEffect(() => {
++        if (draggingIndex != null || isTouchDragging) {
++            window.addEventListener('keydown', handleGlobalKeyDown);
++            return () => window.removeEventListener('keydown', handleGlobalKeyDown);
++        }
++    }, [draggingIndex, isTouchDragging]);
++
++    const updateTouchInsertIndexFromPoint = (clientX, clientY) => {
++        const containerEls = Array.from(document.querySelectorAll('.note-container'));
++        if (containerEls.length === 0) {
++            setDragInsertIndex(0);
++            return;
++        }
++
++        const hitCandidates = typeof document.elementsFromPoint === 'function'
++            ? document.elementsFromPoint(clientX, clientY)
++            : (typeof document.elementFromPoint === 'function' ? [document.elementFromPoint(clientX, clientY)] : []);
++        const hit = hitCandidates.find(el => el?.classList?.contains('note-container'));
++        if (hit && hit.dataset?.index != null) {
++            const hoverIndex = Number.parseInt(hit.dataset.index, 10);
++            const rect = hit.getBoundingClientRect();
++            const before = clientY < rect.top + rect.height / 2;
++            setDragInsertIndex(before ? hoverIndex : hoverIndex + 1);
++            return;
++        }
++        const rects = containerEls.map(el => el.getBoundingClientRect());
++        const lastRect = rects[rects.length - 1];
++        if (clientY > lastRect.bottom) {
++            setDragInsertIndex(containerEls.length);
++            return;
++        }
++        const firstRect = rects[0];
++        if (clientY < firstRect.top) {
++            setDragInsertIndex(0);
++        }
++    };
++
++    const handleTouchDragStart = ({ fromIndex, noteElement, pointerId, clientX, clientY }) => {
++        if (!noteElement) return;
++        const rect = noteElement.getBoundingClientRect();
++        const ghost = noteElement.cloneNode(true);
++        ghost.classList.add('touch-ghost');
++        ghost.style.position = 'fixed';
++        ghost.style.left = `${clientX - rect.left}px`;
++        ghost.style.top = `${clientY - rect.top}px`;
++        ghost.style.width = `${rect.width}px`;
++        ghost.style.height = `${rect.height}px`;
++        ghost.style.opacity = '0.5';
++        ghost.style.pointerEvents = 'none';
++        ghost.style.zIndex = '9999';
++        document.body.appendChild(ghost);
++
++        touchDragRef.current = {
++            pointerId,
++            fromIndex,
++            ghostEl: ghost,
++            offsetX: clientX - rect.left,
++            offsetY: clientY - rect.top,
++        };
++        setIsTouchDragging(true);
++        setDraggingIndex(fromIndex);
++        updateTouchInsertIndexFromPoint(clientX, clientY);
++    };
++
++    useEffect(() => {
++        if (!isTouchDragging) return;
++
++        const onPointerMove = (e) => {
++            const { pointerId, ghostEl, offsetX, offsetY } = touchDragRef.current;
++            if (pointerId == null || e.pointerId !== pointerId) return;
++            if (ghostEl) {
++                ghostEl.style.left = `${e.clientX - offsetX}px`;
++                ghostEl.style.top = `${e.clientY - offsetY}px`;
++            }
++            updateTouchInsertIndexFromPoint(e.clientX, e.clientY);
++        };
++
++        const onPointerUp = (e) => {
++            const { pointerId, fromIndex } = touchDragRef.current;
++            if (pointerId == null || e.pointerId !== pointerId) return;
++            if (fromIndex == null || dragInsertIndex == null) {
++                clearDragState();
++                return;
++            }
++            const insertAfterRemoval = insertionIndexAfterRemoval(fromIndex, dragInsertIndex);
++            if (insertAfterRemoval != null && insertAfterRemoval !== fromIndex) {
++                moveNote(fromIndex, insertAfterRemoval);
++            }
++            clearDragState();
++        };
++
++        window.addEventListener('pointermove', onPointerMove);
++        window.addEventListener('pointerup', onPointerUp);
++        window.addEventListener('pointercancel', onPointerUp);
++        return () => {
++            window.removeEventListener('pointermove', onPointerMove);
++            window.removeEventListener('pointerup', onPointerUp);
++            window.removeEventListener('pointercancel', onPointerUp);
++        };
++    }, [isTouchDragging, dragInsertIndex, moveNote]);
+ 
+     return (
+-        <div className="grid-container">
+-            {notes.map(note => (
+-                <StickyNote
+-                    key={note.id}
+-                    note={note}
+-                    onNoteChange={note => updateNote(note)}
+-                    onDelete={id => deleteNote(id)}
+-                />
+-            ))}
+-        </div>
++        <>
++            <CategoryFilter />
++            <div 
++                className="grid-container"
++                ref={gridRef}
++                onDragOver={handleDragOver}
++            >
++                {dropZones.map((zoneIndex) => (
++                    <React.Fragment key={`zone-${zoneIndex}`}>
++                        <div
++                            className={`drop-indicator ${dragInsertIndex === zoneIndex ? 'active' : ''}`}
++                            onDragEnter={() => handleDragEnterZone(zoneIndex)}
++                            onDragOver={handleDragOver}
++                            onDragLeave={handleDragLeaveZone}
++                            onDrop={(e) => handleDropOnZone(e, zoneIndex)}
++                            aria-hidden="true"
++                        />
++                        {zoneIndex < notes.length && (
++                            <div
++                                key={notes[zoneIndex].id}
++                                className="note-container"
++                                data-index={zoneIndex}
++                            >
++                                <StickyNote
++                                    index={zoneIndex}
++                                    note={notes[zoneIndex]}
++                                    onNoteChange={updateNote}
++                                    onDelete={deleteNote}
++                                    onDragStartIndex={setDraggingIndex}
++                                    onDragEnd={clearDragState}
++                                    onTouchDragStart={handleTouchDragStart}
++                                />
++                            </div>
++                        )}
++                    </React.Fragment>
++                ))}
++            </div>
++        </>
+     )
+ }
+ 
+diff --no-prefix repository_before/src/components/SvgIcons.js repository_after/src/components/SvgIcons.js
+--- repository_before/src/components/SvgIcons.js
++++ repository_after/src/components/SvgIcons.js
+@@ -13,4 +13,10 @@ export const PlusSvgIcon = () => (
+     <svg className='plus-svg-icon' viewBox="0 0 24 24" width={20}>
+         <path fill="currentColor" d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
+     </svg>
++)
++
++export const DragSvgIcon = () => (
++    <svg width="16" height="16" viewBox="0 0 24 24" fill="#666666">
++        <path d="M10 9h4V6h3l-5-5-5 5h3v3zm-1 1H6V7l-5 5 5 5v-3h3v-4zm14 2l-5-5v3h-3v4h3v3l5-5zm-9 3h-4v3H7l5 5 5-5h-3v-3z"/>
++    </svg>
+ )
+\ No newline at end of file
+diff --no-prefix repository_before/src/context/StickyNotesContext.js repository_after/src/context/StickyNotesContext.js
+--- repository_before/src/context/StickyNotesContext.js
++++ repository_after/src/context/StickyNotesContext.js
+@@ -1,23 +1,72 @@
+-import { createContext, useContext, useEffect, useState } from "react";
++import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+ 
+ const StickyNotesContext = createContext();
++const categories = [
++  { id: 'work', name: 'Work', color: '#4A90D9' },
++  { id: 'personal', name: 'Personal', color: '#7ED321' },
++  { id: 'ideas', name: 'Ideas', color: '#F5A623' },
++  { id: 'urgent', name: 'Urgent', color: '#D0021B' },
++  { id: 'uncategorized', name: 'Uncategorized', color: '#9B9B9B' },
++];
++
++function normalizeNotes(savedNotes) {
++    const base = Array.isArray(savedNotes) ? savedNotes : [];
++    const migrated = base.map((note, index) => ({
++        ...note,
++        order: note?.order ?? index,
++        category: note?.category ?? 'uncategorized'
++    }));
++
++    const sorted = [...migrated].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
++    return sorted.map((note, index) => ({
++        ...note,
++        order: index
++    }));
++}
++
++function clamp(value, min, max) {
++    return Math.min(max, Math.max(min, value));
++}
+ 
+-// StickyNotesContext.Provider is a component that wraps around the entire app
+ const StickyNotesProvider = ({ children }) => {
+-    const [notes, setNotes] = useState(JSON.parse(localStorage.getItem('notes')) || []);
++    const nextIdRef = useRef(0);
++    const [notes, setNotes] = useState(() => {
++        const savedNotes = JSON.parse(localStorage.getItem('notes')) || [];
++        const normalized = normalizeNotes(savedNotes);
++        const changed = JSON.stringify(savedNotes) !== JSON.stringify(normalized);
++        if (changed) {
++            localStorage.setItem('notes', JSON.stringify(normalized));
++        }
++
++        const maxId = normalized.reduce((acc, n) => (typeof n.id === 'number' ? Math.max(acc, n.id) : acc), 0);
++        nextIdRef.current = maxId + 1;
++
++        return normalized;
++    });
+ 
+-    // Save notes to localStorage every time the notes array changes
++    const [selectedCategory, setSelectedCategory] = useState('all');
+     useEffect(() => {
+         localStorage.setItem('notes', JSON.stringify(notes));
+     }, [notes]);
+ 
++    const sortedNotes = useMemo(() => {
++        const visible = selectedCategory === 'all'
++            ? notes
++            : notes.filter(note => note.category === selectedCategory);
++        return [...visible].sort((a, b) => a.order - b.order);
++    }, [notes, selectedCategory]);
++
+     function addNewNote() {
+         setNotes(prevNotes => {
+-            return [...prevNotes, {
+-                id: Date.now(),
++            const uniqueId = Date.now() * 1000 + (nextIdRef.current++ % 1000);
++            const normalized = normalizeNotes(prevNotes);
++            return [...normalized, {
++                id: uniqueId,
+                 title: 'Click to edit title',
+                 content: 'Click to edit content',
+-                color: '#ffd500'
++                color: '#ffd500',
++                category: 'uncategorized',
++                order: normalized.length
+             }];
+         });
+     }
+@@ -36,16 +85,67 @@ const StickyNotesProvider = ({ children }) => {
+ 
+     function deleteNote(id) {
+         setNotes(prevNotes => {
+-            return prevNotes.filter(note => note.id !== id);
++            const normalized = normalizeNotes(prevNotes);
++            const newNotes = normalized.filter(note => note.id !== id);
++            return newNotes.map((note, index) => ({ ...note, order: index }));
++        });
++    }
++
++    function moveNote(fromIndex, toIndex) {
++        setNotes(prevNotes => {
++            const normalized = normalizeNotes(prevNotes);
++            const visible = selectedCategory === 'all'
++                ? normalized
++                : normalized.filter(n => n.category === selectedCategory);
++
++            if (fromIndex === toIndex) return normalized;
++            if (fromIndex < 0 || fromIndex >= visible.length) return normalized;
++
++            const movedId = visible[fromIndex].id;
++            const movedNote = normalized.find(n => n.id === movedId);
++            if (!movedNote) return normalized;
++
++            const withoutMoved = normalized.filter(n => n.id !== movedId);
++            const visibleWithout = selectedCategory === 'all'
++                ? withoutMoved
++                : withoutMoved.filter(n => n.category === selectedCategory);
++
++            const insertionIndex = clamp(toIndex, 0, visibleWithout.length);
++
++            const insertBeforeId = visibleWithout[insertionIndex]?.id;
++            const insertAt = insertBeforeId
++                ? withoutMoved.findIndex(n => n.id === insertBeforeId)
++                : withoutMoved.length;
++
++            if (insertAt < 0) return normalized;
++
++            const next = [...withoutMoved];
++            next.splice(insertAt, 0, movedNote);
++            return next.map((note, index) => ({ ...note, order: index }));
++        });
++    }
++    function updateNoteCategory(noteId, categoryId) {
++        setNotes(prevNotes => {
++            return prevNotes.map(note => {
++                if (note.id === noteId) {
++                    return { ...note, category: categoryId };
++                }
++                return note;
++            });
+         });
+     }
+ 
+     return (
+         <StickyNotesContext.Provider value={{
+-            notes,
++            notes: sortedNotes,
++            categories,
++            selectedCategory,
++            setSelectedCategory,
+             addNewNote,
+             updateNote,
+-            deleteNote
++            deleteNote,
++            moveNote,
++            updateNoteCategory
+         }}>
+             {children}
+         </StickyNotesContext.Provider>
+@@ -53,8 +153,4 @@ const StickyNotesProvider = ({ children }) => {
+ }
+ 
+ export default StickyNotesProvider;
+-
+-// Custom hook to use the StickyNotesContext
+-export const useStickyNotes = () => {
+-    return useContext(StickyNotesContext);
+-}
+\ No newline at end of file
++export const useStickyNotes = () => useContext(StickyNotesContext);
+\ No newline at end of file
+diff --no-prefix repository_before/src/hooks/useDebounce.js repository_after/src/hooks/useDebounce.js
+--- repository_before/src/hooks/useDebounce.js
++++ repository_after/src/hooks/useDebounce.js
+@@ -4,12 +4,9 @@ function useDebounce(value, delay) {
+     const [debouncedValue, setDebouncedValue] = useState(value);
+ 
+     useEffect(() => {
+-        // Set debouncedValue to value (passed in) after the specified delay
+         const handler = setTimeout(() => {
+             setDebouncedValue(value);
+         }, delay);
+-
+-        // Return a cleanup function that will be called every time ...
+         return () => {
+             clearTimeout(handler);
+         }
+diff --no-prefix repository_before/src/index.css repository_after/src/index.css
+--- repository_before/src/index.css
++++ repository_after/src/index.css
+@@ -1,9 +1,9 @@
+ body {
+   margin: 0;
+-  font-family: 'Lato',
+-    sans-serif;
++  font-family: 'Lato', sans-serif;
+   -webkit-font-smoothing: antialiased;
+   -moz-osx-font-smoothing: grayscale;
++  padding-top: 140px; 
+ }
+ 
+ code {
+@@ -15,7 +15,18 @@ code {
+   display: flex;
+   flex-direction: column;
+   align-items: center;
+-  justify-content: center;
+-  height: 100vh;
+-  padding: 50px;
++  justify-content: flex-start;
++  min-height: 100vh;
++  padding: 0 20px;
++  box-sizing: border-box;
++}
++
++@media (max-width: 768px) {
++  body {
++    padding-top: 120px;
++  }
++  
++  .app-container {
++    padding: 0 10px;
++  }
+ }
+\ No newline at end of file
+diff --no-prefix repository_before/src/setupTests.js repository_after/src/setupTests.js
+--- repository_before/src/setupTests.js
++++ repository_after/src/setupTests.js
+@@ -1,5 +1,2 @@
+-// jest-dom adds custom jest matchers for asserting on DOM nodes.
+-// allows you to do things like:
+-// expect(element).toHaveTextContent(/react/i)
+-// learn more: https://github.com/testing-library/jest-dom
++
+ import '@testing-library/jest-dom';
+\ No newline at end of file

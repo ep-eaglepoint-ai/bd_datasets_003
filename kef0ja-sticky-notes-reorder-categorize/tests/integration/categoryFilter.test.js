@@ -1,7 +1,7 @@
 const path = require("path");
 
 const repoPath = process.env.REPO_PATH || "repository_after";
-const describeAfter = repoPath === 'repository_after' ? describe : describe.skip;
+const describeAfter = describe;
 const describeBefore = repoPath === 'repository_before' ? describe : describe.skip;
 
 delete require.cache[require.resolve("react")];
