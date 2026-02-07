@@ -1,13 +1,10 @@
 # Docker Compose file for running tests. You should customize this as needed.
 
-version: '3.8'
-
 services:
   app:
     build:
       context: .
       dockerfile: Dockerfile
     volumes:
-      - .:/app
-    working_dir: /app/repository_after/backend
-    command: npm test
+      - .:/project
+    working_dir: /project/repository_after/backend

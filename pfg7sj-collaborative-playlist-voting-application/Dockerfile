@@ -2,12 +2,15 @@
 
 FROM node:20-slim
 
-WORKDIR /app
+WORKDIR /project/repository_after/backend
 
-COPY repository_after/backend/package*.json ./repository_after/backend/
+COPY repository_after/backend/package*.json ./
 
-RUN cd repository_after/backend && npm install
+# Install all dependencies including dev
+RUN npm install --include=dev
 
-COPY . .
+# Copy everything
+COPY . /project
 
-CMD ["bash", "-c", "cd repository_after/backend && npm test"]
+# Run Jest in root /tests folder
+CMD ["npx", "jest", "/project/tests/api.test.js", "--rootDir", "/project", "--moduleDirectories", "node_modules", "--moduleDirectories", "/project/repository_after/backend/node_modules"]
