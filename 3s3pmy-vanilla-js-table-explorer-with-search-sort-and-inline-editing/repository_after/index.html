@@ -278,6 +278,7 @@
             const searchInput = document.getElementById('search-input');
             const statusMessage = document.getElementById('status-message');
             const headers = document.querySelectorAll('th.sortable');
+            const rowElements = new Map();
 
             function getFilteredAndSortedData() {
                 let result = [...data];
@@ -422,6 +423,7 @@
                 const filteredData = getFilteredAndSortedData();
 
                 tableBody.innerHTML = '';
+                rowElements.clear();
 
                 if (filteredData.length === 0) {
                     const tr = document.createElement('tr');
@@ -438,6 +440,47 @@
                     const tr = document.createElement('tr');
                     const isEditing = state.editingRowId === row.id;
                     updateRow(tr, row, isEditing);
+                    tableBody.appendChild(tr);
+                    rowElements.set(row.id, tr);
+                });
+            }
+
+            function reconcileTable() {
+                const filteredData = getFilteredAndSortedData();
+                const newIds = new Set(filteredData.map(r => r.id));
+
+                // Remove the no-results row if present
+                const noResultsRow = tableBody.querySelector('.no-results');
+                if (noResultsRow) noResultsRow.closest('tr').remove();
+
+                // Remove rows no longer in filtered set
+                rowElements.forEach((tr, id) => {
+                    if (!newIds.has(id)) {
+                        tr.remove();
+                        rowElements.delete(id);
+                    }
+                });
+
+                if (filteredData.length === 0) {
+                    const tr = document.createElement('tr');
+                    const td = document.createElement('td');
+                    td.colSpan = 5;
+                    td.className = 'no-results';
+                    td.textContent = 'No records found';
+                    tr.appendChild(td);
+                    tableBody.appendChild(tr);
+                    return;
+                }
+
+                // Reorder existing and create new rows
+                filteredData.forEach(row => {
+                    let tr = rowElements.get(row.id);
+                    if (!tr) {
+                        tr = document.createElement('tr');
+                        updateRow(tr, row, false);
+                        rowElements.set(row.id, tr);
+                    }
+                    // appendChild moves existing nodes, effectively reordering
                     tableBody.appendChild(tr);
                 });
             }
@@ -466,7 +509,7 @@
                     handleCancel();
                 }
 
-                renderTable();
+                reconcileTable();
 
                 const count = getFilteredAndSortedData().length;
                 statusMessage.textContent = `Showing ${count} record${count !== 1 ? 's' : ''}`;
@@ -481,7 +524,7 @@
                 }
 
                 updateSortIndicators();
-                renderTable();
+                reconcileTable();
 
                 statusMessage.textContent = `Sorted by ${column} ${state.sortDirection === 'asc' ? 'ascending' : 'descending'}`;
             }
@@ -544,16 +587,29 @@
                 state.editingRowId = null;
                 state.editingValues = null;
 
-                renderTable();
+                updateRow(rowElement, data[dataIndex], false);
+
+                document.querySelectorAll('.btn-edit').forEach(btn => {
+                    btn.disabled = false;
+                });
 
                 statusMessage.textContent = `Changes saved successfully`;
             }
 
             function handleCancel() {
+                const editingId = state.editingRowId;
                 state.editingRowId = null;
                 state.editingValues = null;
 
-                renderTable();
+                const rowElement = tableBody.querySelector(`tr[data-id="${editingId}"]`);
+                if (rowElement) {
+                    const row = data.find(r => r.id === editingId);
+                    updateRow(rowElement, row, false);
+                }
+
+                document.querySelectorAll('.btn-edit').forEach(btn => {
+                    btn.disabled = false;
+                });
 
                 statusMessage.textContent = `Edit cancelled`;
             }
