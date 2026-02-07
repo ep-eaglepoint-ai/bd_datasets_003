@@ -263,18 +263,37 @@ function writeReportJson(reportPath, runId, runs) {
   const after = runs.after;
 
   // Specific validations for Deadline Reminder System Reliability
-  const hasZombieTest = after && after.tests.some(t => t.name.includes("Zombie Recovery") && t.outcome === "passed");
-  const hasIdempotencyTest = after && after.tests.some(t => t.name.includes("API Idempotency") && t.outcome === "passed");
-  const hasParallelTest = after && after.tests.some(t => t.name.includes("Batching (Parallel)") && t.outcome === "passed");
+  const hasZombieTest =
+    after &&
+    after.tests.some(
+      (t) => t.name.includes("Zombie Recovery") && t.outcome === "passed"
+    );
+  const hasIdempotencyTest =
+    after &&
+    after.tests.some(
+      (t) => t.name.includes("API Idempotency") && t.outcome === "passed"
+    );
+  const hasParallelTest =
+    after &&
+    after.tests.some(
+      (t) => t.name.includes("Batching (Parallel)") && t.outcome === "passed"
+    );
+  const hasCoverageTest =
+    after &&
+    after.tests.some(
+      (t) => t.name.includes("Test Coverage > 80%") && t.outcome === "passed"
+    );
 
   // These three are the critical "Reliability" refactor proofs
-  const reliabilityPassed = hasZombieTest && hasIdempotencyTest && hasParallelTest;
+  const reliabilityPassed =
+    hasZombieTest && hasIdempotencyTest && hasParallelTest && hasCoverageTest;
 
   const criteria = {
     integration_suite_passes: after && after.success ? "Pass" : "Fail",
     critical_feature_zombie_recovery: hasZombieTest ? "Pass" : "Fail",
     critical_feature_api_idempotency: hasIdempotencyTest ? "Pass" : "Fail",
-    performance_parallel_batching: hasParallelTest ? "Pass" : "Fail"
+    performance_parallel_batching: hasParallelTest ? "Pass" : "Fail",
+    quality_coverage_over_80: hasCoverageTest ? "Pass" : "Fail",
   };
 
   const report = {
@@ -329,7 +348,9 @@ function main() {
   }
 
   const runId = generateRunId();
-  process.stdout.write(`Starting Deadline Reminder System Evaluation [Run ID: ${runId}]\n`);
+  process.stdout.write(
+    `Starting Deadline Reminder System Evaluation [Run ID: ${runId}]\n`
+  );
 
   // Modified: No meta run, only 'after' run specific to this project
   const after = runRootScript("test:after", timeoutS);
