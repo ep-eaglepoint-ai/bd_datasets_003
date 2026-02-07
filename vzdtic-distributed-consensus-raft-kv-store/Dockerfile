@@ -1,24 +1,13 @@
-FROM golang:1.21-alpine
+FROM golang:1.22-alpine
 
 WORKDIR /app
 
-# Install protobuf compiler
-RUN apk add --no-cache protobuf protobuf-dev git make
+RUN apk add --no-cache git
 
-# Install Go protobuf plugins
-RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+COPY go.mod ./
+RUN go mod download || true
 
-# Copy go mod files first for better caching
-COPY go.mod go.sum ./
-RUN go mod download
-
-# Copy all files
 COPY . /app
+RUN go mod tidy
 
-# Set Go path
-ENV PATH="${PATH}:$(go env GOPATH)/bin"
-ENV GOPATH=/go
-
-# Default command runs evaluation
 CMD ["go", "run", "evaluation/evaluation.go"]
