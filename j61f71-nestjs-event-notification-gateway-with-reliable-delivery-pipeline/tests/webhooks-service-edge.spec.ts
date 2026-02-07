@@ -92,7 +92,6 @@ describe("Webhooks Service Edge Cases (Req 1, 9)", () => {
 
     // Should not throw (Correct args: tenantId, quarantineId)
     await expect(service.retryQuarantine("t1", "q_valid")).resolves.not.toThrow();
-    ).resolves.not.toThrow();
 
     expect(mockCircuitBreaker.reset).toHaveBeenCalledWith("ep_valid");
   });
