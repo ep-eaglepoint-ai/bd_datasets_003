@@ -1,11 +1,15 @@
 # T5YEAF - Data processing
 
-    ## Before Test Docker Command
-    <docker before command here>
+```bash
+docker compose run test-before
+```
 
-    ## After Test Docker Command
-    <docker after command here>
+```bash
+docker compose run test-after
+```
 
-    ## Evaluation Docker Command
-    <evaluation command here>
+```bash
+docker compose run evaluation
+```
+
     

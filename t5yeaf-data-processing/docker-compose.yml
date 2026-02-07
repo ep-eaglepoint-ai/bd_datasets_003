@@ -1,8 +1,32 @@
-# Docker Compose file for running tests. You should customize this as needed.
+version: "3.8"
 
 services:
-  app:
+  test-before:
+    image: dataprocessing-test
     build: .
-    command: pytest -q tests
     volumes:
       - .:/app
+      - maven-repo:/root/.m2
+    command: mvn test -B -Pbefore
+    working_dir: /app
+
+  test-after:
+    image: dataprocessing-test
+    build: .
+    volumes:
+      - .:/app
+      - maven-repo:/root/.m2
+    command: mvn test -B -Pafter
+    working_dir: /app
+
+  evaluation:
+    image: dataprocessing-test
+    build: .
+    volumes:
+      - .:/app
+      - maven-repo:/root/.m2
+    command: python3 evaluation/evaluation.py
+    working_dir: /app
+
+volumes:
+  maven-repo:
