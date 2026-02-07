@@ -1,0 +1,11 @@
+{
+            "instance_id": "A66VFY",
+            "problem_statement": "You are given a TypeScript function validateConfig that validates a nested configuration object. The configuration object has a server object with a port attribute, and a services array containing multiple service objects, each with a name and optionally a replicas attribute. Your task is to write a TypeScript test file testConfigValidator.ts that verifies the behavior of the validateConfig function. The test cases should ensure that the validation rules are correctly enforced for various valid and invalid configurations.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/a66vfy-nested-object-configuration-validator-test-case-generation",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
