@@ -64,15 +64,6 @@ def run_tests(repo_path: str) -> dict:
     summary["failed"] = failed_count
     summary["errors"] = error_count
     
-    # For repository_before, track skipped separately for improvement calculation
-    if "repository_before" in repo_path and skipped_match:
-        summary["passed"] = 0  # Original before tests are skipped, not passed
-        summary["skipped"] = int(skipped_match.group(1))  # Track skipped for display
-        # Still return exit code 0 for pass status
-        summary["exit_code"] = 0
-    elif skipped_match:
-        summary["tests_run"] = int(skipped_match.group(1))
-    
     return summary
 
 
@@ -110,11 +101,7 @@ def main():
     # Run tests on repository_before
     print("\n[1/2] Running tests on repository_before...")
     before_results = run_tests("repository_before")
-    # For before: show skipped as passed (always passed)
-    if before_results.get('skipped', 0) > 0:
-        print(f"  Results: {before_results['skipped']} passed, 0 failed, 0 errors")
-    else:
-        print(f"  Results: {before_results['passed']} passed, {before_results['failed']} failed, {before_results['errors']} errors")
+    print(f"  Results: {before_results['passed']} passed, {before_results['failed']} failed, {before_results['errors']} errors")
     
     # Run tests on repository_after
     print("\n[2/2] Running tests on repository_after...")

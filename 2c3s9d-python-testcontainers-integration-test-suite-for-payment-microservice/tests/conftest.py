@@ -37,7 +37,6 @@ from unittest.mock import AsyncMock, patch, MagicMock
 # Determine which repository to use based on PYTHONPATH or environment
 REPO_PATH = os.environ.get("PYTHONPATH", "/app/repository_after")
 REPO_NAME = os.path.basename(REPO_PATH)
-IS_REPO_BEFORE = REPO_NAME == "repository_before"
 
 # Docker registry mirror to avoid rate limiting (set via environment variable)
 # Common mirrors:
@@ -48,14 +47,7 @@ IS_REPO_BEFORE = REPO_NAME == "repository_before"
 DOCKER_REGISTRY_MIRROR = os.environ.get("DOCKER_REGISTRY_MIRROR", "mirror.gcr.io").strip()
 
 
-def pytest_collection_modifyitems(session, config, items):
-    """Modify test items to skip/xfail tests when testing repository_before."""
-    import pytest
-    
-    for item in items:
-        if IS_REPO_BEFORE:
-            # Skip all tests for repository_before to return exit code 0
-            item.add_marker(pytest.mark.skip(reason="repository_before"))
+
 
 
 # Add repository to path for imports
