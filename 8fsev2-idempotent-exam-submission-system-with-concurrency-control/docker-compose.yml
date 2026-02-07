@@ -1,0 +1,6 @@
+services:
+  test-runner:
+    build: .
+    volumes:
+      - .:/app
+    command: go test -v ./tests/...

@@ -1,0 +1,11 @@
+{
+            "instance_id": "8FSEV2",
+            "problem_statement": "Distributed grading systems face "Double-Count Bugs" when network retries cause naive servers to re-process submissions, inflating scores. The solution requires strict Idempotency checks nested within a Mutex-protected critical section to guarantee "Exactly-Once Processing," preventing race conditions where simultaneous requests bypass validation logic before the state is updated.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/8fsev2-idempotent-exam-submission-system-with-concurrency-control",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        

@@ -1,0 +1,27 @@
+
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+__debug_bin
+
+
+vendor/
+go.sum
+
+.vscode/
+
+# Docker
+.docker/
+docker-compose.override.yml
+
+# Project Specific
+evaluation/report/
+evaluation/*.json
+
+# OS
+.DS_Store
+
+63subp-real-time-auction-engine-with-soft-close-and-atomic-locking/
