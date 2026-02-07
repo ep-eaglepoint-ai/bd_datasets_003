@@ -1,11 +1,11 @@
 # PFG7SJ - Collaborative Playlist Voting Application
 
-    ## Before Test Docker Command
-    <docker before command here>
-
+```bash
     ## After Test Docker Command
-    <docker after command here>
+    docker compose run --rm app sh -c "cd /app/repository_after/backend && npm install && npx jest /app/tests/api.test.js --rootDir /app"
+
 
     ## Evaluation Docker Command
-    <evaluation command here>
+    docker compose run --rm app node /app/evaluation/runEvaluation.js
+
     
