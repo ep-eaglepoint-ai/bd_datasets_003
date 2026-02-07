@@ -1,0 +1,22 @@
+services:
+  test-before:
+    build: .
+    environment:
+      - TARGET_REPO=repository_before
+    command: /bin/bash -c "pytest tests/; exit 0"
+    volumes:
+      - .:/app
+
+  test-after:
+    build: .
+    environment:
+      - TARGET_REPO=repository_after
+    command: pytest tests/
+    volumes:
+      - .:/app
+
+  evaluation:
+    build: .
+    command: python evaluation/evaluation.py
+    volumes:
+      - ./evaluation:/app/evaluation

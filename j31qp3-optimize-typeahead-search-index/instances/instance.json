@@ -1,0 +1,11 @@
+{
+            "instance_id": "J31QP3",
+            "problem_statement": "The current typeahead (autocomplete) service uses a naive array filtering approach that scales linearly O(N) with the dataset size. As the dataset has grown to 500,000 weighted terms, latency has spiked to 200ms+, and the service creates excessive garbage during request spikes, triggering OOM kills on our 256MB containers. The goal is to refactor the storage engine to use a specialized data structure that supports sub-millisecond prefix lookups.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/j31qp3-optimize-typeahead-search-index",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
