@@ -1,0 +1,585 @@
+diff --no-prefix repository_before/autocomplete.js repository_after/autocomplete.js
+--- repository_before/autocomplete.js
++++ repository_after/autocomplete.js
+@@ -1,148 +1,470 @@
+-class ProductSearch {
+-    constructor(products = []) {
+-        this.products = products;
+-    }
+-
+-    addProduct(product) {
+-        this.products.push(product);
+-    }
+-
+-    addProducts(products) {
+-        this.products.push(...products);
+-    }
++/*
++Optimized autocomplete implementation.
++
++Legacy bottleneck analysis (requirement #1):
++- The legacy `searchProducts()` did a full O(n) scan of `products` on every keystroke.
++- For each product it lowercased the name and ran `startsWith` / `includes` checks.
++- That makes each keystroke roughly O(n * L) where L is average name length.
++- It also sorted all matches even though only the top `limit` results are returned.
++
++This implementation builds indexes once (requirement #7) and supports incremental updates (requirement #8).
++
++Complexity overview:
++- buildIndex: O(total characters across product names) + O(total unique trigrams).
++- prefix query: O(m) traversal + small top-K merge, where m = query length.
++- substring query: uses trigram postings to avoid full scan; verifies candidates with `includes`.
++
++Memory note (requirement #9):
++- Trie shares common prefixes naturally.
++- Nodes store product *indices* (references), not duplicated product objects.
++- Each product contributes ~O(nameLength) integer references across the trie.
++- Trigram index stores postings lists keyed by 3-character grams, also as indices.
++  This increases memory vs the raw product array, but keeps lookup latency low.
++*/
++
++/* eslint-disable no-console */
++
++let _perfNow = () => Date.now();
++try {
++  // eslint-disable-next-line global-require
++  const { performance } = require('perf_hooks');
++  if (performance && typeof performance.now === 'function') {
++    _perfNow = () => performance.now();
++  }
++} catch {
++}
+ 
+-    searchProducts(query, limit = 10) {
+-        if (!query || query.trim().length === 0) {
+-            return [];
+-        }
++function normalizeQuery(q) {
++  if (q == null) return '';
++  return String(q).toLowerCase().trim();
++}
+ 
+-        const searchTerm = query.toLowerCase().trim();
+-        const matches = [];
+-
+-        for (let i = 0; i < this.products.length; i++) {
+-            const product = this.products[i];
+-            const productName = product.name.toLowerCase();
+-
+-            if (productName.startsWith(searchTerm)) {
+-                matches.push({
+-                    id: product.id,
+-                    name: product.name,
+-                    score: product.score,
+-                    matchType: 'prefix',
+-                    relevance: 100 + product.score
+-                });
+-            } else if (productName.includes(searchTerm)) {
+-                matches.push({
+-                    id: product.id,
+-                    name: product.name,
+-                    score: product.score,
+-                    matchType: 'contains',
+-                    relevance: 50 + product.score
+-                });
+-            }
+-        }
++function computeTrigrams(str) {
++  if (!str || str.length < 3) return [];
++  const grams = [];
++  for (let i = 0; i <= str.length - 3; i++) {
++    grams.push(str.slice(i, i + 3));
++  }
++  return grams;
++}
+ 
+-        matches.sort((a, b) => b.relevance - a.relevance);
++class TrieNode {
++  constructor() {
++    this.children = new Map();
++    this.indices = [];
++    this.topIndices = [];
++  }
++}
+ 
+-        return matches.slice(0, limit).map(m => ({
+-            id: m.id,
+-            name: m.name,
+-            score: m.score,
+-            matchType: m.matchType
+-        }));
++class Trie {
++  constructor(maxTopPerNode = 50) {
++    this.root = new TrieNode();
++    this.maxTopPerNode = maxTopPerNode;
++  }
++
++  insert(word, productIndex, scoreByIndex, activeByIndex) {
++    let node = this.root;
++    for (let i = 0; i < word.length; i++) {
++      const ch = word[i];
++      let next = node.children.get(ch);
++      if (!next) {
++        next = new TrieNode();
++        node.children.set(ch, next);
++      }
++      node = next;
++
++      node.indices.push(productIndex);
++      this._maybeAddTop(node.topIndices, productIndex, scoreByIndex, activeByIndex);
+     }
+-
+-    getByCategory(category) {
+-        return this.products.filter(p => p.category === category);
++  }
++
++  findNode(prefix) {
++    let node = this.root;
++    for (let i = 0; i < prefix.length; i++) {
++      const ch = prefix[i];
++      node = node.children.get(ch);
++      if (!node) return null;
+     }
++    return node;
++  }
+ 
+-    countMatches(prefix) {
+-        if (!prefix) return 0;
++  _maybeAddTop(topIndices, productIndex, scoreByIndex, activeByIndex) {
++    if (activeByIndex && activeByIndex[productIndex] === false) return;
+ 
+-        const searchTerm = prefix.toLowerCase();
+-        let count = 0;
++    const score = scoreByIndex[productIndex] ?? 0;
+ 
+-        for (const product of this.products) {
+-            if (product.name.toLowerCase().includes(searchTerm)) {
+-                count++;
+-            }
+-        }
++    for (let i = 0; i < topIndices.length; i++) {
++      if (topIndices[i] === productIndex) return;
++    }
+ 
+-        return count;
++    if (topIndices.length === 0) {
++      topIndices.push(productIndex);
++      return;
+     }
++    if (topIndices.length >= this.maxTopPerNode) {
++      const lastIdx = topIndices[topIndices.length - 1];
++      const lastScore = scoreByIndex[lastIdx] ?? 0;
++      if (score <= lastScore) return;
++    }
++    let insertAt = topIndices.length;
++    for (let i = 0; i < topIndices.length; i++) {
++      const existingIdx = topIndices[i];
++      const existingScore = scoreByIndex[existingIdx] ?? 0;
++      if (score > existingScore) {
++        insertAt = i;
++        break;
++      }
++    }
++    topIndices.splice(insertAt, 0, productIndex);
++    if (topIndices.length > this.maxTopPerNode) topIndices.length = this.maxTopPerNode;
++  }
+ }
+ 
+-function generateTestProducts(count) {
+-    const adjectives = ['Wireless', 'Premium', 'Ultra', 'Pro', 'Classic', 'Modern', 'Smart', 'Portable', 'Heavy-Duty', 'Compact'];
+-    const nouns = ['Headphones', 'Speaker', 'Keyboard', 'Mouse', 'Monitor', 'Charger', 'Cable', 'Stand', 'Hub', 'Adapter'];
+-    const brands = ['TechCo', 'AudioMax', 'DigitalPro', 'SmartGear', 'ElectroHub', 'ByteWare', 'SoundWave', 'PixelPerfect'];
+-    const categories = ['electronics', 'audio', 'accessories', 'computing', 'mobile'];
++function pushTopK(results, candidate, limit) {
++  if (limit <= 0) return;
++  let inserted = false;
++  for (let i = 0; i < results.length; i++) {
++    if (candidate.relevance > results[i].relevance) {
++      results.splice(i, 0, candidate);
++      inserted = true;
++      break;
++    }
++  }
++  if (!inserted) results.push(candidate);
++  if (results.length > limit) results.length = limit;
++}
+ 
+-    const products = [];
++class ProductSearch {
++  constructor(products = []) {
++    this.products = Array.isArray(products) ? products : [];
++    this._trie = new Trie(50);
++    this._normalizedNames = [];
++    this._activeByIndex = [];
++    this._idToIndex = new Map();
++    this._gramToIndices = new Map();
++    this._scoreByIndex = [];
++    this._debounceMs = 100;
++    this._minQueryLength = 2; 
++    this._lastSearchAt = -Infinity;
++    this._lastResults = [];
++    this._pendingTimer = null;
++    this._pending = null;
++    this._computeCount = 0;
++    this._timeNow = () => _perfNow();
++
++    this.buildIndex();
++  }
++
++  buildIndex() {
++    this._trie = new Trie(50);
++    this._normalizedNames = new Array(this.products.length);
++    this._activeByIndex = new Array(this.products.length);
++    this._idToIndex = new Map();
++    this._gramToIndices = new Map();
++    this._scoreByIndex = new Array(this.products.length);
++
++    for (let i = 0; i < this.products.length; i++) {
++      const p = this.products[i];
++      this._activeByIndex[i] = true;
++      if (p && p.id != null) this._idToIndex.set(String(p.id), i);
++      const name = p && p.name != null ? String(p.name) : '';
++      const norm = name.toLowerCase();
++      this._normalizedNames[i] = norm;
++
++      const score = p && typeof p.score === 'number' ? p.score : 0;
++      this._scoreByIndex[i] = score;
++
++      this._trie.insert(norm, i, this._scoreByIndex, this._activeByIndex);
++
++      const grams = computeTrigrams(norm);
++      const unique = new Set(grams);
++      for (const gram of unique) {
++        let arr = this._gramToIndices.get(gram);
++        if (!arr) {
++          arr = [];
++          this._gramToIndices.set(gram, arr);
++        }
++        arr.push(i);
++      }
++    }
++  }
++
++  addProduct(product) {
++    const index = this.products.length;
++    this.products.push(product);
++    this._activeByIndex[index] = true;
++    if (product && product.id != null) this._idToIndex.set(String(product.id), index);
++
++    const name = product && product.name != null ? String(product.name) : '';
++    const norm = name.toLowerCase();
++    this._normalizedNames[index] = norm;
++
++    const score = product && typeof product.score === 'number' ? product.score : 0;
++    this._scoreByIndex[index] = score;
++
++    this._trie.insert(norm, index, this._scoreByIndex, this._activeByIndex);
++
++    const grams = computeTrigrams(norm);
++    const unique = new Set(grams);
++    for (const gram of unique) {
++      let arr = this._gramToIndices.get(gram);
++      if (!arr) {
++        arr = [];
++        this._gramToIndices.set(gram, arr);
++      }
++      arr.push(index);
++    }
++  }
++
++  addProducts(products) {
++    if (!Array.isArray(products)) return;
++    for (const p of products) this.addProduct(p);
++  }
++
++  removeProduct(productOrId) {
++    const id = (productOrId && typeof productOrId === 'object') ? productOrId.id : productOrId;
++    if (id == null) return false;
++    const key = String(id);
++    const idx = this._idToIndex.get(key);
++    if (idx == null) return false;
++    this._activeByIndex[idx] = false;
++    this._idToIndex.delete(key);
++    return true;
++  }
++
++  flushPending() {
++    if (!this._pending) return this._lastResults;
++    if (this._pendingTimer) {
++      clearTimeout(this._pendingTimer);
++      this._pendingTimer = null;
++    }
++    const { query, limit } = this._pending;
++    this._pending = null;
++    this._lastResults = this._computeSearch(query, limit);
++    this._lastSearchAt = this._timeNow();
++    return this._lastResults;
++  }
++
++  searchProducts(query, limit = 10) {
++    const normQuery = normalizeQuery(query);
++    if (!normQuery) return [];
++    if (normQuery.length < this._minQueryLength) return [];
++
++    const now = this._timeNow();
++    const elapsed = now - this._lastSearchAt;
++
++    if (elapsed < this._debounceMs) {
++      this._pending = { query: normQuery, limit };
++
++      if (!this._pendingTimer) {
++        const wait = Math.max(0, this._debounceMs - elapsed);
++        this._pendingTimer = setTimeout(() => {
++          this._pendingTimer = null;
++          if (!this._pending) return;
++          const { query: q, limit: lim } = this._pending;
++          this._pending = null;
++          this._lastResults = this._computeSearch(q, lim);
++          this._lastSearchAt = this._timeNow();
++        }, wait);
++      }
++
++      return this._lastResults;
++    }
++    if (this._pendingTimer) {
++      clearTimeout(this._pendingTimer);
++      this._pendingTimer = null;
++    }
++    this._pending = null;
++
++    this._lastResults = this._computeSearch(normQuery, limit);
++    this._lastSearchAt = now;
++    return this._lastResults;
++  }
++
++  _computeSearch(normQuery, limit) {
++    this._computeCount++;
++    const results = [];
++    const seen = new Set();
++    const node = this._trie.findNode(normQuery);
++    if (node) {
++      const candidates = node.topIndices.length ? node.topIndices : node.indices;
++      for (let i = 0; i < candidates.length; i++) {
++        const idx = candidates[i];
++        if (!this._activeByIndex[idx]) continue;
++        const nameNorm = this._normalizedNames[idx];
++        if (!nameNorm || !nameNorm.startsWith(normQuery)) continue;
++        const p = this.products[idx];
++        if (!p) continue;
++        const score = typeof p.score === 'number' ? p.score : 0;
++        seen.add(idx);
++        pushTopK(
++          results,
++          {
++            id: p.id,
++            name: p.name,
++            score,
++            matchType: 'prefix',
++            relevance: 1_000_000 + score,
++          },
++          limit,
++        );
++      }
++    }
++    if (results.length >= limit) {
++      return results.map(r => ({
++        id: r.id,
++        name: r.name,
++        score: r.score,
++        matchType: r.matchType,
++      }));
++    }
++    if (normQuery.length >= 3) {
++      const grams = computeTrigrams(normQuery);
++      let bestList = null;
++      let bestSize = Infinity;
++      for (let i = 0; i < grams.length; i++) {
++        const list = this._gramToIndices.get(grams[i]);
++        if (!list) {
++          bestList = null;
++          bestSize = 0;
++          break;
++        }
++        if (list.length < bestSize) {
++          bestSize = list.length;
++          bestList = list;
++        }
++      }
++
++      if (bestList && bestList.length) {
++        for (let i = 0; i < bestList.length; i++) {
++          const idx = bestList[i];
++          if (seen.has(idx)) continue;
++          if (!this._activeByIndex[idx]) continue;
++          const nameNorm = this._normalizedNames[idx];
++          if (!nameNorm || !nameNorm.includes(normQuery)) continue;
++          const p = this.products[idx];
++          if (!p) continue;
++          const score = typeof p.score === 'number' ? p.score : 0;
++          seen.add(idx);
++          pushTopK(
++            results,
++            {
++              id: p.id,
++              name: p.name,
++              score,
++              matchType: 'contains',
++              relevance: score,
++            },
++            limit,
++          );
++        }
++      }
++    }
+ 
+-    for (let i = 0; i < count; i++) {
+-        const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
+-        const noun = nouns[Math.floor(Math.random() * nouns.length)];
+-        const brand = brands[Math.floor(Math.random() * brands.length)];
++    return results.map(r => ({
++      id: r.id,
++      name: r.name,
++      score: r.score,
++      matchType: r.matchType,
++    }));
++  }
++
++  getByCategory(category) {
++    return this.products.filter((p, i) => this._activeByIndex[i] && p && p.category === category);
++  }
++
++  countMatches(prefix) {
++    const q = normalizeQuery(prefix);
++    if (!q) return 0;
++    if (q.length >= 3) {
++      const grams = computeTrigrams(q);
++      let bestList = null;
++      let bestSize = Infinity;
++      for (let i = 0; i < grams.length; i++) {
++        const list = this._gramToIndices.get(grams[i]);
++        if (!list) return 0;
++        if (list.length < bestSize) {
++          bestSize = list.length;
++          bestList = list;
++        }
++      }
++      let count = 0;
++      for (let i = 0; i < bestList.length; i++) {
++        const idx = bestList[i];
++        if (!this._activeByIndex[idx]) continue;
++        if (this._normalizedNames[idx].includes(q)) count++;
++      }
++      return count;
++    }
+ 
+-        products.push({
+-            id: `prod_${String(i).padStart(6, '0')}`,
+-            name: `${brand} ${adj} ${noun} ${i}`,
+-            category: categories[Math.floor(Math.random() * categories.length)],
+-            score: Math.floor(Math.random() * 100)
+-        });
++    let count = 0;
++    for (let i = 0; i < this.products.length; i++) {
++      if (!this._activeByIndex[i]) continue;
++      if ((this._normalizedNames[i] || '').includes(q)) count++;
+     }
++    return count;
++  }
++}
+ 
+-    return products;
++function generateTestProducts(count) {
++  const adjectives = ['Wireless', 'Premium', 'Ultra', 'Pro', 'Classic', 'Modern', 'Smart', 'Portable', 'Heavy-Duty', 'Compact'];
++  const nouns = ['Headphones', 'Speaker', 'Keyboard', 'Mouse', 'Monitor', 'Charger', 'Cable', 'Stand', 'Hub', 'Adapter'];
++  const brands = ['TechCo', 'AudioMax', 'DigitalPro', 'SmartGear', 'ElectroHub', 'ByteWare', 'SoundWave', 'PixelPerfect'];
++  const categories = ['electronics', 'audio', 'accessories', 'computing', 'mobile'];
++
++  const products = [];
++  for (let i = 0; i < count; i++) {
++    const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
++    const noun = nouns[Math.floor(Math.random() * nouns.length)];
++    const brand = brands[Math.floor(Math.random() * brands.length)];
++
++    products.push({
++      id: `prod_${String(i).padStart(6, '0')}`,
++      name: `${brand} ${adj} ${noun} ${i}`,
++      category: categories[Math.floor(Math.random() * categories.length)],
++      score: Math.floor(Math.random() * 100),
++    });
++  }
++  return products;
+ }
+ 
+ async function simulateTyping(search, word) {
+-    console.log(`\nSimulating typing "${word}" character by character:\n`);
+-
+-    let totalTime = 0;
+-
+-    for (let i = 1; i <= word.length; i++) {
+-        const partial = word.substring(0, i);
+-        const start = performance.now();
+-        const results = search.searchProducts(partial);
+-        const elapsed = performance.now() - start;
+-        totalTime += elapsed;
+-
+-        console.log(`  "${partial}" -> ${elapsed.toFixed(2)}ms (${results.length} results)`);
+-    }
+-
+-    console.log(`\n  Total time for ${word.length} keystrokes: ${totalTime.toFixed(2)}ms`);
+-    console.log(`  Average per keystroke: ${(totalTime / word.length).toFixed(2)}ms`);
++  console.log(`\nSimulating typing "${word}" character by character:\n`);
++  let totalTime = 0;
++  for (let i = 1; i <= word.length; i++) {
++    const partial = word.substring(0, i);
++    const start = _perfNow();
++    const results = search.searchProducts(partial);
++    const elapsed = _perfNow() - start;
++    totalTime += elapsed;
++    console.log(`  "${partial}" -> ${elapsed.toFixed(2)}ms (${results.length} results)`);
++  }
++  console.log(`\n  Total time for ${word.length} keystrokes: ${totalTime.toFixed(2)}ms`);
++  console.log(`  Average per keystroke: ${(totalTime / word.length).toFixed(2)}ms`);
+ }
+ 
+ if (typeof require !== 'undefined' && require.main === module) {
++  (async () => {
+     const productCount = 50000;
+     console.log(`Generating ${productCount.toLocaleString()} test products...`);
+-
+     const products = generateTestProducts(productCount);
+     const search = new ProductSearch(products);
++    console.log('Products generated and indexed.\n');
+ 
+-    console.log('Products generated.\n');
+     console.log('=' + '='.repeat(59));
+     console.log('Benchmarking search performance:\n');
+-
+     const queries = ['wire', 'wireless', 'TechCo Pro', 'a', 'xyz'];
+-
+     for (const query of queries) {
+-        const start = performance.now();
+-        const results = search.searchProducts(query);
+-        const elapsed = performance.now() - start;
+-
+-        console.log(`Query "${query}": ${elapsed.toFixed(2)}ms - Found ${results.length} results`);
++      const start = _perfNow();
++      const results = search.searchProducts(query);
++      const elapsed = _perfNow() - start;
++      console.log(`Query "${query}": ${elapsed.toFixed(2)}ms - Found ${results.length} results`);
+     }
+-
+-    simulateTyping(search, 'wireless');
+-
+-    console.log('\n' + '='.repeat(60));
+-    console.log('ISSUE: Each keystroke triggers a full O(n) scan of all products.');
+-    console.log('       For 50,000 products, typing a 8-letter word causes 8 scans.');
+-    console.log('       Response times exceed 50ms target, causing noticeable lag.');
+-    console.log('='.repeat(60));
++    await simulateTyping(search, 'wireless');
++  })().catch((err) => {
++    console.error(err);
++    process.exitCode = 1;
++  });
+ }
+ 
+ module.exports = { ProductSearch, generateTestProducts };
