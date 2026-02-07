@@ -49,7 +49,7 @@ export class WebhookDeliveryProcessor {
     const gate = await this.circuitBreaker.canAttempt(endpoint._id.toString());
     if (!gate.allowed) {
       const delay = Math.max(1, gate.retryAfterMs ?? 1);
-      await job.moveToDelayed(Date.now() + delay);
+      await (job as any).moveToDelayed(Date.now() + delay);
       return;
     }
 
@@ -70,7 +70,7 @@ export class WebhookDeliveryProcessor {
       requestBody,
       {
         "Content-Type": "application/json",
-        "X-Signature": signature,
+        "X-Webhook-Signature": signature,
       },
       30_000
     );

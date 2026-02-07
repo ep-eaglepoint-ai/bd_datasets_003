@@ -270,6 +270,11 @@ function writeReportJson(reportPath, runId, after) {
   const hasTimingSafe = after.tests.some(
     (t) => t.name.includes("timing-safe") && t.outcome === "passed"
   );
+  const hasSignatureHeader = after.tests.some(
+    (t) =>
+      t.name.includes("attaches X-Webhook-Signature header") &&
+      t.outcome === "passed"
+  );
   const hasRetryDelay = after.tests.some(
     (t) =>
       t.name.includes("computes exponential delays") && t.outcome === "passed"
@@ -277,9 +282,16 @@ function writeReportJson(reportPath, runId, after) {
   const hasJitterBounds = after.tests.some(
     (t) => t.name.includes("adds jitter") && t.outcome === "passed"
   );
-  const hasCircuitTransitions = after.tests.some(
+  const hasCircuitOpenHalfOpen = after.tests.some(
     (t) => t.name.includes("opens after 5 failures") && t.outcome === "passed"
   );
+  const hasCircuitHalfOpenFailureReopens = after.tests.some(
+    (t) =>
+      t.name.includes("re-opens when half-open probe fails") &&
+      t.outcome === "passed"
+  );
+  const hasCircuitTransitions =
+    hasCircuitOpenHalfOpen && hasCircuitHalfOpenFailureReopens;
   const hasQuarantineReplay = after.tests.some(
     (t) => t.name.includes("resets circuit breaker") && t.outcome === "passed"
   );
@@ -288,6 +300,7 @@ function writeReportJson(reportPath, runId, after) {
     integration_suite_passes: after && after.success ? "Pass" : "Fail",
     signature_hmac_computation: hasSigCompute ? "Pass" : "Fail",
     signature_timing_safe_verification: hasTimingSafe ? "Pass" : "Fail",
+    signature_header_attached: hasSignatureHeader ? "Pass" : "Fail",
     retry_exponential_backoff: hasRetryDelay ? "Pass" : "Fail",
     retry_jitter_bounds: hasJitterBounds ? "Pass" : "Fail",
     circuit_breaker_transitions: hasCircuitTransitions ? "Pass" : "Fail",
@@ -297,6 +310,7 @@ function writeReportJson(reportPath, runId, after) {
   const coveragePassed =
     hasSigCompute &&
     hasTimingSafe &&
+    hasSignatureHeader &&
     hasRetryDelay &&
     hasJitterBounds &&
     hasCircuitTransitions &&
