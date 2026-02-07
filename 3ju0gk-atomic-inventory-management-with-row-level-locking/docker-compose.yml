@@ -34,8 +34,7 @@ services:
     build: .
     
     command: >
-      sh -c "rm -rf node_modules/.vite && 
-             npm install --platform=linux --arch=x64 && 
+      sh -c "if [ ! -d 'node_modules' ]; then npm install; fi && 
              npm run dev -- --host 0.0.0.0"
     volumes:
       - .:/app
