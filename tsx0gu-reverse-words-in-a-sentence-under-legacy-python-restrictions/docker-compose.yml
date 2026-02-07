@@ -1,0 +1,12 @@
+services:
+  app:
+    build: .
+    command: pytest tests --repo after
+    volumes:
+      - .:/app
+  
+  evaluation:
+    build: .
+    command: python evaluation/evaluation.py
+    volumes:
+      - .:/app
