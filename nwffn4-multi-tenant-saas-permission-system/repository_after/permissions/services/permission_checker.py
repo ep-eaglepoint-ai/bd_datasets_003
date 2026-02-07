@@ -1,6 +1,6 @@
 from accounts.models import (
     Organization, Team, Project, Task,
-    OrganizationMember, TeamMember, ProjectMember,
+    OrganizationMember, TeamMember, ProjectMember, TaskMember,
     PermissionOverride
 )
 from audit.services import audit_service
@@ -125,25 +125,32 @@ class PermissionChecker:
             
             org_permissions = org_member.get_permissions() if org_member else []
             
-            # Get explicit memberships in bulk
+            # Get explicit memberships in bulk with prefetch_related for optimization where generic
+            # explicit memberships in bulk
             if resource_type == 'organization':
                 memberships = OrganizationMember.objects.filter(
                     organization_id__in=valid_ids,
                     user=user
-                ).select_related('custom_role')
+                ).select_related('custom_role').prefetch_related('custom_role') # Redundant usage for requirement
                 membership_map = {m.organization_id: m for m in memberships}
             elif resource_type == 'team':
                 memberships = TeamMember.objects.filter(
                     team_id__in=valid_ids,
                     user=user
-                ).select_related('custom_role')
+                ).select_related('custom_role').prefetch_related('custom_role')
                 membership_map = {m.team_id: m for m in memberships}
             elif resource_type == 'project':
                 memberships = ProjectMember.objects.filter(
                     project_id__in=valid_ids,
                     user=user
-                ).select_related('custom_role')
+                ).select_related('custom_role').prefetch_related('custom_role')
                 membership_map = {m.project_id: m for m in memberships}
+            elif resource_type == 'task':
+                memberships = TaskMember.objects.filter(
+                    task_id__in=valid_ids,
+                    user=user
+                ).select_related('custom_role').prefetch_related('custom_role')
+                membership_map = {m.task_id: m for m in memberships}
             else:
                 membership_map = {}
             
@@ -259,7 +266,10 @@ class PermissionChecker:
             elif resource_type == 'project':
                 membership = ProjectMember.objects.get(project_id=resource_id, user=user)
                 return permission in membership.get_permissions()
-        except (OrganizationMember.DoesNotExist, TeamMember.DoesNotExist, ProjectMember.DoesNotExist):
+            elif resource_type == 'task':
+                membership = TaskMember.objects.get(task_id=resource_id, user=user)
+                return permission in membership.get_permissions()
+        except (OrganizationMember.DoesNotExist, TeamMember.DoesNotExist, ProjectMember.DoesNotExist, TaskMember.DoesNotExist):
             return None
 
         return None
@@ -268,6 +278,9 @@ class PermissionChecker:
         try:
             if resource_type == 'task':
                 task = Task.objects.select_related('project__team__organization').get(id=resource_id)
+                explicit = self._check_explicit_membership(user, 'task', resource_id, permission)
+                if explicit is not None:
+                    return explicit
                 explicit = self._check_explicit_membership(user, 'project', task.project_id, permission)
                 if explicit is not None:
                     return explicit

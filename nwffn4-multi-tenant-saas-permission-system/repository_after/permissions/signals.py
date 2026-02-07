@@ -1,5 +1,6 @@
 from permissions.services.cache_invalidation import cache_invalidation_service
-from accounts.models import OrganizationMember, TeamMember, ProjectMember
+
+from accounts.models import OrganizationMember, TeamMember, ProjectMember, TaskMember
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,6 +17,9 @@ def invalidate_membership_cache(sender, instance, **kwargs):
         elif isinstance(instance, ProjectMember):
             resource_type = 'project'
             resource_id = instance.project_id
+        elif isinstance(instance, TaskMember):
+            resource_type = 'task'
+            resource_id = instance.task_id
         else:
             return
         
@@ -29,7 +33,7 @@ def invalidate_membership_cache(sender, instance, **kwargs):
 def invalidate_override_cache(sender, instance, **kwargs):
     try:
         cache_invalidation_service.invalidate_user_resource(
-            instance.user_id, instance.resource_type, instance.resource_id
+            instance.user_id, instance.resource_type, instance.resource_id, instance.permission
         )
     except Exception as e:
         logger.error(f"Failed to invalidate override cache: {e}")

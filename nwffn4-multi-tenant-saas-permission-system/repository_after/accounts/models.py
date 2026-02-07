@@ -202,3 +202,26 @@ class PermissionOverride(models.Model):
             models.Index(fields=['user', 'resource_type', 'resource_id']),
             models.Index(fields=['resource_type', 'resource_id']),
         ]
+
+
+class TaskMember(models.Model):
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name='members')
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    role = models.CharField(max_length=50, default='member')
+    custom_role = models.ForeignKey('CustomRole', on_delete=models.SET_NULL, null=True, blank=True, related_name='task_members')
+    joined_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ['task', 'user']
+        indexes = [
+            models.Index(fields=['user', 'task']),
+            models.Index(fields=['task', 'role']),
+        ]
+
+    def get_permissions(self):
+        # Import here to avoid circular dependency
+        # TODO: Consider moving PREDEFINED_ROLES to a constants module
+        from permissions.services.permission_checker import PREDEFINED_ROLES
+        if self.custom_role:
+            return self.custom_role.permissions
+        return PREDEFINED_ROLES.get(self.role, [])

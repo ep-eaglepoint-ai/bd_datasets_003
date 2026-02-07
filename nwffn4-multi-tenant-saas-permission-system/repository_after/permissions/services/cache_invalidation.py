@@ -10,7 +10,19 @@ class CacheInvalidationService:
     def __init__(self, cache=None):
         self.cache = cache or caches['default']
 
-    def invalidate_user_resource(self, user_id, resource_type, resource_id):
+    def invalidate_user_resource(self, user_id, resource_type, resource_id, permission=None):
+        if permission:
+            key = f"perm:{user_id}:{resource_type}:{resource_id}:{permission}"
+            try:
+                self.cache.delete(key)
+                # For specific permission updates, we also need to consider if this
+                # affects descendants (e.g. revoking 'read' on a project should revoke 'read' on tasks)
+                # For simplicity/safety, we still run descendant invalidation which is broad
+                self._invalidate_descendants(user_id, resource_type, resource_id)
+            except Exception as e:
+                logger.error(f"Cache invalidation failed: {e}")
+            return
+
         permissions = ['create', 'read', 'update', 'delete', 'manage_members', 'manage_roles']
         keys = [
             f"perm:{user_id}:{resource_type}:{resource_id}:{perm}"
@@ -33,6 +45,9 @@ class CacheInvalidationService:
         )
         user_ids.update(
             ProjectMember.objects.filter(custom_role=custom_role).values_list('user_id', flat=True)
+        )
+        user_ids.update(
+            TaskMember.objects.filter(custom_role=custom_role).values_list('user_id', flat=True)
         )
         
         for user_id in user_ids:
