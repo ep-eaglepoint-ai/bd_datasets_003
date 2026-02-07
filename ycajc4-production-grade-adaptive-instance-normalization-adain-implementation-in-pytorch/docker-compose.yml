@@ -1,0 +1,18 @@
+
+services:
+  test:
+    build: .
+    command: python -m pytest tests/ -v
+    volumes:
+      - .:/app
+    environment:
+      - PYTHONPATH=/app
+
+  evaluate:
+    build: .
+    command: python evaluation/evaluation.py
+    volumes:
+      - .:/app
+      - ./evaluation:/app/evaluation
+    environment:
+      - PYTHONPATH=/app
