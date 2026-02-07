@@ -1,0 +1,195 @@
+{
+    "movies": [
+        {
+            "id": "mov_001",
+            "title": "The Matrix",
+            "year": 1999,
+            "director": "Wachowski Sisters",
+            "genre": [
+                "sci-fi",
+                "action"
+            ],
+            "rating": 8.7,
+            "duration": 136,
+            "cast": [
+                "Keanu Reeves",
+                "Laurence Fishburne",
+                "Carrie-Anne Moss"
+            ],
+            "available": true
+        },
+        {
+            "id": "mov_002",
+            "title": "Inception",
+            "year": 2010,
+            "director": "Christopher Nolan",
+            "genre": [
+                "sci-fi",
+                "thriller"
+            ],
+            "rating": 8.8,
+            "duration": 148,
+            "cast": [
+                "Leonardo DiCaprio",
+                "Joseph Gordon-Levitt",
+                "Ellen Page"
+            ],
+            "available": true
+        },
+        {
+            "id": "mov_003",
+            "title": "The Shawshank Redemption",
+            "year": 1994,
+            "director": "Frank Darabont",
+            "genre": [
+                "drama"
+            ],
+            "rating": 9.3,
+            "duration": 142,
+            "cast": [
+                "Tim Robbins",
+                "Morgan Freeman"
+            ],
+            "available": false
+        },
+        {
+            "id": "mov_004",
+            "title": "Pulp Fiction",
+            "year": 1994,
+            "director": "Quentin Tarantino",
+            "genre": [
+                "crime",
+                "drama"
+            ],
+            "rating": 8.9,
+            "duration": 154,
+            "cast": [
+                "John Travolta",
+                "Uma Thurman",
+                "Samuel L. Jackson"
+            ],
+            "available": true
+        },
+        {
+            "id": "mov_005",
+            "title": "The Dark Knight",
+            "year": 2008,
+            "director": "Christopher Nolan",
+            "genre": [
+                "action",
+                "crime",
+                "drama"
+            ],
+            "rating": 9.0,
+            "duration": 152,
+            "cast": [
+                "Christian Bale",
+                "Heath Ledger",
+                "Aaron Eckhart"
+            ],
+            "available": true
+        },
+        {
+            "id": "mov_006",
+            "title": "Forrest Gump",
+            "year": 1994,
+            "director": "Robert Zemeckis",
+            "genre": [
+                "drama",
+                "romance"
+            ],
+            "rating": 8.8,
+            "duration": 142,
+            "cast": [
+                "Tom Hanks",
+                "Robin Wright",
+                "Gary Sinise"
+            ],
+            "available": true
+        },
+        {
+            "id": "mov_007",
+            "title": "Fight Club",
+            "year": 1999,
+            "director": "David Fincher",
+            "genre": [
+                "drama"
+            ],
+            "rating": 8.8,
+            "duration": 139,
+            "cast": [
+                "Brad Pitt",
+                "Edward Norton",
+                "Helena Bonham Carter"
+            ],
+            "available": false
+        },
+        {
+            "id": "mov_008",
+            "title": "Interstellar",
+            "year": 2014,
+            "director": "Christopher Nolan",
+            "genre": [
+                "sci-fi",
+                "adventure",
+                "drama"
+            ],
+            "rating": 8.6,
+            "duration": 169,
+            "cast": [
+                "Matthew McConaughey",
+                "Anne Hathaway",
+                "Jessica Chastain"
+            ],
+            "available": true
+        }
+    ],
+    "rentals": [
+        {
+            "id": "rent_001",
+            "movieId": "mov_003",
+            "customerId": "cust_001",
+            "rentedAt": "2024-01-15T10:30:00Z",
+            "dueDate": "2024-01-22T10:30:00Z",
+            "returnedAt": null
+        },
+        {
+            "id": "rent_002",
+            "movieId": "mov_007",
+            "customerId": "cust_002",
+            "rentedAt": "2024-01-18T14:00:00Z",
+            "dueDate": "2024-01-25T14:00:00Z",
+            "returnedAt": null
+        }
+    ],
+    "customers": [
+        {
+            "id": "cust_001",
+            "name": "Alice Johnson",
+            "email": "alice@example.com",
+            "memberSince": "2023-06-01",
+            "rentalHistory": [
+                "mov_001",
+                "mov_002",
+                "mov_003"
+            ]
+        },
+        {
+            "id": "cust_002",
+            "name": "Bob Smith",
+            "email": "bob@example.com",
+            "memberSince": "2023-09-15",
+            "rentalHistory": [
+                "mov_004",
+                "mov_007"
+            ]
+        },
+        {
+            "id": "cust_003",
+            "name": "Carol White",
+            "email": "carol@example.com",
+            "memberSince": "2024-01-01",
+            "rentalHistory": []
+        }
+    ]
+}

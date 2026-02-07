@@ -1,0 +1,12 @@
+{
+            "instance_id": "8BCB3U",
+            "problem_statement": "The backend team completed a movie rental API for a streaming service's DVD-by-mail feature. The API manages a catalog of movies, customer accounts, and rental transactions using an in-memory JSON data store. Before releasing to production, the QA lead requested a comprehensive test suite to validate all endpoints and business logic, particularly the rental workflow where movies become unavailable when rented. The system needs tests that verify correct filtering and sorting of movie listings, proper validation when creating rentals, and accurate detection of overdue returns. Early manual testing found that renting an unavailable movie returns a generic 500 error instead of a proper 409 conflict response, the overdue filter does not correctly compare dates across timezones, and the recommendations endpoint sometimes includes the source movie in its results.
+",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/8bcb3u-movie-rental-test",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
