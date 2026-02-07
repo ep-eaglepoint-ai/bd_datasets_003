@@ -2,7 +2,7 @@ export const WEBHOOK_DELIVERY_QUEUE = "webhook-delivery";
 
 export const WEBHOOK_DELIVERY_JOB = "deliver-webhook";
 
-export const WEBHOOK_MAX_ATTEMPTS = 6;
+export const WEBHOOK_MAX_ATTEMPTS = 7;
 export const WEBHOOK_BASE_DELAY_MS = 60_000;
 export const WEBHOOK_JITTER_RATIO = 0.3;
 

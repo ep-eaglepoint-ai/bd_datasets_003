@@ -7,8 +7,11 @@ COPY repository_after/package.json repository_after/package-lock.json ./
 RUN npm ci
 
 # App source
-COPY repository_after/nest-cli.json repository_after/tsconfig.json repository_after/jest.config.js ./
+COPY repository_after/nest-cli.json repository_after/tsconfig.json ./
 COPY repository_after/src ./src
+
+# Root config
+COPY jest.config.js /app/jest.config.js
 
 # Root-level tests folder (required by evaluator)
 COPY tests /app/tests

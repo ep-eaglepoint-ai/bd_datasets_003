@@ -9,30 +9,23 @@ index 4fb99cb..0000000
 -.env
 -coverage/
 -*.log
-diff --git a/repository_before/jest.config.js b/repository_after/jest.config.js
-index 914ceeb..ff3a042 100644
+diff --git a/repository_before/jest.config.js b/repository_before/jest.config.js
+deleted file mode 100644
+index 914ceeb..0000000
 --- a/repository_before/jest.config.js
-+++ b/repository_after/jest.config.js
-@@ -1,11 +1,12 @@
- module.exports = {
++++ /dev/null
+@@ -1,11 +0,0 @@
+-module.exports = {
 -  moduleFileExtensions: ['js', 'json', 'ts'],
 -  rootDir: 'src',
 -  testRegex: '.*\\.spec\\.ts$',
-+  moduleFileExtensions: ["js", "json", "ts"],
-+  rootDir: ".",
-+  roots: ["<rootDir>/src", "<rootDir>/../tests"],
-+  testRegex: ".*\\.spec\\.ts$",
-   transform: {
+-  transform: {
 -    '^.+\\.(t|j)s$': 'ts-jest',
-+    "^.+\\.(t|j)s$": "ts-jest",
-   },
+-  },
 -  collectCoverageFrom: ['**/*.(t|j)s'],
 -  coverageDirectory: '../coverage',
 -  testEnvironment: 'node',
-+  collectCoverageFrom: ["src/**/*.(t|j)s"],
-+  coverageDirectory: "../coverage",
-+  testEnvironment: "node",
- };
+-};
 diff --git a/repository_after/package-lock.json b/repository_after/package-lock.json
 new file mode 100644
 index 0000000..f715435
@@ -8531,7 +8524,7 @@ index 0000000..f715435
 +  }
 +}
 diff --git a/repository_before/package.json b/repository_after/package.json
-index 5c786bf..72f35df 100644
+index 5c786bf..cc8485a 100644
 --- a/repository_before/package.json
 +++ b/repository_after/package.json
 @@ -5,32 +5,34 @@
@@ -8539,8 +8532,8 @@ index 5c786bf..72f35df 100644
      "start:dev": "nest start --watch",
      "build": "nest build",
 -    "test": "jest"
-+    "test": "jest",
-+    "test:after": "jest"
++    "test": "jest --config ../jest.config.js",
++    "test:after": "jest --config ../jest.config.js"
    },
    "dependencies": {
 +    "@nestjs/bull": "^10.0.0",
@@ -8625,6 +8618,19 @@ index b60aff7..5f0354e 100644
    ],
  })
  export class AppModule {}
+diff --git a/repository_before/src/events/events.module.ts b/repository_after/src/events/events.module.ts
+index 4805f9b..e15b53e 100644
+--- a/repository_before/src/events/events.module.ts
++++ b/repository_after/src/events/events.module.ts
+@@ -5,7 +5,7 @@ import { EventsController } from './events.controller';
+ import { TenantModule } from '../tenant/tenant.module';
+ 
+ @Module({
+-  imports: [EventEmitterModule.forRoot(), TenantModule],
++  imports: [EventEmitterModule, TenantModule],
+   controllers: [EventsController],
+   providers: [EventsService],
+   exports: [EventsService],
 diff --git a/repository_after/src/webhooks/circuit-breaker.service.ts b/repository_after/src/webhooks/circuit-breaker.service.ts
 new file mode 100644
 index 0000000..e108450
@@ -8719,7 +8725,7 @@ index 0000000..e108450
 +}
 diff --git a/repository_after/src/webhooks/constants.ts b/repository_after/src/webhooks/constants.ts
 new file mode 100644
-index 0000000..6853ce9
+index 0000000..9e9a065
 --- /dev/null
 +++ b/repository_after/src/webhooks/constants.ts
 @@ -0,0 +1,12 @@
@@ -8727,7 +8733,7 @@ index 0000000..6853ce9
 +
 +export const WEBHOOK_DELIVERY_JOB = "deliver-webhook";
 +
-+export const WEBHOOK_MAX_ATTEMPTS = 6;
++export const WEBHOOK_MAX_ATTEMPTS = 7;
 +export const WEBHOOK_BASE_DELAY_MS = 60_000;
 +export const WEBHOOK_JITTER_RATIO = 0.3;
 +
@@ -8981,10 +8987,10 @@ index 0000000..c1f4b77
 +}
 diff --git a/repository_after/src/webhooks/webhook-delivery.processor.ts b/repository_after/src/webhooks/webhook-delivery.processor.ts
 new file mode 100644
-index 0000000..271c779
+index 0000000..edec8cb
 --- /dev/null
 +++ b/repository_after/src/webhooks/webhook-delivery.processor.ts
-@@ -0,0 +1,136 @@
+@@ -0,0 +1,134 @@
 +import { Process, Processor, OnQueueFailed } from "@nestjs/bull";
 +import { Job } from "bull";
 +import { InjectModel } from "@nestjs/mongoose";
@@ -9035,9 +9041,7 @@ index 0000000..271c779
 +
 +    const gate = await this.circuitBreaker.canAttempt(endpoint._id.toString());
 +    if (!gate.allowed) {
-+      const delay = Math.max(1, gate.retryAfterMs ?? 1);
-+      await (job as any).moveToDelayed(Date.now() + delay);
-+      return;
++      throw new Error(`Circuit open (retryAfter=${gate.retryAfterMs}ms)`);
 +    }
 +
 +    const requestBody = JSON.stringify({
@@ -9514,3 +9518,17 @@ index 0000000..e003dec
 +    return { success: true };
 +  }
 +}
+diff --git a/repository_before/tsconfig.json b/repository_after/tsconfig.json
+index a1c778d..eb576a9 100644
+--- a/repository_before/tsconfig.json
++++ b/repository_after/tsconfig.json
+@@ -10,6 +10,9 @@
+     "sourceMap": true,
+     "outDir": "./dist",
+     "baseUrl": "./",
++    "paths": {
++      "*": ["node_modules/*", "src/*"]
++    },
+     "incremental": true,
+     "skipLibCheck": true,
+     "strictNullChecks": true,

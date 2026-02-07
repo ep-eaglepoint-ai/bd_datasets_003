@@ -48,9 +48,7 @@ export class WebhookDeliveryProcessor {
 
     const gate = await this.circuitBreaker.canAttempt(endpoint._id.toString());
     if (!gate.allowed) {
-      const delay = Math.max(1, gate.retryAfterMs ?? 1);
-      await (job as any).moveToDelayed(Date.now() + delay);
-      return;
+      throw new Error(`Circuit open (retryAfter=${gate.retryAfterMs}ms)`);
     }
 
     const requestBody = JSON.stringify({

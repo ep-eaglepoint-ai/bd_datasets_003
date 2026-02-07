@@ -290,10 +290,33 @@ function writeReportJson(reportPath, runId, after) {
       t.name.includes("re-opens when half-open probe fails") &&
       t.outcome === "passed"
   );
+  const hasCircuitHalfOpenSuccessCloses = after.tests.some(
+    (t) =>
+      t.name.includes("transitions from half-open to closed") &&
+      t.outcome === "passed"
+  );
   const hasCircuitTransitions =
-    hasCircuitOpenHalfOpen && hasCircuitHalfOpenFailureReopens;
+    hasCircuitOpenHalfOpen &&
+    hasCircuitHalfOpenFailureReopens &&
+    hasCircuitHalfOpenSuccessCloses;
   const hasQuarantineReplay = after.tests.some(
     (t) => t.name.includes("resets circuit breaker") && t.outcome === "passed"
+  );
+  const hasQuarantineCreation = after.tests.some(
+    (t) => t.name.includes("creates quarantine entry") && t.outcome === "passed"
+  );
+  const hasDeliveryLogFields = after.tests.some(
+    (t) => t.name.includes("logs all required fields") && t.outcome === "passed"
+  );
+
+  // Check for the presence of edge case tests
+  const hasEdgeCases = after.tests.some(
+    (t) =>
+      (t.name.toLowerCase().includes("edge") ||
+        t.name.includes("handles event with 0 subscribers") ||
+        t.name.includes("propagates 404") ||
+        t.name.includes("handles unicode correctly")) &&
+      t.outcome === "passed"
   );
 
   const criteria = {
@@ -304,7 +327,10 @@ function writeReportJson(reportPath, runId, after) {
     retry_exponential_backoff: hasRetryDelay ? "Pass" : "Fail",
     retry_jitter_bounds: hasJitterBounds ? "Pass" : "Fail",
     circuit_breaker_transitions: hasCircuitTransitions ? "Pass" : "Fail",
+    quarantine_creation: hasQuarantineCreation ? "Pass" : "Fail",
     quarantine_replay: hasQuarantineReplay ? "Pass" : "Fail",
+    delivery_log_fields: hasDeliveryLogFields ? "Pass" : "Fail",
+    robustness_edge_cases: hasEdgeCases ? "Pass" : "Fail",
   };
 
   const coveragePassed =
@@ -314,7 +340,10 @@ function writeReportJson(reportPath, runId, after) {
     hasRetryDelay &&
     hasJitterBounds &&
     hasCircuitTransitions &&
-    hasQuarantineReplay;
+    hasQuarantineCreation &&
+    hasQuarantineReplay &&
+    hasDeliveryLogFields &&
+    hasEdgeCases;
 
   const report = {
     run_id: runId,

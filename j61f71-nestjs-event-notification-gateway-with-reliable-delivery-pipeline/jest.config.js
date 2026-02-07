@@ -7,7 +7,9 @@ module.exports = {
   testRegex: ".*\\.spec\\.ts$",
   transform: {
     "^.+\\.(t|j)s$": [
-      "ts-jest",
+      require.resolve("ts-jest", {
+        paths: [path.join(__dirname, "repository_after")],
+      }),
       {
         tsconfig: "<rootDir>/repository_after/tsconfig.json",
       },
@@ -16,6 +18,10 @@ module.exports = {
   moduleNameMapper: {
     "^../repository_after/src/(.*)$": "<rootDir>/repository_after/src/$1",
   },
+  moduleDirectories: [
+    "node_modules",
+    "<rootDir>/repository_after/node_modules",
+  ],
   collectCoverageFrom: ["<rootDir>/repository_after/src/**/*.(t|j)s"],
   coverageDirectory: "<rootDir>/coverage",
   testEnvironment: "node",

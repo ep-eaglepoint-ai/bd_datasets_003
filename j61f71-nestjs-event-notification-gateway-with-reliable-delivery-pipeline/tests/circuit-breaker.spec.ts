@@ -91,4 +91,27 @@ describe("CircuitBreakerService", () => {
     const blocked = await svc.canAttempt(endpointId, t0 + 61_000 + 10_000);
     expect(blocked.allowed).toBe(false);
   });
+
+  it("transitions from half-open to closed on success", async () => {
+    const redis = new FakeRedis() as any;
+    const svc = new CircuitBreakerService(redis);
+    const endpointId = "ep_3";
+    const t0 = 3_000_000;
+
+    // Fail 5 times -> Open
+    for (let i = 0; i < 5; i++) {
+      await svc.recordFailure(endpointId, t0);
+    }
+
+    // Wait cooldown -> Half-Open
+    const probe = await svc.canAttempt(endpointId, t0 + 61_000);
+    expect(probe.state).toBe("half-open");
+
+    // Success -> Closed
+    await svc.recordSuccess(endpointId);
+
+    const snap = await svc.getSnapshot(endpointId);
+    expect(snap.state).toBe("closed");
+    expect(snap.failures).toBe(0);
+  });
 });
