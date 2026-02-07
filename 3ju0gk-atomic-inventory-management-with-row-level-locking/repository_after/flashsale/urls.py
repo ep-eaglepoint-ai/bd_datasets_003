@@ -1,7 +1,6 @@
-from django.contrib import admin
-from django.urls import path, include
+from django.urls import path
+from inventory.views import PurchaseAPIView # Ensure this import is correct
 
 urlpatterns = [
-    path("admin/", admin.site.urls),
-    path("api/", include("inventory.urls")),
+    path('api/purchase/', PurchaseAPIView.as_view()),
 ]

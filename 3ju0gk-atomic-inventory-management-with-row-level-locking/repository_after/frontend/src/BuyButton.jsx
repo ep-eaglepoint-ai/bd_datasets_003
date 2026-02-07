@@ -7,6 +7,12 @@ export default function BuyButton({ userId, productId, price, productName }) {
   const [error, setError] = useState(null)
 
   const handleBuy = async () => {
+    // Basic validation to prevent sending "undefined" to the backend
+    if (!userId || !productId) {
+      setError("Missing User ID or Product ID");
+      return;
+    }
+    
     if (loading) return
 
     setLoading(true)
@@ -14,17 +20,19 @@ export default function BuyButton({ userId, productId, price, productName }) {
     setResult(null)
 
     try {
+      // Axios automatically handles JSON.stringify, 
+      // but ensure the path matches your urls.py
       const resp = await axios.post('/api/purchase/', {
         user_id: userId,
         product_id: productId,
-      }, {
-        headers: { 'Content-Type': 'application/json' }
-      })
+      });
 
       setResult(resp.data)
     } catch (err) {
-      const msg = err.response?.data?.error || 'Purchase failed'
-      setError(msg)
+      // Improved error logging to see exactly what Django says
+      console.error("Backend Error:", err.response?.data);
+      const msg = err.response?.data?.error || 'Purchase failed';
+      setError(msg);
     } finally {
       setLoading(false)
     }

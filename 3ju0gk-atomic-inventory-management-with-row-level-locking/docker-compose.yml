@@ -1,4 +1,4 @@
-version: '3.9'
+
 
 services:
   db:
@@ -32,14 +32,17 @@ services:
 
   frontend:
     build: .
-    # We are already in the correct folder because of working_dir
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    # Use npm install only if you don't have node_modules synced; 
+    # otherwise, just run dev.
+    command: npm run dev -- --host 0.0.0.0
     volumes:
       - .:/app
-    # This points Docker to the folder containing package.json and index.html
+    # Ensure this matches where your package.json actually lives
     working_dir: /app/repository_after/frontend
     ports:
       - "5173:5173"
+    environment:
+      - CHOKIDAR_USEPOLLING=true # Helps Vite watch for changes on Mac
     depends_on:
       - app
 

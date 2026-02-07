@@ -1,12 +1,14 @@
 from decimal import Decimal
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status
 from django.db import transaction
-from django.db.models import F, Q
+from django.db.models import F
 from .models import Product, Wallet
 
-
+@method_decorator(csrf_exempt, name='dispatch')
 class PurchaseAPIView(APIView):
 
     def post(self, request):
@@ -21,7 +23,7 @@ class PurchaseAPIView(APIView):
 
         try:
             with transaction.atomic():
-             
+                # Lock the product row to prevent race conditions
                 product = Product.objects.select_for_update().get(
                     id=product_id,
                     active=True
@@ -33,7 +35,7 @@ class PurchaseAPIView(APIView):
                         status=status.HTTP_409_CONFLICT
                     )
 
-               
+                # Lock or create the wallet row
                 wallet, created = Wallet.objects.select_for_update().get_or_create(
                     user_id=user_id,
                     defaults={"balance": Decimal("0.00")}
@@ -45,7 +47,7 @@ class PurchaseAPIView(APIView):
                         status=status.HTTP_402_PAYMENT_REQUIRED
                     )
 
-             
+                # Atomically decrement balance and stock
                 Wallet.objects.filter(id=wallet.id).update(
                     balance=F("balance") - product.price
                 )
@@ -53,7 +55,7 @@ class PurchaseAPIView(APIView):
                     stock=F("stock") - 1
                 )
 
-               
+                # Refresh objects to get the new values from the DB
                 wallet.refresh_from_db()
                 product.refresh_from_db()
 
