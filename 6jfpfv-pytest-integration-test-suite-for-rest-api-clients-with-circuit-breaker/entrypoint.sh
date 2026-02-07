@@ -5,7 +5,7 @@ cmd="${1:-evaluate}"
 
 case "$cmd" in
   run-tests)
-    exec python -m pytest -q repository_after
+    exec python -m pytest -q --cov=repository_after --cov-branch --cov-fail-under=85 repository_after
     ;;
   run-metatests)
     exec python -m pytest -q tests

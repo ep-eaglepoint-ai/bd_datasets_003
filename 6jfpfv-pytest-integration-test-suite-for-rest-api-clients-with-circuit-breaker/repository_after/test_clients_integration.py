@@ -97,11 +97,10 @@ def _iso_now() -> str:
     return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
 
 
-@pytest.mark.asyncio
-async def test_user_get_user_success_contract_validated_and_auth_header(user_client: UserServiceClient, base_url: str, api_key: str):
-    user_id = "u_123"
-    payload = {
-        "id": user_id,
+@pytest.fixture
+def user_payload_valid() -> dict:
+    return {
+        "id": "u_123",
         "email": "a@example.com",
         "name": "Alice",
         "status": "active",
@@ -109,6 +108,98 @@ async def test_user_get_user_success_contract_validated_and_auth_header(user_cli
         "updated_at": None,
         "metadata": {"k": "v"},
     }
+
+
+@pytest.fixture
+def user_payload_missing_required_field() -> dict:
+    return {
+        "id": "u_bad",
+        # missing email
+        "name": "Alice",
+        "status": "active",
+        "created_at": _iso_now(),
+        "metadata": {},
+    }
+
+
+@pytest.fixture
+def user_payload_wrong_type() -> dict:
+    return {
+        "id": "u_wrong_type",
+        "email": "a@example.com",
+        "name": "Alice",
+        "status": "active",
+        "created_at": "not-a-datetime",
+        "updated_at": None,
+        "metadata": {},
+    }
+
+
+@pytest.fixture
+def payment_payload_valid() -> dict:
+    return {
+        "id": "p_1",
+        "amount": 12.5,
+        "currency": "USD",
+        "status": "pending",
+        "customer_id": "c_1",
+        "description": None,
+        "created_at": _iso_now(),
+        "completed_at": None,
+    }
+
+
+@pytest.fixture
+def payment_payload_missing_required_field(payment_payload_valid: dict) -> dict:
+    d = dict(payment_payload_valid)
+    d.pop("amount", None)
+    return d
+
+
+@pytest.fixture
+def payment_payload_wrong_type(payment_payload_valid: dict) -> dict:
+    d = dict(payment_payload_valid)
+    # Pydantic may coerce string numerics; use a dict to force a hard type error.
+    d["amount"] = {"bad": "type"}  # should be float
+    return d
+
+
+@pytest.fixture
+def notification_payload_valid() -> dict:
+    return {
+        "id": "n_1",
+        "channel": "email",
+        "recipient": "a@example.com",
+        "subject": "hi",
+        "body": "hello",
+        "status": "sent",
+        "sent_at": _iso_now(),
+        "delivered_at": None,
+        "error": None,
+    }
+
+
+@pytest.fixture
+def notification_payload_missing_required_field(notification_payload_valid: dict) -> dict:
+    d = dict(notification_payload_valid)
+    d.pop("channel", None)
+    return d
+
+
+@pytest.fixture
+def notification_payload_wrong_type(notification_payload_valid: dict) -> dict:
+    d = dict(notification_payload_valid)
+    # Use a dict rather than an int to avoid some coercions.
+    d["sent_at"] = {"bad": "type"}  # should be datetime string
+    return d
+
+
+@pytest.mark.asyncio
+async def test_user_get_user_success_contract_validated_and_auth_header(
+    user_client: UserServiceClient, base_url: str, api_key: str, user_payload_valid: dict
+):
+    user_id = "u_123"
+    payload = {**user_payload_valid, "id": user_id}
 
     with respx.mock(assert_all_called=True, using="httpx") as router:
         route = router.get(f"{base_url}/users/{user_id}").respond(200, json=payload)
@@ -120,16 +211,11 @@ async def test_user_get_user_success_contract_validated_and_auth_header(user_cli
 
 
 @pytest.mark.asyncio
-async def test_user_get_user_invalid_schema_raises_validation_error(user_client: UserServiceClient, base_url: str):
+async def test_user_get_user_invalid_schema_raises_validation_error(
+    user_client: UserServiceClient, base_url: str, user_payload_missing_required_field: dict
+):
     user_id = "u_bad"
-    invalid_payload = {
-        "id": user_id,
-        # missing email
-        "name": "Alice",
-        "status": "active",
-        "created_at": _iso_now(),
-        "metadata": {},
-    }
+    invalid_payload = {**user_payload_missing_required_field, "id": user_id}
 
     with respx.mock(assert_all_called=True, using="httpx") as router:
         router.get(f"{base_url}/users/{user_id}").respond(200, json=invalid_payload)
@@ -141,17 +227,11 @@ async def test_user_get_user_invalid_schema_raises_validation_error(user_client:
 
 
 @pytest.mark.asyncio
-async def test_user_get_user_wrong_type_raises_validation_error(user_client: UserServiceClient, base_url: str):
+async def test_user_get_user_wrong_type_raises_validation_error(
+    user_client: UserServiceClient, base_url: str, user_payload_wrong_type: dict
+):
     user_id = "u_wrong_type"
-    invalid_payload = {
-        "id": user_id,
-        "email": "a@example.com",
-        "name": "Alice",
-        "status": "active",
-        "created_at": "not-a-datetime",
-        "updated_at": None,
-        "metadata": {},
-    }
+    invalid_payload = {**user_payload_wrong_type, "id": user_id}
 
     with respx.mock(assert_all_called=True, using="httpx") as router:
         router.get(f"{base_url}/users/{user_id}").respond(200, json=invalid_payload)
@@ -319,6 +399,24 @@ async def test_timeout_raises_typed_timeout_error(base_url: str, api_key: str, r
 
 
 @pytest.mark.asyncio
+async def test_connect_timeout_raises_typed_timeout_error(base_url: str, api_key: str, retry_config_no_sleep: RetryConfig):
+    # Explicitly cover a separate timeout exception type.
+    async with UserServiceClient(
+        base_url=base_url,
+        api_key=api_key,
+        timeout=0.01,
+        retry_config=retry_config_no_sleep,
+    ) as c:
+        user_id = "u_to_connect"
+        with respx.mock(assert_all_called=True, using="httpx") as router:
+            router.get(f"{base_url}/users/{user_id}").mock(side_effect=httpx.ConnectTimeout("boom"))
+
+            with pytest.raises(TimeoutError) as exc:
+                await c.get_user(user_id)
+            assert exc.value.timeout_seconds == pytest.approx(0.01)
+
+
+@pytest.mark.asyncio
 async def test_user_create_update_list_cover_endpoints_and_auth_header(base_url: str, api_key: str, retry_config_no_sleep: RetryConfig):
     created_payload = {
         "id": "u_new",
@@ -418,25 +516,31 @@ async def test_payment_and_notification_clients_cover_public_methods(
     }
 
     with respx.mock(assert_all_called=True, using="httpx") as router:
-        router.post(f"{base_url}/payments").respond(200, json=payment_payload)
-        router.get(f"{base_url}/payments/p_1").respond(200, json=payment_payload)
-        router.post(f"{base_url}/payments/p_1/refund").respond(200, json={**payment_payload, "status": "refunded"})
-        router.get(f"{base_url}/transactions/t_1").respond(200, json=txn_payload)
+        r_create_payment = router.post(f"{base_url}/payments").respond(200, json=payment_payload)
+        r_get_payment = router.get(f"{base_url}/payments/p_1").respond(200, json=payment_payload)
+        r_refund_payment = router.post(f"{base_url}/payments/p_1/refund").respond(
+            200, json={**payment_payload, "status": "refunded"}
+        )
+        r_get_transaction = router.get(f"{base_url}/transactions/t_1").respond(200, json=txn_payload)
 
-        router.post(f"{base_url}/notifications").respond(200, json=notif_payload)
-        router.get(f"{base_url}/notifications/n_1").respond(200, json=notif_payload)
+        r_send_notification = router.post(f"{base_url}/notifications").respond(200, json=notif_payload)
+        r_get_notification = router.get(f"{base_url}/notifications/n_1").respond(200, json=notif_payload)
 
         p = await payment_client.create_payment(CreatePaymentRequest(amount=12.5, currency="USD", customer_id="c_1"))
         assert p.status == PaymentStatus.PENDING
+        assert r_create_payment.calls[0].request.headers.get("Authorization") == f"Bearer {payment_client.api_key}"
 
         p2 = await payment_client.get_payment("p_1")
         assert p2.id == "p_1"
+        assert r_get_payment.calls[0].request.headers.get("Authorization") == f"Bearer {payment_client.api_key}"
 
         p3 = await payment_client.refund_payment(RefundRequest(payment_id="p_1", amount=None, reason=None))
         assert p3.status == PaymentStatus.REFUNDED
+        assert r_refund_payment.calls[0].request.headers.get("Authorization") == f"Bearer {payment_client.api_key}"
 
         t = await payment_client.get_transaction("t_1")
         assert t.payment_id == "p_1"
+        assert r_get_transaction.calls[0].request.headers.get("Authorization") == f"Bearer {payment_client.api_key}"
 
         n = await notification_client.send_notification(
             SendNotificationRequest(
@@ -447,5 +551,69 @@ async def test_payment_and_notification_clients_cover_public_methods(
             )
         )
         assert n.status == NotificationStatus.SENT
+        assert r_send_notification.calls[0].request.headers.get("Authorization") == f"Bearer {notification_client.api_key}"
         n2 = await notification_client.get_notification_status("n_1")
         assert n2.id == "n_1"
+        assert r_get_notification.calls[0].request.headers.get("Authorization") == f"Bearer {notification_client.api_key}"
+
+
+@pytest.mark.asyncio
+async def test_payment_get_payment_invalid_schema_missing_field_raises_validation_error(
+    payment_client: PaymentServiceClient,
+    base_url: str,
+    payment_payload_missing_required_field: dict,
+):
+    payment_id = "p_bad"
+    invalid_payload = {**payment_payload_missing_required_field, "id": payment_id}
+    with respx.mock(assert_all_called=True, using="httpx") as router:
+        router.get(f"{base_url}/payments/{payment_id}").respond(200, json=invalid_payload)
+        with pytest.raises(ValidationError) as exc:
+            await payment_client.get_payment(payment_id)
+        assert exc.value.field_errors
+        assert exc.value.response_body == invalid_payload
+
+
+@pytest.mark.asyncio
+async def test_payment_get_payment_invalid_schema_wrong_type_raises_validation_error(
+    payment_client: PaymentServiceClient,
+    base_url: str,
+    payment_payload_wrong_type: dict,
+):
+    payment_id = "p_wrong_type"
+    invalid_payload = {**payment_payload_wrong_type, "id": payment_id}
+    with respx.mock(assert_all_called=True, using="httpx") as router:
+        router.get(f"{base_url}/payments/{payment_id}").respond(200, json=invalid_payload)
+        with pytest.raises(ValidationError) as exc:
+            await payment_client.get_payment(payment_id)
+        assert exc.value.field_errors
+
+
+@pytest.mark.asyncio
+async def test_notification_get_notification_invalid_schema_missing_field_raises_validation_error(
+    notification_client: NotificationServiceClient,
+    base_url: str,
+    notification_payload_missing_required_field: dict,
+):
+    notification_id = "n_bad"
+    invalid_payload = {**notification_payload_missing_required_field, "id": notification_id}
+    with respx.mock(assert_all_called=True, using="httpx") as router:
+        router.get(f"{base_url}/notifications/{notification_id}").respond(200, json=invalid_payload)
+        with pytest.raises(ValidationError) as exc:
+            await notification_client.get_notification(notification_id)
+        assert exc.value.field_errors
+        assert exc.value.response_body == invalid_payload
+
+
+@pytest.mark.asyncio
+async def test_notification_get_notification_invalid_schema_wrong_type_raises_validation_error(
+    notification_client: NotificationServiceClient,
+    base_url: str,
+    notification_payload_wrong_type: dict,
+):
+    notification_id = "n_wrong_type"
+    invalid_payload = {**notification_payload_wrong_type, "id": notification_id}
+    with respx.mock(assert_all_called=True, using="httpx") as router:
+        router.get(f"{base_url}/notifications/{notification_id}").respond(200, json=invalid_payload)
+        with pytest.raises(ValidationError) as exc:
+            await notification_client.get_notification(notification_id)
+        assert exc.value.field_errors
