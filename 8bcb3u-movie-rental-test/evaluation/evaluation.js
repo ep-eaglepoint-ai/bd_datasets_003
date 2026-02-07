@@ -184,7 +184,7 @@ function runTests() {
     if (results.errors.length === 0 && 
         results.testResults.failed === 0 && 
         results.metaTestResults.failed === 0) {
-      results.status = 'passed';
+      results.status = 'success';
     } else if (results.metaTestResults.failed > 0) {
       results.status = 'failed_meta_tests';
     } else if (results.testResults.failed > 0) {
@@ -214,7 +214,7 @@ function runTests() {
   console.log('='.repeat(80));
   
   // Status with icon
-  const statusIcon = results.status === 'passed' ? '✅' : '❌';
+  const statusIcon = results.status === 'success' ? '✅' : '❌';
   const statusText = results.status.toUpperCase().replace(/_/g, ' ');
   console.log(`\n${statusIcon} Overall Status: ${statusText}`);
   console.log(`⏱️  Execution Time: ${(results.executionTimeMs / 1000).toFixed(2)}s (${results.executionTimeMs}ms)`);
@@ -291,7 +291,7 @@ function runTests() {
 const results = runTests();
 
 // Exit with appropriate code
-if (results.status === 'passed') {
+if (results.status === 'success') {
   process.exit(0);
 } else {
   process.exit(1);
