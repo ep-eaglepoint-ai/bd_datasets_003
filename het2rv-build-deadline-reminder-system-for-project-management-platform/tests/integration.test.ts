@@ -1,11 +1,11 @@
 import request from "supertest";
-import { app } from "../src/index"; // Adjust path if needed
+import { app } from "../repository_after/src/index"; // Adjust path if needed
 import {
   processReminders,
   startScheduler,
   stopScheduler,
-} from "../src/scheduler"; // Adjust path if needed
-import { initDB, pool as appPool } from "../src/db"; // Adjust path if needed
+} from "../repository_after/src/scheduler"; // Adjust path if needed
+import { initDB, pool as appPool } from "../repository_after/src/db"; // Adjust path if needed
 
 // Helper to pause execution (simulate time passing)
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
@@ -580,4 +580,100 @@ describe("Deadline Reminder System - Complete Suite", () => {
     );
     expect(r.rows.every((row: any) => row.status === "processed")).toBe(true);
   });
+
+  // 8. FEATURE: PRESET REMINDERS
+  test("Feature: Preset Reminders (1h before)", async () => {
+    const now = Date.now();
+    const deadline = new Date(now + 2 * 60 * 60 * 1000); // +2 hours
+    const expected = new Date(deadline.getTime() - 60 * 60 * 1000); // 1h before deadline
+
+    const res = await request(app)
+      .post("/tasks")
+      .set("X-User-ID", ownerId.toString())
+      .send({
+        title: "Preset Task",
+        deadline: deadline.toISOString(),
+        reminders: ["1h"],
+      });
+
+    expect(res.status).toBe(201);
+    const taskId = res.body.id;
+
+    const r = await appPool.query(
+      "SELECT * FROM reminders WHERE task_id = $1",
+      [taskId]
+    );
+    expect(r.rowCount).toBe(1);
+
+    const dbTrigger = new Date(r.rows[0].trigger_at).getTime();
+    expect(Math.abs(dbTrigger - expected.getTime())).toBeLessThan(1000); // Within 1s
+  });
+
+  // 9. FEATURE: LIST REMINDERS
+  test("Feature: List User Reminders", async () => {
+    // Ensure we have some reminders
+    const listRes = await request(app)
+      .get("/reminders")
+      .set("X-User-ID", ownerId.toString())
+      .expect(200);
+
+    expect(Array.isArray(listRes.body)).toBe(true);
+  });
+
+  // 10. RELIABILITY: DELIVERY TIMING
+  test("Reliability: Reminder delivered at correct time", async () => {
+    const future = new Date(Date.now() + 1000);
+    const res = await request(app)
+      .post("/tasks")
+      .set("X-User-ID", ownerId.toString())
+      .send({
+        title: "Timing Task",
+        reminders: [future.toISOString()],
+      });
+    const taskId = res.body.id;
+
+    // Check BEFORE time
+    await processReminders(); // Should NOT process yet
+    let r = await appPool.query("SELECT * FROM reminders WHERE task_id = $1", [
+      taskId,
+    ]);
+    expect(r.rows[0].status).toBe("pending");
+
+    await sleep(1100);
+
+    // Check AFTER time
+    await processReminders();
+    r = await appPool.query("SELECT * FROM reminders WHERE task_id = $1", [
+      taskId,
+    ]);
+    expect(r.rows[0].status).toBe("processed");
+  });
+
+  // 11. SCALE: Volume Test
+  test("Scale: Handle 100 reminders", async () => {
+    const now = new Date();
+    const reminders = [];
+    for (let i = 0; i < 100; i++) {
+      reminders.push(new Date(now.getTime() + 1000 + i).toISOString());
+    }
+
+    const res = await request(app)
+      .post("/tasks")
+      .set("X-User-ID", ownerId.toString())
+      .send({
+        title: "Scale Task",
+        reminders: reminders,
+      });
+    expect(res.status).toBe(201);
+
+    await sleep(2000);
+    await processReminders(); // Should process all
+
+    const taskId = res.body.id;
+    const r = await appPool.query(
+      "SELECT count(*) FROM reminders WHERE task_id = $1 AND status = 'processed'",
+      [taskId]
+    );
+    expect(parseInt(r.rows[0].count)).toBe(100);
+  }, 10000);
 });

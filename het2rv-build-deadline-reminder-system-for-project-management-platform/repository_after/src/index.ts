@@ -25,6 +25,29 @@ app.use(authenticateUser);
 
 const PORT = 3000;
 
+// --- Helper: Parse Reminder Input (Absolute or Relative) ---
+const parseReminderInput = (input: string, deadline: Date | null): Date => {
+  // If it's a relative shorthand like "1h" or "24h" or "2d", parse it
+  // Regex looks for digits followed by h or d
+  const match = input.match(/^(\d+)([hd])$/);
+  if (match) {
+    if (!deadline) throw new Error("Deadline required for relative reminders");
+    const val = parseInt(match[1], 10);
+    const unit = match[2];
+
+    const trigger = new Date(deadline.getTime());
+    if (unit === "h") trigger.setHours(trigger.getHours() - val);
+    if (unit === "d") trigger.setDate(trigger.getDate() - val);
+    return trigger;
+  }
+
+  // Otherwise assume absolute ISO string
+  const d = new Date(input);
+  if (!isNaN(d.getTime())) return d;
+
+  throw new Error(`Invalid reminder format: ${input}`);
+};
+
 // --- Helper: Validate Reminder Time ---
 const validateReminderTime = (
   triggerAt: string | Date,
@@ -59,6 +82,24 @@ app.post("/users", async (req, res) => {
   }
 });
 
+// List Reminders for User
+app.get("/reminders", async (req, res) => {
+  // @ts-ignore
+  const userId = req.user.id;
+  try {
+    const result = await pool.query(
+      `SELECT r.* FROM reminders r
+       JOIN tasks t ON r.task_id = t.id
+       WHERE t.owner_id = $1
+       ORDER BY r.trigger_at ASC`,
+      [userId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
 // Create Task (With Deadline & Reminders)
 app.post("/tasks", async (req, res) => {
   const { title, reminders, deadline } = req.body;
@@ -78,13 +119,17 @@ app.post("/tasks", async (req, res) => {
 
     // 2. Process Reminders
     if (reminders && Array.isArray(reminders)) {
-      for (const triggerAt of reminders) {
-        // Validation: Throws error if invalid
-        validateReminderTime(triggerAt, deadline);
+      for (const rawInput of reminders) {
+        // Parse & Validate
+        const triggerDate = parseReminderInput(
+          rawInput,
+          deadline ? new Date(deadline) : null
+        );
+        validateReminderTime(triggerDate, deadline);
 
         await client.query(
           "INSERT INTO reminders (task_id, trigger_at) VALUES ($1, $2)",
-          [task.id, triggerAt]
+          [task.id, triggerDate]
         );
       }
     }

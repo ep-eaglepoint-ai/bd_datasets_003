@@ -8,10 +8,9 @@ services:
     environment:
       - DATABASE_URL=postgresql://postgres:password@db:5432/app
     volumes:
-      - ./repository_after:/app
-      - ./tests:/app/tests
-      - ./evaluation:/app/evaluation
+      - .:/app
       - /app/node_modules
+      - /app/repository_after/node_modules
     command: npm test
 
   db:
