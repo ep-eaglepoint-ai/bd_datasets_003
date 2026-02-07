@@ -1,0 +1,25 @@
+{
+  "instance_id": "T5YEAF",
+  "problem_statement": "A social media analytics platform processes user engagement data to generate insights for marketing teams. The DataProcessor.java class analyzes lists of user activities to find patterns, calculate statistics, and identify top performers. Processing a dataset of 50,000 users with activity histories currently takes over 2 minutes, but the marketing team needs results in under 10 seconds to support their real-time dashboard.Performance analysis shows the processUserData method contains multiple inefficiencies: it iterates over the user list multiple times for different calculations, uses nested loops for finding duplicates and matches, and performs repeated lookups in lists instead of using more efficient data structures. Memory profiling shows excessive object creation within loops.",
+  "base_commit": "repository_before/",
+  "test_patch": "tests/",
+  "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/t5yeaf-data-processing",
+  "environment_setup": "Dockerfile",
+  "FAIL_TO_PASS": [
+    "DataProcessorTest.testEmptyAndNullInput",
+    "DataProcessorTest.testNullFields",
+    "DataProcessorTest.testSharedInterests",
+    "DataProcessorTest.testMultipleNullEmails",
+    "DataProcessorTest.testEngagementCachingEfficiency"
+  ],
+  "PASS_TO_PASS": [
+    "DataProcessorTest.testBasicAnalysis",
+    "DataProcessorTest.testDuplicates",
+    "DataProcessorTest.testCountryGrouping",
+    "DataProcessorTest.testEmptyActivitiesAndInterests",
+    "DataProcessorTest.testTopUsersTieBreaking",
+    "DataProcessorTest.testThreadSafety",
+    "DataProcessorTest.testPerformanceLargeDataset",
+    "DataProcessorTest.testResultConsistency"
+  ]
+}
