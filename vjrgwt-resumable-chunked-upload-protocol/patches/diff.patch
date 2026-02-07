@@ -1,0 +1,566 @@
+diff --git a/repository_before/.gitkeep b/repository_before/.gitkeep
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/repository_after/client.go b/repository_after/client.go
+new file mode 100644
+index 0000000..57a5b43
+--- /dev/null
++++ b/repository_after/client.go
+@@ -0,0 +1,268 @@
++// client.go
++package upload
++
++import (
++	"bytes"
++	"crypto/md5"
++	crand "crypto/rand"
++	"encoding/hex"
++	"errors"
++	"fmt"
++	"io"
++	mrand "math/rand"
++	"net/http"
++	"os"
++	"strconv"
++	"time"
++)
++
++var ErrSimulatedCrash = errors.New("simulated crash")
++
++type Client struct {
++	BaseURL   string
++	HTTP      *http.Client
++	ChunkSize int // Req(3) default 1MB if unset
++}
++
++func NewClient(baseURL string) *Client {
++	return &Client{
++		BaseURL:   baseURL,
++		HTTP:      http.DefaultClient,
++		ChunkSize: 1 << 20, // 1MB
++	}
++}
++
++func (c *Client) InitUpload() (string, error) { // Req(1) POST
++	req, err := http.NewRequest(http.MethodPost, c.BaseURL+"/files", nil)
++	if err != nil {
++		return "", err
++	}
++	resp, err := c.http().Do(req)
++	if err != nil {
++		return "", err
++	}
++	defer resp.Body.Close()
++
++	if resp.StatusCode != http.StatusCreated {
++		b, _ := io.ReadAll(resp.Body)
++		return "", fmt.Errorf("init failed: %s: %s", resp.Status, string(b))
++	}
++	id := resp.Header.Get(HeaderFileID)
++	if id == "" {
++		b, _ := io.ReadAll(resp.Body)
++		id = string(bytes.TrimSpace(b))
++	}
++	if id == "" {
++		return "", errors.New("missing File-ID")
++	}
++	return id, nil
++}
++
++func (c *Client) HeadOffset(fileID string) (int64, error) { // Req(1) HEAD
++	req, err := http.NewRequest(http.MethodHead, c.BaseURL+"/files/"+fileID, nil)
++	if err != nil {
++		return 0, err
++	}
++	resp, err := c.http().Do(req)
++	if err != nil {
++		return 0, err
++	}
++	defer resp.Body.Close()
++
++	if resp.StatusCode != http.StatusNoContent {
++		return 0, fmt.Errorf("head failed: %s", resp.Status)
++	}
++	offStr := resp.Header.Get(HeaderUploadOffset)
++	if offStr == "" {
++		return 0, errors.New("missing Upload-Offset")
++	}
++	off, err := strconv.ParseInt(offStr, 10, 64)
++	if err != nil {
++		return 0, err
++	}
++	return off, nil
++}
++
++type ConflictError struct {
++	ServerOffset int64
++	Body         string
++}
++
++func (e *ConflictError) Error() string {
++	return fmt.Sprintf("409 conflict: server_offset=%d body=%q", e.ServerOffset, e.Body)
++}
++
++func (c *Client) PatchAppend(fileID string, offset int64, chunk []byte) (int64, error) { // Req(1) PATCH
++	req, err := http.NewRequest(http.MethodPatch, c.BaseURL+"/files/"+fileID, bytes.NewReader(chunk))
++	if err != nil {
++		return 0, err
++	}
++	req.Header.Set(HeaderUploadOffset, strconv.FormatInt(offset, 10))
++	req.Header.Set("Content-Type", "application/offset+octet-stream")
++	req.ContentLength = int64(len(chunk))
++
++	resp, err := c.http().Do(req)
++	if err != nil {
++		return 0, err
++	}
++	defer resp.Body.Close()
++
++	if resp.StatusCode == http.StatusNoContent {
++		offStr := resp.Header.Get(HeaderUploadOffset)
++		if offStr == "" {
++			return 0, errors.New("missing Upload-Offset in PATCH response")
++		}
++		newOff, err := strconv.ParseInt(offStr, 10, 64)
++		if err != nil {
++			return 0, err
++		}
++		return newOff, nil
++	}
++
++	if resp.StatusCode == http.StatusConflict { // Req(8)
++		b, _ := io.ReadAll(resp.Body)
++		sOffStr := resp.Header.Get(HeaderUploadOffset)
++		var sOff int64
++		if sOffStr != "" {
++			sOff, _ = strconv.ParseInt(sOffStr, 10, 64)
++		}
++		return 0, &ConflictError{ServerOffset: sOff, Body: string(bytes.TrimSpace(b))}
++	}
++
++	b, _ := io.ReadAll(resp.Body)
++	return 0, fmt.Errorf("patch failed: %s: %s", resp.Status, string(b))
++}
++
++// UploadResumable uploads localPath to server fileID in strict sequential chunks.
++// - Always "Query-Then-Write": HEAD to get truth, Seek to that offset, then PATCH. (Req(5))
++// - crashAfterBytes: if >0, returns ErrSimulatedCrash once the client has *attempted* to upload >= crashAfterBytes total.
++func (c *Client) UploadResumable(fileID, localPath string, crashAfterBytes int64) error { // Req(4)(5)
++	f, err := os.Open(localPath)
++	if err != nil {
++		return err
++	}
++	defer f.Close()
++
++	// Source of truth alignment.
++	serverOff, err := c.HeadOffset(fileID) // Req(5)
++	if err != nil {
++		return err
++	}
++	if _, err := f.Seek(serverOff, io.SeekStart); err != nil { // Req(5)
++		return err
++	}
++
++	chunkSize := c.ChunkSize
++	if chunkSize <= 0 {
++		chunkSize = 1 << 20
++	}
++	buf := make([]byte, chunkSize)
++
++	offset := serverOff
++	var attempted int64
++
++	for {
++		n, rerr := f.Read(buf)
++		if n > 0 {
++			// Attempt append at current offset.
++			newOff, perr := c.PatchAppend(fileID, offset, buf[:n])
++			if perr != nil {
++				// On conflict: re-sync from server truth, Seek, and continue. (Req(5))
++				var ce *ConflictError
++				if errors.As(perr, &ce) {
++					offset = ce.ServerOffset
++					if _, err := f.Seek(offset, io.SeekStart); err != nil {
++						return err
++					}
++					continue
++				}
++				return perr
++			}
++			offset = newOff
++
++			attempted += int64(n)
++			if crashAfterBytes > 0 && attempted >= crashAfterBytes {
++				return ErrSimulatedCrash // Req(4)
++			}
++		}
++		if rerr == io.EOF {
++			break
++		}
++		if rerr != nil {
++			return rerr
++		}
++	}
++	return nil
++}
++
++// UploadResumableRandomCrash uploads and simulates a random crash after >= 50% completion.
++// Use a deterministic rng in tests; nil uses time-based randomness.
++func (c *Client) UploadResumableRandomCrash(fileID, localPath string, rng *mrand.Rand) error {
++	info, err := os.Stat(localPath)
++	if err != nil {
++		return err
++	}
++	crashAfter := RandomCrashAfter(info.Size(), rng)
++	return c.UploadResumable(fileID, localPath, crashAfter)
++}
++
++// RandomCrashAfter returns a random crash threshold in [size/2, size].
++func RandomCrashAfter(size int64, rng *mrand.Rand) int64 {
++	if size <= 0 {
++		return 0
++	}
++	if rng == nil {
++		rng = mrand.New(mrand.NewSource(time.Now().UnixNano()))
++	}
++	half := size / 2
++	span := size - half
++	return half + rng.Int63n(span+1)
++}
++
++// GenerateDummyFile writes random bytes to path using 1MB buffers.
++func GenerateDummyFile(path string, size int64) error {
++	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
++	if err != nil {
++		return err
++	}
++	defer f.Close()
++
++	buf := make([]byte, 1<<20)
++	var off int64
++	for off < size {
++		toWrite := int64(len(buf))
++		if size-off < toWrite {
++			toWrite = size - off
++		}
++		if _, err := crand.Read(buf[:toWrite]); err != nil {
++			return err
++		}
++		if _, err := f.Write(buf[:toWrite]); err != nil {
++			return err
++		}
++		off += toWrite
++	}
++	return f.Sync()
++}
++
++func MD5File(path string) (string, int64, error) { // Req(6)(10)
++	f, err := os.Open(path)
++	if err != nil {
++		return "", 0, err
++	}
++	defer f.Close()
++
++	h := md5.New()
++	n, err := io.Copy(h, f)
++	if err != nil {
++		return "", 0, err
++	}
++	return hex.EncodeToString(h.Sum(nil)), n, nil
++}
++
++func (c *Client) http() *http.Client {
++	if c.HTTP != nil {
++		return c.HTTP
++	}
++	return http.DefaultClient
++}
+diff --git a/repository_after/cmd/uploader/main.go b/repository_after/cmd/uploader/main.go
+new file mode 100644
+index 0000000..41329ab
+--- /dev/null
++++ b/repository_after/cmd/uploader/main.go
+@@ -0,0 +1,57 @@
++package main
++
++import (
++	"errors"
++	"flag"
++	"fmt"
++	"os"
++	"path/filepath"
++
++	upload "upload-protocol"
++)
++
++func main() {
++	var (
++		baseURL   = flag.String("base-url", "http://localhost:8080", "upload server base URL")
++		sizeMB    = flag.Int64("size-mb", 50, "dummy file size in MB")
++		chunkSize = flag.Int("chunk-size", 1<<20, "upload chunk size in bytes")
++		tmpDir    = flag.String("tmp-dir", os.TempDir(), "temporary directory for dummy file")
++	)
++	flag.Parse()
++
++	if *sizeMB <= 0 {
++		fmt.Fprintln(os.Stderr, "size-mb must be positive")
++		os.Exit(2)
++	}
++
++	path := filepath.Join(*tmpDir, "dummy-upload.bin")
++	sizeBytes := *sizeMB << 20
++	if err := upload.GenerateDummyFile(path, sizeBytes); err != nil {
++		fmt.Fprintf(os.Stderr, "generate dummy file: %v\n", err)
++		os.Exit(1)
++	}
++
++	client := upload.NewClient(*baseURL)
++	client.ChunkSize = *chunkSize
++
++	id, err := client.InitUpload()
++	if err != nil {
++		fmt.Fprintf(os.Stderr, "init upload: %v\n", err)
++		os.Exit(1)
++	}
++
++	if err := client.UploadResumableRandomCrash(id, path, nil); err != nil {
++		if !errors.Is(err, upload.ErrSimulatedCrash) {
++			fmt.Fprintf(os.Stderr, "upload failed: %v\n", err)
++			os.Exit(1)
++		}
++		fmt.Fprintln(os.Stderr, "simulated crash; resuming")
++	}
++
++	if err := client.UploadResumable(id, path, 0); err != nil {
++		fmt.Fprintf(os.Stderr, "resume failed: %v\n", err)
++		os.Exit(1)
++	}
++
++	fmt.Printf("upload complete: %s (%d MB)\n", id, *sizeMB)
++}
+diff --git a/repository_after/cmd/uploader/uploader b/repository_after/cmd/uploader/uploader
+new file mode 100644
+index 0000000..3c35c8b
+Binary files /dev/null and b/repository_after/cmd/uploader/uploader differ
+diff --git a/repository_after/go.mod b/repository_after/go.mod
+new file mode 100644
+index 0000000..c2bfaae
+--- /dev/null
++++ b/repository_after/go.mod
+@@ -0,0 +1,3 @@
++module upload-protocol
++
++go 1.21
+diff --git a/repository_after/server.go b/repository_after/server.go
+new file mode 100644
+index 0000000..c4ce181
+--- /dev/null
++++ b/repository_after/server.go
+@@ -0,0 +1,207 @@
++// server.go
++package upload
++
++import (
++	"crypto/rand"
++	"encoding/hex"
++	"errors"
++	"fmt"
++	"io"
++	"net/http"
++	"os"
++	"path/filepath"
++	"strconv"
++	"strings"
++	"sync"
++)
++
++const (
++	HeaderUploadOffset = "Upload-Offset"
++	HeaderFileID       = "File-ID"
++)
++
++type Server struct {
++	storageDir string
++	mu         sync.Mutex // protects ID generation collision edge cases (paranoia)
++	fileLocks  sync.Map   // map[fileID]*sync.Mutex
++}
++
++func NewServer(storageDir string) (*Server, error) {
++	if err := os.MkdirAll(storageDir, 0o755); err != nil {
++		return nil, err
++	}
++	return &Server{storageDir: storageDir}, nil
++}
++
++func (s *Server) Handler() http.Handler {
++	mux := http.NewServeMux()
++	mux.HandleFunc("/files", s.handleFilesRoot)  // POST /files
++	mux.HandleFunc("/files/", s.handleFilesByID) // HEAD/PATCH /files/{id}
++	return mux
++}
++
++func (s *Server) handleFilesRoot(w http.ResponseWriter, r *http.Request) {
++	if r.URL.Path != "/files" {
++		http.NotFound(w, r)
++		return
++	}
++	if r.Method != http.MethodPost {
++		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
++		return
++	}
++
++	id, err := s.newID()
++	if err != nil {
++		http.Error(w, "id generation failed", http.StatusInternalServerError)
++		return
++	}
++
++	path := s.filePath(id)
++	// Create file immediately on disk.
++	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
++	if err != nil {
++		http.Error(w, "failed to create file", http.StatusInternalServerError)
++		return
++	}
++	_ = f.Close()
++
++	w.Header().Set(HeaderFileID, id)
++	w.WriteHeader(http.StatusCreated)
++	_, _ = w.Write([]byte(id + "\n"))
++}
++
++func (s *Server) handleFilesByID(w http.ResponseWriter, r *http.Request) {
++	if !strings.HasPrefix(r.URL.Path, "/files/") {
++		http.NotFound(w, r)
++		return
++	}
++	id := strings.TrimPrefix(r.URL.Path, "/files/")
++	if id == "" || strings.Contains(id, "/") {
++		http.Error(w, "bad id", http.StatusBadRequest)
++		return
++	}
++	path := s.filePath(id)
++
++	switch r.Method {
++	case http.MethodHead:
++		size, err := fileSize(path)
++		if err != nil {
++			if errors.Is(err, os.ErrNotExist) {
++				http.Error(w, "not found", http.StatusNotFound)
++				return
++			}
++			http.Error(w, "stat failed", http.StatusInternalServerError)
++			return
++		}
++		w.Header().Set(HeaderUploadOffset, strconv.FormatInt(size, 10))
++		w.WriteHeader(http.StatusNoContent)
++
++	case http.MethodPatch:
++		lock := s.fileLock(id)
++		lock.Lock()
++		defer lock.Unlock()
++
++		clientOffStr := r.Header.Get(HeaderUploadOffset)
++		if clientOffStr == "" {
++			http.Error(w, "missing Upload-Offset", http.StatusBadRequest)
++			return
++		}
++		clientOff, err := strconv.ParseInt(clientOffStr, 10, 64)
++		if err != nil || clientOff < 0 {
++			http.Error(w, "invalid Upload-Offset", http.StatusBadRequest)
++			return
++		}
++
++		curSize, err := fileSize(path)
++		if err != nil {
++			if errors.Is(err, os.ErrNotExist) {
++				http.Error(w, "not found", http.StatusNotFound)
++				return
++			}
++			http.Error(w, "stat failed", http.StatusInternalServerError)
++			return
++		}
++
++		// Strict Sequential Consistency: only append at exact committed offset.
++		if clientOff != curSize {
++			w.Header().Set(HeaderUploadOffset, strconv.FormatInt(curSize, 10))
++			http.Error(w, fmt.Sprintf("offset mismatch: server=%d client=%d", curSize, clientOff), http.StatusConflict)
++			return
++		}
++
++		// Stream directly to disk (no ReadAll). Prefer CopyN when Content-Length is known.
++		defer r.Body.Close()
++
++		f, err := os.OpenFile(path, os.O_WRONLY, 0o644)
++		if err != nil {
++			http.Error(w, "open failed", http.StatusInternalServerError)
++			return
++		}
++		defer f.Close()
++
++		if _, err := f.Seek(curSize, io.SeekStart); err != nil {
++			http.Error(w, "seek failed", http.StatusInternalServerError)
++			return
++		}
++
++		var written int64
++		if r.ContentLength >= 0 {
++			written, err = io.CopyN(f, r.Body, r.ContentLength) // Req(7)
++			if err != nil && !errors.Is(err, io.EOF) {
++				http.Error(w, "copy failed", http.StatusBadRequest)
++				return
++			}
++		} else {
++			written, err = io.Copy(f, r.Body) // still streaming
++			if err != nil {
++				http.Error(w, "copy failed", http.StatusBadRequest)
++				return
++			}
++		}
++
++		// Immediate persistence to disk for each chunk.
++		if err := f.Sync(); err != nil { // Req(2)
++			http.Error(w, "sync failed", http.StatusInternalServerError)
++			return
++		}
++
++		newSize := curSize + written
++		w.Header().Set(HeaderUploadOffset, strconv.FormatInt(newSize, 10))
++		w.WriteHeader(http.StatusNoContent)
++
++	default:
++		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
++	}
++}
++
++func (s *Server) filePath(id string) string {
++	return filepath.Join(s.storageDir, id+".bin")
++}
++
++func fileSize(path string) (int64, error) {
++	st, err := os.Stat(path)
++	if err != nil {
++		return 0, err
++	}
++	return st.Size(), nil
++}
++
++func (s *Server) newID() (string, error) {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++
++	b := make([]byte, 16)
++	if _, err := rand.Read(b); err != nil {
++		return "", err
++	}
++	return hex.EncodeToString(b), nil
++}
++
++func (s *Server) fileLock(id string) *sync.Mutex {
++	if v, ok := s.fileLocks.Load(id); ok {
++		return v.(*sync.Mutex)
++	}
++	mu := &sync.Mutex{}
++	actual, _ := s.fileLocks.LoadOrStore(id, mu)
++	return actual.(*sync.Mutex)
++}
