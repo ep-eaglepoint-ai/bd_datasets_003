@@ -10,4 +10,3 @@ node_modules/
 
 evaluation/report.json
 evaluation/report.xml
-evaluation/generate_report_json.py
