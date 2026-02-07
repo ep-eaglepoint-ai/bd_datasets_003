@@ -1,7 +1,5 @@
-# Dockerfile
 FROM python:3.11-slim
 
-# Install system dependencies + Node.js 20
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libpq-dev \
@@ -18,19 +16,17 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# Backend dependencies
 COPY repository_after/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Frontend dependencies
-COPY repository_after/frontend/package*.json ./frontend/
-WORKDIR /app/frontend
-RUN npm install
-
-# Copy the rest of the code
+# We will handle npm install via docker-compose to avoid architecture mismatches
 WORKDIR /app
 COPY repository_after/ .
 
+RUN tr -d '\r' < /app/entrypoint.sh > /entrypoint.sh && \
+    chmod +x /entrypoint.sh
+
 EXPOSE 8000 5173
 
+ENTRYPOINT ["/bin/sh", "/entrypoint.sh"]
 CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
