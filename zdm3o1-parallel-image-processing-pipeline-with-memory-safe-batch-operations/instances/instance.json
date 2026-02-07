@@ -1,0 +1,11 @@
+{
+            "instance_id": "ZDM3O1",
+            "problem_statement": "The e-commerce platform's image processing service creates a severe bottleneck during product bulk uploads. Processing large batches takes excessively long because images are handled one at a time on a single CPU core. The server crashes with out-of-memory errors when users upload high-resolution images. There is no way to track progress or cancel long-running batch jobs, and users re-upload the same images repeatedly because the system processes duplicates without detection. Failed images abort the entire batch instead of continuing with remaining files.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/zdm3o1-parallel-image-processing-pipeline-with-memory-safe-batch-operations",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
