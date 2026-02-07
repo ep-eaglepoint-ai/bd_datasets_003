@@ -1,0 +1,11 @@
+{
+            "instance_id": "CCQS9L",
+            "problem_statement": "Write unit tests for a Go function that compares two semantic version strings and returns -1, 0, or 1 based on their numeric ordering. The tests should verify correct handling of equal, older, and newer versions, treat missing components as zero, ignore prerelease suffixes, and ensure invalid inputs do not cause panics. Use table-driven tests and the Go standard library only.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ccqs9l-semantic-version-comparator-in-go",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
