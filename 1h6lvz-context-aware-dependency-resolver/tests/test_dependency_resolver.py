@@ -276,41 +276,38 @@ class TestDependencyResolver:
 
     @pytest.mark.correctness
     def test_oscillation_detection(self):
-        """Test oscillation detection with max iteration limit."""
-        # Create a scenario that causes oscillation
-        # This is tricky - we need rules that flip-flop
-        # In practice, a real oscillation is hard to construct with this algorithm
-        # But we can test the max iteration guard by creating complex interdependencies
+        """Test oscillation detection with max iteration limit.
 
+        Scenario: pkg-a v2.0.0 brings in pkg-b, but a soft rule forces
+        pkg-a back to v1.0.0 when pkg-b is present. Without pkg-b the
+        rule no longer applies, so pkg-a upgrades to v2.0.0 again,
+        re-introducing pkg-b — creating an endless flip-flop.
+        """
         resolver = DependencyResolver()
-        # Override max iterations for faster test
         original_max = DependencyResolver.MAX_ITERATIONS
-        DependencyResolver.MAX_ITERATIONS = 5
+        DependencyResolver.MAX_ITERATIONS = 10
 
         try:
             manifest = ["pkg-a"]
-            # Complex dependency graph that might not stabilize quickly
             registry = {
                 "pkg-a": {
-                    "1.0.0": {"dependencies": {"pkg-b": ">=1.0.0"}}
+                    "1.0.0": {"dependencies": {}},
+                    "2.0.0": {"dependencies": {"pkg-b": ">=1.0.0"}}
                 },
                 "pkg-b": {
-                    "1.0.0": {"dependencies": {}},
-                    "2.0.0": {"dependencies": {"pkg-c": ">=1.0.0"}}
-                },
-                "pkg-c": {
-                    "1.0.0": {"dependencies": {}},
-                    "2.0.0": {"dependencies": {}}
+                    "1.0.0": {"dependencies": {}}
                 }
             }
+            soft_rules = [
+                {
+                    "target": "pkg-a",
+                    "condition_package": "pkg-b",
+                    "override_version": "==1.0.0"
+                }
+            ]
 
-            # This won't actually oscillate with current implementation
-            # But demonstrates the check is in place
-            soft_rules = []
-
-            result = resolver.resolve(manifest, registry, soft_rules)
-            # Should succeed because it stabilizes
-            assert result is not None
+            with pytest.raises(ValueError, match="oscillation"):
+                resolver.resolve(manifest, registry, soft_rules)
 
         finally:
             DependencyResolver.MAX_ITERATIONS = original_max
