@@ -1,97 +1,172 @@
 package kv
 
 import (
+	"bytes"
+	"encoding/gob"
 	"sync"
-
-	"github.com/vzdtic/distributed-consensus-raft-kv-store/repository_after/pkg/raft"
 )
 
-// Store implements a simple in-memory key-value store
-type Store struct {
-	mu   sync.RWMutex
-	data map[string]string
+// Command types for the KV store
+type CommandType int
+
+const (
+	CommandSet CommandType = iota
+	CommandDelete
+)
+
+// Command represents a command to be applied to the state machine
+type Command struct {
+	Type      CommandType
+	Key       string
+	Value     []byte
+	ClientID  string
+	RequestID uint64
 }
 
-// NewStore creates a new KV store
-func NewStore() *Store {
+// ClientSession tracks the last request from each client for deduplication
+type ClientSession struct {
+	LastRequestID uint64
+	Response      interface{}
+}
+
+// Store represents an in-memory key-value state machine
+type Store struct {
+	mu       sync.RWMutex
+	data     map[string][]byte
+	sessions map[string]*ClientSession
+}
+
+// New creates a new KV store
+func New() *Store {
 	return &Store{
-		data: make(map[string]string),
+		data:     make(map[string][]byte),
+		sessions: make(map[string]*ClientSession),
 	}
 }
 
 // Apply applies a command to the state machine
-func (s *Store) Apply(cmd raft.Command) string {
+func (s *Store) Apply(command []byte) (interface{}, error) {
+	var cmd Command
+	dec := gob.NewDecoder(bytes.NewReader(command))
+	if err := dec.Decode(&cmd); err != nil {
+		return nil, err
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// Check for duplicate request
+	if session, ok := s.sessions[cmd.ClientID]; ok {
+		if session.LastRequestID >= cmd.RequestID {
+			return session.Response, nil
+		}
+	}
+
+	var response interface{}
 	switch cmd.Type {
-	case raft.CommandSet:
+	case CommandSet:
 		s.data[cmd.Key] = cmd.Value
-		return cmd.Value
-	case raft.CommandDelete:
+		response = true
+	case CommandDelete:
 		delete(s.data, cmd.Key)
-		return ""
-	case raft.CommandNoop:
-		return ""
-	case raft.CommandAddNode, raft.CommandRemoveNode:
-		// Membership changes are handled by the Raft node
-		return ""
-	default:
-		return ""
+		response = true
 	}
+
+	// Update session
+	s.sessions[cmd.ClientID] = &ClientSession{
+		LastRequestID: cmd.RequestID,
+		Response:      response,
+	}
+
+	return response, nil
 }
 
-// Get retrieves a value from the store
-func (s *Store) Get(key string) (string, bool) {
+// Get retrieves a value by key
+func (s *Store) Get(key string) ([]byte, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
 	value, ok := s.data[key]
-	return value, ok
+	if !ok {
+		return nil, false
+	}
+
+	result := make([]byte, len(value))
+	copy(result, value)
+	return result, true
 }
 
-// Exists checks if a key exists in the store
-func (s *Store) Exists(key string) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	_, ok := s.data[key]
-	return ok
-}
-
-// Set stores a key-value pair
-func (s *Store) Set(key, value string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.data[key] = value
-}
-
-// Delete removes a key from the store
-func (s *Store) Delete(key string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.data, key)
-}
-
-// GetSnapshot returns a copy of the current state
-func (s *Store) GetSnapshot() map[string]string {
+// GetAll returns all key-value pairs
+func (s *Store) GetAll() map[string][]byte {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	snapshot := make(map[string]string, len(s.data))
+	result := make(map[string][]byte)
 	for k, v := range s.data {
-		snapshot[k] = v
+		result[k] = v
 	}
-	return snapshot
+	return result
 }
 
-// RestoreSnapshot restores state from a snapshot
-func (s *Store) RestoreSnapshot(data map[string]string) {
+// Snapshot creates a snapshot of the current state
+func (s *Store) Snapshot() ([]byte, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	state := struct {
+		Data     map[string][]byte
+		Sessions map[string]*ClientSession
+	}{
+		Data:     s.data,
+		Sessions: s.sessions,
+	}
+
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	if err := enc.Encode(state); err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
+
+// Restore restores state from a snapshot
+func (s *Store) Restore(data []byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.data = make(map[string]string, len(data))
-	for k, v := range data {
-		s.data[k] = v
+	var state struct {
+		Data     map[string][]byte
+		Sessions map[string]*ClientSession
 	}
+
+	dec := gob.NewDecoder(bytes.NewReader(data))
+	if err := dec.Decode(&state); err != nil {
+		return err
+	}
+
+	s.data = state.Data
+	s.sessions = state.Sessions
+	return nil
+}
+
+// EncodeCommand encodes a command for log storage
+func EncodeCommand(cmdType CommandType, key string, value []byte, clientID string, requestID uint64) ([]byte, error) {
+	cmd := Command{
+		Type:      cmdType,
+		Key:       key,
+		Value:     value,
+		ClientID:  clientID,
+		RequestID: requestID,
+	}
+
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	if err := enc.Encode(cmd); err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
 }
 
 // Size returns the number of keys in the store
@@ -99,23 +174,4 @@ func (s *Store) Size() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return len(s.data)
-}
-
-// Clear removes all keys from the store
-func (s *Store) Clear() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.data = make(map[string]string)
-}
-
-// Keys returns all keys in the store
-func (s *Store) Keys() []string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	keys := make([]string, 0, len(s.data))
-	for k := range s.data {
-		keys = append(keys, k)
-	}
-	return keys
 }

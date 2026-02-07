@@ -1,6 +1,50 @@
+version: '3.8'
+
 services:
   app:
     build: .
     volumes:
       - .:/app
+    environment:
+      - GO111MODULE=on
+      - GOPATH=/go
     working_dir: /app
+    
+  node1:
+    build: .
+    volumes:
+      - .:/app
+    environment:
+      - NODE_ID=1
+      - CLUSTER_ADDRESSES=node1:9001,node2:9002,node3:9003
+    working_dir: /app
+    ports:
+      - "9001:9001"
+      - "8001:8001"
+    command: go run repository_after/cmd/server/main.go
+    
+  node2:
+    build: .
+    volumes:
+      - .:/app
+    environment:
+      - NODE_ID=2
+      - CLUSTER_ADDRESSES=node1:9001,node2:9002,node3:9003
+    working_dir: /app
+    ports:
+      - "9002:9002"
+      - "8002:8002"
+    command: go run repository_after/cmd/server/main.go
+    
+  node3:
+    build: .
+    volumes:
+      - .:/app
+    environment:
+      - NODE_ID=3
+      - CLUSTER_ADDRESSES=node1:9001,node2:9002,node3:9003
+    working_dir: /app
+    ports:
+      - "9003:9003"
+      - "8003:8003"
+    command: go run repository_after/cmd/server/main.go

@@ -1,21 +1,24 @@
-FROM golang:1.23-alpine
+FROM golang:1.21-alpine
 
 WORKDIR /app
 
-# Install dependencies
-RUN apk add --no-cache git make
+# Install protobuf compiler
+RUN apk add --no-cache protobuf protobuf-dev git make
 
-# Copy go mod files
+# Install Go protobuf plugins
+RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+# Copy go mod files first for better caching
 COPY go.mod go.sum ./
-
-# Download dependencies
 RUN go mod download
 
 # Copy all files
 COPY . /app
 
-# Build evaluation tool
-RUN go build -o /app/evaluation/eval /app/evaluation/evaluation.go || true
+# Set Go path
+ENV PATH="${PATH}:$(go env GOPATH)/bin"
+ENV GOPATH=/go
 
-# Default command
-CMD ["go", "test", "-v", "-timeout", "300s", "./tests/..."]
+# Default command runs evaluation
+CMD ["go", "run", "evaluation/evaluation.go"]

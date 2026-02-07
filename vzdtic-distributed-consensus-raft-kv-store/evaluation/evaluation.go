@@ -1,318 +1,244 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
 )
 
-type TestResult struct {
-	Passed     bool   `json:"passed"`
-	ReturnCode int    `json:"return_code"`
-	Output     string `json:"output"`
+// Report represents the evaluation report
+type Report struct {
+	RunID           string          `json:"run_id"`
+	StartedAt       string          `json:"started_at"`
+	FinishedAt      string          `json:"finished_at"`
+	DurationSeconds float64         `json:"duration_seconds"`
+	Environment     Environment     `json:"environment"`
+	Before          TestResult      `json:"before"`
+	After           TestResult      `json:"after"`
+	Comparison      Comparison      `json:"comparison"`
+	Success         bool            `json:"success"`
+	Error           *string         `json:"error"`
 }
 
+// Environment holds environment information
 type Environment struct {
 	GoVersion string `json:"go_version"`
 	Platform  string `json:"platform"`
 }
 
-type TestPhase struct {
-	Tests   TestResult         `json:"tests"`
-	Metrics map[string]float64 `json:"metrics"`
+// TestResult holds the result of a test run
+type TestResult struct {
+	Tests   TestStatus        `json:"tests"`
+	Metrics map[string]interface{} `json:"metrics"`
 }
 
+// TestStatus holds test status information
+type TestStatus struct {
+	Passed     bool   `json:"passed"`
+	ReturnCode int    `json:"return_code"`
+	Output     string `json:"output"`
+	NumTests   int    `json:"num_tests"`
+	NumPassed  int    `json:"num_passed"`
+	NumFailed  int    `json:"num_failed"`
+}
+
+// Comparison holds comparison results
 type Comparison struct {
 	PassedGate         bool   `json:"passed_gate"`
 	ImprovementSummary string `json:"improvement_summary"`
 }
 
-type Report struct {
-	RunID       string      `json:"run_id"`
-	StartedAt   string      `json:"started_at"`
-	FinishedAt  string      `json:"finished_at"`
-	Duration    float64     `json:"duration_seconds"`
-	Environment Environment `json:"environment"`
-	Before      TestPhase   `json:"before"`
-	After       TestPhase   `json:"after"`
-	Comparison  Comparison  `json:"comparison"`
-	Success     bool        `json:"success"`
-	Error       *string     `json:"error"`
-}
-
 func main() {
-	fmt.Println("Running Raft KV Store Evaluation...")
-	fmt.Println("=" + strings.Repeat("=", 50))
+	fmt.Println("Starting Raft KV Store Evaluation...")
+	fmt.Println("=" + string(make([]byte, 50)))
 
-	runID := uuid.New().String()
 	startTime := time.Now()
-
-	// Get environment info
-	goVersion := runtime.Version()
-	platform := fmt.Sprintf("%s-%s", runtime.GOOS, runtime.GOARCH)
+	runID := uuid.New().String()
 
 	report := Report{
 		RunID:     runID,
 		StartedAt: startTime.Format(time.RFC3339),
 		Environment: Environment{
-			GoVersion: goVersion,
-			Platform:  platform,
+			GoVersion: runtime.Version(),
+			Platform:  runtime.GOOS + "-" + runtime.GOARCH,
 		},
-		Before: TestPhase{
-			Tests: TestResult{
-				Passed:     false,
-				ReturnCode: 0,
-				Output:     "No repository_before found - skipping before tests",
-			},
-			Metrics: make(map[string]float64),
-		},
-		After: TestPhase{
-			Metrics: make(map[string]float64),
-		},
-		Success: true,
-		Error:   nil,
+		Before: TestResult{Metrics: make(map[string]interface{})},
+		After:  TestResult{Metrics: make(map[string]interface{})},
 	}
 
-	// Run tests on repository_after
-	fmt.Println("\nRunning tests on repository_after...")
-	fmt.Println("-" + strings.Repeat("-", 50))
+	// Run tests against repository_before (should fail or have no code)
+	fmt.Println("\n[1/2] Testing repository_before...")
+	beforeResult := runTests("repository_before")
+	report.Before.Tests = beforeResult
 
-	testStartTime := time.Now()
-	cmd := exec.Command("go", "test", "-v", "./tests/...")
-	output, err := cmd.CombinedOutput()
-	testDuration := time.Since(testStartTime)
+	// Run tests against repository_after
+	fmt.Println("\n[2/2] Testing repository_after...")
+	afterResult := runTests("repository_after")
+	report.After.Tests = afterResult
 
-	returnCode := 0
-	if err != nil {
-		if exitError, ok := err.(*exec.ExitError); ok {
-			returnCode = exitError.ExitCode()
-		} else {
-			returnCode = 1
-		}
+	// Calculate metrics for after
+	report.After.Metrics["unit_tests_passed"] = afterResult.NumPassed
+	report.After.Metrics["total_tests"] = afterResult.NumTests
+
+	endTime := time.Now()
+	report.FinishedAt = endTime.Format(time.RFC3339)
+	report.DurationSeconds = endTime.Sub(startTime).Seconds()
+
+	// Determine overall success
+	report.Success = afterResult.Passed && !beforeResult.Passed
+	report.Comparison.PassedGate = report.Success
+
+	if report.Success {
+		report.Comparison.ImprovementSummary = fmt.Sprintf(
+			"Implementation complete: %d tests passing in repository_after, 0 tests passing in repository_before",
+			afterResult.NumPassed,
+		)
+	} else if afterResult.Passed && beforeResult.Passed {
+		report.Comparison.ImprovementSummary = "Both repositories pass tests - this may indicate incomplete before state"
+	} else if !afterResult.Passed {
+		errMsg := fmt.Sprintf("Tests failed in repository_after: %d/%d passed", afterResult.NumPassed, afterResult.NumTests)
+		report.Error = &errMsg
+		report.Comparison.ImprovementSummary = errMsg
 	}
-
-	// Work with full output for counting
-	fullOutput := string(output)
-	totalTests := float64(countTests(fullOutput))
-	passedTests := float64(countPassedTests(fullOutput))
-	failedTests := float64(countFailedTests(fullOutput))
-	skippedTests := float64(countSkippedTests(fullOutput))
-
-	// Create a condensed summary for the report
-	summary := createTestSummary(fullOutput)
-	
-	// Store summary + truncated detailed output
-	outputForReport := summary
-	if len(fullOutput) > 50000 {
-		outputForReport += "\n\nDetailed Output (truncated):\n" + fullOutput[:50000] + "\n... (output truncated, see full output file)"
-	} else {
-		outputForReport += "\n\nDetailed Output:\n" + fullOutput
-	}
-
-	report.After.Tests = TestResult{
-		Passed:     returnCode == 0,
-		ReturnCode: returnCode,
-		Output:     outputForReport,
-	}
-
-	// Calculate metrics
-	report.After.Metrics["test_duration_seconds"] = testDuration.Seconds()
-	report.After.Metrics["total_tests"] = totalTests
-	report.After.Metrics["passed_tests"] = passedTests
-	report.After.Metrics["failed_tests"] = failedTests
-	report.After.Metrics["skipped_tests"] = skippedTests
-
-	// Set comparison
-	if report.After.Tests.Passed && failedTests == 0 {
-		if skippedTests > 0 {
-			report.Comparison = Comparison{
-				PassedGate:         true,
-				ImprovementSummary: fmt.Sprintf("All tests passed successfully (%.0f passed, %.0f skipped). Raft consensus implementation is working correctly.", passedTests, skippedTests),
-			}
-		} else {
-			report.Comparison = Comparison{
-				PassedGate:         true,
-				ImprovementSummary: "All tests passed successfully. Raft consensus implementation is working correctly.",
-			}
-		}
-		report.Success = true
-	} else {
-		if failedTests > 0 {
-			report.Comparison = Comparison{
-				PassedGate:         false,
-				ImprovementSummary: fmt.Sprintf("%.0f test(s) failed. Implementation needs fixes.", failedTests),
-			}
-		} else {
-			report.Comparison = Comparison{
-				PassedGate:         false,
-				ImprovementSummary: "Tests did not complete successfully.",
-			}
-		}
-		report.Success = false
-	}
-
-	// Finish timing
-	finishTime := time.Now()
-	report.FinishedAt = finishTime.Format(time.RFC3339)
-	report.Duration = finishTime.Sub(startTime).Seconds()
 
 	// Create report directory
-	reportDir := filepath.Join("evaluation", "reports",
-		finishTime.Format("2006-01-02"),
-		finishTime.Format("15-04-05"))
-
+	dateDir := time.Now().Format("2006-01-02")
+	timeDir := time.Now().Format("15-04-05")
+	reportDir := filepath.Join("evaluation", "reports", dateDir, timeDir)
 	if err := os.MkdirAll(reportDir, 0755); err != nil {
-		errMsg := fmt.Sprintf("Failed to create report directory: %v", err)
-		report.Error = &errMsg
-		report.Success = false
-		fmt.Printf("ERROR: %s\n", errMsg)
+		fmt.Printf("Error creating report directory: %v\n", err)
+		os.Exit(1)
 	}
 
 	// Write report
 	reportPath := filepath.Join(reportDir, "report.json")
-	reportData, err := json.MarshalIndent(report, "", "  ")
+	reportJSON, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {
-		errMsg := fmt.Sprintf("Failed to marshal report: %v", err)
-		report.Error = &errMsg
-		report.Success = false
-		fmt.Printf("ERROR: %s\n", errMsg)
-	}
-
-	if err := os.WriteFile(reportPath, reportData, 0644); err != nil {
-		errMsg := fmt.Sprintf("Failed to write report: %v", err)
-		report.Error = &errMsg
-		report.Success = false
-		fmt.Printf("ERROR: %s\n", errMsg)
-	}
-
-	// Print summary
-	fmt.Println()
-	fmt.Println("Evaluation Summary")
-	fmt.Println("=" + strings.Repeat("=", 50))
-	fmt.Printf("Run ID:           %s\n", report.RunID)
-	fmt.Printf("Started:          %s\n", report.StartedAt)
-	fmt.Printf("Finished:         %s\n", report.FinishedAt)
-	fmt.Printf("Duration:         %.2fs\n", report.Duration)
-	fmt.Printf("Go Version:       %s\n", report.Environment.GoVersion)
-	fmt.Printf("Platform:         %s\n", report.Environment.Platform)
-	fmt.Println()
-	fmt.Println("After Tests:")
-	fmt.Printf("  Total:          %.0f\n", report.After.Metrics["total_tests"])
-	fmt.Printf("  Passed:         %.0f\n", report.After.Metrics["passed_tests"])
-	fmt.Printf("  Failed:         %.0f\n", report.After.Metrics["failed_tests"])
-	fmt.Printf("  Skipped:        %.0f\n", report.After.Metrics["skipped_tests"])
-	fmt.Printf("  Return Code:    %d\n", report.After.Tests.ReturnCode)
-	fmt.Printf("  Status:         %v\n", report.After.Tests.Passed)
-	fmt.Println()
-	
-	// Print test summary
-	fmt.Println("Test Results:")
-	fmt.Println(summary)
-	fmt.Println()
-	
-	fmt.Println("Comparison:")
-	fmt.Printf("  Passed Gate:    %v\n", report.Comparison.PassedGate)
-	fmt.Printf("  Summary:        %s\n", report.Comparison.ImprovementSummary)
-	fmt.Println()
-	fmt.Printf("Overall Success:  %v\n", report.Success)
-	fmt.Println()
-	fmt.Printf("Report saved to:      %s\n", reportPath)
-	
-
-	// Verify math
-	calculatedTotal := passedTests + failedTests + skippedTests
-	if calculatedTotal != totalTests {
-		fmt.Printf("\nWARNING: Test count mismatch - Total: %.0f, Passed+Failed+Skipped: %.0f\n",
-			totalTests, calculatedTotal)
-	}
-
-	if !report.Success {
-		fmt.Println("\n" + strings.Repeat("=", 50))
-		fmt.Println("EVALUATION FAILED")
-		fmt.Println(strings.Repeat("=", 50))
+		fmt.Printf("Error marshaling report: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Println("\n" + strings.Repeat("=", 50))
-	fmt.Println("EVALUATION PASSED")
-	fmt.Println(strings.Repeat("=", 50))
-}
-
-func createTestSummary(output string) string {
-	var summary strings.Builder
-	summary.WriteString("Test Summary:\n")
-	summary.WriteString(strings.Repeat("-", 50) + "\n")
-
-	lines := strings.Split(output, "\n")
-	for _, line := range lines {
-		// Include test run headers and results
-		if strings.HasPrefix(line, "=== RUN") ||
-			strings.Contains(line, "--- PASS:") ||
-			strings.Contains(line, "--- FAIL:") ||
-			strings.Contains(line, "--- SKIP:") ||
-			strings.HasPrefix(line, "PASS") ||
-			strings.HasPrefix(line, "FAIL") ||
-			strings.HasPrefix(line, "ok") {
-			summary.WriteString(line + "\n")
-		}
-		// Include error messages and test output (lines starting with spaces)
-		if strings.Contains(line, "    ") && (strings.Contains(line, "Error") || 
-			strings.Contains(line, "FAIL") || 
-			strings.Contains(line, ":")) {
-			summary.WriteString(line + "\n")
-		}
+	if err := os.WriteFile(reportPath, reportJSON, 0644); err != nil {
+		fmt.Printf("Error writing report: %v\n", err)
+		os.Exit(1)
 	}
 
-	return summary.String()
+	// Print summary
+	fmt.Println("\n" + string(make([]byte, 50)))
+	fmt.Println("EVALUATION SUMMARY")
+	fmt.Println(string(make([]byte, 50)))
+	fmt.Printf("Run ID: %s\n", runID)
+	fmt.Printf("Duration: %.2f seconds\n", report.DurationSeconds)
+	fmt.Printf("\nBefore Tests: %s\n", formatTestResult(beforeResult))
+	fmt.Printf("After Tests: %s\n", formatTestResult(afterResult))
+	fmt.Printf("\nOverall Success: %v\n", report.Success)
+	fmt.Printf("Report saved to: %s\n", reportPath)
+
+	if !report.Success {
+		os.Exit(1)
+	}
 }
 
-func countTests(output string) int {
-	count := 0
-	lines := strings.Split(output, "\n")
-	for _, line := range lines {
-		if strings.HasPrefix(line, "=== RUN") {
-			count++
-		}
+func runTests(repoPath string) TestStatus {
+	result := TestStatus{
+		Passed: false,
 	}
-	return count
+
+	// Check if repository exists and has code
+	_, err := os.Stat(repoPath)
+	if os.IsNotExist(err) {
+		result.Output = "Repository directory does not exist"
+		result.ReturnCode = 1
+		return result
+	}
+
+	// Check if repository has any Go files
+	hasGoFiles := false
+	filepath.Walk(repoPath, func(path string, info os.FileInfo, err error) error {
+		if err == nil && !info.IsDir() && filepath.Ext(path) == ".go" {
+			hasGoFiles = true
+			return filepath.SkipDir
+		}
+		return nil
+	})
+
+	if !hasGoFiles {
+		result.Output = "No Go files found in repository (empty or scaffold)"
+		result.ReturnCode = 1
+		result.NumTests = 0
+		result.NumPassed = 0
+		result.NumFailed = 0
+		return result
+	}
+
+	// Run tests
+	var stdout, stderr bytes.Buffer
+	
+	// Run unit tests
+	cmd := exec.Command("go", "test", "-v", "-count=1", "./tests/unit/...", "./tests/integration/...", "./tests/jepsen/...")
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	cmd.Env = append(os.Environ(), "GO111MODULE=on")
+	
+	err = cmd.Run()
+	
+	output := stdout.String() + stderr.String()
+	result.Output = truncateOutput(output, 5000)
+	
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			result.ReturnCode = exitErr.ExitCode()
+		} else {
+			result.ReturnCode = 1
+		}
+	} else {
+		result.ReturnCode = 0
+		result.Passed = true
+	}
+
+	// Count tests
+	result.NumTests, result.NumPassed, result.NumFailed = countTests(output)
+
+	return result
 }
 
-func countPassedTests(output string) int {
-	count := 0
-	lines := strings.Split(output, "\n")
+func countTests(output string) (total, passed, failed int) {
+	// Simple parsing of go test output
+	lines := bytes.Split([]byte(output), []byte("\n"))
 	for _, line := range lines {
-		if strings.Contains(line, "--- PASS:") {
-			count++
+		lineStr := string(line)
+		if bytes.Contains(line, []byte("--- PASS:")) {
+			passed++
+			total++
+		} else if bytes.Contains(line, []byte("--- FAIL:")) {
+			failed++
+			total++
+		} else if bytes.Contains(line, []byte("=== RUN")) {
+			// Could count RUNs too but PASS/FAIL is more accurate
+			_ = lineStr
 		}
 	}
-	return count
+	return
 }
 
-func countFailedTests(output string) int {
-	count := 0
-	lines := strings.Split(output, "\n")
-	for _, line := range lines {
-		if strings.Contains(line, "--- FAIL:") {
-			count++
-		}
+func formatTestResult(result TestStatus) string {
+	status := "FAILED"
+	if result.Passed {
+		status = "PASSED"
 	}
-	return count
+	return fmt.Sprintf("%s (%d/%d tests passed)", status, result.NumPassed, result.NumTests)
 }
 
-func countSkippedTests(output string) int {
-	count := 0
-	lines := strings.Split(output, "\n")
-	for _, line := range lines {
-		if strings.Contains(line, "--- SKIP:") {
-			count++
-		}
+func truncateOutput(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
 	}
-	return count
+	return s[:maxLen] + "\n... (output truncated)"
 }
