@@ -7,7 +7,9 @@ RUN apk add --no-cache \
     build-base \
     cmake \
     make \
-    bash
+    bash \
+    git \
+    catch2
 
 WORKDIR /app
 

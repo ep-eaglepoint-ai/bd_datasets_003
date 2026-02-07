@@ -40,7 +40,18 @@ option(BUILD_TESTS "Build tests" ON)
 if(BUILD_TESTS)
     # Check for Catch2
     find_package(Catch2 3.0 QUIET)
-    
+
+    if(NOT Catch2_FOUND)
+        include(FetchContent)
+        FetchContent_Declare(
+            Catch2
+            URL https://github.com/catchorg/Catch2/archive/refs/tags/v3.5.2.tar.gz
+            DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+        )
+        FetchContent_MakeAvailable(Catch2)
+        set(Catch2_FOUND ON)
+    endif()
+
     if(Catch2_FOUND)
         message(STATUS "Catch2 found, building tests")
         
