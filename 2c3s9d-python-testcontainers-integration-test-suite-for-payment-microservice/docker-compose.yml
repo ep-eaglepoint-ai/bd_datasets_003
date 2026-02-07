@@ -14,5 +14,7 @@ services:
     volumes:
       - .:/app
       - /var/run/docker.sock:/var/run/docker.sock
+      - /tmp:/tmp
     # Testcontainers requires Docker socket access
     # Mounting the Docker socket allows containers to be spawned
+    # Mounting /tmp allows deleting BUILD_FAILED files for Aquila

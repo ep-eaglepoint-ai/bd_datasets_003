@@ -27,3 +27,7 @@ docker compose run --rm app python evaluation/evaluation.py
 ```
 
 Commands to run evaluation/evaluation.py and generate reports
+
+## Docker Rate Limiting
+
+If you encounter Docker Hub rate limiting errors, the test suite automatically uses Google Container Registry mirror (mirror.gcr.io) to avoid rate limits. No additional configuration is required.

@@ -44,7 +44,8 @@ IS_REPO_BEFORE = REPO_NAME == "repository_before"
 # - mirror.gcr.io (Google Container Registry mirror)
 # - docker.mirrors.ustc.edu.cn (USTC mirror)
 # - registry.docker-cn.com (Docker China mirror)
-DOCKER_REGISTRY_MIRROR = os.environ.get("DOCKER_REGISTRY_MIRROR", "").strip()
+# Use Google mirror by default to avoid Docker Hub rate limiting
+DOCKER_REGISTRY_MIRROR = os.environ.get("DOCKER_REGISTRY_MIRROR", "mirror.gcr.io").strip()
 
 
 def pytest_collection_modifyitems(session, config, items):
