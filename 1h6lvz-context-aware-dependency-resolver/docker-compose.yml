@@ -1,0 +1,23 @@
+services:
+  test-after:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - REPO_UNDER_TEST=repository_after
+    command: pytest tests -v
+    volumes:
+      - ./repository_after:/app/repository_after:ro
+      - ./tests:/app/tests:ro
+
+  evaluation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python3 evaluation/evaluation.py
+    volumes:
+      - ./repository_after:/app/repository_after:ro
+      - ./tests:/app/tests:ro
+      - ./evaluation:/app/evaluation
+    depends_on:
+      - test-after
