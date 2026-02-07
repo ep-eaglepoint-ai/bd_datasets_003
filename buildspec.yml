@@ -1,16 +1,15 @@
 version: 0.2
-
 phases:
   install:
     runtime-versions:
       python: 3.11
     commands:
-      - echo Installing dependencies
+      - echo "Installing dependencies"
       - cd 17qj8e-rfid-middleware-rssi-smoothing-directionality-logic
       - pip install -r requirements.txt || true
   build:
     commands:
-      - echo Running evaluation
+      - echo "Running evaluation"
       - cd 17qj8e-rfid-middleware-rssi-smoothing-directionality-logic
       - python evaluation/evaluate.py
 artifacts:
