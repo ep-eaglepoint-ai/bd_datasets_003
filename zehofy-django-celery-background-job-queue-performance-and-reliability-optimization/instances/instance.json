@@ -1,0 +1,13 @@
+{
+            "instance_id": "ZEHOFY",
+            "problem_statement": "The Django application's Celery job queue has become a bottleneck causing widespread issues. Priority emails and notifications are delayed because they queue behind bulk data imports. Workers crash with memory errors when processing large CSV files because the entire file content is loaded before processing. 
+
+Failed tasks retry immediately in rapid succession, overwhelming external notification APIs and triggering rate limits. Redis memory usage grows continuously because task results are never cleaned up. Operations teams report the same welcome email being sent multiple times to the same user, and there is no way to check job progress or status. Core task files are email_tasks.py, import_tasks.py, notification_tasks.py, and report_tasks.py in the apps/tasks/ folder.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/zehofy-django-celery-background-job-queue-performance-and-reliability-optimization",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        

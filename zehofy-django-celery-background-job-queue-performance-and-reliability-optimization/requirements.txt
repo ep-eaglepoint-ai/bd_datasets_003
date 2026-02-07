@@ -1,0 +1,24 @@
+# Django and Celery
+Django>=4.2,<5.0
+celery>=5.3,<6.0
+django-celery-results>=2.5,<3.0
+
+# Database
+psycopg2-binary>=2.9,<3.0
+
+# Redis
+redis>=4.5,<5.0
+
+# Testing
+pytest>=7.0,<8.0
+pytest-django>=4.5,<5.0
+pytest-mock>=3.10,<4.0
+
+# Optional: For streaming JSON parsing
+ijson>=3.1,<4.0
+
+# Production settings
+gunicorn>=21.0,<22.0
+
+# HTTP requests for notification tasks
+requests>=2.31,<3.0
