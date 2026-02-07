@@ -1,8 +1,25 @@
-# Docker Compose file for running tests. You should customize this as needed.
-
 services:
-  app:
-    build: .
-    command: pytest -q tests
+  test-after:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - REPO_UNDER_TEST=repository_after
+    command: node --test tests/sentinel-processor.test.js
     volumes:
-      - .:/app
+      - ./repository_after:/app/repository_after:ro
+      - ./tests:/app/tests:ro
+
+  evaluation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: node evaluation/evaluation.js
+    volumes:
+      - ./repository_before:/app/repository_before:ro
+      - ./repository_after:/app/repository_after:ro
+      - ./tests:/app/tests:ro
+      - ./evaluation:/app/evaluation
+    depends_on:
+      test-after:
+        condition: service_completed_successfully
