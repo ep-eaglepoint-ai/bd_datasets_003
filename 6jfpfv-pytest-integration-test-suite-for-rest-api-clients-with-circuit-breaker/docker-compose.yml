@@ -1,0 +1,10 @@
+# Docker Compose file for running tests. You should customize this as needed.
+
+services:
+  app:
+    build: .
+    working_dir: /app
+    volumes:
+      - .:/app
+    entrypoint: ["bash", "/app/entrypoint.sh"]
+    command: ["evaluate"]

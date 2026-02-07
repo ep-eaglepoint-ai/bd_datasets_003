@@ -1,0 +1,11 @@
+{
+            "instance_id": "6JFPFV",
+            "problem_statement": "The Python API client library for external service integration has no test coverage for its resilience features. Production incidents have revealed that retry logic does not trigger correctly for certain 5xx errors, and the circuit breaker gets stuck in the open state without transitioning to half-open. Invalid API responses cause unhandled Pydantic validation exceptions instead of raising the expected ValidationError. Rate limit responses from services crash the client because the Retry-After header is not parsed correctly. Tests cannot run in CI because they attempt real HTTP connections to external services.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/6jfpfv-pytest-integration-test-suite-for-rest-api-clients-with-circuit-breaker",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
