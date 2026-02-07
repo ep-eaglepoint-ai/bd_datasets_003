@@ -154,6 +154,7 @@ app.post("/tasks", async (req, res) => {
     if (
       msg.includes("Cannot schedule") ||
       msg.includes("Invalid date") ||
+      msg.includes("Deadline required") ||
       msg.includes("Invalid reminder format") // Catch parse errors
     ) {
       res.status(400).json({ error: msg });

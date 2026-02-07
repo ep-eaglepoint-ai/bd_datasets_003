@@ -611,6 +611,19 @@ describe("Deadline Reminder System - Complete Suite", () => {
     expect(Math.abs(dbTrigger - expected.getTime())).toBeLessThan(1000); // Within 1s
   });
 
+  test("Validation: Relative reminder requires deadline on task create", async () => {
+    const res = await request(app)
+      .post("/tasks")
+      .set("X-User-ID", ownerId.toString())
+      .send({
+        title: "Relative reminder without deadline",
+        reminders: ["1h"],
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/deadline required/i);
+  });
+
   // 9. FEATURE: LIST REMINDERS
   test("Feature: List User Reminders", async () => {
     // Ensure we have some reminders
