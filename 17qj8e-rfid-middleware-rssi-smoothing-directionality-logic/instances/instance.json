@@ -1,0 +1,11 @@
+{
+            "instance_id": "17QJ8E",
+            "problem_statement": "we want to implement RFID but Raw RFID data is notoriously noisy. "Cross-reads" occur when Antenna A picks up a tag physically located near Antenna B due to signal reflections. A naive logic that simply trusts the "last antenna seen" will flicker rapidly between locations, generating thousands of false movement events. The engineering solution requires RSSI Smoothing (averaging signal strength over a time window) to determine the "True Zone" based on signal dominance, combined with a Hysteresis Loop to prevent state flickering during the transition period between zones.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/17qj8e-rfid-middleware-rssi-smoothing-directionality-logic",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
