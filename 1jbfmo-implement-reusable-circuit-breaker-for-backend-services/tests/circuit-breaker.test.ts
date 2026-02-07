@@ -445,4 +445,233 @@ describe('CircuitBreaker', () => {
       expect(defaultBreaker.getState()).toBe(CircuitState.CLOSED);
     });
   });
+
+  describe('Requirement 9: FailureRecord stores error context for debugging', () => {
+    test('should store original error type and message in failure records', async () => {
+      class CustomServiceError extends Error {
+        constructor(message: string) {
+          super(message);
+          this.name = 'CustomServiceError';
+        }
+      }
+
+      const customError = new CustomServiceError('Connection refused');
+      const failingOp = () => Promise.reject(customError);
+
+      await expect(breaker.execute(failingOp)).rejects.toThrow();
+
+      const failures = breaker.getFailures();
+      expect(failures.length).toBe(1);
+      expect(failures[0].errorType).toBe('CustomServiceError');
+      expect(failures[0].errorMessage).toBe('Connection refused');
+      expect(failures[0].timestamp).toBeDefined();
+    });
+
+    test('should store different error types correctly', async () => {
+      const typeError = new TypeError('Invalid type');
+      const rangeError = new RangeError('Out of bounds');
+
+      await expect(breaker.execute(() => Promise.reject(typeError))).rejects.toThrow();
+      await expect(breaker.execute(() => Promise.reject(rangeError))).rejects.toThrow();
+
+      const failures = breaker.getFailures();
+      expect(failures.length).toBe(2);
+      expect(failures[0].errorType).toBe('TypeError');
+      expect(failures[0].errorMessage).toBe('Invalid type');
+      expect(failures[1].errorType).toBe('RangeError');
+      expect(failures[1].errorMessage).toBe('Out of bounds');
+    });
+
+    test('should handle non-Error rejections gracefully', async () => {
+      await expect(breaker.execute(() => Promise.reject('string error'))).rejects.toBe('string error');
+      await expect(breaker.execute(() => Promise.reject(42))).rejects.toBe(42);
+
+      const failures = breaker.getFailures();
+      expect(failures.length).toBe(2);
+      expect(failures[0].errorType).toBe('string');
+      expect(failures[0].errorMessage).toBe('string error');
+      expect(failures[1].errorType).toBe('number');
+      expect(failures[1].errorMessage).toBe('42');
+    });
+  });
+
+  describe('Requirement 10: Clear blocking error messages identify reason', () => {
+    test('OPEN state error message clearly identifies circuit is open', async () => {
+      breaker.trip();
+
+      try {
+        await breaker.execute(() => Promise.resolve('test'));
+        fail('Should have thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(CircuitOpenError);
+        const message = (error as Error).message.toLowerCase();
+        // Must contain both 'circuit' and 'open' to clearly identify the blocking reason
+        expect(message).toContain('circuit');
+        expect(message).toContain('open');
+      }
+    });
+
+    test('HALF_OPEN blocked error clearly identifies probe in progress', async () => {
+      breaker.trip();
+      await new Promise(resolve => setTimeout(resolve, 200));
+      expect(breaker.getState()).toBe(CircuitState.HALF_OPEN);
+
+      // Start slow probe
+      const probePromise = breaker.execute(async () => {
+        await new Promise(resolve => setTimeout(resolve, 200));
+        return 'done';
+      });
+
+      // Attempt second request
+      try {
+        await breaker.execute(() => Promise.resolve('blocked'));
+        fail('Should have thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(CircuitOpenError);
+        const message = (error as Error).message.toLowerCase();
+        // Must clearly indicate: circuit is half-open AND a probe is in progress
+        expect(message).toContain('half-open');
+        expect(message).toContain('probe');
+        expect(message).toContain('in progress');
+      }
+
+      await probePromise;
+    });
+
+    test('error messages are distinct for OPEN vs HALF_OPEN blocking', async () => {
+      // Get OPEN message
+      breaker.trip();
+      let openMessage = '';
+      try {
+        await breaker.execute(() => Promise.resolve('x'));
+      } catch (error) {
+        openMessage = (error as Error).message;
+      }
+
+      // Wait for HALF_OPEN
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      // Start probe
+      const probePromise = breaker.execute(async () => {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        return 'done';
+      });
+
+      // Get HALF_OPEN blocked message
+      let halfOpenMessage = '';
+      try {
+        await breaker.execute(() => Promise.resolve('x'));
+      } catch (error) {
+        halfOpenMessage = (error as Error).message;
+      }
+
+      await probePromise;
+
+      // Messages must be different and descriptive
+      expect(openMessage).not.toBe(halfOpenMessage);
+      expect(openMessage.toLowerCase()).not.toContain('probe');
+      expect(halfOpenMessage.toLowerCase()).toContain('probe');
+    });
+  });
+
+  describe('Requirement 11: Deterministic time handling with fake timers', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    test('should transition OPEN to HALF_OPEN with fake timers (no flakiness)', async () => {
+      const fakeBreaker = new CircuitBreaker({
+        failureThreshold: 2,
+        failureWindowMs: 10000,
+        resetTimeoutMs: 5000, // 5 seconds
+        successThreshold: 1,
+      });
+
+      // Trip the circuit
+      fakeBreaker.trip();
+      expect(fakeBreaker.getState()).toBe(CircuitState.OPEN);
+
+      // Advance time by less than resetTimeout - should stay OPEN
+      jest.advanceTimersByTime(4999);
+      expect(fakeBreaker.getState()).toBe(CircuitState.OPEN);
+
+      // Advance to exactly resetTimeout - should transition to HALF_OPEN
+      jest.advanceTimersByTime(1);
+      expect(fakeBreaker.getState()).toBe(CircuitState.HALF_OPEN);
+    });
+
+    test('should expire failures at exact window boundary with fake timers', async () => {
+      const fakeBreaker = new CircuitBreaker({
+        failureThreshold: 10,
+        failureWindowMs: 1000, // 1 second window
+        resetTimeoutMs: 60000,
+      });
+
+      const failOp = () => Promise.reject(new Error('fail'));
+
+      // Add failure at T=0
+      await expect(fakeBreaker.execute(failOp)).rejects.toThrow();
+      expect(fakeBreaker.getFailureCount()).toBe(1);
+
+      // Advance to just before boundary (999ms)
+      jest.advanceTimersByTime(999);
+      expect(fakeBreaker.getFailureCount()).toBe(1); // Still in window
+
+      // Advance to exactly boundary (1000ms total)
+      jest.advanceTimersByTime(1);
+      expect(fakeBreaker.getFailureCount()).toBe(0); // Expired
+    });
+
+    test('should open circuit at exact threshold with fake timers', async () => {
+      const fakeBreaker = new CircuitBreaker({
+        failureThreshold: 3,
+        failureWindowMs: 10000,
+        resetTimeoutMs: 5000,
+      });
+
+      const failOp = () => Promise.reject(new Error('fail'));
+
+      await expect(fakeBreaker.execute(failOp)).rejects.toThrow();
+      expect(fakeBreaker.getState()).toBe(CircuitState.CLOSED);
+
+      await expect(fakeBreaker.execute(failOp)).rejects.toThrow();
+      expect(fakeBreaker.getState()).toBe(CircuitState.CLOSED);
+
+      await expect(fakeBreaker.execute(failOp)).rejects.toThrow();
+      expect(fakeBreaker.getState()).toBe(CircuitState.OPEN);
+    });
+
+    test('complete lifecycle with fake timers - zero flakiness', async () => {
+      const fakeBreaker = new CircuitBreaker({
+        failureThreshold: 2,
+        failureWindowMs: 5000,
+        resetTimeoutMs: 3000,
+        successThreshold: 1,
+      });
+
+      const failOp = () => Promise.reject(new Error('service down'));
+      const successOp = () => Promise.resolve('recovered');
+
+      // Phase 1: Trip via failures
+      await expect(fakeBreaker.execute(failOp)).rejects.toThrow();
+      await expect(fakeBreaker.execute(failOp)).rejects.toThrow();
+      expect(fakeBreaker.getState()).toBe(CircuitState.OPEN);
+
+      // Phase 2: Blocked during OPEN
+      await expect(fakeBreaker.execute(successOp)).rejects.toThrow(CircuitOpenError);
+
+      // Phase 3: Fast-forward to HALF_OPEN
+      jest.advanceTimersByTime(3000);
+      expect(fakeBreaker.getState()).toBe(CircuitState.HALF_OPEN);
+
+      // Phase 4: Successful probe closes circuit
+      const result = await fakeBreaker.execute(successOp);
+      expect(result).toBe('recovered');
+      expect(fakeBreaker.getState()).toBe(CircuitState.CLOSED);
+    });
+  });
 });

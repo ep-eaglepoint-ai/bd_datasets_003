@@ -994,8 +994,9 @@ describe('Error message validation', () => {
       await probePromise;
     });
   });
+});
 
-  describe('Half-Open race test - strengthened', () => {
+describe('Half-Open race test - strengthened', () => {
   /**
    * These tests GUARANTEE that exactly one probe executes in Half-Open state.
    * Previous tests allowed executionCount === 0, which didn't exercise the probe path.
@@ -1676,5 +1677,4 @@ describe('Integration: All combined scenario', () => {
       Date.now = originalDateNow;
     }
   });
-});
 });

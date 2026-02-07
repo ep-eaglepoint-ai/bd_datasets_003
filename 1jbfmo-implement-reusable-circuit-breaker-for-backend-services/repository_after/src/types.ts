@@ -47,8 +47,13 @@ export class CircuitOpenError extends Error {
 }
 
 /**
- * Failure record for tracking failures within the time window
+ * Failure record for tracking failures within the time window.
+ * Stores rich context including the original error to aid debugging.
  */
 export interface FailureRecord {
   timestamp: number;
+  /** The original error type name (e.g. 'TypeError', 'NetworkError') */
+  errorType: string;
+  /** The original error message */
+  errorMessage: string;
 }

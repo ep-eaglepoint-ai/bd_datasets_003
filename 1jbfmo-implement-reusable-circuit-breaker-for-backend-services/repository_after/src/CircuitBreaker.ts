@@ -8,6 +8,19 @@ import { CircuitBreakerOptions, CircuitState, CircuitOpenError, FailureRecord } 
  * - CLOSED: Normal operation, requests pass through
  * - OPEN: Circuit is tripped, requests fail immediately
  * - HALF_OPEN: Testing if the dependency is healthy again
+ * 
+ * CONCURRENCY SAFETY NOTE:
+ * This implementation is safe for single-threaded Node.js event loop execution.
+ * The Half-Open probe guard uses synchronous check-and-set which is atomic within
+ * a single JavaScript execution context.
+ * 
+ * This implementation is NOT safe for:
+ * - worker_threads with shared CircuitBreaker instances
+ * - Multi-process environments sharing state
+ * - Distributed systems requiring coordination
+ * 
+ * For distributed safety, consider external state stores (Redis, etc.) with
+ * atomic operations or distributed locks.
  */
 export class CircuitBreaker {
   private state: CircuitState = CircuitState.CLOSED;
@@ -45,6 +58,16 @@ export class CircuitBreaker {
   }
 
   /**
+   * Get the failure records within the current time window.
+   * Each record contains timestamp, errorType, and errorMessage for debugging.
+   * Returns a copy to prevent external mutation.
+   */
+  getFailures(): ReadonlyArray<FailureRecord> {
+    this.cleanupOldFailures();
+    return [...this.failures];
+  }
+
+  /**
    * Execute an async operation through the circuit breaker
    * @param operation - The async operation to execute
    * @returns The result of the operation
@@ -70,7 +93,7 @@ export class CircuitBreaker {
       this.onSuccess();
       return result;
     } catch (error) {
-      this.onFailure();
+      this.onFailure(error);
       throw error;
     }
   }
@@ -131,7 +154,7 @@ export class CircuitBreaker {
   /**
    * Handle failed operation execution
    */
-  private onFailure(): void {
+  private onFailure(error: unknown): void {
     const now = Date.now();
 
     if (this.state === CircuitState.HALF_OPEN) {
@@ -144,7 +167,11 @@ export class CircuitBreaker {
 
     if (this.state === CircuitState.CLOSED) {
       this.cleanupOldFailures();
-      this.failures.push({ timestamp: now });
+
+      const errorType = error instanceof Error ? error.constructor.name : typeof error;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
+      this.failures.push({ timestamp: now, errorType, errorMessage });
 
       if (this.failures.length >= this.failureThreshold) {
         this.state = CircuitState.OPEN;
