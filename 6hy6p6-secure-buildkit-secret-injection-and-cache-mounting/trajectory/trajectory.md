@@ -50,15 +50,15 @@ Leaving secrets in layers or passing them via ARG/ENV is simpler but insecure. T
   - a build/test stage that uses `--mount=type=secret,id=ssh_key` and `--mount=type=cache,target=/go/pkg/mod` while running `go mod download` and `go build`.
   - a final stage (`AS final`) based on `scratch` or `gcr.io/distroless/static`, copying only the binary and certs.
 - Application payload in [repository_after/main.go](repository_after/main.go) and [repository_after/go.mod](repository_after/go.mod).
-- Test harness in `tests/` (Python scripts) to assert each requirement.
+- Test harness in `tests/` (Go tests) to assert each requirement.
 
 ### 6. Phase 6: TRACE DATA/CONTROL FLOW (Build & Verification)
 **Build Flow**:
 1. Build starts with BuildKit enabled.
 2. In the build stage: `COPY go.mod` then `RUN --mount=type=cache,target=/go/pkg/mod --mount=type=secret,id=ssh_key \
    sh -c 'configure-ssh && go mod download'` — this uses the secret only during module download.
-3. `CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /out/secure-build` produces a static binary.
-4. Final stage copies `/out/secure-build` and `ca-certificates.crt` into a `scratch`/distroless image; no secret files copied.
+3. `CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /app/bin/secure-build ./main.go` produces a static binary.
+4. Final stage copies `/app/bin/secure-build` and `ca-certificates.crt` into a `scratch`/distroless image; no secret files copied.
 
 **Verification Flow**:
 - Tests parse the `Dockerfile` and `repository_after` to ensure mounts, builds, and final content match the requirements. A Docker build is attempted when available to validate SSH fetch behavior and final image integrity.
