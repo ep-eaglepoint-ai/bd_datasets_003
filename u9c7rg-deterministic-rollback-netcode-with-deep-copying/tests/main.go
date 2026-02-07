@@ -47,7 +47,7 @@ func (s *Simulation) GetCurrentFrame() int {
 }
 
 func (s *Simulation) GetState(frame int) GameState {
-	if frame < 0 || frame >= BufferSize {
+	if frame < 0 {
 		return GameState{}
 	}
 	return s.buffer[frame%BufferSize]
@@ -138,35 +138,37 @@ func (s *Simulation) ProcessInput(frame int, input PlayerInput) {
 	}
 
 	// Rollback scenario: frame < currentFrame
-	// Restore state from frame-1, apply input at frame, then re-simulate up to currentFrame
+	// Restore state from frame-1, apply input, then re-simulate up to currentFrame
 	targetFrame := s.currentFrame
 
-	// Restore state from frame - 1
-	var restoredState GameState
 	if frame == 0 {
-		restoredState = GameState{
-			Frame:    0,
-			Entities: []Entity{},
+		// Special case: input at frame 0 modifies initial state
+		restoredState := s.deepCopy(s.buffer[0])
+		s.applyInput(&restoredState, input)
+		s.stepPhysics(&restoredState)
+		s.saveState(restoredState)
+
+		// Re-simulate from frame 1 onward
+		for f := 1; f < targetFrame; f++ {
+			prevState := s.deepCopy(s.buffer[(f-1)%BufferSize])
+			prevState.Frame = f
+			s.stepPhysics(&prevState)
+			s.saveState(prevState)
 		}
 	} else {
-		restoredState = s.deepCopy(s.buffer[(frame-1)%BufferSize])
-		restoredState.Frame = frame
+		// Load frame-1 state, apply input (set velocity), save back to frame-1 slot
+		restoredState := s.deepCopy(s.buffer[(frame-1)%BufferSize])
+		s.applyInput(&restoredState, input)
+		s.saveState(restoredState)
+
+		// Re-simulate from frame to targetFrame with physics
+		for f := frame; f < targetFrame; f++ {
+			prevState := s.deepCopy(s.buffer[(f-1)%BufferSize])
+			prevState.Frame = f
+			s.stepPhysics(&prevState)
+			s.saveState(prevState)
+		}
 	}
-
-	// Apply the input
-	s.applyInput(&restoredState, input)
-	s.stepPhysics(&restoredState)
-	s.saveState(restoredState)
-
-	// Re-simulate from frame+1 to targetFrame
-	for f := frame + 1; f < targetFrame; f++ {
-		prevState := s.deepCopy(s.buffer[(f-1)%BufferSize])
-		prevState.Frame = f
-		s.stepPhysics(&prevState)
-		s.saveState(prevState)
-	}
-
-	// Update current frame (stays the same)
 }
 
 func (s *Simulation) AddEntity(e Entity) {
