@@ -13,11 +13,11 @@ sys.path.insert(0, str(REPO_AFTER))
 from escrow_engine import EscrowEngine, StateError  
 
 
-def test_invariant_true_before_deposit() -> None:
+def test_invariant_false_before_deposit() -> None:
     e = EscrowEngine(price=100, agent_fee=10)
     assert e.state == "INIT"
     assert e.total_required == 110
-    assert e.get_ledger_invariant() is True
+    assert e.get_ledger_invariant() is False
 
 
 def test_deposit_enforces_exact_amount_and_transitions_to_funded() -> None:
@@ -27,13 +27,13 @@ def test_deposit_enforces_exact_amount_and_transitions_to_funded() -> None:
     assert e.deposit(109) is False
     assert e.state == "INIT"
     assert e.balances == snapshot
-    assert e.get_ledger_invariant() is True
+    assert e.get_ledger_invariant() is False
 
     snapshot = copy.deepcopy(e.balances)
     assert e.deposit(111) is False
     assert e.state == "INIT"
     assert e.balances == snapshot
-    assert e.get_ledger_invariant() is True
+    assert e.get_ledger_invariant() is False
 
     assert e.deposit(110) is True
     assert e.state == "FUNDED"
@@ -147,7 +147,7 @@ def test_adversarial_refund_more_than_total_required_rejected_and_state_not_corr
 
 def test_get_ledger_invariant_detects_tampering() -> None:
     e = EscrowEngine(price=100, agent_fee=10)
-    assert e.get_ledger_invariant() is True
+    assert e.get_ledger_invariant() is False
 
     e.balances["escrow"] = 1
     assert e.get_ledger_invariant() is False

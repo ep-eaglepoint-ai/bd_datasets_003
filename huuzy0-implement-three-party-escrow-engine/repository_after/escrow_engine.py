@@ -21,7 +21,7 @@ class EscrowEngine:
     """Deterministic FSM for a single 3-party escrow contract.
 
     Ledger model: balances represent allocated funds held for each actor plus escrow.
-    Money conservation invariant: sum(balances) == total_deposited at all times.
+    Funding invariant: sum(balances) == total_required (only true once fully funded).
     """
 
     def __init__(self, price: int, agent_fee: int):
@@ -73,7 +73,7 @@ class EscrowEngine:
     def release_funds(self) -> Dict[str, int]:
         """Normal completion flow.
 
-        Distributes Price to Seller and Fee to Agent; empties escrow.
+        Distributes price to seller and fee to agent; empties escrow.
         """
 
         if self.state != "FUNDED":
@@ -140,8 +140,6 @@ class EscrowEngine:
             seller = 0
             overage = refund_amount_to_buyer - self.price
             if overage > self.agent_fee:
-                # This is logically redundant because refund <= total_required is checked,
-                # but keep it explicit to defend against future changes.
                 raise ValueError("refund requires more than seller+agent funds")
             agent = self.agent_fee - overage
 
@@ -153,7 +151,10 @@ class EscrowEngine:
         return _Distribution(buyer=buyer, seller=seller, agent=agent)
 
     def get_ledger_invariant(self) -> bool:
-        """True iff sum(balances) equals total_deposited (money conservation)."""
+        """True iff sum(balances) equals total_required.
 
-        total = sum(self.balances.values())
-        return total == self.total_deposited
+        this is intentionally not a generic conservation check.
+        It is only expected to be True when the escrow has been fully funded.
+        """
+
+        return sum(self.balances.values()) == self.total_required

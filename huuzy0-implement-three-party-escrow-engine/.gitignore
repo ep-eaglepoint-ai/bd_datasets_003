@@ -1,14 +1,12 @@
-# Python
 __pycache__/
 *.pyc
+.pytest_cache/
 .venv/
 .env
 
-# Node
 node_modules/
 
-# OS
 .DS_Store
 
 evaluation/report.json
-evaluation/generate_report_json.py
+evaluation/report.xml
