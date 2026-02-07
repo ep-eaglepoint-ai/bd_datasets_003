@@ -1,0 +1,11 @@
+{
+            "instance_id": "PFG7SJ",
+            "problem_statement": "Group music playback often lacks a fair way for multiple users to influence which song plays next. This project solves that by allowing users to collaboratively add songs and vote them up or down, dynamically reordering the playlist based on collective preferences.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/pfg7sj-collaborative-playlist-voting-application",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        

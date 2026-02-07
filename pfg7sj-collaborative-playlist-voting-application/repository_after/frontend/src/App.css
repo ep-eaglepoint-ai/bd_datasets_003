@@ -1,0 +1,101 @@
+/* General Layout */
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: #f0f2f5;
+  margin: 0;
+  padding: 0;
+}
+
+.container {
+  max-width: 800px;
+  margin: 40px auto;
+  padding: 20px;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+h1, h2, h3 {
+  text-align: center;
+  color: #333;
+}
+
+/* Forms */
+form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+input[type="text"], input[type="number"] {
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  width: 200px;
+}
+
+button {
+  padding: 10px 20px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-weight: bold;
+  transition: 0.2s ease;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Button Colors */
+button.create { background-color: #4CAF50; color: #fff; }
+button.join { background-color: #2196F3; color: #fff; }
+button.add { background-color: #ff9800; color: #fff; }
+button.remove { background-color: #f44336; color: #fff; }
+button.vote-up { color: green; font-weight: bold; }
+button.vote-down { color: red; font-weight: bold; }
+
+/* Queue Items */
+.queue-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid #ddd;
+  padding: 15px;
+  border-radius: 10px;
+  background: #fafafa;
+  transition: 0.2s;
+}
+
+.queue-item:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.song-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.song-score {
+  font-size: 0.85em;
+  color: #555;
+}
+
+.error-message {
+  color: red;
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  input[type="text"], input[type="number"] {
+    width: 100%;
+  }
+  form {
+    flex-direction: column;
+  }
+}
