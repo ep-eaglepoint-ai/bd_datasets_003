@@ -1,0 +1,44 @@
+{
+  "run_id": "679278e0-4690-44dd-b59f-4979689d43a0",
+  "started_at": "2026-02-07T10:33:40Z",
+  "finished_at": "2026-02-07T10:33:52Z",
+  "duration_seconds": 12.109553172,
+  "success": true,
+  "error": null,
+  "environment": {
+    "go_version": "go1.21.13",
+    "platform": "linux",
+    "os": "linux",
+    "architecture": "arm64",
+    "hostname": "92d9389b6016"
+  },
+  "results": {
+    "after": {
+      "success": true,
+      "exit_code": 0,
+      "tests": [
+        {
+          "name": "Go unit tests: ./tests (Dockerfile + repository_after validation)",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        }
+      ],
+      "summary": {
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "xfailed": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "comparison": {
+      "after_tests_passed": true,
+      "after_total": 1,
+      "after_passed": 1,
+      "after_failed": 0,
+      "after_xfailed": 0
+    }
+  }
+}

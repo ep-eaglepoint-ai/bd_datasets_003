@@ -1,0 +1,56 @@
+{
+  "run_id": "2543c418-538f-4df3-a369-1b61ef54c01c",
+  "started_at": "2026-02-07T11:17:25Z",
+  "finished_at": "2026-02-07T11:17:38Z",
+  "duration_seconds": 12.872353867,
+  "success": true,
+  "error": null,
+  "environment": {
+    "go_version": "go1.21.13",
+    "platform": "linux",
+    "os": "linux",
+    "architecture": "arm64",
+    "hostname": "11aa07d8f314"
+  },
+  "requirements": [
+    "Secret injection via RUN --mount=type=secret,id=ssh_key",
+    "No ARG / ENV for secrets",
+    "Git configured to use SSH with the injected secret",
+    "Go module cache via --mount=type=cache,target=/go/pkg/mod",
+    "Final image must be scratch or gcr.io/distroless/static",
+    "Use ARG TARGETOS and ARG TARGETARCH",
+    "Pass them to go build",
+    "CGO_ENABLED=0",
+    "Secret must not exist in final image",
+    "Cross-build for linux/amd64 and linux/arm64"
+  ],
+  "results": {
+    "after": {
+      "success": true,
+      "exit_code": 0,
+      "tests": [
+        {
+          "name": "Go unit tests: ./tests (Dockerfile + repository_after validation)",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        }
+      ],
+      "summary": {
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "xfailed": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "comparison": {
+      "after_tests_passed": true,
+      "after_total": 1,
+      "after_passed": 1,
+      "after_failed": 0,
+      "after_xfailed": 0
+    }
+  }
+}

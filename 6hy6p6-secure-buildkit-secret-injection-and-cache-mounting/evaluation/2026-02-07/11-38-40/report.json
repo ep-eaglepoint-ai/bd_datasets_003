@@ -1,0 +1,110 @@
+{
+  "run_id": "973e05c4-a766-44ba-bf5e-242435b86d87",
+  "started_at": "2026-02-07T11:38:27Z",
+  "finished_at": "2026-02-07T11:38:40Z",
+  "duration_seconds": 12.796832908,
+  "success": true,
+  "error": null,
+  "environment": {
+    "go_version": "go1.21.13",
+    "platform": "linux",
+    "os": "linux",
+    "architecture": "arm64",
+    "hostname": "0b02d27336ae"
+  },
+  "results": {
+    "after": {
+      "success": true,
+      "exit_code": 0,
+      "tests": [
+        {
+          "name": "TestRepoStructure",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "TestRequirementsLock",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "TestSecretNotWrittenToLayer",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "TestCrossBuild",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "TestGoSum",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "TestPinnedBaseImages",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "TestGoPayload",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "TestMultiArchBuildSinglePass",
+          "status": "passed",
+          "duration": 4,
+          "failureMessages": []
+        },
+        {
+          "name": "TestSecretInjection",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "TestGoCache",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "TestFinalImage",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "TestBuildIntegrity",
+          "status": "passed",
+          "duration": 6,
+          "failureMessages": []
+        }
+      ],
+      "summary": {
+        "total": 12,
+        "passed": 12,
+        "failed": 0,
+        "xfailed": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "comparison": {
+      "after_tests_passed": true,
+      "after_total": 12,
+      "after_passed": 12,
+      "after_failed": 0,
+      "after_xfailed": 0
+    }
+  }
+}

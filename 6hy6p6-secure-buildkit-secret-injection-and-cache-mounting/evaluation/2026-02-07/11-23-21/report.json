@@ -1,0 +1,110 @@
+{
+  "run_id": "5d2a0b13-f8c9-4a0b-b54e-14d3ae490d0e",
+  "started_at": "2026-02-07T11:23:07Z",
+  "finished_at": "2026-02-07T11:23:21Z",
+  "duration_seconds": 13.564058214,
+  "success": true,
+  "error": null,
+  "environment": {
+    "go_version": "go1.21.13",
+    "platform": "linux",
+    "os": "linux",
+    "architecture": "arm64",
+    "hostname": "8033f1de487c"
+  },
+  "results": {
+    "after": {
+      "success": true,
+      "exit_code": 0,
+      "tests": [
+        {
+          "name": "TestBuildIntegrity",
+          "status": "passed",
+          "duration": 7,
+          "failureMessages": []
+        },
+        {
+          "name": "TestMultiArchBuildSinglePass",
+          "status": "passed",
+          "duration": 4,
+          "failureMessages": []
+        },
+        {
+          "name": "TestSecretNotWrittenToLayer",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "TestGoCache",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "TestFinalImage",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "TestCrossBuild",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "TestGoSum",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "TestRepoStructure",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "TestRequirementsLock",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "TestSecretInjection",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "TestPinnedBaseImages",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        },
+        {
+          "name": "TestGoPayload",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        }
+      ],
+      "summary": {
+        "total": 12,
+        "passed": 12,
+        "failed": 0,
+        "xfailed": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "comparison": {
+      "after_tests_passed": true,
+      "after_total": 12,
+      "after_passed": 12,
+      "after_failed": 0,
+      "after_xfailed": 0
+    }
+  }
+}

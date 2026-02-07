@@ -1,0 +1,44 @@
+{
+  "run_id": "9133d8fb-7d60-4795-9275-9047ec815052",
+  "started_at": "2026-02-07T08:04:43Z",
+  "finished_at": "2026-02-07T08:04:50Z",
+  "duration_seconds": 7.261668336,
+  "success": true,
+  "error": null,
+  "environment": {
+    "go_version": "go1.21.13",
+    "platform": "linux",
+    "os": "linux",
+    "architecture": "arm64",
+    "hostname": "355ad88e6c90"
+  },
+  "results": {
+    "after": {
+      "success": true,
+      "exit_code": 0,
+      "tests": [
+        {
+          "name": "go test ./tests",
+          "status": "passed",
+          "duration": 0,
+          "failureMessages": []
+        }
+      ],
+      "summary": {
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "xfailed": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "comparison": {
+      "after_tests_passed": true,
+      "after_total": 1,
+      "after_passed": 1,
+      "after_failed": 0,
+      "after_xfailed": 0
+    }
+  }
+}
