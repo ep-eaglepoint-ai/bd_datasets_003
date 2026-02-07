@@ -12,7 +12,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from multiprocessing import Value
 from PIL import Image
 
-from app.config import THUMBNAIL_SIZES, OUTPUT_FORMATS, MAX_WORKERS
+from app.config import THUMBNAIL_SIZES, OUTPUT_FORMATS, MAX_WORKERS, MAX_IMAGE_SIZE
 from app.services.resizer import resize_preserve_aspect_ratio
 from app.services.workers import process_image_task
 from app.services.utils import compute_sha256_chunked, validate_image_format
@@ -42,6 +42,7 @@ class ImageProcessor:
         self._executor: Optional[ProcessPoolExecutor] = None
         self._hash_cache: Dict[str, str] = {}  # Track seen hashes
         self._cache_lock = threading.Lock()
+        self._temp_files: List[str] = []  # Track temp files for cleanup
         
         # Create output directory if needed
         os.makedirs(self.output_dir, exist_ok=True)
@@ -51,6 +52,15 @@ class ImageProcessor:
     
     def _cleanup(self) -> None:
         """Clean up resources on shutdown."""
+        # Clean up temp files
+        for tf in self._temp_files:
+            try:
+                if os.path.exists(tf):
+                    os.remove(tf)
+            except:
+                pass
+        self._temp_files.clear()
+        
         if self._executor:
             self._executor.shutdown(wait=False)
     
@@ -65,7 +75,7 @@ class ImageProcessor:
         Check if image content is a duplicate based on SHA-256 hash.
         
         Args:
-            content: Image bytes
+            content: Image bytes or file path
             
         Returns:
             True if duplicate, False otherwise
@@ -77,27 +87,44 @@ class ImageProcessor:
             self._hash_cache[file_hash] = True
             return False
     
-    def _load_image(self, image_data: bytes, temp_file_path: str = None) -> Image.Image:
+    def _load_image(self, image_data: bytes, temp_file_path: str = None) -> Tuple[Image.Image, str]:
         """
         Load image from bytes, optionally streaming to temp file for large images.
         
         Args:
             image_data: Raw image bytes
-            temp_file_path: Optional path to save temp file
+            temp_file_path: Optional pre-existing temp file path
             
         Returns:
-            PIL Image object
+            Tuple of (PIL Image object, temp_file_path or None)
         """
-        # For images > 50MB, write to temp file first
-        if len(image_data) > 50 * 1024 * 1024:  # 50MB
+        created_temp = None
+        
+        # For large data, write to temp file first
+        if len(image_data) > MAX_IMAGE_SIZE:
             if temp_file_path is None:
                 fd, temp_file_path = tempfile.mkstemp(suffix='.tmp')
                 os.close(fd)
-            with open(temp_file_path, 'wb') as f:
-                f.write(image_data)
-            return Image.open(temp_file_path)
+                created_temp = temp_file_path
+                
+                # Write in chunks to avoid memory issues
+                with open(temp_file_path, 'wb') as f:
+                    for i in range(0, len(image_data), 8192):
+                        f.write(image_data[i:i+8192])
+            else:
+                # Use provided temp path
+                created_temp = temp_file_path
+                with open(temp_file_path, 'wb') as f:
+                    for i in range(0, len(image_data), 8192):
+                        f.write(image_data[i:i+8192])
+            
+            # Track temp file for cleanup
+            if created_temp:
+                self._temp_files.append(created_temp)
+            
+            return Image.open(temp_file_path), temp_file_path
         else:
-            return Image.open(io.BytesIO(image_data))
+            return Image.open(io.BytesIO(image_data)), None
     
     def process_image(self, image_data: bytes, image_id: str = None,
                       skip_duplicate: bool = True) -> Dict:
@@ -132,10 +159,10 @@ class ImageProcessor:
                 "error": "Duplicate image detected, skipped"
             }
         
-        temp_files = []
+        temp_path = None
         try:
-            # Load image
-            image = self._load_image(image_data)
+            # Load image - will create temp file for large images
+            image, temp_path = self._load_image(image_data)
             
             results = {}
             
@@ -160,10 +187,12 @@ class ImageProcessor:
                 "error": str(e)
             }
         finally:
-            # Clean up temp files
-            for tf in temp_files:
+            # Clean up temp file if it was created
+            if temp_path and temp_path in self._temp_files:
                 try:
-                    os.remove(tf)
+                    if os.path.exists(temp_path):
+                        os.remove(temp_path)
+                    self._temp_files.remove(temp_path)
                 except:
                     pass
     
@@ -254,6 +283,15 @@ class ImageProcessor:
     
     def cleanup(self) -> None:
         """Clean up temporary files and shutdown executor."""
+        # Clean up temp files
+        for tf in self._temp_files:
+            try:
+                if os.path.exists(tf):
+                    os.remove(tf)
+            except:
+                pass
+        self._temp_files.clear()
+        
         if self._executor:
             self._executor.shutdown(wait=True)
             self._executor = None

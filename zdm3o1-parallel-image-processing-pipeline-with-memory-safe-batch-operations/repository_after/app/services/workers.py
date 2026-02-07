@@ -13,7 +13,7 @@ from typing import Dict, List, Any, Optional
 from multiprocessing import Value
 from PIL import Image
 
-from app.config import THUMBNAIL_SIZES, OUTPUT_FORMATS, JPEG_QUALITY, WEBP_QUALITY
+from app.config import THUMBNAIL_SIZES, OUTPUT_FORMATS, JPEG_QUALITY, WEBP_QUALITY, MAX_IMAGE_SIZE
 from app.services.resizer import resize_preserve_aspect_ratio
 from app.services.optimizer import create_white_background
 
@@ -115,8 +115,29 @@ def _resize_and_save_single(image: Image.Image, image_id: str, size_name: str,
         }
 
 
+def _load_image_from_source(image_data: bytes, temp_path: str = None) -> Image.Image:
+    """
+    Load image from bytes or temp file.
+    
+    For large files (>MAX_IMAGE_SIZE), reads from temp file to avoid memory issues.
+    
+    Args:
+        image_data: Raw image bytes
+        temp_path: Optional path to temp file for large images
+        
+    Returns:
+        PIL Image object
+    """
+    if temp_path and os.path.exists(temp_path):
+        # Read from temp file
+        return Image.open(temp_path)
+    else:
+        # Read from bytes
+        return Image.open(io.BytesIO(image_data))
+
+
 def _process_single_image(image_data: bytes, image_id: str, output_dir: str,
-                          temp_files: List[str]) -> Dict:
+                          temp_files: List[str], temp_path: str = None) -> Dict:
     """
     Process a single image - generate all sizes and formats.
     
@@ -125,11 +146,13 @@ def _process_single_image(image_data: bytes, image_id: str, output_dir: str,
         image_id: Unique identifier
         output_dir: Directory for output files
         temp_files: List to track temp files for cleanup
+        temp_path: Optional temp file path for large images
         
     Returns:
         Dict with processing results
     """
     start_time = time.time()
+    created_temp = None
     
     try:
         # Check for cancellation
@@ -140,8 +163,21 @@ def _process_single_image(image_data: bytes, image_id: str, output_dir: str,
                 "error": "Processing cancelled"
             }
         
-        # Open image from bytes (memory efficient)
-        image = Image.open(io.BytesIO(image_data))
+        # For large data, write to temp file first
+        if len(image_data) > MAX_IMAGE_SIZE and not temp_path:
+            fd, created_temp = tempfile.mkstemp(suffix='.tmp')
+            os.close(fd)
+            
+            # Write in chunks
+            with open(created_temp, 'wb') as f:
+                for i in range(0, len(image_data), 8192):
+                    f.write(image_data[i:i+8192])
+            
+            temp_files.append(created_temp)
+            temp_path = created_temp
+        
+        # Open image from bytes or temp file
+        image = _load_image_from_source(image_data, temp_path)
         
         # Process all size/format combinations
         results = {}
@@ -184,7 +220,7 @@ def process_image_task(task_data: Dict, cancellation_flag: Value = None) -> Dict
     This function is designed to be called by ProcessPoolExecutor.
     
     Args:
-        task_data: Dict containing 'id', 'content', 'output_dir'
+        task_data: Dict containing 'id', 'content', 'output_dir', optionally 'temp_path'
         cancellation_flag: multiprocessing.Value for cancellation
         
     Returns:
@@ -202,10 +238,11 @@ def process_image_task(task_data: Dict, cancellation_flag: Value = None) -> Dict
             task_data.get("content"),
             task_data.get("id"),
             task_data.get("output_dir", "/tmp"),
-            temp_files
+            temp_files,
+            task_data.get("temp_path")  # Pass temp_path for large files
         )
     finally:
-        # Clean up any temp files
+        # Clean up any temp files created by this worker
         cleanup_temp_files(temp_files)
 
 

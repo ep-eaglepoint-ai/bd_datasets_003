@@ -15,6 +15,7 @@ import redis
 
 from app.config import REDIS_URL, MAX_WORKERS
 from app.services.processor import ImageProcessor
+from app.services.workers import process_image_task
 
 
 class BatchStatusTracker:
@@ -153,6 +154,22 @@ class BatchStatusTracker:
                 self._local_cache[batch_id]["failed"] = self._local_cache[batch_id].get("failed", 0) + count
                 self._local_cache[batch_id]["pending"] = self._local_cache[batch_id].get("pending", 0) - count
     
+    def increment_cancelled(self, batch_id: str, count: int = 1) -> None:
+        """Increment cancelled counter."""
+        redis_client = self._get_redis()
+        if redis_client:
+            try:
+                redis_client.hincrby(f"batch:{batch_id}", "cancelled", count)
+                redis_client.hincrby(f"batch:{batch_id}", "pending", -count)
+                redis_client.hset(f"batch:{batch_id}", "updated_at", time.time())
+            except redis.ConnectionError:
+                pass
+        
+        with self._lock:
+            if batch_id in self._local_cache:
+                self._local_cache[batch_id]["cancelled"] = self._local_cache[batch_id].get("cancelled", 0) + count
+                self._local_cache[batch_id]["pending"] = self._local_cache[batch_id].get("pending", 0) - count
+    
     def complete_batch(self, batch_id: str, status: str = "completed") -> None:
         """Mark batch as completed."""
         redis_client = self._get_redis()
@@ -227,6 +244,9 @@ class BatchStatusTracker:
 class BatchProcessor:
     """
     Batch processor with parallel execution, cancellation, and status tracking.
+    
+    Uses module-level worker functions (not instance methods) for multiprocessing
+    to avoid pickling issues with ProcessPoolExecutor.
     """
     
     def __init__(self, redis_url: str = REDIS_URL, max_workers: int = None):
@@ -241,7 +261,7 @@ class BatchProcessor:
         self.max_workers = max_workers or MAX_WORKERS
         self.status_tracker = BatchStatusTracker(redis_url)
         self._executor: ProcessPoolExecutor = None
-        self._active_batches: Dict[str, Process] = {}
+        self._active_batches: Dict[str, Dict] = {}  # Store batch info including cancellation flag
         self._batch_locks: Dict[str, threading.Lock] = {}
         self._lock = threading.Lock()
         
@@ -258,8 +278,9 @@ class BatchProcessor:
         """Clean up all resources."""
         # Cancel all active batches
         with self._lock:
-            for batch_id, process in self._active_batches.items():
-                if process.is_alive():
+            for batch_id, batch_info in self._active_batches.items():
+                process = batch_info.get("process")
+                if process and process.is_alive():
                     process.terminate()
             self._active_batches.clear()
         
@@ -267,13 +288,15 @@ class BatchProcessor:
         if self._executor:
             self._executor.shutdown(wait=True)
     
-    def process_batch(self, images: List[Dict], batch_id: str = None) -> str:
+    def process_batch(self, images: List[Dict], batch_id: str = None, 
+                      temp_files: List[str] = None) -> str:
         """
         Start processing a batch of images in the background.
         
         Args:
             images: List of image dicts with 'id' and 'content'
             batch_id: Optional batch ID
+            temp_files: Optional list of temp files to clean up
             
         Returns:
             Batch ID for tracking
@@ -296,103 +319,31 @@ class BatchProcessor:
         with self._lock:
             self._batch_locks[batch_id] = threading.Lock()
         
-        # Start processing in background
-        processor = ImageProcessor()
+        # Start processing in background - pass only picklable config, not ImageProcessor instance
+        # Create ImageProcessor inside the subprocess to avoid pickling issues
+        output_dir = None
+        
+        # Start process with module-level function and picklable arguments
         process = Process(
-            target=self._run_batch,
-            args=(batch_id, images, cancellation_flag, processor)
+            target=_run_batch_subprocess,
+            args=(batch_id, images, cancellation_flag, self.redis_url, self.max_workers, output_dir, temp_files)
         )
         process.start()
         
+        # Store batch info including cancellation flag for later cancellation
         with self._lock:
-            self._active_batches[batch_id] = process
+            self._active_batches[batch_id] = {
+                "process": process,
+                "cancellation_flag": cancellation_flag
+            }
         
         return batch_id
-    
-    def _run_batch(self, batch_id: str, images: List[Dict],
-                  cancellation_flag: Value, processor: ImageProcessor) -> None:
-        """
-        Run batch processing in a separate process.
-        
-        Args:
-            batch_id: Batch identifier
-            images: List of image dicts
-            cancellation_flag: Shared flag for cancellation
-            processor: ImageProcessor instance
-        """
-        try:
-            executor = processor._get_executor()
-            
-            # Submit all tasks
-            futures = {}
-            for img in images:
-                task = {
-                    "id": img.get("id", str(uuid.uuid4())),
-                    "content": img.get("content"),
-                    "output_dir": processor.output_dir
-                }
-                future = executor.submit(
-                    __import__('app.services.workers', fromlist=['process_image_task']).process_image_task,
-                    task,
-                    cancellation_flag
-                )
-                futures[future] = task["id"]
-            
-            # Collect results
-            completed = 0
-            failed = 0
-            
-            for future in as_completed(futures):
-                if cancellation_flag.value:
-                    # Mark remaining as cancelled
-                    remaining = len(futures) - completed - failed
-                    self.status_tracker.increment_cancelled(batch_id, remaining)
-                    break
-                
-                try:
-                    result = future.result()
-                    
-                    if result["status"] == "success":
-                        completed += 1
-                        self.status_tracker.increment_completed(batch_id)
-                    elif result["status"] == "cancelled":
-                        self.status_tracker.increment_cancelled(batch_id)
-                    else:
-                        failed += 1
-                        self.status_tracker.increment_failed(batch_id)
-                    
-                    # Store result
-                    self.status_tracker.store_result(batch_id, result.get("id"), result)
-                    
-                except Exception as e:
-                    failed += 1
-                    self.status_tracker.increment_failed(batch_id)
-            
-            # Determine final status
-            if cancellation_flag.value:
-                final_status = "cancelled"
-            elif failed == len(images):
-                final_status = "failed"
-            else:
-                final_status = "completed"
-            
-            self.status_tracker.complete_batch(batch_id, final_status)
-            
-        except Exception as e:
-            self.status_tracker.complete_batch(batch_id, "failed")
-        finally:
-            processor.cleanup()
-            
-            # Clean up from active batches
-            with self._lock:
-                if batch_id in self._active_batches:
-                    del self._active_batches[batch_id]
-                if batch_id in self._batch_locks:
-                    del self._batch_locks[batch_id]
     
     def cancel_batch(self, batch_id: str) -> bool:
         """
         Cancel a running batch.
+        
+        Sets the cancellation flag and terminates the process.
         
         Args:
             batch_id: Batch identifier
@@ -402,11 +353,21 @@ class BatchProcessor:
         """
         with self._lock:
             if batch_id in self._active_batches:
-                process = self._active_batches[batch_id]
-                if process.is_alive():
-                    # The cancellation flag will be checked by workers
-                    # Just mark the process for cleanup
-                    del self._active_batches[batch_id]
+                batch_info = self._active_batches[batch_id]
+                cancellation_flag = batch_info.get("cancellation_flag")
+                process = batch_info.get("process")
+                
+                # Set cancellation flag to signal workers to stop
+                if cancellation_flag is not None:
+                    with cancellation_flag.get_lock():
+                        cancellation_flag.value = 1
+                
+                # Terminate the process
+                if process and process.is_alive():
+                    process.terminate()
+                
+                # Remove from active batches
+                del self._active_batches[batch_id]
                 return True
         
         return False
@@ -434,3 +395,102 @@ class BatchProcessor:
             List of result dicts
         """
         return self.status_tracker.get_results(batch_id)
+
+
+def _run_batch_subprocess(batch_id: str, images: List[Dict], cancellation_flag: Value,
+                          redis_url: str, max_workers: int, output_dir: str,
+                          temp_files: List[str] = None) -> None:
+    """
+    Subprocess function for running batch processing.
+    
+    This is a module-level function (not a method) to avoid pickling issues.
+    
+    Args:
+        batch_id: Batch identifier
+        images: List of image dicts
+        cancellation_flag: Shared flag for cancellation
+        redis_url: Redis connection URL
+        max_workers: Number of worker processes
+        output_dir: Output directory for processed images
+        temp_files: List of temp files to clean up
+    """
+    try:
+        # Create ImageProcessor inside subprocess (no pickling needed)
+        processor = ImageProcessor(output_dir=output_dir)
+        
+        # Get executor
+        executor = processor._get_executor()
+        
+        # Submit all tasks using module-level worker function
+        futures = {}
+        for img in images:
+            task = {
+                "id": img.get("id", str(uuid.uuid4())),
+                "content": img.get("content"),
+                "temp_path": img.get("temp_path"),  # For large files
+                "output_dir": processor.output_dir
+            }
+            future = executor.submit(
+                process_image_task,
+                task,
+                cancellation_flag
+            )
+            futures[future] = task["id"]
+        
+        # Collect results
+        completed = 0
+        failed = 0
+        
+        # Create status tracker in subprocess
+        status_tracker = BatchStatusTracker(redis_url)
+        
+        for future in as_completed(futures):
+            # Check for cancellation
+            if cancellation_flag.value:
+                # Mark remaining as cancelled
+                remaining = len(futures) - completed - failed
+                status_tracker.increment_cancelled(batch_id, remaining)
+                break
+            
+            try:
+                result = future.result()
+                
+                if result["status"] == "success":
+                    completed += 1
+                    status_tracker.increment_completed(batch_id)
+                elif result["status"] == "cancelled":
+                    status_tracker.increment_cancelled(batch_id)
+                else:
+                    failed += 1
+                    status_tracker.increment_failed(batch_id)
+                
+                # Store result
+                status_tracker.store_result(batch_id, result.get("id"), result)
+                
+            except Exception as e:
+                failed += 1
+                status_tracker.increment_failed(batch_id)
+        
+        # Determine final status
+        if cancellation_flag.value:
+            final_status = "cancelled"
+        elif failed == len(images):
+            final_status = "failed"
+        else:
+            final_status = "completed"
+        
+        status_tracker.complete_batch(batch_id, final_status)
+        
+    except Exception as e:
+        # Create new tracker for error case
+        status_tracker = BatchStatusTracker(redis_url)
+        status_tracker.complete_batch(batch_id, "failed")
+    finally:
+        # Clean up
+        if temp_files:
+            for tf in temp_files:
+                try:
+                    if os.path.exists(tf):
+                        os.remove(tf)
+                except:
+                    pass
