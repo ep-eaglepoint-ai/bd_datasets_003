@@ -8,7 +8,7 @@ import os
 from decimal import Decimal
 from datetime import date
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from fiscal_engine import FiscalPrecisionEngine
 
 
@@ -21,7 +21,7 @@ class TestNegativeTesting:
         brackets = [{'limit': Decimal('1000000'), 'rate': Decimal('0.10')}]
         return FiscalPrecisionEngine(brackets, Decimal('0.05'))
     
-    # Requirement 4: Negative tests for invalid inputs
+   
     def test_negative_interest_rate_handling(self, engine):
         """Test that negative interest rates are handled (if validation exists)."""
         negative_rate_engine = FiscalPrecisionEngine(

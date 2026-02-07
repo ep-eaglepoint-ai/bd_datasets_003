@@ -111,6 +111,84 @@ class TestMetaTestSuite:
         result = correct_engine.calculate_tiered_tax(Decimal('100.005'))
         # Should round to proper value
         assert result.quantize(Decimal('0.01')) == result, "Should be properly rounded"
+
+    def test_accrued_interest_rounding_8th_decimal(self, standard_brackets):
+        """Cover interest rounding precision to 8 decimal places."""
+        CorrectEngine = load_implementation('correct.py')
+        engine = CorrectEngine(standard_brackets, Decimal('0.05'))
+        result = engine.compute_accrued_interest(
+            Decimal('100000'),
+            date(2024, 1, 1),
+            date(2024, 1, 2)
+        )
+        assert result.as_tuple().exponent <= -8, "Interest should be rounded to 8 decimal places"
+
+    def test_batch_processing_various_amounts(self, standard_brackets):
+        """Cover batch processing with multiple amounts."""
+        CorrectEngine = load_implementation('correct.py')
+        engine = CorrectEngine(standard_brackets, Decimal('0.05'))
+        transactions = [
+            {'amount': Decimal('10000'), 'currency': 'USD', 'date': date(2024, 1, 1)},
+            {'amount': Decimal('25000'), 'currency': 'USD', 'date': date(2024, 1, 2)},
+            {'amount': Decimal('15000'), 'currency': 'USD', 'date': date(2024, 1, 3)},
+        ]
+        result = engine.process_batch(transactions)
+        assert result['total_volume'] == Decimal('50000')
+        assert result['calculated_tax'] == Decimal('5000.00')
+
+    def test_branch_coverage_boundaries(self, standard_brackets):
+        """Cover bracket boundary cases used in branch coverage tests."""
+        CorrectEngine = load_implementation('correct.py')
+        engine = CorrectEngine(standard_brackets, Decimal('0.05'))
+        assert engine.calculate_tiered_tax(Decimal('25000')) == Decimal('2500.00')
+        assert engine.calculate_tiered_tax(Decimal('50000')) == Decimal('5000.00')
+        assert engine.calculate_tiered_tax(Decimal('100000')) == Decimal('15000.00')
+
+    def test_negative_inputs_and_currency_handling(self, standard_brackets):
+        """Cover negative income and malformed currency handling."""
+        CorrectEngine = load_implementation('correct.py')
+        engine = CorrectEngine(standard_brackets, Decimal('0.05'))
+        assert engine.calculate_tiered_tax(Decimal('-1000')) == Decimal('0.00')
+        transactions = [
+            {'amount': Decimal('1000'), 'currency': '', 'date': date(2024, 1, 1)},
+            {'amount': Decimal('2000'), 'currency': 'INVALID', 'date': date(2024, 1, 2)},
+            {'amount': Decimal('3000'), 'currency': 'XYZ123', 'date': date(2024, 1, 3)},
+        ]
+        result = engine.process_batch(transactions)
+        assert result['total_volume'] == Decimal('6000')
+        assert result['calculated_tax'] > Decimal('0')
+
+    def test_property_based_invariants(self, standard_brackets):
+        """Cover non-negativity and monotonicity invariants."""
+        CorrectEngine = load_implementation('correct.py')
+        engine = CorrectEngine(standard_brackets, Decimal('0.05'))
+        incomes = [
+            Decimal('0'),
+            Decimal('100'),
+            Decimal('1000'),
+            Decimal('10000'),
+            Decimal('100000'),
+            Decimal('1000000'),
+            Decimal('-100'),
+            Decimal('-1000'),
+        ]
+        for income in incomes:
+            assert engine.calculate_tiered_tax(income) >= Decimal('0')
+
+        ordered_incomes = [Decimal('10000'), Decimal('50000'), Decimal('100000'), Decimal('200000')]
+        taxes = [engine.calculate_tiered_tax(income) for income in ordered_incomes]
+        for i in range(len(taxes) - 1):
+            assert taxes[i] <= taxes[i + 1]
+
+    def test_tiered_tax_rounding_half_up(self, standard_brackets):
+        """Cover tiered tax rounding edge cases."""
+        CorrectEngine = load_implementation('correct.py')
+        simple_engine = CorrectEngine(
+            [{'limit': Decimal('1000000'), 'rate': Decimal('0.10')}],
+            Decimal('0.05')
+        )
+        assert simple_engine.calculate_tiered_tax(Decimal('100.05')) == Decimal('10.01')
+        assert simple_engine.calculate_tiered_tax(Decimal('100.04')) == Decimal('10.00')
     
     def test_broken_leap_year_detected(self, standard_brackets):
         """Verify that leap year handling is tested."""

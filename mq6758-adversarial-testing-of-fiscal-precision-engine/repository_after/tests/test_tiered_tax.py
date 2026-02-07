@@ -7,7 +7,7 @@ import sys
 import os
 from decimal import Decimal, ROUND_HALF_UP
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from fiscal_engine import FiscalPrecisionEngine
 
 
@@ -24,7 +24,7 @@ class TestTieredTaxCalculation:
         ]
         return FiscalPrecisionEngine(brackets, Decimal('0.05'))
     
-    # Requirement 1: Parameterized testing for bracket limits
+  
     @pytest.mark.parametrize("income,expected_tax", [
         # Exactly at bracket limits
         (Decimal('50000'), Decimal('5000.00')),  # 50k * 0.10
@@ -53,7 +53,7 @@ class TestTieredTaxCalculation:
         result = engine.calculate_tiered_tax(income)
         assert result == expected_tax, f"Tax for {income} should be {expected_tax}, got {result}"
     
-    # Requirement 7: Verify progressive nature of tax
+   
     def test_progressive_tax_calculation(self, engine):
         """Verify tax is calculated incrementally, not applying highest rate to total."""
         income = Decimal('100000')
@@ -63,7 +63,7 @@ class TestTieredTaxCalculation:
         expected = Decimal('15000.00')
         assert result == expected, f"Progressive tax calculation failed: expected {expected}, got {result}"
     
-    # Requirement 3: Verify ROUND_HALF_UP precision at 2nd decimal
+  
     @pytest.mark.parametrize("income,expected_rounded", [
         # Cases that should round up (.005 -> .01)
         (Decimal('100.05'), Decimal('10.01')),  # 100.05 * 0.10 = 10.005 -> 10.01 (ROUND_HALF_UP)

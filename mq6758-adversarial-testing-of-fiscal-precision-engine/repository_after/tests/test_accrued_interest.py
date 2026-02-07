@@ -8,7 +8,7 @@ import os
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import date
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from fiscal_engine import FiscalPrecisionEngine
 
 
@@ -21,7 +21,7 @@ class TestAccruedInterest:
         brackets = [{'limit': Decimal('1000000'), 'rate': Decimal('0.10')}]
         return FiscalPrecisionEngine(brackets, Decimal('0.05'))
     
-    # Requirement 2: Adversarial test spanning Leap Year boundary
+   
     def test_interest_across_leap_year(self, engine):
         """Test interest calculation spanning February 29th in a leap year."""
         principal = Decimal('100000')
@@ -57,7 +57,7 @@ class TestAccruedInterest:
         
         assert result == expected
     
-    # Requirement 3: Verify ROUND_HALF_UP precision at 8th decimal
+   
     def test_rounding_half_up_8th_decimal(self, engine):
         """Verify ROUND_HALF_UP rounding at 8th decimal place for interest."""
         principal = Decimal('100000')
@@ -69,7 +69,7 @@ class TestAccruedInterest:
         # Should be quantized to 8 decimal places
         assert result.as_tuple().exponent <= -8, "Interest should be rounded to 8 decimal places"
     
-    # Requirement 4: Negative test - end_date before start_date
+  
     def test_invalid_date_range(self, engine):
         """Test that end_date before start_date returns zero."""
         principal = Decimal('100000')

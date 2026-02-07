@@ -8,7 +8,7 @@ import os
 from decimal import Decimal
 from datetime import date
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from fiscal_engine import FiscalPrecisionEngine
 
 
@@ -24,7 +24,7 @@ class TestBatchProcessing:
         ]
         return FiscalPrecisionEngine(brackets, Decimal('0.05'))
     
-    # Requirement 5: Stress test with 5,000 transactions
+    
     def test_stress_batch_processing(self, engine):
         """Process 5,000 transactions and verify memory efficiency."""
         try:
@@ -36,7 +36,7 @@ class TestBatchProcessing:
         except ImportError:
             pytest.skip("psutil not available for memory testing")
         
-        # Generate 5,000 mock transactions
+       
         transactions = [
             {'amount': Decimal('100.50'), 'currency': 'USD', 'date': date(2024, 1, 1)}
             for _ in range(5000)

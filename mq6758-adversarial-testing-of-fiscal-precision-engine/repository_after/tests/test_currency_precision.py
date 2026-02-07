@@ -8,7 +8,7 @@ import os
 from decimal import Decimal
 from datetime import date
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from fiscal_engine import FiscalPrecisionEngine
 
 
@@ -21,7 +21,7 @@ class TestCurrencyPrecision:
         brackets = [{'limit': Decimal('1000000'), 'rate': Decimal('0.10')}]
         return FiscalPrecisionEngine(brackets, Decimal('0.05'))
     
-    # Requirement 6: Validate currency precision
+    
     def test_high_precision_input_not_truncated(self, engine):
         """Ensure high-precision inputs are not truncated prematurely."""
         high_precision_amount = Decimal('100.00000001')

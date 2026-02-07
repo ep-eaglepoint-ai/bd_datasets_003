@@ -7,14 +7,14 @@ import sys
 import os
 from decimal import Decimal
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from fiscal_engine import FiscalPrecisionEngine
 
 
 class TestBranchCoverage:
     """Tests to ensure comprehensive branch coverage."""
     
-    # Requirement 9: Achieve 95%+ branch coverage including all conditional breaks
+   
     
     @pytest.fixture
     def engine(self):

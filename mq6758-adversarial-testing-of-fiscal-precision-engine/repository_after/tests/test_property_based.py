@@ -7,7 +7,7 @@ import sys
 import os
 from decimal import Decimal
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from fiscal_engine import FiscalPrecisionEngine
 
 
@@ -23,7 +23,7 @@ class TestPropertyBasedTesting:
         ]
         return FiscalPrecisionEngine(brackets, Decimal('0.05'))
     
-    # Requirement 8: Property-based testing
+   
     def test_tax_always_non_negative(self, engine):
         """Verify that calculate_tiered_tax always returns >= 0 for any input."""
         test_cases = [
