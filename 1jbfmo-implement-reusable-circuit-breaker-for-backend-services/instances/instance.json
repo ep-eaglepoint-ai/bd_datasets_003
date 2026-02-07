@@ -1,0 +1,11 @@
+{
+            "instance_id": "1JBFMO",
+            "problem_statement": "Backend services depend on unreliable external APIs, leading to cascading failures during outages. A reusable Circuit Breaker component is required to fail fast, protect system resources, and automatically recover once dependencies become healthy. The implementation must handle concurrency safely and behave correctly under load.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/1jbfmo-implement-reusable-circuit-breaker-for-backend-services",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        

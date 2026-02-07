@@ -1,0 +1,26 @@
+{
+  "name": "circuit-breaker",
+  "version": "1.0.0",
+  "description": "Reusable Circuit Breaker for Backend Services",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "evaluation": "node evaluation/evaluation.js"
+  },
+  "keywords": ["circuit-breaker", "resilience", "fault-tolerance"],
+  "license": "MIT",
+  "dependencies": {
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.11",
+    "@types/node": "^20.10.6",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.1",
+    "typescript": "^5.3.3"
+  }
+}
