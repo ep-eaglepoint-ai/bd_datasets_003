@@ -1,0 +1,51 @@
+diff --no-prefix repository_before/main.py repository_after/main.py
+--- repository_before/main.py
++++ repository_after/main.py
+@@ -1,5 +1,14 @@
+ # Main application file
+-def process_data():
+-    # TODO: Implement data processing
+-    pass
++import json
++from typing import List, Dict
+ 
++
++def process_data(input_file: str) -> List[Dict]:
++    """Process JSON data from file as per requirements."""
++    try:
++        with open(input_file, 'r') as f:
++            data = json.load(f)
++    except (FileNotFoundError, json.JSONDecodeError) as e:
++        raise ValueError(f"Invalid input file: {e}")
++    
++    return [item for item in data if item.get('active')]
+diff --no-prefix repository_before/tests/test_main.py repository_after/tests/test_main.py
+--- repository_before/tests/test_main.py
++++ repository_after/tests/test_main.py
+@@ -0,0 +1,25 @@
++import pytest
++from main import process_data
++
++
++class TestProcessData:
++    def test_normal_case(self, tmp_path):
++        """Test with valid JSON data."""
++        test_file = tmp_path / "test.json"
++        test_file.write_text('[{"id": 1, "active": true}, {"id": 2, "active": false}]')
++        
++        result = process_data(str(test_file))
++        assert len(result) == 1
++        assert result[0]['id'] == 1
++    
++    def test_empty_file(self, tmp_path):
++        """Test with empty JSON array."""
++        test_file = tmp_path / "test.json"
++        test_file.write_text('[]')
++        
++        result = process_data(str(test_file))
++        assert result == []
++    
++    def test_file_not_found(self):
++        """Test error handling for missing file."""
++        with pytest.raises(ValueError, match="Invalid input file"):
++            process_data("nonexistent.json")
