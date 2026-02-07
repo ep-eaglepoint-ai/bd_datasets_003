@@ -25,12 +25,15 @@ from repository_after.exceptions import (
 from repository_after.models import (
     CreatePaymentRequest,
     CreateUserRequest,
+    Notification,
     NotificationChannel,
     NotificationStatus,
+    Payment,
     PaymentStatus,
     RefundRequest,
     SendNotificationRequest,
     UpdateUserRequest,
+    User,
     UserStatus,
 )
 from repository_after.rate_limiter import RateLimiter
@@ -194,6 +197,15 @@ def notification_payload_wrong_type(notification_payload_valid: dict) -> dict:
     return d
 
 
+def test_valid_payload_fixtures_schema_validate(
+    user_payload_valid: dict, payment_payload_valid: dict, notification_payload_valid: dict
+):
+    # Req 15(b): ensure fixtures are actually valid per the declared Pydantic contracts.
+    User.model_validate(user_payload_valid)
+    Payment.model_validate(payment_payload_valid)
+    Notification.model_validate(notification_payload_valid)
+
+
 @pytest.mark.asyncio
 async def test_user_get_user_success_contract_validated_and_auth_header(
     user_client: UserServiceClient, base_url: str, api_key: str, user_payload_valid: dict
@@ -347,6 +359,9 @@ async def test_circuit_breaker_recovers_open_to_half_open_to_closed(user_client:
     with respx.mock(assert_all_called=False, using="httpx") as router:
         router.get(f"{base_url}/users/{user_id}").respond(200, json=ok_payload)
 
+        # The call that follows should transition OPEN -> HALF_OPEN (attempt) -> CLOSED (on success).
+        assert user_client.circuit_breaker.state == CircuitState.OPEN
+
         user = await user_client.get_user(user_id)
         assert user.id == user_id
         assert user_client.circuit_breaker.state == CircuitState.CLOSED
@@ -454,6 +469,8 @@ async def test_user_create_update_list_cover_endpoints_and_auth_header(base_url:
             assert len(users) == 1
             assert users[0].id == "u_new"
             assert r_list.calls[0].request.headers.get("Authorization") == f"Bearer {api_key}"
+            # Req 13: assert request params are actually sent.
+            assert dict(r_list.calls[0].request.url.params) == {"page": "1", "limit": "20"}
 
 
 def test_exception_attributes_are_populated():
