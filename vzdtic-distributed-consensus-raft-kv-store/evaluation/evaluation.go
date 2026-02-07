@@ -167,7 +167,6 @@ func main() {
 func runBeforeTests() TestStatus {
 	result := TestStatus{Passed: false, ReturnCode: 1}
 
-	// repository_before is empty — there's nothing to compile
 	hasGoFiles := false
 	filepath.Walk("repository_before", func(path string, info os.FileInfo, err error) error {
 		if err == nil && !info.IsDir() && filepath.Ext(path) == ".go" {
@@ -186,7 +185,6 @@ func runBeforeTests() TestStatus {
 		return result
 	}
 
-	// If somehow it has files, try running tests
 	return runGoTests()
 }
 
@@ -199,7 +197,15 @@ func runGoTests() TestStatus {
 
 	var stdout, stderr bytes.Buffer
 
-	cmd := exec.Command("go", "test", "-v", "-count=1", "-timeout=120s",
+	// -p 1 : run test packages sequentially so timing-sensitive
+	//        simulation tests don't compete for CPU and become flaky.
+	// -count=1 : disable test caching.
+	// -timeout=180s : generous timeout for all packages combined.
+	cmd := exec.Command("go", "test",
+		"-v",
+		"-count=1",
+		"-p", "1",
+		"-timeout=180s",
 		"./tests/unit/...",
 		"./tests/integration/...",
 		"./tests/jepsen/...",
@@ -211,7 +217,7 @@ func runGoTests() TestStatus {
 	err := cmd.Run()
 
 	output := stdout.String() + stderr.String()
-	result.Output = truncateOutput(output, 8000)
+	result.Output = truncateOutput(output, 50000)
 
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -224,7 +230,6 @@ func runGoTests() TestStatus {
 		result.Passed = true
 	}
 
-	// Count tests from output
 	result.NumTests, result.NumPassed, result.NumFailed = countTests(output)
 
 	return result
@@ -266,7 +271,6 @@ func printRequirementCoverage(afterResult TestStatus) {
 		id          int
 		description string
 		testNames   []string
-		status      string
 	}
 
 	reqs := []requirement{
@@ -296,14 +300,15 @@ func printRequirementCoverage(afterResult TestStatus) {
 			id:          4,
 			description: "Persistent WAL storing term, votedFor, log entries for crash recovery",
 			testNames: []string{
-				"TestWALNew", "TestWALPersistence", "TestWALTruncateAfter",
+				"TestWALNew", "TestWALPersistence", "TestWALTruncateAfter", "TestCrashRecovery",
 			},
 		},
 		{
 			id:          5,
 			description: "Membership management for graceful add/remove of nodes",
 			testNames: []string{
-				"TestFiveNodeCluster",
+				"TestMembershipChange", "TestMembershipManagerAddRemove",
+				"TestMembershipManagerVotingMembers", "TestMembershipManagerSnapshot",
 			},
 		},
 		{
@@ -332,29 +337,62 @@ func printRequirementCoverage(afterResult TestStatus) {
 	output := afterResult.Output
 
 	for _, req := range reqs {
-		allPassed := true
-		anyFound := false
+		passCount := 0
+		failCount := 0
+
 		for _, testName := range req.testNames {
-			passLine := fmt.Sprintf("--- PASS: %s", testName)
-			failLine := fmt.Sprintf("--- FAIL: %s", testName)
-			if strings.Contains(output, passLine) {
-				anyFound = true
-			} else if strings.Contains(output, failLine) {
-				anyFound = true
-				allPassed = false
-			} else {
-				// Test not found in output — might be a sub-test or not run
+			// Go test output format: "--- PASS: TestName (0.50s)"
+			// We search for the test name preceded by "--- PASS: " or "--- FAIL: "
+			// and followed by a space or parenthesis or end-of-line.
+			found, passed := findTestResult(output, testName)
+			if found {
+				if passed {
+					passCount++
+				} else {
+					failCount++
+				}
 			}
 		}
 
-		if anyFound && allPassed {
-			req.status = "✅ PASS"
-		} else if anyFound && !allPassed {
-			req.status = "❌ FAIL"
+		totalFound := passCount + failCount
+		var status string
+		if totalFound > 0 && failCount == 0 {
+			status = "✅ PASS"
+		} else if failCount > 0 {
+			status = "❌ FAIL"
 		} else {
-			req.status = "⚠️  NOT FOUND"
+			status = "⚠️  NOT FOUND"
 		}
 
-		fmt.Printf("  [%d] %s  —  %s\n", req.id, req.status, req.description)
+		fmt.Printf("  [%d] %s  —  %s\n", req.id, status, req.description)
 	}
+}
+
+// findTestResult searches the go test output for a specific test name
+// and returns (found, passed).
+func findTestResult(output, testName string) (found bool, passed bool) {
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Match "--- PASS: TestName (duration)" or "--- PASS: TestName/subtest (duration)"
+		passPrefix := "--- PASS: " + testName
+		failPrefix := "--- FAIL: " + testName
+
+		if strings.HasPrefix(trimmed, passPrefix) {
+			rest := trimmed[len(passPrefix):]
+			// After the name there should be space, '(', '/' or end of string
+			if len(rest) == 0 || rest[0] == ' ' || rest[0] == '(' || rest[0] == '/' {
+				return true, true
+			}
+		}
+
+		if strings.HasPrefix(trimmed, failPrefix) {
+			rest := trimmed[len(failPrefix):]
+			if len(rest) == 0 || rest[0] == ' ' || rest[0] == '(' || rest[0] == '/' {
+				return true, false
+			}
+		}
+	}
+	return false, false
 }
