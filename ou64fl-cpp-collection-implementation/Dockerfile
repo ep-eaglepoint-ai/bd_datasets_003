@@ -1,25 +1,24 @@
 # Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
 
-FROM python:3.11-slim
+FROM ubuntu:22.04
 
-# Install build tools and Catch2
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-        build-essential \
-        cmake \
-        make \
-        bash \
-        git \
-        libcatch2-dev && \
-    rm -rf /var/lib/apt/lists/*
+# Install C++ build tools
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    g++ \
+    make \
+    bash \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 # Copy everything
 COPY . .
 
-# Install Python deps if present
-RUN if [ -f requirements.txt ]; then pip install --no-cache-dir -r requirements.txt; fi
+# Debug: Show what's being built
+RUN echo "Contents of /app:" && ls -la && \
+    echo "CMakeLists.txt exists:" && [ -f CMakeLists.txt ] && echo "Yes" || echo "No"
 
-# Default command - run the main program
-CMD ["./build/bin/record_processor"]
+# Default command - build and run evaluation
+CMD ["bash", "-c", "echo 'REPO_PATH=$REPO_PATH' && mkdir -p build && cd build && cmake .. && make && ./bin/evaluate"]

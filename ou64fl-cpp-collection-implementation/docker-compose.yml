@@ -3,6 +3,7 @@
 services:
   app:
     build: .
-    command: sh -c "cmake -S . -B build && cmake --build build && ./build/bin/record_processor"
     volumes:
       - .:/app
+    environment:
+      - REPO_PATH=${REPO_PATH:-repository_after}

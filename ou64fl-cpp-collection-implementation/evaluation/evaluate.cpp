@@ -19,6 +19,7 @@ class Evaluator {
 private:
     std::string reportPath;
     std::string repoRoot;
+    std::string repoPathForChecks;
     
     struct EvaluationResult {
         bool success;
@@ -27,17 +28,32 @@ private:
     
 public:
     Evaluator() {
+        // Resolve repo root by locating CMakeLists.txt
+        struct stat buffer;
+        repoRoot = ".";
+        if (stat("CMakeLists.txt", &buffer) != 0) {
+            if (stat("../CMakeLists.txt", &buffer) == 0) {
+                repoRoot = "..";
+            } else if (stat("../../CMakeLists.txt", &buffer) == 0) {
+                repoRoot = "../..";
+            } else if (stat("../../../CMakeLists.txt", &buffer) == 0) {
+                repoRoot = "../../..";
+            }
+        }
+
         const char* envRepo = std::getenv("REPO_PATH");
         if (envRepo != nullptr && *envRepo != '\0') {
-            repoRoot = envRepo;
-        } else {
-            repoRoot = ".";
-            struct stat buffer;
-            if (stat("repository_after", &buffer) != 0 && stat("CMakeLists.txt", &buffer) != 0) {
-                if (stat("../repository_after", &buffer) == 0 || stat("../CMakeLists.txt", &buffer) == 0) {
-                    repoRoot = "..";
+            if (envRepo[0] == '/') {
+                repoPathForChecks = envRepo;
+            } else {
+                std::string candidate = repoRoot + "/" + envRepo;
+                if (stat(candidate.c_str(), &buffer) == 0) {
+                    repoPathForChecks = candidate;
                 }
             }
+        }
+        if (repoPathForChecks.empty()) {
+            repoPathForChecks = repoRoot + "/repository_after";
         }
 
         reportPath = repoRoot + "/evaluation/reports/report.json";
@@ -171,9 +187,9 @@ public:
         
         // Check required files exist
         std::vector<std::string> requiredFiles = {
-            repoRoot + "/repository_after/main.cpp",
-            repoRoot + "/repository_after/record_processor.h",
-            repoRoot + "/repository_after/record_processor.cpp",
+            repoPathForChecks + "/main.cpp",
+            repoPathForChecks + "/record_processor.h",
+            repoPathForChecks + "/record_processor.cpp",
             repoRoot + "/tests/test_record_processor.cpp"
         };
         
@@ -186,8 +202,8 @@ public:
         
         // Check for C++17 features in source files
         std::vector<std::string> sourceFiles = {
-            repoRoot + "/repository_after/record_processor.h",
-            repoRoot + "/repository_after/record_processor.cpp"
+            repoPathForChecks + "/record_processor.h",
+            repoPathForChecks + "/record_processor.cpp"
         };
         
         for (const auto& file : sourceFiles) {
