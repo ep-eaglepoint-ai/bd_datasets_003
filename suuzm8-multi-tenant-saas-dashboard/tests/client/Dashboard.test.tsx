@@ -109,9 +109,12 @@ describe("Dashboard", () => {
       });
 
       // If fetch is called while offline, fail the test.
-      vi.stubGlobal("fetch", vi.fn(() => {
-        throw new Error("fetch should not be called when cached data exists");
-      }) as unknown as typeof fetch);
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(() => {
+          throw new Error("fetch should not be called when cached data exists");
+        }) as unknown as typeof fetch
+      );
 
       render(
         <QueryClientProvider client={client}>

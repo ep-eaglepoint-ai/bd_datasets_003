@@ -73,7 +73,7 @@ class MembershipViewSet(OrganizationScopedMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         org = self.get_organization()
-        return OrganizationMembership.objects.filter(organization=org).select_related("user")
+        return OrganizationMembership.objects.filter(organization=org).select_related("user", "organization")
 
     def get_permissions(self):
         if self.action in {"list", "retrieve"}:

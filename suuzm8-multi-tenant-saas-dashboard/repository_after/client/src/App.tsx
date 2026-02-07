@@ -1,5 +1,10 @@
 import React from "react";
-import { QueryClient, QueryClientProvider, dehydrate, hydrate } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  dehydrate,
+  hydrate,
+} from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { JoinPage } from "./JoinPage";
 import { OrganizationsPage } from "./OrganizationsPage";

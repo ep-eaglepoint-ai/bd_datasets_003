@@ -15,6 +15,29 @@ from organizations.models import APIKey, Invitation, Organization, OrganizationM
 
 
 @pytest.mark.django_db
+def test_project_timestamps_are_utc_and_serialized_with_utc_offset(api_client, user):
+    org = Organization.objects.create(name="Org")
+    OrganizationMembership.objects.create(organization=org, user=user, role=OrganizationMembership.Role.MEMBER)
+
+    api_client.force_authenticate(user=user)
+    resp = api_client.post(
+        f"/api/organizations/{org.slug}/projects/",
+        {"name": "P1", "description": "d"},
+        format="json",
+    )
+    assert resp.status_code in (200, 201)
+
+    proj = Project.objects.get(organization=org, name="P1")
+    assert timezone.is_aware(proj.created_at) is True
+    assert proj.created_at.utcoffset().total_seconds() == 0
+
+    created_at = resp.data.get("created_at")
+    assert created_at
+    # DRF typically returns ISO with +00:00 when USE_TZ is enabled.
+    assert ("+00:00" in created_at) or created_at.endswith("Z")
+
+
+@pytest.mark.django_db
 def test_org_slug_autogenerates_and_handles_duplicates():
     org1 = Organization.objects.create(name="Acme")
     org2 = Organization.objects.create(name="Acme")
@@ -285,6 +308,26 @@ def test_dashboard_cached_and_low_query_count(api_client, django_assert_num_quer
     # Second request should hit cache for metrics.
     resp2 = api_client.get(f"/api/organizations/{org.slug}/dashboard/")
     assert resp2.status_code == 200
+
+
+@pytest.mark.django_db
+def test_memberships_list_does_not_have_n_plus_one_queries(api_client, user):
+    org = Organization.objects.create(name="Org")
+    OrganizationMembership.objects.create(organization=org, user=user, role=OrganizationMembership.Role.ADMIN)
+
+    User = type(user)
+    for i in range(25):
+        u = User.objects.create_user(username=f"u_{i}", password="pass")
+        OrganizationMembership.objects.create(organization=org, user=u, role=OrganizationMembership.Role.MEMBER)
+
+    api_client.force_authenticate(user=user)
+
+    with CaptureQueriesContext(connection) as ctx:
+        resp = api_client.get(f"/api/organizations/{org.slug}/memberships/")
+    assert resp.status_code == 200
+
+    # Should stay constant with member count (select_related('user') in queryset).
+    assert len(ctx.captured_queries) <= 5
 
 
 @pytest.mark.django_db
