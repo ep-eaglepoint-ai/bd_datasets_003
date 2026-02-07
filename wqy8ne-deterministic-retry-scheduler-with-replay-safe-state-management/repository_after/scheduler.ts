@@ -83,7 +83,7 @@ class Task {
   state: TaskStateType;
   emittedAttempts: Set<number>;
 
-  constructor(spec: TaskSpec, initialScheduledAtMs: number = 0) {
+  constructor(spec: TaskSpec, initialScheduledAtMs: number) {
     this.taskId = spec.taskId;
     this.maxAttempts = spec.maxAttempts;
     this.baseBackoffMs = spec.baseBackoffMs;
@@ -174,6 +174,30 @@ function compareAttempts(a: Attempt & { kind: string }, b: Attempt & { kind: str
  */
 export function createScheduler(): Scheduler {
   const tasks = new Map<string, Task>();
+  // Index of queued tasks by scheduled time for efficient tick() lookup
+  const queuedByTime = new Map<number, Set<string>>();
+  let logicalClock = 0; // Track submission time for new tasks
+  
+  function addToTimeIndex(task: Task): void {
+    if (task.state === TaskState.QUEUED) {
+      let bucket = queuedByTime.get(task.nextScheduledAtMs);
+      if (!bucket) {
+        bucket = new Set();
+        queuedByTime.set(task.nextScheduledAtMs, bucket);
+      }
+      bucket.add(task.taskId);
+    }
+  }
+  
+  function removeFromTimeIndex(task: Task, scheduledAtMs: number): void {
+    const bucket = queuedByTime.get(scheduledAtMs);
+    if (bucket) {
+      bucket.delete(task.taskId);
+      if (bucket.size === 0) {
+        queuedByTime.delete(scheduledAtMs);
+      }
+    }
+  }
   
   return {
     submit(spec: TaskSpec): { accepted: boolean; reason?: string } {
@@ -198,25 +222,39 @@ export function createScheduler(): Scheduler {
         };
       }
       
-      const task = new Task(spec, 0);
+      // Use logical clock for submission time
+      const task = new Task(spec, logicalClock);
       tasks.set(spec.taskId, task);
+      addToTimeIndex(task);
       
       return { accepted: true };
     },
 
     tick(nowMs: number, budget: number): Attempt[] {
+      // Update logical clock
+      logicalClock = Math.max(logicalClock, nowMs);
+      
       const dueAttempts: (Attempt & { kind: string })[] = [];
       
-      // Collect all due attempts
-      for (const task of tasks.values()) {
-        if (task.state === TaskState.QUEUED && 
-            task.nextScheduledAtMs <= nowMs) {
-          dueAttempts.push({
-            taskId: task.taskId,
-            attemptNo: task.currentAttempt,
-            scheduledAtMs: task.nextScheduledAtMs,
-            kind: task.kind
-          });
+      // Only scan time buckets that are due (scheduled time <= nowMs)
+      const dueTimes = Array.from(queuedByTime.keys())
+        .filter(t => t <= nowMs)
+        .sort((a, b) => a - b);
+      
+      for (const scheduledTime of dueTimes) {
+        const bucket = queuedByTime.get(scheduledTime);
+        if (!bucket) continue;
+        
+        for (const taskId of bucket) {
+          const task = tasks.get(taskId);
+          if (task && task.state === TaskState.QUEUED) {
+            dueAttempts.push({
+              taskId: task.taskId,
+              attemptNo: task.currentAttempt,
+              scheduledAtMs: task.nextScheduledAtMs,
+              kind: task.kind
+            });
+          }
         }
       }
       
@@ -229,6 +267,7 @@ export function createScheduler(): Scheduler {
       for (const attempt of toEmit) {
         const task = tasks.get(attempt.taskId);
         if (task) {
+          removeFromTimeIndex(task, task.nextScheduledAtMs);
           task.state = TaskState.IN_FLIGHT;
           task.lastEmittedAtMs = attempt.scheduledAtMs;
           task.emittedAttempts.add(attempt.attemptNo);
@@ -285,6 +324,7 @@ export function createScheduler(): Scheduler {
           task.nextScheduledAtMs = Math.floor(nextScheduledAtMs);
           task.currentAttempt = attemptNo + 1;
           task.state = TaskState.QUEUED;
+          addToTimeIndex(task);
         }
       }
     },
@@ -299,11 +339,13 @@ export function createScheduler(): Scheduler {
 
     restore(snapshot: SchedulerSnapshot): void {
       tasks.clear();
+      queuedByTime.clear();
       
       if (snapshot.version === 1) {
         for (const taskData of snapshot.tasks) {
           const task = Task.fromJSON(taskData);
           tasks.set(task.taskId, task);
+          addToTimeIndex(task);
         }
       }
     },

@@ -49,6 +49,61 @@ Key design decisions:
 - `lastEmittedAtMs` stores when the attempt was emitted (used for calculating next retry time)
 - `nextScheduledAtMs` stores when the next attempt should be emitted
 
+### 3.1. Efficient Task Lookup
+
+To avoid linear scans during `tick()`, the scheduler maintains a time-based index:
+
+```typescript
+const queuedByTime = new Map<number, Set<string>>();
+```
+
+This index maps scheduled times to sets of task IDs, allowing `tick()` to only examine tasks that are actually due rather than scanning all tasks. Helper functions maintain the index:
+
+```typescript
+function addToTimeIndex(task: Task): void {
+  if (task.state === TaskState.QUEUED) {
+    let bucket = queuedByTime.get(task.nextScheduledAtMs);
+    if (!bucket) {
+      bucket = new Set();
+      queuedByTime.set(task.nextScheduledAtMs, bucket);
+    }
+    bucket.add(task.taskId);
+  }
+}
+
+function removeFromTimeIndex(task: Task, scheduledAtMs: number): void {
+  const bucket = queuedByTime.get(scheduledAtMs);
+  if (bucket) {
+    bucket.delete(task.taskId);
+    if (bucket.size === 0) {
+      queuedByTime.delete(scheduledAtMs);
+    }
+  }
+}
+```
+
+This improves `tick()` complexity from O(n) to O(k) where k is the number of due time buckets.
+
+### 3.2. Logical Clock for Submission Time
+
+The scheduler maintains an explicit logical clock to model submission time:
+
+```typescript
+let logicalClock = 0;
+```
+
+When tasks are submitted, they're scheduled at the current logical clock time (not hard-coded to 0). The clock advances with each `tick()` call:
+
+```typescript
+tick(nowMs: number, budget: number): Attempt[] {
+  logicalClock = Math.max(logicalClock, nowMs);
+  const task = new Task(spec, logicalClock);
+  // ...
+}
+```
+
+This ensures submission-time semantics are explicitly modeled rather than assuming a global epoch at time 0.
+
 ### 4. Deterministic Ordering
 
 When multiple attempts are due, they're sorted by:
@@ -119,14 +174,16 @@ snapshot(): SchedulerSnapshot {
 
 The `emittedAttempts` Set is converted to an array for JSON serialization.
 
-Restore recreates the exact state:
+Restore recreates the exact state, including the time index:
 
 ```typescript
 restore(snapshot: SchedulerSnapshot): void {
   tasks.clear();
+  queuedByTime.clear();
   for (const taskData of snapshot.tasks) {
     const task = Task.fromJSON(taskData);
     tasks.set(task.taskId, task);
+    addToTimeIndex(task);
   }
 }
 ```
@@ -173,19 +230,21 @@ docker-compose up --build evaluation
 
 ## Key Implementation Decisions
 
-1. **Logical Time**: The scheduler uses input-driven time (`nowMs` parameter) rather than system time, enabling deterministic replay
+1. **Logical Time**: The scheduler uses input-driven time (`nowMs` parameter) rather than system time, enabling deterministic replay. An explicit logical clock tracks submission time rather than assuming a global epoch at time 0.
 
-2. **Budget Control**: The `tick()` method accepts a budget parameter to limit how many attempts are emitted per tick
+2. **Efficient Lookup**: A time-based index (`queuedByTime`) eliminates linear scans in `tick()`, improving performance from O(n) to O(k) where k is the number of due time buckets.
 
-3. **Idempotent Operations**: All operations are safe to call multiple times with the same parameters
+3. **Budget Control**: The `tick()` method accepts a budget parameter to limit how many attempts are emitted per tick
 
-4. **No Automatic Retries**: The scheduler doesn't automatically advance time or emit attempts - it's purely reactive to `tick()` calls
+4. **Idempotent Operations**: All operations are safe to call multiple times with the same parameters
 
-5. **Overflow Safety**: All time calculations check for overflow and cap at `MAX_SAFE_INTEGER`
+5. **No Automatic Retries**: The scheduler doesn't automatically advance time or emit attempts - it's purely reactive to `tick()` calls
 
-6. **State Validation**: Tasks track which attempts were emitted to validate result reports
+6. **Overflow Safety**: All time calculations check for overflow and cap at `MAX_SAFE_INTEGER`
 
-7. **Immutable Snapshots**: Snapshots are plain JSON objects that can be serialized, stored, and restored
+7. **State Validation**: Tasks track which attempts were emitted to validate result reports
+
+8. **Immutable Snapshots**: Snapshots are plain JSON objects that can be serialized, stored, and restored
 
 ## Testing Coverage
 
