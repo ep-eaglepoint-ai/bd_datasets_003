@@ -31,18 +31,20 @@ services:
       - PYTHONPATH=/app:/app/repository_after
 
   frontend:
-    build: .
     
+    image: node:20-slim
     command: >
       sh -c "if [ ! -d 'node_modules' ]; then npm install; fi && 
              npm run dev -- --host 0.0.0.0"
     volumes:
       - .:/app
+    
     working_dir: /app/repository_after/frontend
     ports:
       - "5173:5173"
     environment:
       - CHOKIDAR_USEPOLLING=true
+    
     entrypoint: []
     depends_on:
       - app
