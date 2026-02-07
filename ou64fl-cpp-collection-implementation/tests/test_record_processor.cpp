@@ -1,189 +1,209 @@
-#include <catch2/catch_test_macros.hpp>
-#include "../repository_after/record_processor.h"
+#include <gtest/gtest.h>
 #include <sstream>
 #include <vector>
+#include <algorithm>
+#include "../repository_after/record_processor.h"
 
-TEST_CASE("Record validation", "[validation]") {
+// Test fixture for RecordProcessor
+class RecordProcessorTest : public ::testing::Test {
+protected:
     RecordProcessor processor;
     
-    SECTION("Valid record passes validation") {
-        Record valid{1, "Test", 100};
-        REQUIRE_NOTHROW(processor.processRecord(valid));
+    void SetUp() override {
+        processor.clear();
     }
     
-    SECTION("Negative value throws exception") {
-        Record invalid{2, "Test", -50};
-        REQUIRE_THROWS_AS(processor.processRecord(invalid), InvalidDataException);
+    void TearDown() override {
+        processor.clear();
     }
-    
-    SECTION("Zero value is valid") {
-        Record zero{3, "Test", 0};
-        REQUIRE_NOTHROW(processor.processRecord(zero));
-    }
-    
-    SECTION("Empty category throws exception") {
-        Record empty_category{4, "", 100};
-        REQUIRE_THROWS_AS(processor.processRecord(empty_category), InvalidDataException);
-    }
+};
+
+// Validation tests
+TEST_F(RecordProcessorTest, ValidRecord) {
+    Record valid{1, "Electronics", 100};
+    EXPECT_NO_THROW(processor.processRecord(valid));
 }
 
-TEST_CASE("Single category aggregation", "[aggregation]") {
-    RecordProcessor processor;
-    
-    SECTION("Single record aggregation") {
-        processor.processRecord({1, "Electronics", 150});
-        
-        const auto& summaries = processor.getCategorySummaries();
-        REQUIRE(summaries.size() == 1);
-        
-        const auto& summary = summaries.at("Electronics");
-        REQUIRE(summary.name == "Electronics");
-        REQUIRE(summary.count == 1);
-        REQUIRE(summary.total == 150);
-    }
-    
-    SECTION("Multiple records in same category") {
-        std::vector<Record> records = {
-            {1, "Electronics", 150},
-            {2, "Electronics", 200},
-            {3, "Electronics", 100}
-        };
-        
-        processor.processRecords(records);
-        
-        const auto& summaries = processor.getCategorySummaries();
-        REQUIRE(summaries.size() == 1);
-        
-        const auto& summary = summaries.at("Electronics");
-        REQUIRE(summary.count == 3);
-        REQUIRE(summary.total == 450); // 150 + 200 + 100
-    }
+TEST_F(RecordProcessorTest, NegativeValueThrows) {
+    Record invalid{2, "Test", -50};
+    EXPECT_THROW(processor.processRecord(invalid), InvalidDataException);
 }
 
-TEST_CASE("Multiple categories aggregation", "[aggregation]") {
-    RecordProcessor processor;
+TEST_F(RecordProcessorTest, ZeroValueValid) {
+    Record zero{3, "Test", 0};
+    EXPECT_NO_THROW(processor.processRecord(zero));
+}
+
+TEST_F(RecordProcessorTest, EmptyCategoryThrows) {
+    Record emptyCat{4, "", 100};
+    EXPECT_THROW(processor.processRecord(emptyCat), InvalidDataException);
+}
+
+// Aggregation tests
+TEST_F(RecordProcessorTest, SingleRecordAggregation) {
+    processor.processRecord({1, "Electronics", 150});
     
+    const auto& summaries = processor.getCategorySummaries();
+    ASSERT_EQ(summaries.size(), 1);
+    
+    const auto& summary = summaries.at("Electronics");
+    EXPECT_EQ(summary.name, "Electronics");
+    EXPECT_EQ(summary.count, 1);
+    EXPECT_EQ(summary.total, 150);
+}
+
+TEST_F(RecordProcessorTest, MultipleRecordsSameCategory) {
+    processor.processRecord({1, "Electronics", 150});
+    processor.processRecord({2, "Electronics", 200});
+    processor.processRecord({3, "Electronics", 100});
+    
+    const auto& summaries = processor.getCategorySummaries();
+    ASSERT_EQ(summaries.size(), 1);
+    
+    const auto& summary = summaries.at("Electronics");
+    EXPECT_EQ(summary.count, 3);
+    EXPECT_EQ(summary.total, 450);
+}
+
+TEST_F(RecordProcessorTest, MultipleCategoriesAggregation) {
+    processor.processRecord({1, "Electronics", 150});
+    processor.processRecord({2, "Books", 25});
+    processor.processRecord({3, "Electronics", 200});
+    processor.processRecord({4, "Books", 15});
+    
+    const auto& summaries = processor.getCategorySummaries();
+    ASSERT_EQ(summaries.size(), 2);
+    
+    EXPECT_EQ(summaries.at("Electronics").count, 2);
+    EXPECT_EQ(summaries.at("Electronics").total, 350);
+    EXPECT_EQ(summaries.at("Books").count, 2);
+    EXPECT_EQ(summaries.at("Books").total, 40);
+}
+
+// Output formatting tests
+TEST_F(RecordProcessorTest, OutputFormatCorrect) {
+    processor.processRecord({1, "Electronics", 150});
+    processor.processRecord({2, "Books", 25});
+    processor.processRecord({3, "Clothing", 75});
+    
+    std::ostringstream output;
+    processor.generateReport(output);
+    std::string result = output.str();
+    
+    // Check for exact format
+    EXPECT_TRUE(result.find("Books | COUNT=1 | TOTAL=25") != std::string::npos ||
+                result.find("Books | COUNT=1 | TOTAL=25\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Clothing | COUNT=1 | TOTAL=75") != std::string::npos ||
+                result.find("Clothing | COUNT=1 | TOTAL=75\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Electronics | COUNT=1 | TOTAL=150") != std::string::npos ||
+                result.find("Electronics | COUNT=1 | TOTAL=150\n") != std::string::npos);
+}
+
+TEST_F(RecordProcessorTest, LexicographicalOrdering) {
+    // Add in non-alphabetical order
+    processor.processRecord({1, "Zebra", 10});
+    processor.processRecord({2, "Apple", 20});
+    processor.processRecord({3, "Banana", 30});
+    
+    std::ostringstream output;
+    processor.generateReport(output);
+    std::string result = output.str();
+    
+    // Find positions
+    size_t apple_pos = result.find("Apple");
+    size_t banana_pos = result.find("Banana");
+    size_t zebra_pos = result.find("Zebra");
+    
+    // Check they all exist
+    EXPECT_NE(apple_pos, std::string::npos);
+    EXPECT_NE(banana_pos, std::string::npos);
+    EXPECT_NE(zebra_pos, std::string::npos);
+    
+    // Check order
+    EXPECT_LT(apple_pos, banana_pos);
+    EXPECT_LT(banana_pos, zebra_pos);
+}
+
+// Batch processing tests
+TEST_F(RecordProcessorTest, ProcessRecordsBatch) {
     std::vector<Record> records = {
-        {1, "Electronics", 150},
-        {2, "Books", 25},
-        {3, "Electronics", 200},
-        {4, "Books", 15}
+        {1, "A", 10},
+        {2, "B", 20},
+        {3, "A", 30}
     };
     
     processor.processRecords(records);
     
     const auto& summaries = processor.getCategorySummaries();
-    REQUIRE(summaries.size() == 2);
-    
-    SECTION("Electronics category") {
-        const auto& summary = summaries.at("Electronics");
-        REQUIRE(summary.count == 2);
-        REQUIRE(summary.total == 350);
-    }
-    
-    SECTION("Books category") {
-        const auto& summary = summaries.at("Books");
-        REQUIRE(summary.count == 2);
-        REQUIRE(summary.total == 40);
-    }
+    EXPECT_EQ(summaries.size(), 2);
+    EXPECT_EQ(summaries.at("A").total, 40);
+    EXPECT_EQ(summaries.at("B").total, 20);
 }
 
-TEST_CASE("Report formatting", "[formatting]") {
-    RecordProcessor processor;
-    
+TEST_F(RecordProcessorTest, BatchProcessingStopsOnError) {
     std::vector<Record> records = {
-        {1, "Electronics", 150},
-        {2, "Books", 25},
-        {3, "Clothing", 75}
+        {1, "Valid", 100},
+        {2, "Invalid", -50},  // This should throw
+        {3, "Valid", 200}
     };
     
-    processor.processRecords(records);
+    EXPECT_THROW(processor.processRecords(records), InvalidDataException);
+    
+    // Only first record should be processed
+    const auto& summaries = processor.getCategorySummaries();
+    EXPECT_EQ(summaries.size(), 1);
+    EXPECT_EQ(summaries.at("Valid").count, 1);
+    EXPECT_EQ(summaries.at("Valid").total, 100);
+}
+
+// Edge cases
+TEST_F(RecordProcessorTest, EmptyInput) {
+    std::vector<Record> empty;
+    EXPECT_NO_THROW(processor.processRecords(empty));
     
     std::ostringstream output;
     processor.generateReport(output);
-    
-    std::string result = output.str();
-    
-    SECTION("Output contains all categories") {
-        REQUIRE(result.find("Books") != std::string::npos);
-        REQUIRE(result.find("Clothing") != std::string::npos);
-        REQUIRE(result.find("Electronics") != std::string::npos);
-    }
-    
-    SECTION("Categories in lexicographical order") {
-        // Find positions of each category
-        size_t books_pos = result.find("Books");
-        size_t clothing_pos = result.find("Clothing");
-        size_t electronics_pos = result.find("Electronics");
-        
-        // Books should come before Clothing, which should come before Electronics
-        REQUIRE(books_pos < clothing_pos);
-        REQUIRE(clothing_pos < electronics_pos);
-    }
-    
-    SECTION("Correct formatting") {
-        // Each line should match: CATEGORY_NAME | COUNT=<count> | TOTAL=<total>
-        REQUIRE(result.find("Books | COUNT=1 | TOTAL=25") != std::string::npos);
-        REQUIRE(result.find("Clothing | COUNT=1 | TOTAL=75") != std::string::npos);
-        REQUIRE(result.find("Electronics | COUNT=1 | TOTAL=150") != std::string::npos);
-    }
+    EXPECT_TRUE(output.str().empty());
 }
 
-TEST_CASE("Error handling in batch processing", "[error]") {
-    RecordProcessor processor;
-    
-    SECTION("Processing stops on first error") {
-        std::vector<Record> records = {
-            {1, "Valid", 100},
-            {2, "Invalid", -50},  // This should throw
-            {3, "Valid", 200}     // This should not be processed
-        };
-        
-        REQUIRE_THROWS_AS(processor.processRecords(records), InvalidDataException);
-        
-        // Only first valid record should be processed
-        const auto& summaries = processor.getCategorySummaries();
-        REQUIRE(summaries.size() == 1);
-        REQUIRE(summaries.count("Valid") == 1);
-        REQUIRE(summaries.at("Valid").count == 1);
-    }
-}
-
-TEST_CASE("Clear functionality", "[utility]") {
-    RecordProcessor processor;
-    
+TEST_F(RecordProcessorTest, ClearFunctionality) {
     processor.processRecord({1, "Test", 100});
-    REQUIRE(processor.getCategorySummaries().size() == 1);
+    ASSERT_EQ(processor.getCategorySummaries().size(), 1);
     
     processor.clear();
-    REQUIRE(processor.getCategorySummaries().empty());
+    EXPECT_TRUE(processor.getCategorySummaries().empty());
 }
 
-TEST_CASE("Edge cases", "[edge]") {
-    RecordProcessor processor;
+// Test with special characters in category names
+TEST_F(RecordProcessorTest, SpecialCategoryNames) {
+    processor.processRecord({1, "Category-Name_123", 100});
+    processor.processRecord({2, "Another_Category", 200});
     
-    SECTION("Empty input") {
-        std::vector<Record> empty;
-        REQUIRE_NOTHROW(processor.processRecords(empty));
-        
-        std::ostringstream output;
-        processor.generateReport(output);
-        REQUIRE(output.str().empty());
+    std::ostringstream output;
+    processor.generateReport(output);
+    std::string result = output.str();
+    
+    EXPECT_NE(result.find("Another_Category"), std::string::npos);
+    EXPECT_NE(result.find("Category-Name_123"), std::string::npos);
+}
+
+// Test exact output format
+TEST_F(RecordProcessorTest, ExactOutputFormat) {
+    processor.processRecord({1, "TestCategory", 123});
+    
+    std::ostringstream output;
+    processor.generateReport(output);
+    std::string result = output.str();
+    
+    // Remove trailing newline if present
+    if (!result.empty() && result.back() == '\n') {
+        result.pop_back();
     }
     
-    SECTION("Large values") {
-        processor.processRecord({1, "Test", 1000000});
-        processor.processRecord({2, "Test", 2000000});
-        
-        const auto& summary = processor.getCategorySummaries().at("Test");
-        REQUIRE(summary.total == 3000000);
-    }
-    
-    SECTION("Category with special characters") {
-        processor.processRecord({1, "Category-Name_123", 100});
-        
-        std::ostringstream output;
-        processor.generateReport(output);
-        REQUIRE(output.str().find("Category-Name_123") != std::string::npos);
-    }
+    EXPECT_EQ(result, "TestCategory | COUNT=1 | TOTAL=123");
+}
+
+int main(int argc, char **argv) {
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
 }

@@ -2,12 +2,12 @@
 
 ```bash
 
-   ## Before Test Docker Command
-docker compose run --rm -e REPO_PATH=repository_before app bash -c 'mkdir -p build && cd build && cmake .. && make && ./bin/record_processor || true'
+## Before Test Docker Command
+docker compose run --rm -e REPO_DIR=repository_before app
 
-   ## After Test Docker Command
-docker compose run --rm -e REPO_PATH=repository_after app bash -c 'mkdir -p build && cd build && cmake .. && make && ./bin/record_processor'
+## After Test Docker Command
+docker compose run --rm -e REPO_DIR=repository_after app
 
-   ## Evaluation Docker Command
-docker compose run --rm app bash -c 'mkdir -p build && cd build && cmake .. && make && ./bin/evaluate'
+## Evaluation Docker Command
+./evaluation/evaluate.sh
 ```

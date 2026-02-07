@@ -1,7 +1,17 @@
 #include "record_processor.h"
-#include <iostream>
-#include <sstream>
-#include <algorithm>
+
+// CategorySummary constructor
+CategorySummary::CategorySummary(const std::string& category_name) 
+    : name(category_name), count(0), total(0) {}
+
+// InvalidDataException constructor
+InvalidDataException::InvalidDataException(const std::string& message)
+    : std::runtime_error(message) {}
+
+// RecordProcessor implementation
+RecordProcessor::RecordProcessor() {
+    categories = std::map<std::string, CategorySummary>();
+}
 
 void RecordProcessor::validateRecord(const Record& record) const {
     if (record.value < 0) {
@@ -45,26 +55,19 @@ void RecordProcessor::generateReport(std::ostream& os) const {
     for (const auto& [category_name, summary] : categories) {
         os << category_name 
            << " | COUNT=" << summary.count 
-           << " | TOTAL=" << summary.total 
-           << "\n";
+           << " | TOTAL=" << summary.total;
+        
+        // Add newline except for last line
+        if (std::next(categories.find(category_name)) != categories.end()) {
+            os << "\n";
+        }
     }
+}
+
+const std::map<std::string, CategorySummary>& RecordProcessor::getCategorySummaries() const {
+    return categories;
 }
 
 void RecordProcessor::clear() {
     categories.clear();
-}
-
-std::vector<Record> createSampleData() {
-    return {
-        {1, "Electronics", 150},
-        {2, "Books", 25},
-        {3, "Electronics", 200},
-        {4, "Clothing", 75},
-        {5, "Books", 15},
-        {6, "Clothing", 125},
-        {7, "Electronics", 100},
-        {8, "Books", 30},
-        {9, "Home", 250},
-        {10, "Clothing", 50}
-    };
 }

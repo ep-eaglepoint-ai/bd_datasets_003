@@ -1,13 +1,23 @@
-#include "record_processor.h"
 #include <iostream>
-#include <cstdlib>
+#include <vector>
+#include "record_processor.h"
 
-/**
- * @brief Entry point of the program
- * 
- * Demonstrates the record processing functionality with sample data.
- * In a real system, records would come from a database or API.
- */
+// Sample data function
+std::vector<Record> createSampleData() {
+    return {
+        {1, "Electronics", 150},
+        {2, "Books", 25},
+        {3, "Electronics", 200},
+        {4, "Clothing", 75},
+        {5, "Books", 15},
+        {6, "Clothing", 125},
+        {7, "Electronics", 100},
+        {8, "Books", 30},
+        {9, "Home", 250},
+        {10, "Clothing", 50}
+    };
+}
+
 int main() {
     try {
         RecordProcessor processor;
@@ -21,14 +31,13 @@ int main() {
         // Generate and output the report
         processor.generateReport(std::cout);
         
-        return EXIT_SUCCESS;
+        return 0;
         
     } catch (const InvalidDataException& e) {
         std::cerr << "ERROR: " << e.what() << std::endl;
-        return EXIT_FAILURE;
-        
+        return 1;
     } catch (const std::exception& e) {
         std::cerr << "Unexpected error: " << e.what() << std::endl;
-        return EXIT_FAILURE;
+        return 1;
     }
 }

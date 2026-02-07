@@ -3,7 +3,8 @@
 services:
   app:
     build: .
+    command: bash -c "cd /app/tests && make clean && make REPO_DIR=${REPO_DIR:-repository_after} && ./record_processor"
     volumes:
       - .:/app
     environment:
-      - REPO_PATH=${REPO_PATH:-repository_after}
+      - REPO_DIR=${REPO_DIR:-repository_after}

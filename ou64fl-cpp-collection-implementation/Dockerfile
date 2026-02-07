@@ -1,24 +1,23 @@
 # Add your Dockerfile content here, e.g. for a Python project with pytest would be like:
 
-FROM ubuntu:22.04
+FROM gcc:13
 
-# Install C++ build tools
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    cmake \
-    g++ \
-    make \
-    bash \
-    && rm -rf /var/lib/apt/lists/*
+# Install build tools and Google Test
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        cmake \
+        make \
+        libgtest-dev \
+    && cd /usr/src/gtest && \
+    cmake . && make && \
+    cp lib/*.a /usr/lib/ && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+COPY . /app
 
-# Copy everything
-COPY . .
+# Set permissions
+RUN chmod +x /app/evaluation/evaluate.sh
 
-# Debug: Show what's being built
-RUN echo "Contents of /app:" && ls -la && \
-    echo "CMakeLists.txt exists:" && [ -f CMakeLists.txt ] && echo "Yes" || echo "No"
-
-# Default command - build and run evaluation
-CMD ["bash", "-c", "echo 'REPO_PATH=$REPO_PATH' && mkdir -p build && cd build && cmake .. && make && ./bin/evaluate"]
+# Default command: build and run tests
+CMD ["bash", "-c", "cd /app/tests && make clean && make REPO_DIR=${REPO_DIR:-repository_after} && make test"]

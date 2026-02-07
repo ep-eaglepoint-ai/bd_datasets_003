@@ -1,19 +1,29 @@
 diff --git a/repository_after/main.cpp b/repository_after/main.cpp
 new file mode 100644
-index 00000000..e46c8609
+index 00000000..d7f5edf7
 --- /dev/null
 +++ b/repository_after/main.cpp
-@@ -0,0 +1,34 @@
-+#include "record_processor.h"
+@@ -0,0 +1,43 @@
 +#include <iostream>
-+#include <cstdlib>
++#include <vector>
++#include "record_processor.h"
 +
-+/**
-+ * @brief Entry point of the program
-+ * 
-+ * Demonstrates the record processing functionality with sample data.
-+ * In a real system, records would come from a database or API.
-+ */
++// Sample data function
++std::vector<Record> createSampleData() {
++    return {
++        {1, "Electronics", 150},
++        {2, "Books", 25},
++        {3, "Electronics", 200},
++        {4, "Clothing", 75},
++        {5, "Books", 15},
++        {6, "Clothing", 125},
++        {7, "Electronics", 100},
++        {8, "Books", 30},
++        {9, "Home", 250},
++        {10, "Clothing", 50}
++    };
++}
++
 +int main() {
 +    try {
 +        RecordProcessor processor;
@@ -27,28 +37,37 @@ index 00000000..e46c8609
 +        // Generate and output the report
 +        processor.generateReport(std::cout);
 +        
-+        return EXIT_SUCCESS;
++        return 0;
 +        
 +    } catch (const InvalidDataException& e) {
 +        std::cerr << "ERROR: " << e.what() << std::endl;
-+        return EXIT_FAILURE;
-+        
++        return 1;
 +    } catch (const std::exception& e) {
 +        std::cerr << "Unexpected error: " << e.what() << std::endl;
-+        return EXIT_FAILURE;
++        return 1;
 +    }
 +}
 \ No newline at end of file
 diff --git a/repository_after/record_processor.cpp b/repository_after/record_processor.cpp
 new file mode 100644
-index 00000000..ee9f649d
+index 00000000..4856839b
 --- /dev/null
 +++ b/repository_after/record_processor.cpp
-@@ -0,0 +1,70 @@
+@@ -0,0 +1,73 @@
 +#include "record_processor.h"
-+#include <iostream>
-+#include <sstream>
-+#include <algorithm>
++
++// CategorySummary constructor
++CategorySummary::CategorySummary(const std::string& category_name) 
++    : name(category_name), count(0), total(0) {}
++
++// InvalidDataException constructor
++InvalidDataException::InvalidDataException(const std::string& message)
++    : std::runtime_error(message) {}
++
++// RecordProcessor implementation
++RecordProcessor::RecordProcessor() {
++    categories = std::map<std::string, CategorySummary>();
++}
 +
 +void RecordProcessor::validateRecord(const Record& record) const {
 +    if (record.value < 0) {
@@ -92,36 +111,29 @@ index 00000000..ee9f649d
 +    for (const auto& [category_name, summary] : categories) {
 +        os << category_name 
 +           << " | COUNT=" << summary.count 
-+           << " | TOTAL=" << summary.total 
-+           << "\n";
++           << " | TOTAL=" << summary.total;
++        
++        // Add newline except for last line
++        if (std::next(categories.find(category_name)) != categories.end()) {
++            os << "\n";
++        }
 +    }
++}
++
++const std::map<std::string, CategorySummary>& RecordProcessor::getCategorySummaries() const {
++    return categories;
 +}
 +
 +void RecordProcessor::clear() {
 +    categories.clear();
 +}
-+
-+std::vector<Record> createSampleData() {
-+    return {
-+        {1, "Electronics", 150},
-+        {2, "Books", 25},
-+        {3, "Electronics", 200},
-+        {4, "Clothing", 75},
-+        {5, "Books", 15},
-+        {6, "Clothing", 125},
-+        {7, "Electronics", 100},
-+        {8, "Books", 30},
-+        {9, "Home", 250},
-+        {10, "Clothing", 50}
-+    };
-+}
 \ No newline at end of file
 diff --git a/repository_after/record_processor.h b/repository_after/record_processor.h
 new file mode 100644
-index 00000000..8bf577f3
+index 00000000..6420adab
 --- /dev/null
 +++ b/repository_after/record_processor.h
-@@ -0,0 +1,92 @@
+@@ -0,0 +1,49 @@
 +#ifndef RECORD_PROCESSOR_H
 +#define RECORD_PROCESSOR_H
 +
@@ -130,40 +142,27 @@ index 00000000..8bf577f3
 +#include <map>
 +#include <stdexcept>
 +#include <ostream>
++#include <sstream>
 +
-+/**
-+ * @brief Represents a single input record
-+ */
 +struct Record {
 +    int id;
 +    std::string category;
 +    int value;
 +};
 +
-+/**
-+ * @brief Represents aggregated data for a category
-+ */
 +struct CategorySummary {
 +    std::string name;
 +    int count;
 +    int total;
 +    
-+    CategorySummary(const std::string& category_name) 
-+        : name(category_name), count(0), total(0) {}
++    CategorySummary(const std::string& category_name);
 +};
 +
-+/**
-+ * @brief Exception thrown when invalid data is encountered
-+ */
 +class InvalidDataException : public std::runtime_error {
 +public:
-+    explicit InvalidDataException(const std::string& message)
-+        : std::runtime_error(message) {}
++    explicit InvalidDataException(const std::string& message);
 +};
 +
-+/**
-+ * @brief Main processor for records - handles validation and aggregation
-+ */
 +class RecordProcessor {
 +private:
 +    std::map<std::string, CategorySummary> categories;
@@ -171,47 +170,17 @@ index 00000000..8bf577f3
 +    void validateRecord(const Record& record) const;
 +    
 +public:
-+    RecordProcessor() = default;
++    RecordProcessor();
++    ~RecordProcessor() = default;
 +    
-+    /**
-+     * @brief Process a single record
-+     * @param record The record to process
-+     * @throws InvalidDataException if record value is negative
-+     */
 +    void processRecord(const Record& record);
-+    
-+    /**
-+     * @brief Process multiple records
-+     * @param records Vector of records to process
-+     * @throws InvalidDataException if any record has invalid data
-+     */
 +    void processRecords(const std::vector<Record>& records);
-+    
-+    /**
-+     * @brief Generate formatted report to output stream
-+     * @param os Output stream to write to
-+     */
 +    void generateReport(std::ostream& os) const;
 +    
-+    /**
-+     * @brief Get all category summaries (for testing)
-+     * @return Map of category names to summaries
-+     */
-+    const std::map<std::string, CategorySummary>& getCategorySummaries() const {
-+        return categories;
-+    }
++    const std::map<std::string, CategorySummary>& getCategorySummaries() const;
 +    
-+    /**
-+     * @brief Clear all processed data
-+     */
 +    void clear();
 +};
-+
-+/**
-+ * @brief Utility function to create sample data for demonstration
-+ * @return Vector of sample records
-+ */
-+std::vector<Record> createSampleData();
 +
 +#endif // RECORD_PROCESSOR_H
 \ No newline at end of file
