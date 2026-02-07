@@ -1,12 +1,7 @@
-# Python
-__pycache__/
-*.pyc
-.venv/
-.env
-
 # Node
-node_modules/
+repository_after/node_modules/
+repository_before/node_modules/
 
 # OS
 .DS_Store
-evaluation/*.json
+evaluation/reports/*.json
