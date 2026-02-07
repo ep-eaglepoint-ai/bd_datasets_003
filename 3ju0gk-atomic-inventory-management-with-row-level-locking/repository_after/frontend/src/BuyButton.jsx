@@ -7,7 +7,7 @@ export default function BuyButton({ userId, productId, price, productName }) {
   const [error, setError] = useState(null)
 
   const handleBuy = async () => {
-    // REQUIREMENT 3: Prevent double submission at the logic level
+    
     if (loading) return
     
     if (!userId || !productId) {
@@ -15,8 +15,7 @@ export default function BuyButton({ userId, productId, price, productName }) {
       return;
     }
 
-    // REQUIREMENT 6: Set loading state immediately in the same tick as onClick
-    // This triggers the 'disabled' attribute on the button element
+ 
     setLoading(true)
     setError(null)
     setResult(null)
@@ -27,12 +26,12 @@ export default function BuyButton({ userId, productId, price, productName }) {
         product_id: productId,
       });
 
-      // Backend returns: { success: true, product, price_paid, remaining_stock, new_balance }
+     
       setResult(resp.data)
     } catch (err) {
       console.error("Backend Error:", err.response?.data);
       
-      // Handle specific status codes (409: Out of stock, 402: No money)
+     
       const msg = err.response?.data?.error || 'Purchase failed';
       setError(msg);
     } finally {
@@ -42,9 +41,7 @@ export default function BuyButton({ userId, productId, price, productName }) {
 
   return (
     <div style={{ marginTop: '1.5rem' }}>
-      {/* REQUIREMENT 3 & 6: The 'disabled' attribute must be present.
-         This physically prevents browser events from firing a second request.
-      */}
+     
       <button
         onClick={handleBuy}
         disabled={loading} 

@@ -26,9 +26,7 @@ ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 if DEBUG:
     ALLOWED_HOSTS.append("*")
 
-# ────────────────────────────────────────────────────────────────
-# Application definition - DUPLICATES REMOVED HERE
-# ────────────────────────────────────────────────────────────────
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -80,9 +78,7 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "flashsale.wsgi.application"
 
-# ────────────────────────────────────────────────────────────────
-# Databases
-# ────────────────────────────────────────────────────────────────
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
@@ -120,9 +116,7 @@ MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# ────────────────────────────────────────────────────────────────
-# Django REST Framework
-# ────────────────────────────────────────────────────────────────
+
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_PARSER_CLASSES": [

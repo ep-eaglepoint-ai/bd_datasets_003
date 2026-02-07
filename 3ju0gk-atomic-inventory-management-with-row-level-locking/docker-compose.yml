@@ -15,7 +15,7 @@ services:
 
   app:
     build: .
-    # Use the absolute path at the root to avoid the volume mount overwrite
+    
     entrypoint: ["/bin/sh", "/entrypoint.sh"]
     command: python manage.py runserver 0.0.0.0:8000
     volumes:
@@ -32,7 +32,7 @@ services:
 
   frontend:
     build: .
-    # This command forces a clean install of the correct platform binaries
+    
     command: >
       sh -c "rm -rf node_modules/.vite && 
              npm install --platform=linux --arch=x64 && 

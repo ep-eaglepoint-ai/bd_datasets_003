@@ -7,14 +7,14 @@ function App() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
-  // In a real system, the logged-in user ID would come from your Auth system
+  
   const userId = 1 
 
   useEffect(() => {
     const fetchProducts = async () => {
       try {
         setLoading(true)
-        // This calls the GET view we just added to Django
+        
         const resp = await axios.get('/api/products/')
         setProducts(resp.data)
       } catch (err) {

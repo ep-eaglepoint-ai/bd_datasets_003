@@ -19,7 +19,7 @@ WORKDIR /app
 COPY repository_after/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# We will handle npm install via docker-compose to avoid architecture mismatches
+
 WORKDIR /app
 COPY repository_after/ .
 
