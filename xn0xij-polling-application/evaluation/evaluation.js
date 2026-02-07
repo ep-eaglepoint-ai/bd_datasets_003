@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Evaluation runner for Polling Application.
+ * Evaluation runner
  * 
  * This evaluation script:
  * - Runs Jest tests on the tests/ folder for after implementation
@@ -96,7 +96,6 @@ function calculateMetrics(tests, testDurations, executionTimeMs, passed, failed,
   
   // Calculate average and p95 from test durations if available
   let avgTimeMs, p95TimeMs;
-  
   if (testDurations.length > 0) {
     avgTimeMs = testDurations.reduce((a, b) => a + b, 0) / testDurations.length;
     const sortedDurations = [...testDurations].sort((a, b) => a - b);
@@ -175,7 +174,6 @@ function runJestTests(testsDir, label) {
         error: '💥',
         skipped: '⏭️',
       }[test.outcome] || '❓';
-      
       console.log(`  ${statusIcon} ${test.nodeid}: ${test.outcome}`);
     }
     
@@ -219,7 +217,6 @@ function runJestTests(testsDir, label) {
         error: '💥',
         skipped: '⏭️',
       }[test.outcome] || '❓';
-      
       console.log(`  ${statusIcon} ${test.nodeid}: ${test.outcome}`);
     }
     
@@ -242,8 +239,7 @@ function runEvaluation() {
   // Check if repository_before is empty (only has .gitkeep or is empty)
   const beforeDir = path.join(projectRoot, 'repository_before');
   const beforeFiles = fs.readdirSync(beforeDir);
-  const isBeforeEmpty = beforeFiles.length === 0 || 
-    (beforeFiles.length === 1 && beforeFiles[0] === '.gitkeep');
+  const isBeforeEmpty = beforeFiles.length === 0 || (beforeFiles.length === 1 && beforeFiles[0] === '.gitkeep');
   
   // Run tests with BEFORE implementation
   let beforeResults;
@@ -252,7 +248,6 @@ function runEvaluation() {
     console.log('RUNNING TESTS FOR: BEFORE (REPOSITORY_BEFORE)');
     console.log('='.repeat(100));
     console.log('Repository before is empty - skipping tests');
-    
     beforeResults = {
       passed: false,
       return_code: -1,
@@ -280,13 +275,16 @@ function runEvaluation() {
   console.log('EVALUATION SUMMARY');
   console.log('='.repeat(100));
   console.log('\nBefore Implementation (repository_before):');
-  console.log(`  Overall: ${beforeResults.passed ? '✅ PASSED' : '❌ FAILED'}`);
+  if (isBeforeEmpty) {
+    console.log(`  Overall: ⏭️  SKIPPED (repository empty)`);
+  } else {
+    console.log(`  Overall: ${beforeResults.passed ? '✅ PASSED' : '❌ FAILED'}`);
+  }
   console.log('\nAfter Implementation (repository_after):');
   console.log(`  Overall: ${afterResults.passed ? '✅ PASSED' : '❌ FAILED'}`);
   
   // Determine expected behavior
   const afterPassed = afterResults.passed;
-  
   if (afterPassed) {
     console.log('✅ After implementation: All tests passed (expected)');
   } else {
@@ -310,7 +308,6 @@ function runEvaluation() {
 
 function generateOutputPath() {
   const now = new Date();
-  
   // Use UTC time for consistency
   const year = now.getUTCFullYear();
   const month = String(now.getUTCMonth() + 1).padStart(2, '0');
@@ -327,7 +324,6 @@ function generateOutputPath() {
   const outputDir = path.join(projectRoot, 'evaluation', dateStr, timeStr);
   
   fs.mkdirSync(outputDir, { recursive: true });
-  
   return path.join(outputDir, 'report.json');
 }
 
@@ -406,13 +402,11 @@ function main() {
       return_code: -1,
       output: 'Error during evaluation',
     };
-    
     afterTests = {
       passed: false,
       return_code: -1,
       output: `Error during evaluation: ${error.message}`,
     };
-    
     beforeMetrics = {
       avg_time_ms: 0,
       p95_time_ms: 0,
@@ -423,7 +417,6 @@ function main() {
       rows_processed: 0,
       warnings: 0
     };
-    
     afterMetrics = {
       avg_time_ms: 0,
       p95_time_ms: 0,
@@ -434,7 +427,6 @@ function main() {
       rows_processed: 0,
       warnings: 0
     };
-    
     passedGate = false;
     improvementSummary = `Evaluation failed with error: ${error.message}`;
     success = false;
