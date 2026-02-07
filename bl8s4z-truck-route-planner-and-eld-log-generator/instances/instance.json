@@ -1,0 +1,11 @@
+{
+            "instance_id": "BL8S4Z",
+            "problem_statement": "Build a full-stack web application using Django and React that allows truck drivers to input trip details and receive optimized route instructions along with automatically generated Electronic Logging Device (ELD) daily logs, considering driving cycles, rest periods, and fueling requirements",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/bl8s4z-truck-route-planner-and-eld-log-generator",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
