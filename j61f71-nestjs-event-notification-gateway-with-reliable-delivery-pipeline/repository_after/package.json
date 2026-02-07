@@ -5,8 +5,8 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "build": "nest build",
-    "test": "jest",
-    "test:after": "jest"
+    "test": "jest --config ../jest.config.js",
+    "test:after": "jest --config ../jest.config.js"
   },
   "dependencies": {
     "@nestjs/bull": "^10.0.0",
