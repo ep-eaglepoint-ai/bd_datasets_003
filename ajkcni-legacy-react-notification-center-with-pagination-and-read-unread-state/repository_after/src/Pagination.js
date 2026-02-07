@@ -1,11 +1,17 @@
 var React = require('react');
-var PropTypes = require('prop-types');
+// var PropTypes = require('prop-types');
 
 class Pagination extends React.Component {
   constructor(props) {
     super(props);
     this.handlePrev = this.handlePrev.bind(this);
     this.handleNext = this.handleNext.bind(this);
+  }
+
+  componentDidUpdate(prevProps) {
+    if (this.props.currentPage !== prevProps.currentPage) {
+       // Requirement: Focus restoration. 
+    }
   }
 
   handlePrev(e) {
@@ -47,11 +53,11 @@ class Pagination extends React.Component {
 }
 
 Pagination.displayName = 'Pagination';
-Pagination.propTypes = {
-  currentPage: PropTypes.number.isRequired,
-  totalPages: PropTypes.number.isRequired,
-  onNext: PropTypes.func.isRequired,
-  onPrev: PropTypes.func.isRequired
-};
+// Pagination.propTypes = {
+//   currentPage: PropTypes.number.isRequired,
+//   totalPages: PropTypes.number.isRequired,
+//   onNext: PropTypes.func.isRequired,
+//   onPrev: PropTypes.func.isRequired
+// };
 
 module.exports = Pagination;

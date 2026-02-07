@@ -17,6 +17,16 @@ class NotificationCenter extends React.Component {
     this.handleToggleRead = this.handleToggleRead.bind(this);
     this.handleNextPage = this.handleNextPage.bind(this);
     this.handlePrevPage = this.handlePrevPage.bind(this);
+    this.containerRef = React.createRef();
+  }
+
+  componentDidUpdate(prevProps, prevState) {
+    if (this.state.currentPage !== prevState.currentPage) {
+      // Restore focus to the container when page changes to assist screen readers/keyboard users
+      if (this.containerRef.current) {
+        this.containerRef.current.focus();
+      }
+    }
   }
 
   handleToggleRead(id) {
@@ -61,7 +71,11 @@ class NotificationCenter extends React.Component {
     var endIndex = startIndex + PAGE_SIZE;
     var currentNotifications = notifications.slice(startIndex, endIndex);
 
-    return React.createElement('div', { className: 'notification-center' },
+    return React.createElement('div', { 
+        className: 'notification-center',
+        ref: this.containerRef,
+        tabIndex: "-1" // Allow programmatic focus
+      },
       React.createElement('h1', null, 'Notification Center'),
       React.createElement(NotificationList, {
         notifications: currentNotifications,

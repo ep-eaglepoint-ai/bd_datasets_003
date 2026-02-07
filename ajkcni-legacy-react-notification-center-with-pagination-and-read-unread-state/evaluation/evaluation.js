@@ -64,6 +64,20 @@ function runJestTests(testsDir, label, targetRepo) {
   const repoDir = path.join(projectRoot, targetRepo);
   const cwd = fs.existsSync(repoDir) ? repoDir : testsDir;
 
+  // Optimization: If the target repo lacks package.json, it's likely empty or not set up.
+  // Fail fast instead of letting npx/jest hang or timeout.
+  if (!fs.existsSync(path.join(repoDir, 'package.json')) && targetRepo === 'repository_before') {
+      console.log(`\n⚠️  No package.json found in ${targetRepo}. Skipping execution (assuming empty).`);
+      return {
+        success: false,
+        exit_code: 1,
+        tests: [],
+        summary: { error: 'No package.json found (empty repo)', total: 0, passed: 0, failed: 0, errors: 0, skipped: 0 },
+        stdout: '',
+        stderr: 'Skipped execution: No package.json found (empty repo)',
+      };
+  }
+
   const cmd = 'npx';
   const args = ['jest', '--json', '--runInBand', '--forceExit'];
 

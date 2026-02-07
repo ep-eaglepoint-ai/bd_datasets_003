@@ -130,13 +130,19 @@ describe('NotificationCenter', () => {
   });
 
   test('handles keyboard navigation (Tab + Enter) for pagination', () => {
-    const component = renderer.create(React.createElement(NotificationCenter));
+    const component = renderer.create(React.createElement(NotificationCenter), {
+      createNodeMock: (element) => {
+        if (element.type === 'div' && element.props.className === 'notification-center') {
+          return { focus: jest.fn() };
+        }
+        return null;
+      }
+    });
     const root = component.root;
     const pagination = root.findByType(Pagination);
     const nextBtn = pagination.findAllByType('button')[1];
     
-    // Tab key implies focus, but here we test the keydown handler directly
-    // checking for 'Enter' key specifically.
+    // Enter key triggers click
     nextBtn.props.onKeyDown({ key: 'Enter', type: 'keydown' });
     
     let list = root.findByType(NotificationList);
@@ -171,7 +177,14 @@ describe('NotificationCenter', () => {
   });
 
   test('robustness: handles rapid interactions without crashing or invalid state', () => {
-    const component = renderer.create(React.createElement(NotificationCenter));
+    const component = renderer.create(React.createElement(NotificationCenter), {
+       createNodeMock: (element) => {
+        if (element.type === 'div' && element.props.className === 'notification-center') {
+          return { focus: jest.fn() };
+        }
+        return null;
+      }
+    });
     const root = component.root;
     const pagination = root.findByType(Pagination);
     const nextBtn = pagination.findAllByType('button')[1];
@@ -189,7 +202,14 @@ describe('NotificationCenter', () => {
   });
 
   test('robustness: ignores invalid pagination actions (boundary checks)', () => {
-    const component = renderer.create(React.createElement(NotificationCenter));
+    const component = renderer.create(React.createElement(NotificationCenter), {
+       createNodeMock: (element) => {
+        if (element.type === 'div' && element.props.className === 'notification-center') {
+          return { focus: jest.fn() };
+        }
+        return null;
+      }
+    });
     const root = component.root;
     const pagination = root.findByType(Pagination);
     const prevBtn = pagination.findAllByType('button')[0];
@@ -213,5 +233,42 @@ describe('NotificationCenter', () => {
     // Should still be on page 4
     list = root.findByType(NotificationList);
     expect(list.props.notifications[0].id).toBe(16);
+  });
+  
+  test('restores focus to container on page change', () => {
+    // We need to mock the ref focus method
+    let focusSpy = jest.fn();
+    
+    const component = renderer.create(React.createElement(NotificationCenter), {
+      createNodeMock: (element) => {
+        if (element.type === 'div' && element.props.className === 'notification-center') {
+          return { focus: focusSpy };
+        }
+        return null;
+      }
+    });
+    
+    const root = component.root;
+    const pagination = root.findByType(Pagination);
+    const nextBtn = pagination.findAllByType('button')[1];
+    
+    // Trigger page change
+    nextBtn.props.onClick({ type: 'click' });
+    
+    // Expect focus to have been called
+    expect(focusSpy).toHaveBeenCalled();
+  });
+  
+  test('Constraint Check: Components should be standard React classes', () => {
+     // This test inspects the prototypes to ensure they inherit from React.Component
+     // and do not look like functional components.
+     expect(NotificationCenter.prototype).toBeDefined();
+     expect(NotificationCenter.prototype.render).toBeDefined();
+     
+     expect(NotificationList.prototype).toBeDefined();
+     expect(NotificationList.prototype.render).toBeDefined();
+     
+     expect(Pagination.prototype).toBeDefined();
+     expect(Pagination.prototype.render).toBeDefined();
   });
 });

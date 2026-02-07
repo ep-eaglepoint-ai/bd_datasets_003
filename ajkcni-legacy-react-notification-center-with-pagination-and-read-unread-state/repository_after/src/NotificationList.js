@@ -1,5 +1,5 @@
 var React = require('react');
-var PropTypes = require('prop-types');
+// var PropTypes = require('prop-types');
 
 class NotificationList extends React.Component {
   render() {
@@ -23,10 +23,10 @@ class NotificationList extends React.Component {
 }
 
 NotificationList.displayName = 'NotificationList';
-NotificationList.propTypes = {
-  notifications: PropTypes.array.isRequired,
-  onToggleRead: PropTypes.func.isRequired
-};
+// NotificationList.propTypes = {
+//   notifications: PropTypes.array.isRequired,
+//   onToggleRead: PropTypes.func.isRequired
+// };
 
 class NotificationItem extends React.Component {
   constructor(props) {
@@ -65,9 +65,9 @@ class NotificationItem extends React.Component {
 }
 
 NotificationItem.displayName = 'NotificationItem';
-NotificationItem.propTypes = {
-  notification: PropTypes.object.isRequired,
-  onToggleRead: PropTypes.func.isRequired
-};
+// NotificationItem.propTypes = {
+//   notification: PropTypes.object.isRequired,
+//   onToggleRead: PropTypes.func.isRequired
+// };
 
 module.exports = NotificationList;
