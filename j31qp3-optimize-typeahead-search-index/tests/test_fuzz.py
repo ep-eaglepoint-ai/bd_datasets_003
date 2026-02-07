@@ -86,9 +86,28 @@ def test_hypothesis_comparison(operations, searches):
         naive_unique = list(dict.fromkeys(naive_all))
         
         # Slice to target limit
-        naive_expected = naive_unique[:limit]
+        naive_candidates = naive_unique[:limit]
         
-        assert res_opt == naive_expected, f"Optimized does not match Naive (normalized). Opt: {res_opt}, Naive: {naive_expected}"
+        # Verify Score/Term Match:
+        # Optimized implementation breaks ties Alphabetically (Term ASC).
+        # Naive implementation breaks ties by Insertion Order (Stable Sort).
+        # To compare them, we must enforce a deterministic sort on the Naive output 
+        # using the known scores from truth_data.
+        
+        naive_expected = sorted(naive_candidates, key=lambda t: (-truth_data[t], t))
+        
+        # We also need to sort the Optimized result because even if the Heap pops in order,
+        # if multiple items have the EXACT same score and term (impossible due to set/map),
+        # or if expected has different tie-breaking.
+        # But Optimized IS the reference for "Correct Deterministic Behavior".
+        # So we expect Optimized to ALREADY be sorted by (-score, term).
+        
+        assert res_opt == naive_expected, (
+            f"Optimized does not match Naive (normalized for deterministic tie-breaking).\n"
+            f"Opt: {res_opt}\n"
+            f"Naive (Stable): {naive_candidates}\n"
+            f"Naive (Sorted): {naive_expected}"
+        )
 
 def test_duplicate_updates_match_oracle():
     """

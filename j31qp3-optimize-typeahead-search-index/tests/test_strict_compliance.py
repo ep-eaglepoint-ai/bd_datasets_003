@@ -411,3 +411,25 @@ def test_heap_memory_optimization():
     assert deep_item.char != long_term, "Item stores explicit long string copy!"
     
     print(f"\n✅ Memory Optimization verified: SearchHeapItem uses pointers, not deep strings.")
+
+def test_no_external_libs():
+    """
+    Requirement 1 Verification: No external database libraries.
+    """
+    import ast
+    
+    repo_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../repository_after/search_index.py'))
+    with open(repo_path, 'r') as f:
+        tree = ast.parse(f.read())
+        
+    forbidden = {'sqlite3', 'sqlalchemy', 'redis', 'pymongo', 'psycopg2', 'mysql', 'dbm', 'shelve'}
+    
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                base = alias.name.split('.')[0]
+                assert base not in forbidden, f"Forbidden import found: {base}"
+        elif isinstance(node, ast.ImportFrom):
+            if node.module:
+                base = node.module.split('.')[0]
+                assert base not in forbidden, f"Forbidden import found: {base}"

@@ -74,3 +74,37 @@ def test_no_redundant_string_storage(SearchIndexClass):
     # Despite no term storage, search must reconstruct the full term
     results = index.search("abcdefghij", limit=1)
     assert results == [long_term]
+
+def test_memory_enforced_strictness(SearchIndexClass):
+    """
+    Requirement 5: Enforce strict 256MB RAM limit using resource limits.
+    If the implementation leaks memory or is inefficient, this test will crash with MemoryError.
+    """
+    try:
+        soft, hard = resource.getrlimit(resource.RLIMIT_AS)
+        limit_bytes = 256 * 1024 * 1024  # 256MB
+        
+        # Only set if feasible (hard limit allows it)
+        if hard == -1 or hard >= limit_bytes:
+            resource.setrlimit(resource.RLIMIT_AS, (limit_bytes, hard))
+        else:
+            pytest.skip(f"System hard limit {hard} is lower than 256MB, cannot enforce limit test.")
+            
+    except (ValueError, OSError) as e:
+        pytest.skip(f"Could not set RLIMIT_AS: {e}")
+        
+    try:
+        index = SearchIndexClass()
+        # Insert substantial data to pressure memory
+        for i in range(50000):
+            index.insert(f"term_{i}", i)
+            
+        assert True
+    except MemoryError:
+        pytest.fail("MemoryError: Implementation exceeded 256MB strict limit!")
+    finally:
+        # Reset limit if possible (though process layout might prevent full reset effectively)
+        try:
+            resource.setrlimit(resource.RLIMIT_AS, (soft, hard))
+        except:
+            pass

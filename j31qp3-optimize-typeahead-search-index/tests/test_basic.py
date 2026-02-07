@@ -64,6 +64,50 @@ def test_empty_search(SearchIndexClass):
     results = index.search("", limit=10)
     assert results == ["world", "zebra", "hi"]
 
+def test_edge_cases_scores(SearchIndexClass):
+    """
+    Reviewer Feedback: Verify behavior with 0 and negative scores.
+    """
+    index = SearchIndexClass()
+    
+    # 0 Score
+    index.insert("zero", 0)
+    assert index.search("zero")[0] == "zero"
+    
+    # Negative Score
+    index.insert("neg", -10)
+    index.insert("neg_worse", -20)
+    
+    # Verify order: -10 > -20
+    results = index.search("neg")
+    assert results == ["neg", "neg_worse"]
+    
+    # Mixed positive and negative
+    index.insert("pos", 10)
+    
+    # Search all
+    results = index.search("", limit=10)
+    # Expected order: pos(10), zero(0), neg(-10), neg_worse(-20)
+    assert results == ["pos", "zero", "neg", "neg_worse"]
+
+def test_empty_string_insert(SearchIndexClass):
+    """
+    Reviewer Feedback: Verify empty string insertion behavior.
+    """
+    index = SearchIndexClass()
+    index.insert("", 100)
+    
+    # Search "" should return "" as a result if it's in the index?
+    # Terms starting with "" includes "" itself.
+    results = index.search("", limit=1)
+    assert results == [""]
+    
+    # Search specific prefix shouldn't match "" (unless prefix is empty)
+    index.insert("abc", 50)
+    results = index.search("a")
+    assert results == ["abc"]
+    assert "" not in results
+
 def test_case_sensitivity(SearchIndexClass):
     """
     Requirement: Terms are ASCII, case-sensitive.

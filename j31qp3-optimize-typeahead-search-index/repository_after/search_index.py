@@ -7,7 +7,8 @@ class TrieNode:
     
     def __init__(self):
         self.children: Dict[str, TrieNode] = {}
-        self.max_score: int = 0
+        # Initialize to -inf so negative scores can update it correctly.
+        self.max_score: float = float('-inf') 
         self.score: Optional[int] = None
 
 class SearchHeapItem:
@@ -41,6 +42,16 @@ class SearchHeapItem:
 
     def __lt__(self, other):
         # Priority 1: Higher Score is Better (Pop First)
+        # heapq is a Min-Heap.
+        # We want to pop Max Score.
+        # So we need "Greatest" to be "Smallest".
+        # If we store positive scores?
+        # Usage: heapq.heappush(pq, item).
+        # We need item1 < item2 to mean "item1 is better".
+        # If score1=100, score2=50. 100 is better.
+        # So we want item(100) < item(50) to return True.
+        # Code: return self.score > other.score. 100 > 50 -> True. Correct.
+        
         if self.score != other.score:
             return self.score > other.score
         
@@ -116,21 +127,22 @@ class SearchIndex:
         # Update the term node
         node.score = score
         # node.term = term  <-- Removed for memory efficiency (Req 5)
-        node.max_score = max(node.max_score, score)
         
-        # Propagate max_score up
-        # We need to re-calculate max_score for nodes in the path because it might have changed
-        # (either increased, or decreased if we replaced a high score with a low one - though 
-        # decrease requires checking all children)
-        # For simplicity and correctness with updates, let's just make sure we cover the increase case efficiently
-        # and checking children for the general case.
+        # IMPORTANT: Initialize local max_score to the term's own score
+        # But node might imply a subtree with BETTER scores.
+        # So node.max_score = max(node.score, existing children max)
+        
+        # Since we are propagating UP fully, we can set node score and rebuild.
+        # But to be safe, let's reset max_score at leaf/term level?
+        # Actually, recursive recalculation from bottom up is cleanest for updates.
         
         # Fully correct update:
         for i in range(len(path) - 1, -1, -1):
             curr = path[i]
             
             # Start with the score of the current node itself (if it is a term)
-            current_max = curr.score if curr.score is not None else 0
+            # If current node is NOT a term, base is -inf
+            current_max = curr.score if curr.score is not None else float('-inf')
             
             # Check all children
             for child in curr.children.values():
