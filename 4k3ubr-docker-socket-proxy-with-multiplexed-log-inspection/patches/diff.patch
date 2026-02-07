@@ -1,0 +1,1001 @@
+diff --git a/repository_before/.gitkeep b/repository_before/.gitkeep
+deleted file mode 100644
+index e69de29b..00000000
+diff --git a/repository_after/main.go b/repository_after/main.go
+new file mode 100644
+index 00000000..96c12d1f
+--- /dev/null
++++ b/repository_after/main.go
+@@ -0,0 +1,66 @@
++package main
++
++import (
++	"context"
++	"log"
++	"net/http"
++	"os"
++	"os/signal"
++	"syscall"
++	"time"
++
++	"docker-socket-proxy/repository_after/proxy"
++)
++
++const (
++	dockerSocket = "/var/run/docker.sock"
++	proxyAddr    = ":2375"
++)
++
++func main() {
++	config, err := proxy.LoadConfig()
++	if err != nil {
++		log.Fatalf("Failed to load config: %v", err)
++	}
++
++	auditLogger, err := proxy.NewAuditLoggerWithRotation("audit.log", config.MaxLogSizeMB, config.MaxLogFiles)
++	if err != nil {
++		log.Fatalf("Failed to initialize audit logger: %v", err)
++	}
++	defer auditLogger.Close()
++
++	proxyHandler, err := proxy.NewDockerProxy(dockerSocket, config, auditLogger)
++	if err != nil {
++		log.Fatalf("Failed to create proxy: %v", err)
++	}
++	defer proxyHandler.Close()
++
++	server := &http.Server{
++		Addr:    proxyAddr,
++		Handler: proxyHandler,
++	}
++
++	go func() {
++		sigChan := make(chan os.Signal, 1)
++		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
++		<-sigChan
++
++		log.Println("Shutting down proxy...")
++		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
++		defer cancel()
++
++		if err := server.Shutdown(ctx); err != nil {
++			log.Printf("Server shutdown error: %v", err)
++		}
++	}()
++
++	log.Printf("Docker Socket Proxy listening on %s", proxyAddr)
++	log.Printf("Proxying to %s", dockerSocket)
++	log.Printf("Loaded %d sensitive patterns", len(config.SensitivePatterns))
++
++	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
++		log.Fatalf("Server error: %v", err)
++	}
++
++	log.Println("Proxy shut down cleanly")
++}
+\ No newline at end of file
+diff --git a/repository_after/proxy/audit_logger.go b/repository_after/proxy/audit_logger.go
+new file mode 100644
+index 00000000..fdfaff7b
+--- /dev/null
++++ b/repository_after/proxy/audit_logger.go
+@@ -0,0 +1,168 @@
++package proxy
++
++import (
++	"encoding/json"
++	"fmt"
++	"os"
++	"sync"
++	"time"
++)
++
++type AuditLogger struct {
++	file         *os.File
++	mutex        sync.Mutex
++	closed       bool
++	filename     string
++	maxSizeBytes int64
++	maxFiles     int
++	currentSize  int64
++}
++
++type AuditEvent struct {
++	Timestamp   time.Time `json:"timestamp"`
++	ContainerID string    `json:"container_id"`
++	StreamType  string    `json:"stream_type"`
++	Pattern     string    `json:"pattern"`
++	Redacted    string    `json:"redacted_match"`
++	Severity    string    `json:"severity"`
++}
++
++// NewAuditLogger creates a logger with default 100MB max and 5 rotated files
++func NewAuditLogger(filename string) (*AuditLogger, error) {
++	return NewAuditLoggerWithRotation(filename, 100, 5) // 100MB, 5 files
++}
++
++// NewAuditLoggerWithRotation creates a logger with MB-level size control
++func NewAuditLoggerWithRotation(filename string, maxSizeMB int, maxFiles int) (*AuditLogger, error) {
++	if maxSizeMB <= 0 {
++		maxSizeMB = 100
++	}
++	if maxFiles <= 0 {
++		maxFiles = 5
++	}
++
++	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
++	if err != nil {
++		return nil, fmt.Errorf("failed to open audit log %s: %w", filename, err)
++	}
++
++	info, err := file.Stat()
++	if err != nil {
++		file.Close()
++		return nil, fmt.Errorf("failed to stat audit log %s: %w", filename, err)
++	}
++
++	return &AuditLogger{
++		file:         file,
++		filename:     filename,
++		maxSizeBytes: int64(maxSizeMB) * 1024 * 1024,
++		maxFiles:     maxFiles,
++		currentSize:  info.Size(),
++	}, nil
++}
++
++// NewAuditLoggerWithBytes creates logger with byte-level size control (for testing)
++func NewAuditLoggerWithBytes(filename string, maxSizeBytes int64, maxFiles int) (*AuditLogger, error) {
++	if maxSizeBytes <= 0 {
++		maxSizeBytes = 100 * 1024 * 1024
++	}
++	if maxFiles <= 0 {
++		maxFiles = 5
++	}
++
++	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
++	if err != nil {
++		return nil, fmt.Errorf("failed to open audit log %s: %w", filename, err)
++	}
++
++	info, err := file.Stat()
++	if err != nil {
++		file.Close()
++		return nil, fmt.Errorf("failed to stat audit log %s: %w", filename, err)
++	}
++
++	return &AuditLogger{
++		file:         file,
++		filename:     filename,
++		maxSizeBytes: maxSizeBytes,
++		maxFiles:     maxFiles,
++		currentSize:  info.Size(),
++	}, nil
++}
++
++func (l *AuditLogger) Log(event AuditEvent) error {
++	l.mutex.Lock()
++	defer l.mutex.Unlock()
++
++	if l.closed {
++		return nil
++	}
++
++	data, err := json.Marshal(event)
++	if err != nil {
++		return fmt.Errorf("failed to marshal audit event: %w", err)
++	}
++
++	dataWithNewline := append(data, '\n')
++
++	// Check if rotation needed
++	if l.currentSize+int64(len(dataWithNewline)) > l.maxSizeBytes {
++		if err := l.rotate(); err != nil {
++			return fmt.Errorf("failed to rotate audit log: %w", err)
++		}
++	}
++
++	n, err := l.file.Write(dataWithNewline)
++	if err != nil {
++		return fmt.Errorf("failed to write audit event: %w", err)
++	}
++
++	l.currentSize += int64(n)
++	return nil
++}
++
++func (l *AuditLogger) rotate() error {
++	// Close current file
++	if err := l.file.Close(); err != nil {
++		return fmt.Errorf("failed to close current log: %w", err)
++	}
++
++	// Rotate existing files (shift .1 -> .2, .2 -> .3, etc.)
++	for i := l.maxFiles - 1; i >= 1; i-- {
++		oldName := fmt.Sprintf("%s.%d", l.filename, i)
++		newName := fmt.Sprintf("%s.%d", l.filename, i+1)
++		os.Rename(oldName, newName) // Ignore errors for non-existent files
++	}
++
++	// Rename current to .1
++	os.Rename(l.filename, l.filename+".1") // Ignore error if file doesn't exist
++
++	// Create new file
++	file, err := os.OpenFile(l.filename, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
++	if err != nil {
++		return fmt.Errorf("failed to create new log file: %w", err)
++	}
++
++	l.file = file
++	l.currentSize = 0
++	return nil
++}
++
++func (l *AuditLogger) Close() error {
++	l.mutex.Lock()
++	defer l.mutex.Unlock()
++
++	if l.closed {
++		return nil
++	}
++
++	l.closed = true
++	return l.file.Close()
++}
++
++// GetMetrics returns observability data
++func (l *AuditLogger) GetMetrics() (currentSize int64, filename string) {
++	l.mutex.Lock()
++	defer l.mutex.Unlock()
++	return l.currentSize, l.filename
++}
+\ No newline at end of file
+diff --git a/repository_after/proxy/auditor.go b/repository_after/proxy/auditor.go
+new file mode 100644
+index 00000000..80daf295
+--- /dev/null
++++ b/repository_after/proxy/auditor.go
+@@ -0,0 +1,344 @@
++package proxy
++
++import (
++	"bufio"
++	"context"
++	"encoding/binary"
++	"fmt"
++	"io"
++	"log"
++	"net/http"
++	"sync"
++	"sync/atomic"
++	"time"
++)
++
++const (
++	maxAuditScanSize = 64 * 1024
++	regexTimeoutMs   = 100
++	maxLineLength    = 10 * 1024
++	auditWorkerCount = 4
++	auditQueueSize   = 1000
++	chunkSize        = 16 * 1024 // Scan in 16KB chunks
++	chunkOverlap     = 128       // Overlap to avoid split matches at chunk boundaries
++)
++
++type AuditJob struct {
++	ContainerID string
++	StreamType  StreamType
++	Payload     []byte
++}
++
++type LogAuditor struct {
++	Config      *Config
++	AuditLogger *AuditLogger
++
++	auditQueue   chan AuditJob
++	wg           sync.WaitGroup
++	auditWg      sync.WaitGroup
++	started      bool
++	stopped      bool
++	mu           sync.Mutex
++	droppedCount int64
++}
++
++func (a *LogAuditor) StartWorkers() {
++	a.mu.Lock()
++	defer a.mu.Unlock()
++
++	if a.started || a.stopped {
++		return
++	}
++
++	a.auditQueue = make(chan AuditJob, auditQueueSize)
++	a.started = true
++
++	for i := 0; i < auditWorkerCount; i++ {
++		a.wg.Add(1)
++		go a.auditWorker()
++	}
++}
++
++func (a *LogAuditor) StopWorkers() {
++	a.mu.Lock()
++	if !a.started || a.stopped {
++		a.mu.Unlock()
++		return
++	}
++	a.stopped = true
++	close(a.auditQueue)
++	a.mu.Unlock()
++
++	a.wg.Wait()     // Wait for workers to drain the queue
++	a.auditWg.Wait() // Wait for all in-flight audits
++
++	dropped := atomic.LoadInt64(&a.droppedCount)
++	if dropped > 0 {
++		log.Printf("Audit summary: %d audits dropped due to queue full", dropped)
++	}
++}
++
++func (a *LogAuditor) auditWorker() {
++	defer a.wg.Done()
++
++	for job := range a.auditQueue {
++		a.auditPayloadWithTimeout(job.ContainerID, job.StreamType, job.Payload)
++	}
++}
++
++type StreamType byte
++
++const (
++	StreamStdin  StreamType = 0
++	StreamStdout StreamType = 1
++	StreamStderr StreamType = 2
++)
++
++func (s StreamType) String() string {
++	switch s {
++	case StreamStdin:
++		return "stdin"
++	case StreamStdout:
++		return "stdout"
++	case StreamStderr:
++		return "stderr"
++	default:
++		return "unknown"
++	}
++}
++
++func (a *LogAuditor) AuditMultiplexedStream(ctx context.Context, reader io.Reader, writer io.Writer, containerID string, flusher http.Flusher) error {
++	a.StartWorkers()
++
++	header := make([]byte, 8)
++
++	for {
++		select {
++		case <-ctx.Done():
++			return ctx.Err()
++		default:
++		}
++
++		n, err := io.ReadFull(reader, header)
++		if err != nil {
++			if err == io.EOF || err == io.ErrUnexpectedEOF || n == 0 {
++				return nil
++			}
++			return fmt.Errorf("failed to read header: %v", err)
++		}
++
++		streamType := StreamType(header[0])
++		payloadSize := binary.BigEndian.Uint32(header[4:8])
++
++		if payloadSize == 0 {
++			if _, err := writer.Write(header); err != nil {
++				return err
++			}
++			if flusher != nil {
++				flusher.Flush()
++			}
++			continue
++		}
++
++		payload := make([]byte, payloadSize)
++		_, err = io.ReadFull(reader, payload)
++		if err != nil {
++			return fmt.Errorf("failed to read payload: %v", err)
++		}
++
++		// Queue audit job (non-blocking, copies payload internally)
++		a.queueAuditJob(containerID, streamType, payload)
++
++		// Forward header + payload unchanged
++		if _, err := writer.Write(header); err != nil {
++			return err
++		}
++		if _, err := writer.Write(payload); err != nil {
++			return err
++		}
++
++		if flusher != nil {
++			flusher.Flush()
++		}
++	}
++}
++
++// queueAuditJob enqueues an audit job. Holds lock through channel send to prevent
++// TOCTOU race between checking a.stopped and sending on a.auditQueue.
++func (a *LogAuditor) queueAuditJob(containerID string, streamType StreamType, payload []byte) {
++	auditSize := len(payload)
++	if auditSize > maxAuditScanSize {
++		auditSize = maxAuditScanSize
++	}
++
++	auditPayload := make([]byte, auditSize)
++	copy(auditPayload, payload[:auditSize])
++
++	job := AuditJob{
++		ContainerID: containerID,
++		StreamType:  streamType,
++		Payload:     auditPayload,
++	}
++
++	a.mu.Lock()
++	defer a.mu.Unlock()
++
++	if a.stopped || a.auditQueue == nil {
++		return
++	}
++
++	select {
++	case a.auditQueue <- job:
++		// Enqueued successfully
++	default:
++		atomic.AddInt64(&a.droppedCount, 1)
++	}
++}
++
++func (a *LogAuditor) AuditPlainStream(ctx context.Context, reader io.Reader, writer io.Writer, containerID string) error {
++	a.StartWorkers()
++
++	scanner := bufio.NewScanner(reader)
++	buf := make([]byte, maxLineLength)
++	scanner.Buffer(buf, maxLineLength)
++
++	for scanner.Scan() {
++		select {
++		case <-ctx.Done():
++			return ctx.Err()
++		default:
++		}
++
++		line := scanner.Bytes()
++
++		auditSize := len(line)
++		if auditSize > maxAuditScanSize {
++			auditSize = maxAuditScanSize
++		}
++		lineCopy := make([]byte, auditSize)
++		copy(lineCopy, line[:auditSize])
++
++		a.queueAuditJob(containerID, StreamStdout, lineCopy)
++
++		if _, err := writer.Write(line); err != nil {
++			return err
++		}
++		if _, err := writer.Write([]byte("\n")); err != nil {
++			return err
++		}
++	}
++
++	return scanner.Err()
++}
++
++// auditPayloadWithTimeout runs the audit scan with a timeout.
++// No extra goroutine is spawned — the context controls cancellation directly,
++// preventing goroutine leaks.
++func (a *LogAuditor) auditPayloadWithTimeout(containerID string, streamType StreamType, payload []byte) {
++	a.auditWg.Add(1)
++	defer a.auditWg.Done()
++
++	defer func() {
++		if r := recover(); r != nil {
++			log.Printf("Panic in audit: %v", r)
++		}
++	}()
++
++	ctx, cancel := context.WithTimeout(context.Background(), regexTimeoutMs*time.Millisecond)
++	defer cancel()
++
++	// Run scan inline — context checked between chunks for cancellation
++	a.auditPayloadChunked(ctx, containerID, streamType, payload)
++}
++
++// auditPayloadChunked scans payload in overlapping chunks to avoid missing
++// matches that span chunk boundaries. Checks context between each chunk.
++func (a *LogAuditor) auditPayloadChunked(ctx context.Context, containerID string, streamType StreamType, payload []byte) {
++	if a.AuditLogger == nil {
++		return
++	}
++
++	if len(payload) == 0 {
++		return
++	}
++
++	// For payloads smaller than or equal to one chunk, scan directly
++	if len(payload) <= chunkSize {
++		a.auditChunk(containerID, streamType, payload)
++		return
++	}
++
++	// Scan in overlapping chunks
++	step := chunkSize - chunkOverlap
++	if step <= 0 {
++		step = chunkSize
++	}
++
++	for offset := 0; offset < len(payload); {
++		select {
++		case <-ctx.Done():
++			return // Stop scanning on timeout
++		default:
++		}
++
++		end := offset + chunkSize
++		if end > len(payload) {
++			end = len(payload)
++		}
++
++		chunk := payload[offset:end]
++		a.auditChunk(containerID, streamType, chunk)
++
++		if end == len(payload) {
++			break
++		}
++
++		offset += step
++	}
++}
++
++func (a *LogAuditor) auditChunk(containerID string, streamType StreamType, chunk []byte) {
++	chunkStr := string(chunk)
++
++	for _, pattern := range a.Config.SensitivePatterns {
++		if pattern.Regex == nil {
++			continue
++		}
++
++		indices := pattern.Regex.FindAllStringIndex(chunkStr, -1)
++
++		for _, idx := range indices {
++			if len(idx) < 2 {
++				continue
++			}
++
++			match := chunkStr[idx[0]:idx[1]]
++			redacted := redactString(match)
++
++			severity := pattern.Severity
++			if severity == "" {
++				severity = "MEDIUM"
++			}
++
++			event := AuditEvent{
++				Timestamp:   time.Now(),
++				ContainerID: containerID,
++				StreamType:  streamType.String(),
++				Pattern:     pattern.Name,
++				Redacted:    redacted,
++				Severity:    severity,
++			}
++
++			if err := a.AuditLogger.Log(event); err != nil {
++				log.Printf("Failed to log audit event: %v", err)
++			}
++		}
++	}
++}
++
++func redactString(s string) string {
++	if len(s) <= 6 {
++		return "***"
++	}
++	return s[:2] + "***" + s[len(s)-2:]
++}
+\ No newline at end of file
+diff --git a/repository_after/proxy/config.go b/repository_after/proxy/config.go
+new file mode 100644
+index 00000000..9e8b3b78
+--- /dev/null
++++ b/repository_after/proxy/config.go
+@@ -0,0 +1,142 @@
++package proxy
++
++import (
++	"encoding/json"
++	"fmt"
++	"os"
++	"regexp"
++)
++
++type Config struct {
++	SensitivePatterns []SensitivePattern `json:"patterns"`
++	MaxLogSizeMB     int                `json:"max_log_size_mb"`
++	MaxLogFiles      int                `json:"max_log_files"`
++}
++
++type SensitivePattern struct {
++	Name     string `json:"name"`
++	Pattern  string `json:"pattern"`
++	Severity string `json:"severity"`
++	Regex    *regexp.Regexp
++}
++
++func (sp *SensitivePattern) UnmarshalJSON(data []byte) error {
++	type Alias SensitivePattern
++	aux := &struct {
++		*Alias
++	}{
++		Alias: (*Alias)(sp),
++	}
++	if err := json.Unmarshal(data, &aux); err != nil {
++		return err
++	}
++
++	// Default severity if not specified
++	if sp.Severity == "" {
++		sp.Severity = "MEDIUM"
++	}
++
++	if sp.Pattern == "" {
++		return fmt.Errorf("pattern field is required for %q", sp.Name)
++	}
++
++	regex, err := regexp.Compile(sp.Pattern)
++	if err != nil {
++		return fmt.Errorf("invalid regex for pattern %q: %w", sp.Name, err)
++	}
++	sp.Regex = regex
++	return nil
++}
++
++func LoadConfig() (*Config, error) {
++	configPath := os.Getenv("AUDIT_CONFIG_PATH")
++	if configPath == "" {
++		configPath = "audit-config.json"
++	}
++
++	if _, err := os.Stat(configPath); err == nil {
++		return loadFromFile(configPath)
++	}
++
++	return getDefaultConfig(), nil
++}
++
++func loadFromFile(path string) (*Config, error) {
++	data, err := os.ReadFile(path)
++	if err != nil {
++		return nil, fmt.Errorf("failed to read config file %s: %w", path, err)
++	}
++
++	var config Config
++	if err := json.Unmarshal(data, &config); err != nil {
++		return nil, fmt.Errorf("failed to parse config file %s: %w", path, err)
++	}
++
++	// Set defaults
++	if config.MaxLogSizeMB == 0 {
++		config.MaxLogSizeMB = 100
++	}
++	if config.MaxLogFiles == 0 {
++		config.MaxLogFiles = 5
++	}
++
++	// Validate all patterns have compiled regexes
++	for i, p := range config.SensitivePatterns {
++		if p.Regex == nil && p.Pattern != "" {
++			regex, err := regexp.Compile(p.Pattern)
++			if err != nil {
++				return nil, fmt.Errorf("invalid regex for pattern %q: %w", p.Name, err)
++			}
++			config.SensitivePatterns[i].Regex = regex
++		}
++	}
++
++	return &config, nil
++}
++
++func getDefaultConfig() *Config {
++	patterns := []SensitivePattern{
++		{
++			Name:     "AWS Access Key",
++			Pattern:  `AKIA[0-9A-Z]{16}`,
++			Severity: "CRITICAL",
++			Regex:    regexp.MustCompile(`AKIA[0-9A-Z]{16}`),
++		},
++		{
++			Name:     "Generic API Key",
++			Pattern:  `(?i)api[_-]?key[_-]?[:=]\s*['"]?([a-zA-Z0-9_\-]{20,})['"]?`,
++			Severity: "HIGH",
++			Regex:    regexp.MustCompile(`(?i)api[_-]?key[_-]?[:=]\s*['"]?([a-zA-Z0-9_\-]{20,})['"]?`),
++		},
++		{
++			Name:     "Private Key",
++			Pattern:  `-----BEGIN\s+(?:RSA\s+)?PRIVATE\s+KEY-----`,
++			Severity: "CRITICAL",
++			Regex:    regexp.MustCompile(`-----BEGIN\s+(?:RSA\s+)?PRIVATE\s+KEY-----`),
++		},
++		{
++			Name:     "Email Address",
++			Pattern:  `[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`,
++			Severity: "LOW",
++			Regex:    regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`),
++		},
++		{
++			Name:     "Bearer Token",
++			Pattern:  `(?i)bearer\s+[a-zA-Z0-9_\-\.]{20,}`,
++			Severity: "HIGH",
++			Regex:    regexp.MustCompile(`(?i)bearer\s+[a-zA-Z0-9_\-\.]{20,}`),
++		},
++		{
++			Name:     "Password",
++			Pattern:  `(?i)password[_-]?[:=]\s*['"]?([a-zA-Z0-9_\-!@#$%^&*]{8,})['"]?`,
++			Severity: "MEDIUM",
++			Regex:    regexp.MustCompile(`(?i)password[_-]?[:=]\s*['"]?([a-zA-Z0-9_\-!@#$%^&*]{8,})['"]?`),
++		},
++	}
++
++	return &Config{
++		SensitivePatterns: patterns,
++		MaxLogSizeMB:      100,
++		MaxLogFiles:       5,
++	}
++}
+\ No newline at end of file
+diff --git a/repository_after/proxy/proxy.go b/repository_after/proxy/proxy.go
+new file mode 100644
+index 00000000..d37f64c8
+--- /dev/null
++++ b/repository_after/proxy/proxy.go
+@@ -0,0 +1,243 @@
++package proxy
++
++import (
++	"context"
++	"fmt"
++	"io"
++	"net"
++	"net/http"
++	"regexp"
++	"strings"
++	"sync"
++	"sync/atomic"
++	"time"
++)
++
++// Pre-compiled regexes (avoids recompilation on every request)
++var (
++	logsPathRegex    = regexp.MustCompile(`^(/v[\d.]+)?/containers/[^/]+/logs$`)
++	containerIDRegex = regexp.MustCompile(`/containers/([^/]+)/logs`)
++)
++
++// DockerProxy handles proxying requests to Docker socket
++type DockerProxy struct {
++	auditor     *LogAuditor
++	socketPath  string
++	client      *http.Client
++	transport   *http.Transport
++	dialNetwork string
++	dialMu      sync.Mutex
++}
++
++// NewDockerProxy creates a new Docker proxy
++func NewDockerProxy(socketPath string, config *Config, auditLogger *AuditLogger) (*DockerProxy, error) {
++	p := &DockerProxy{
++		socketPath: socketPath,
++	}
++
++	transport := &http.Transport{
++		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
++			p.dialMu.Lock()
++			p.dialNetwork = "unix"
++			p.dialMu.Unlock()
++
++			var d net.Dialer
++			return d.DialContext(ctx, "unix", socketPath)
++		},
++		MaxIdleConns:       10,
++		IdleConnTimeout:    30 * time.Second,
++		DisableCompression: true,
++		DisableKeepAlives:  false,
++	}
++
++	client := &http.Client{
++		Transport: transport,
++		Timeout:   0, // No timeout — streams can be long-lived
++	}
++
++	auditor := &LogAuditor{
++		Config:      config,
++		AuditLogger: auditLogger,
++	}
++	auditor.StartWorkers()
++
++	p.transport = transport
++	p.client = client
++	p.auditor = auditor
++
++	return p, nil
++}
++
++// Close gracefully shuts down the proxy
++func (p *DockerProxy) Close() {
++	if p.auditor != nil {
++		p.auditor.StopWorkers()
++	}
++	if p.transport != nil {
++		p.transport.CloseIdleConnections()
++	}
++}
++
++// DialedNetwork returns what network the last dial used (for testing)
++func (p *DockerProxy) DialedNetwork() string {
++	p.dialMu.Lock()
++	defer p.dialMu.Unlock()
++	return p.dialNetwork
++}
++
++// GetMetrics returns observability metrics
++func (p *DockerProxy) GetMetrics() map[string]interface{} {
++	metrics := make(map[string]interface{})
++
++	if p.auditor != nil {
++		dropped := atomic.LoadInt64(&p.auditor.droppedCount)
++		metrics["dropped_audits"] = dropped
++
++		if p.auditor.AuditLogger != nil {
++			logSize, logFile := p.auditor.AuditLogger.GetMetrics()
++			metrics["audit_log_size_bytes"] = logSize
++			metrics["audit_log_file"] = logFile
++		}
++	}
++
++	return metrics
++}
++
++func (p *DockerProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
++	// Handle metrics endpoint
++	if r.URL.Path == "/metrics" || r.URL.Path == "/_proxy/metrics" {
++		p.handleMetrics(w, r)
++		return
++	}
++
++	if isLogsRequest(r) {
++		if r.Method != http.MethodGet {
++			http.Error(w, "Only GET method allowed for logs endpoint", http.StatusMethodNotAllowed)
++			return
++		}
++		p.handleLogsRequest(w, r)
++		return
++	}
++
++	p.handleStandardProxy(w, r)
++}
++
++func (p *DockerProxy) handleMetrics(w http.ResponseWriter, r *http.Request) {
++	metrics := p.GetMetrics()
++
++	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
++	w.WriteHeader(http.StatusOK)
++
++	fmt.Fprintf(w, "# HELP docker_proxy_dropped_audits_total Total number of dropped audit events\n")
++	fmt.Fprintf(w, "# TYPE docker_proxy_dropped_audits_total counter\n")
++	fmt.Fprintf(w, "docker_proxy_dropped_audits_total %d\n", metrics["dropped_audits"])
++
++	if size, ok := metrics["audit_log_size_bytes"].(int64); ok {
++		fmt.Fprintf(w, "# HELP docker_proxy_audit_log_size_bytes Current size of audit log file\n")
++		fmt.Fprintf(w, "# TYPE docker_proxy_audit_log_size_bytes gauge\n")
++		fmt.Fprintf(w, "docker_proxy_audit_log_size_bytes %d\n", size)
++	}
++}
++
++// isLogsRequest uses pre-compiled regex to check if the request targets container logs
++func isLogsRequest(r *http.Request) bool {
++	return logsPathRegex.MatchString(r.URL.Path)
++}
++
++// extractContainerID uses pre-compiled regex to extract the container ID from the path
++func extractContainerID(path string) string {
++	matches := containerIDRegex.FindStringSubmatch(path)
++	if len(matches) > 1 {
++		return matches[1]
++	}
++	return "unknown"
++}
++
++func (p *DockerProxy) handleStandardProxy(w http.ResponseWriter, r *http.Request) {
++	proxyReq, err := http.NewRequestWithContext(r.Context(), r.Method, "http://localhost"+r.URL.String(), r.Body)
++	if err != nil {
++		http.Error(w, fmt.Sprintf("Failed to create proxy request: %v", err), http.StatusInternalServerError)
++		return
++	}
++
++	for key, values := range r.Header {
++		for _, value := range values {
++			proxyReq.Header.Add(key, value)
++		}
++	}
++
++	resp, err := p.client.Do(proxyReq)
++	if err != nil {
++		http.Error(w, fmt.Sprintf("Failed to proxy request: %v", err), http.StatusBadGateway)
++		return
++	}
++	defer resp.Body.Close()
++
++	for key, values := range resp.Header {
++		for _, value := range values {
++			w.Header().Add(key, value)
++		}
++	}
++
++	w.WriteHeader(resp.StatusCode)
++	io.Copy(w, resp.Body)
++}
++
++func (p *DockerProxy) handleLogsRequest(w http.ResponseWriter, r *http.Request) {
++	containerID := extractContainerID(r.URL.Path)
++
++	proxyReq, err := http.NewRequestWithContext(r.Context(), r.Method, "http://localhost"+r.URL.String(), r.Body)
++	if err != nil {
++		http.Error(w, fmt.Sprintf("Failed to create proxy request: %v", err), http.StatusInternalServerError)
++		return
++	}
++
++	for key, values := range r.Header {
++		for _, value := range values {
++			proxyReq.Header.Add(key, value)
++		}
++	}
++
++	resp, err := p.client.Do(proxyReq)
++	if err != nil {
++		http.Error(w, fmt.Sprintf("Failed to proxy request: %v", err), http.StatusBadGateway)
++		return
++	}
++	defer resp.Body.Close()
++
++	for key, values := range resp.Header {
++		for _, value := range values {
++			w.Header().Add(key, value)
++		}
++	}
++
++	w.WriteHeader(resp.StatusCode)
++
++	// Determine if stream is multiplexed based on Docker's content type.
++	// application/vnd.docker.raw-stream = TTY (non-multiplexed)
++	// application/vnd.docker.multiplexed-stream = multiplexed (stdout+stderr interleaved)
++	contentType := resp.Header.Get("Content-Type")
++	isMultiplexed := strings.Contains(contentType, "application/vnd.docker.multiplexed-stream")
++
++	// Heuristic fallback: if both stdout AND stderr are requested and content-type
++	// doesn't indicate raw-stream (TTY), assume multiplexed format.
++	if !isMultiplexed && !strings.Contains(contentType, "application/vnd.docker.raw-stream") {
++		hasStdout := r.URL.Query().Get("stdout") != ""
++		hasStderr := r.URL.Query().Get("stderr") != ""
++		if hasStdout && hasStderr {
++			isMultiplexed = true
++		}
++		// Single stream (only stdout or only stderr) without explicit content-type:
++		// also treat as multiplexed since Docker still frames single streams
++		if (hasStdout || hasStderr) && !(hasStdout && hasStderr) {
++			isMultiplexed = true
++		}
++	}
++
++	if isMultiplexed {
++		flusher, _ := w.(http.Flusher)
++		p.auditor.AuditMultiplexedStream(r.Context(), resp.Body, w, containerID, flusher)
++	} else {
++		p.auditor.AuditPlainStream(r.Context(), resp.Body, w, containerID)
++	}
++}
+\ No newline at end of file

@@ -1,0 +1,33 @@
+{
+    "instance_id": "4K3UBR",
+    "problem_statement": "nteracting with the Docker API at the socket level presents two distinct engineering hurdles often abstracted by SDKs. First, the transport layer is a Unix Domain Socket, not a standard TCP socket, requiring specific addressing logic that standard HTTP libraries often fail to handle natively without adapters. Second, and most critically, the /containers/{id}/logs endpoint returns a multiplexed binary stream rather than plain text. Each log line is encapsulated in a binary frame consisting of a one-byte stream identifier, three bytes of padding, and a four-byte big-endian integer representing the payload size. Naive implementations that attempt to treat this stream as a standard text file using readline() or simple iteration will fail catastrophically, as the binary headers will be misinterpreted as garbage text or will cause encoding errors, and the logic will lose synchronization with the stream boundaries.",
+    "base_commit": "repository_before/",
+    "test_patch": "tests/",
+    "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/4k3ubr-docker-socket-proxy-with-multiplexed-log-inspection",
+    "environment_setup": "Dockerfile",
+    "FAIL_TO_PASS": [
+        "TestBinaryHeaderParsing",
+        "TestBigEndianDecoding",
+        "TestPayloadIsolation",
+        "TestStreamingArchitecture",
+        "TestContextCancellation",
+        "TestStdoutStderrDistinction",
+        "TestRealDockerProxyImplementation",
+        "TestUnixSocketDialVerification",
+        "TestAuditSideEffectVerification",
+        "TestUnixSocketDialProof",
+        "TestCompleteProxyIntegration",
+        "TestUnixSocketDialing",
+        "TestAuditLogging",
+        "TestHTTPReverseProxy",
+        "TestSensitivePatterns",
+        "TestRedaction",
+        "TestRequirement1_NonMultiplexedLogsAreAudited",
+        "TestRequirement2_CoreImplementationTested",
+        "TestRequirement3_UnixSocketDialingValidated",
+        "TestGracefulShutdown",
+        "TestRequirement4_AuditSideEffectVerified",
+        "TestRequirement5_RegexPerformanceSafeguards"
+    ],
+    "PASS_TO_PASS": []
+}
