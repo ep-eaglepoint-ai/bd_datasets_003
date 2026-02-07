@@ -1,0 +1,87 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: webhook-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: webhooks
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - webhook-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: webhook-redis
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - webhook-network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: webhook-app
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/webhooks?sslmode=disable
+      REDIS_URL: redis://redis:6379
+      WORKER_COUNT: "5"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - webhook-network
+    restart: unless-stopped
+
+  tests:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: test
+    container_name: webhook-tests
+
+  evaluation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: evaluation
+    container_name: webhook-evaluation
+    volumes:
+      - ./evaluation/reports:/app/evaluation/reports
+
+  mock-webhook:
+    image: hashicorp/http-echo
+    container_name: mock-webhook
+    command: [ "-text", '{"status":"ok"}' ]
+    ports:
+      - "5678:5678"
+    networks:
+      - webhook-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+
+networks:
+  webhook-network:
+    driver: bridge
