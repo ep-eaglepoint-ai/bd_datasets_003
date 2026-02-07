@@ -1,0 +1,3556 @@
+diff --git a/repository_before/.gitkeep b/repository_before/.gitkeep
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/repository_after/cmd/server/main.go b/repository_after/cmd/server/main.go
+new file mode 100644
+index 0000000..532dcbf
+--- /dev/null
++++ b/repository_after/cmd/server/main.go
+@@ -0,0 +1,88 @@
++package main
++
++import (
++	"flag"
++	"fmt"
++	"log"
++	"os"
++	"os/signal"
++	"strings"
++	"syscall"
++
++	"github.com/vzdtic/raft-kv-store/repository_after/pkg/raft"
++	"github.com/vzdtic/raft-kv-store/repository_after/pkg/rpc"
++)
++
++func main() {
++	nodeID := flag.String("id", "", "Node ID")
++	peers := flag.String("peers", "", "Comma-separated list of peer addresses (id:address)")
++	listenAddr := flag.String("listen", ":9000", "Listen address for RPC")
++	dataDir := flag.String("data", "./data", "Data directory")
++
++	flag.Parse()
++
++	// Use environment variables if flags not set
++	if *nodeID == "" {
++		*nodeID = os.Getenv("NODE_ID")
++	}
++	if *peers == "" {
++		*peers = os.Getenv("CLUSTER_ADDRESSES")
++	}
++
++	if *nodeID == "" {
++		log.Fatal("Node ID is required")
++	}
++
++	logger := log.New(os.Stdout, fmt.Sprintf("[%s] ", *nodeID), log.LstdFlags)
++
++	// Parse peers
++	peerMap := make(map[string]string)
++	if *peers != "" {
++		for _, peer := range strings.Split(*peers, ",") {
++			parts := strings.SplitN(peer, ":", 2)
++			if len(parts) == 2 {
++				peerMap[parts[0]] = peer
++			}
++		}
++	}
++
++	// Create transport
++	transport := rpc.NewTransport()
++
++	// Create Raft config
++	config := raft.DefaultConfig(*nodeID)
++	config.Peers = peerMap
++	config.WALDir = fmt.Sprintf("%s/%s", *dataDir, *nodeID)
++
++	// Create Raft node
++	raftNode, err := raft.New(config, transport, logger)
++	if err != nil {
++		log.Fatalf("Failed to create Raft node: %v", err)
++	}
++
++	// Start Raft node
++	raftNode.Start()
++
++	// Create and start gRPC server
++	server, err := rpc.NewServer(raftNode, *listenAddr, logger)
++	if err != nil {
++		log.Fatalf("Failed to create server: %v", err)
++	}
++
++	go func() {
++		if err := server.Start(); err != nil {
++			log.Fatalf("Server failed: %v", err)
++		}
++	}()
++
++	logger.Printf("Server started on %s", *listenAddr)
++
++	// Wait for shutdown signal
++	sigCh := make(chan os.Signal, 1)
++	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
++	<-sigCh
++
++	logger.Println("Shutting down...")
++	server.Stop()
++	raftNode.Stop()
++}
+\ No newline at end of file
+diff --git a/repository_after/pkg/cluster/membership.go b/repository_after/pkg/cluster/membership.go
+new file mode 100644
+index 0000000..436c17c
+--- /dev/null
++++ b/repository_after/pkg/cluster/membership.go
+@@ -0,0 +1,225 @@
++package cluster
++
++import (
++	"fmt"
++	"sync"
++)
++
++// Member represents a cluster member
++type Member struct {
++	ID      string
++	Address string
++	Voting  bool
++	State   MemberState
++}
++
++// MemberState represents the state of a cluster member
++type MemberState int
++
++const (
++	MemberStateActive MemberState = iota
++	MemberStateJoining
++	MemberStateLeaving
++	MemberStateRemoved
++)
++
++// Manager manages cluster membership
++type Manager struct {
++	mu      sync.RWMutex
++	members map[string]*Member
++	version uint64
++}
++
++// NewManager creates a new membership manager
++func NewManager() *Manager {
++	return &Manager{
++		members: make(map[string]*Member),
++	}
++}
++
++// AddMember adds a member to the cluster
++func (m *Manager) AddMember(id, address string, voting bool) error {
++	m.mu.Lock()
++	defer m.mu.Unlock()
++
++	if _, exists := m.members[id]; exists {
++		return fmt.Errorf("member %s already exists", id)
++	}
++
++	m.members[id] = &Member{
++		ID:      id,
++		Address: address,
++		Voting:  voting,
++		State:   MemberStateJoining,
++	}
++	m.version++
++
++	return nil
++}
++
++// RemoveMember removes a member from the cluster
++func (m *Manager) RemoveMember(id string) error {
++	m.mu.Lock()
++	defer m.mu.Unlock()
++
++	member, exists := m.members[id]
++	if !exists {
++		return fmt.Errorf("member %s does not exist", id)
++	}
++
++	member.State = MemberStateRemoved
++	m.version++
++
++	return nil
++}
++
++// ActivateMember activates a joining member
++func (m *Manager) ActivateMember(id string) error {
++	m.mu.Lock()
++	defer m.mu.Unlock()
++
++	member, exists := m.members[id]
++	if !exists {
++		return fmt.Errorf("member %s does not exist", id)
++	}
++
++	member.State = MemberStateActive
++	m.version++
++
++	return nil
++}
++
++// GetMember returns a member by ID
++func (m *Manager) GetMember(id string) (*Member, bool) {
++	m.mu.RLock()
++	defer m.mu.RUnlock()
++
++	member, ok := m.members[id]
++	if !ok {
++		return nil, false
++	}
++
++	return &Member{
++		ID:      member.ID,
++		Address: member.Address,
++		Voting:  member.Voting,
++		State:   member.State,
++	}, true
++}
++
++// GetMembers returns all members
++func (m *Manager) GetMembers() []*Member {
++	m.mu.RLock()
++	defer m.mu.RUnlock()
++
++	result := make([]*Member, 0, len(m.members))
++	for _, member := range m.members {
++		result = append(result, &Member{
++			ID:      member.ID,
++			Address: member.Address,
++			Voting:  member.Voting,
++			State:   member.State,
++		})
++	}
++	return result
++}
++
++// GetActiveMembers returns all active members
++func (m *Manager) GetActiveMembers() []*Member {
++	m.mu.RLock()
++	defer m.mu.RUnlock()
++
++	result := make([]*Member, 0)
++	for _, member := range m.members {
++		if member.State == MemberStateActive {
++			result = append(result, &Member{
++				ID:      member.ID,
++				Address: member.Address,
++				Voting:  member.Voting,
++				State:   member.State,
++			})
++		}
++	}
++	return result
++}
++
++// GetVotingMembers returns all voting members
++func (m *Manager) GetVotingMembers() []*Member {
++	m.mu.RLock()
++	defer m.mu.RUnlock()
++
++	result := make([]*Member, 0)
++	for _, member := range m.members {
++		if member.Voting && member.State == MemberStateActive {
++			result = append(result, &Member{
++				ID:      member.ID,
++				Address: member.Address,
++				Voting:  member.Voting,
++				State:   member.State,
++			})
++		}
++	}
++	return result
++}
++
++// Count returns the total number of members
++func (m *Manager) Count() int {
++	m.mu.RLock()
++	defer m.mu.RUnlock()
++	return len(m.members)
++}
++
++// QuorumSize returns the quorum size
++func (m *Manager) QuorumSize() int {
++	m.mu.RLock()
++	defer m.mu.RUnlock()
++
++	votingCount := 0
++	for _, member := range m.members {
++		if member.Voting && member.State == MemberStateActive {
++			votingCount++
++		}
++	}
++	return votingCount/2 + 1
++}
++
++// Version returns the configuration version
++func (m *Manager) Version() uint64 {
++	m.mu.RLock()
++	defer m.mu.RUnlock()
++	return m.version
++}
++
++// Snapshot creates a snapshot of the membership
++func (m *Manager) Snapshot() map[string]*Member {
++	m.mu.RLock()
++	defer m.mu.RUnlock()
++
++	result := make(map[string]*Member)
++	for id, member := range m.members {
++		result[id] = &Member{
++			ID:      member.ID,
++			Address: member.Address,
++			Voting:  member.Voting,
++			State:   member.State,
++		}
++	}
++	return result
++}
++
++// Restore restores membership from a snapshot
++func (m *Manager) Restore(snapshot map[string]*Member) {
++	m.mu.Lock()
++	defer m.mu.Unlock()
++
++	m.members = make(map[string]*Member)
++	for id, member := range snapshot {
++		m.members[id] = &Member{
++			ID:      member.ID,
++			Address: member.Address,
++			Voting:  member.Voting,
++			State:   member.State,
++		}
++	}
++	m.version++
++}
+\ No newline at end of file
+diff --git a/repository_after/pkg/kv/store.go b/repository_after/pkg/kv/store.go
+new file mode 100644
+index 0000000..adb7d6b
+--- /dev/null
++++ b/repository_after/pkg/kv/store.go
+@@ -0,0 +1,177 @@
++package kv
++
++import (
++	"bytes"
++	"encoding/gob"
++	"sync"
++)
++
++// Command types for the KV store
++type CommandType int
++
++const (
++	CommandSet CommandType = iota
++	CommandDelete
++)
++
++// Command represents a command to be applied to the state machine
++type Command struct {
++	Type      CommandType
++	Key       string
++	Value     []byte
++	ClientID  string
++	RequestID uint64
++}
++
++// ClientSession tracks the last request from each client for deduplication
++type ClientSession struct {
++	LastRequestID uint64
++	Response      interface{}
++}
++
++// Store represents an in-memory key-value state machine
++type Store struct {
++	mu       sync.RWMutex
++	data     map[string][]byte
++	sessions map[string]*ClientSession
++}
++
++// New creates a new KV store
++func New() *Store {
++	return &Store{
++		data:     make(map[string][]byte),
++		sessions: make(map[string]*ClientSession),
++	}
++}
++
++// Apply applies a command to the state machine
++func (s *Store) Apply(command []byte) (interface{}, error) {
++	var cmd Command
++	dec := gob.NewDecoder(bytes.NewReader(command))
++	if err := dec.Decode(&cmd); err != nil {
++		return nil, err
++	}
++
++	s.mu.Lock()
++	defer s.mu.Unlock()
++
++	// Check for duplicate request
++	if session, ok := s.sessions[cmd.ClientID]; ok {
++		if session.LastRequestID >= cmd.RequestID {
++			return session.Response, nil
++		}
++	}
++
++	var response interface{}
++	switch cmd.Type {
++	case CommandSet:
++		s.data[cmd.Key] = cmd.Value
++		response = true
++	case CommandDelete:
++		delete(s.data, cmd.Key)
++		response = true
++	}
++
++	// Update session
++	s.sessions[cmd.ClientID] = &ClientSession{
++		LastRequestID: cmd.RequestID,
++		Response:      response,
++	}
++
++	return response, nil
++}
++
++// Get retrieves a value by key
++func (s *Store) Get(key string) ([]byte, bool) {
++	s.mu.RLock()
++	defer s.mu.RUnlock()
++
++	value, ok := s.data[key]
++	if !ok {
++		return nil, false
++	}
++
++	result := make([]byte, len(value))
++	copy(result, value)
++	return result, true
++}
++
++// GetAll returns all key-value pairs
++func (s *Store) GetAll() map[string][]byte {
++	s.mu.RLock()
++	defer s.mu.RUnlock()
++
++	result := make(map[string][]byte)
++	for k, v := range s.data {
++		result[k] = v
++	}
++	return result
++}
++
++// Snapshot creates a snapshot of the current state
++func (s *Store) Snapshot() ([]byte, error) {
++	s.mu.RLock()
++	defer s.mu.RUnlock()
++
++	state := struct {
++		Data     map[string][]byte
++		Sessions map[string]*ClientSession
++	}{
++		Data:     s.data,
++		Sessions: s.sessions,
++	}
++
++	var buf bytes.Buffer
++	enc := gob.NewEncoder(&buf)
++	if err := enc.Encode(state); err != nil {
++		return nil, err
++	}
++
++	return buf.Bytes(), nil
++}
++
++// Restore restores state from a snapshot
++func (s *Store) Restore(data []byte) error {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++
++	var state struct {
++		Data     map[string][]byte
++		Sessions map[string]*ClientSession
++	}
++
++	dec := gob.NewDecoder(bytes.NewReader(data))
++	if err := dec.Decode(&state); err != nil {
++		return err
++	}
++
++	s.data = state.Data
++	s.sessions = state.Sessions
++	return nil
++}
++
++// EncodeCommand encodes a command for log storage
++func EncodeCommand(cmdType CommandType, key string, value []byte, clientID string, requestID uint64) ([]byte, error) {
++	cmd := Command{
++		Type:      cmdType,
++		Key:       key,
++		Value:     value,
++		ClientID:  clientID,
++		RequestID: requestID,
++	}
++
++	var buf bytes.Buffer
++	enc := gob.NewEncoder(&buf)
++	if err := enc.Encode(cmd); err != nil {
++		return nil, err
++	}
++
++	return buf.Bytes(), nil
++}
++
++// Size returns the number of keys in the store
++func (s *Store) Size() int {
++	s.mu.RLock()
++	defer s.mu.RUnlock()
++	return len(s.data)
++}
+\ No newline at end of file
+diff --git a/repository_after/pkg/raft/raft.go b/repository_after/pkg/raft/raft.go
+new file mode 100644
+index 0000000..143dd23
+--- /dev/null
++++ b/repository_after/pkg/raft/raft.go
+@@ -0,0 +1,1299 @@
++package raft
++
++import (
++	"bytes"
++	"context"
++	"encoding/gob"
++	"fmt"
++	"log"
++	"math/rand"
++	"sort"
++	"sync"
++	"time"
++
++	"github.com/vzdtic/raft-kv-store/repository_after/pkg/kv"
++	"github.com/vzdtic/raft-kv-store/repository_after/pkg/wal"
++)
++
++// Config holds the Raft configuration
++type Config struct {
++	NodeID            string
++	Peers             map[string]string
++	ElectionTimeout   time.Duration
++	HeartbeatInterval time.Duration
++	WALDir            string
++	SnapshotThreshold int
++	ByteSizeThreshold int64
++	RandomSeed        int64
++}
++
++// DefaultConfig returns a default configuration
++func DefaultConfig(nodeID string) *Config {
++	return &Config{
++		NodeID:            nodeID,
++		Peers:             make(map[string]string),
++		ElectionTimeout:   150 * time.Millisecond,
++		HeartbeatInterval: 50 * time.Millisecond,
++		WALDir:            fmt.Sprintf("./data/%s", nodeID),
++		SnapshotThreshold: 1000,
++		ByteSizeThreshold: 10 * 1024 * 1024,
++		RandomSeed:        time.Now().UnixNano(),
++	}
++}
++
++// ApplyResult represents the result of applying a command
++type ApplyResult struct {
++	Index    uint64
++	Response interface{}
++	Error    error
++}
++
++// CommittedEntry tracks committed entries for verification
++type CommittedEntry struct {
++	Index   uint64
++	Term    uint64
++	Command []byte
++}
++
++// Raft implements the Raft consensus algorithm
++type Raft struct {
++	mu     sync.RWMutex
++	config *Config
++	state  *NodeState
++	wal    *wal.WAL
++	kv     *kv.Store
++
++	applyCh   chan ApplyResult
++	shutdownC chan struct{}
++	transport Transport
++
++	pendingMu sync.Mutex
++	pending   map[uint64]chan ApplyResult
++
++	readIndexMu   sync.Mutex
++	readIndexReqs []readIndexRequest
++
++	clusterMu     sync.RWMutex
++	clusterConfig ClusterConfig
++
++	// Joint consensus for membership changes
++	jointMu           sync.Mutex
++	inJointConsensus  bool
++	pendingConfigChange *ConfigChange
++
++	rand   *rand.Rand
++	logger *log.Logger
++
++	// Track committed entries for verification
++	committedMu      sync.RWMutex
++	committedEntries map[uint64]CommittedEntry
++}
++
++type readIndexRequest struct {
++	index  uint64
++	respCh chan error
++}
++
++type ClusterConfig struct {
++	Members  map[string]ClusterMember
++	IsJoint  bool
++	OldNodes map[string]ClusterMember
++}
++
++type ClusterMember struct {
++	NodeID  string
++	Address string
++	Voting  bool
++}
++
++type Transport interface {
++	RequestVote(ctx context.Context, target string, req *RequestVoteRequest) (*RequestVoteResponse, error)
++	AppendEntries(ctx context.Context, target string, req *AppendEntriesRequest) (*AppendEntriesResponse, error)
++	InstallSnapshot(ctx context.Context, target string, req *InstallSnapshotRequest) (*InstallSnapshotResponse, error)
++}
++
++type RequestVoteRequest struct {
++	Term         uint64
++	CandidateID  string
++	LastLogIndex uint64
++	LastLogTerm  uint64
++}
++
++type RequestVoteResponse struct {
++	Term        uint64
++	VoteGranted bool
++}
++
++type AppendEntriesRequest struct {
++	Term         uint64
++	LeaderID     string
++	PrevLogIndex uint64
++	PrevLogTerm  uint64
++	Entries      []LogEntry
++	LeaderCommit uint64
++}
++
++type AppendEntriesResponse struct {
++	Term          uint64
++	Success       bool
++	MatchIndex    uint64
++	ConflictIndex uint64
++	ConflictTerm  uint64
++}
++
++type LogEntry struct {
++	Term    uint64
++	Index   uint64
++	Command []byte
++	Type    EntryType
++}
++
++type EntryType int
++
++const (
++	EntryNormal EntryType = iota
++	EntryConfigChange
++	EntryNoop
++)
++
++type InstallSnapshotRequest struct {
++	Term              uint64
++	LeaderID          string
++	LastIncludedIndex uint64
++	LastIncludedTerm  uint64
++	Data              []byte
++	Configuration     []ClusterMember
++}
++
++type InstallSnapshotResponse struct {
++	Term uint64
++}
++
++func New(config *Config, transport Transport, logger *log.Logger) (*Raft, error) {
++	walInstance, err := wal.NewWithThreshold(config.WALDir, config.ByteSizeThreshold)
++	if err != nil {
++		return nil, fmt.Errorf("failed to create WAL: %w", err)
++	}
++
++	r := &Raft{
++		config:           config,
++		state:            NewNodeState(),
++		wal:              walInstance,
++		kv:               kv.New(),
++		applyCh:          make(chan ApplyResult, 100),
++		shutdownC:        make(chan struct{}),
++		transport:        transport,
++		pending:          make(map[uint64]chan ApplyResult),
++		rand:             rand.New(rand.NewSource(config.RandomSeed)),
++		logger:           logger,
++		committedEntries: make(map[uint64]CommittedEntry),
++		clusterConfig: ClusterConfig{
++			Members: make(map[string]ClusterMember),
++		},
++	}
++
++	for nodeID, addr := range config.Peers {
++		r.clusterConfig.Members[nodeID] = ClusterMember{
++			NodeID:  nodeID,
++			Address: addr,
++			Voting:  true,
++		}
++	}
++
++	r.clusterConfig.Members[config.NodeID] = ClusterMember{
++		NodeID: config.NodeID,
++		Voting: true,
++	}
++
++	if err := r.recoverState(); err != nil {
++		return nil, fmt.Errorf("failed to recover state: %w", err)
++	}
++
++	return r, nil
++}
++
++func (r *Raft) recoverState() error {
++	r.state.SetCurrentTerm(r.wal.GetCurrentTerm())
++	r.state.SetVotedFor(r.wal.GetVotedFor())
++
++	snapshot, err := r.wal.LoadSnapshot()
++	if err == nil && snapshot != nil {
++		if err := r.kv.Restore(snapshot.Data); err != nil {
++			return fmt.Errorf("failed to restore snapshot: %w", err)
++		}
++		r.state.SetLastApplied(snapshot.Metadata.LastIncludedIndex)
++		r.state.SetCommitIndex(snapshot.Metadata.LastIncludedIndex)
++	}
++
++	entries := r.wal.GetAllEntries()
++	for _, entry := range entries {
++		if entry.Index > r.state.GetLastApplied() && entry.Index <= r.state.GetCommitIndex() {
++			if entry.Type == wal.EntryNormal {
++				if _, err := r.kv.Apply(entry.Command); err != nil {
++					r.logger.Printf("Failed to apply entry %d: %v", entry.Index, err)
++				}
++			}
++			r.state.SetLastApplied(entry.Index)
++		}
++	}
++
++	return nil
++}
++
++func (r *Raft) Start() {
++	go r.run()
++}
++
++func (r *Raft) Stop() {
++	close(r.shutdownC)
++	r.wal.Close()
++}
++
++func (r *Raft) run() {
++	for {
++		select {
++		case <-r.shutdownC:
++			return
++		default:
++		}
++
++		switch r.state.GetState() {
++		case Follower:
++			r.runFollower()
++		case Candidate:
++			r.runCandidate()
++		case Leader:
++			r.runLeader()
++		}
++	}
++}
++
++func (r *Raft) runFollower() {
++	r.logger.Printf("[%s] Running as Follower (term: %d)", r.config.NodeID, r.state.GetCurrentTerm())
++	timeout := r.randomElectionTimeout()
++	r.state.SetElectionTimeout(timeout)
++	r.state.SetLastHeartbeat(time.Now())
++
++	for r.state.GetState() == Follower {
++		select {
++		case <-r.shutdownC:
++			return
++		case <-time.After(10 * time.Millisecond):
++			if time.Since(r.state.GetLastHeartbeat()) > r.state.GetElectionTimeout() {
++				r.logger.Printf("[%s] Election timeout, becoming candidate", r.config.NodeID)
++				r.state.SetState(Candidate)
++				return
++			}
++		}
++	}
++}
++
++func (r *Raft) runCandidate() {
++	r.logger.Printf("[%s] Running as Candidate", r.config.NodeID)
++	newTerm := r.state.GetCurrentTerm() + 1
++	r.state.SetCurrentTerm(newTerm)
++	r.state.SetVotedFor(r.config.NodeID)
++	r.persistState()
++
++	electionDone := make(chan bool, 1)
++	go r.startElection(electionDone)
++
++	timeout := r.randomElectionTimeout()
++	timer := time.NewTimer(timeout)
++
++	select {
++	case <-r.shutdownC:
++		timer.Stop()
++		return
++	case won := <-electionDone:
++		timer.Stop()
++		if won {
++			r.becomeLeader()
++		} else {
++			r.state.SetState(Follower)
++		}
++	case <-timer.C:
++		r.logger.Printf("[%s] Election timeout, retrying", r.config.NodeID)
++	}
++}
++
++func (r *Raft) startElection(done chan<- bool) {
++	r.clusterMu.RLock()
++	peers := make([]string, 0)
++	for nodeID := range r.clusterConfig.Members {
++		if nodeID != r.config.NodeID {
++			peers = append(peers, nodeID)
++		}
++	}
++	quorum := r.getQuorumSize()
++	r.clusterMu.RUnlock()
++
++	lastLogIndex := r.wal.GetLastIndex()
++	lastLogTerm := r.wal.GetLastTerm()
++
++	req := &RequestVoteRequest{
++		Term:         r.state.GetCurrentTerm(),
++		CandidateID:  r.config.NodeID,
++		LastLogIndex: lastLogIndex,
++		LastLogTerm:  lastLogTerm,
++	}
++
++	voteCh := make(chan bool, len(peers))
++	votes := 1
++
++	for _, peer := range peers {
++		go func(peerId string) {
++			addr := r.getPeerAddress(peerId)
++			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
++			defer cancel()
++
++			resp, err := r.transport.RequestVote(ctx, addr, req)
++			if err != nil {
++				voteCh <- false
++				return
++			}
++
++			if resp.Term > r.state.GetCurrentTerm() {
++				r.stepDown(resp.Term)
++				voteCh <- false
++				return
++			}
++
++			voteCh <- resp.VoteGranted
++		}(peer)
++	}
++
++	for i := 0; i < len(peers); i++ {
++		if r.state.GetState() != Candidate {
++			done <- false
++			return
++		}
++
++		if <-voteCh {
++			votes++
++		}
++
++		if votes >= quorum {
++			done <- true
++			return
++		}
++	}
++
++	done <- false
++}
++
++func (r *Raft) getQuorumSize() int {
++	r.clusterMu.RLock()
++	defer r.clusterMu.RUnlock()
++	
++	if r.clusterConfig.IsJoint {
++		// Joint consensus: need majority of both old and new configs
++		newCount := len(r.clusterConfig.Members)
++		oldCount := len(r.clusterConfig.OldNodes)
++		return max((newCount/2)+1, (oldCount/2)+1)
++	}
++	return len(r.clusterConfig.Members)/2 + 1
++}
++
++func (r *Raft) getPeerAddress(peerId string) string {
++	if addr, ok := r.config.Peers[peerId]; ok {
++		return addr
++	}
++	r.clusterMu.RLock()
++	defer r.clusterMu.RUnlock()
++	if member, ok := r.clusterConfig.Members[peerId]; ok {
++		return member.Address
++	}
++	return peerId
++}
++
++func (r *Raft) becomeLeader() {
++	r.logger.Printf("[%s] Became Leader (term: %d)", r.config.NodeID, r.state.GetCurrentTerm())
++	r.state.SetState(Leader)
++	r.state.SetLeaderId(r.config.NodeID)
++
++	lastLogIndex := r.wal.GetLastIndex()
++	r.clusterMu.RLock()
++	peers := make([]string, 0)
++	for nodeID := range r.clusterConfig.Members {
++		if nodeID != r.config.NodeID {
++			peers = append(peers, nodeID)
++		}
++	}
++	r.clusterMu.RUnlock()
++
++	r.state.ResetLeaderState(peers, lastLogIndex)
++	r.appendNoopEntry()
++}
++
++func (r *Raft) appendNoopEntry() {
++	entry := wal.Entry{
++		Term:    r.state.GetCurrentTerm(),
++		Index:   r.wal.GetLastIndex() + 1,
++		Command: nil,
++		Type:    wal.EntryNoop,
++	}
++	if err := r.wal.AppendEntries([]wal.Entry{entry}); err != nil {
++		r.logger.Printf("[%s] Failed to append no-op entry: %v", r.config.NodeID, err)
++	}
++}
++
++func (r *Raft) runLeader() {
++	heartbeatTicker := time.NewTicker(r.config.HeartbeatInterval)
++	defer heartbeatTicker.Stop()
++
++	r.sendHeartbeats()
++
++	for r.state.GetState() == Leader {
++		select {
++		case <-r.shutdownC:
++			return
++		case <-heartbeatTicker.C:
++			r.sendHeartbeats()
++			r.checkReadIndex()
++			r.checkCompaction()
++		}
++	}
++}
++
++func (r *Raft) checkCompaction() {
++	if r.wal.NeedsCompaction() {
++		go r.takeSnapshot()
++	}
++}
++
++func (r *Raft) sendHeartbeats() {
++	r.clusterMu.RLock()
++	peers := make([]string, 0)
++	for nodeID := range r.clusterConfig.Members {
++		if nodeID != r.config.NodeID {
++			peers = append(peers, nodeID)
++		}
++	}
++	r.clusterMu.RUnlock()
++
++	for _, peer := range peers {
++		go r.replicateToFollower(peer)
++	}
++}
++
++func (r *Raft) replicateToFollower(peerId string) {
++	nextIndex := r.state.GetNextIndex(peerId)
++	if nextIndex == 0 {
++		nextIndex = 1
++	}
++
++	prevLogIndex := nextIndex - 1
++	var prevLogTerm uint64 = 0
++	if prevLogIndex > 0 {
++		entry := r.wal.GetEntry(prevLogIndex)
++		if entry != nil {
++			prevLogTerm = entry.Term
++		} else {
++			snapshot, err := r.wal.LoadSnapshot()
++			if err == nil && snapshot != nil && snapshot.Metadata.LastIncludedIndex >= prevLogIndex {
++				r.sendSnapshot(peerId, snapshot)
++				return
++			}
++		}
++	}
++
++	entries := r.getEntriesForReplication(nextIndex)
++
++	req := &AppendEntriesRequest{
++		Term:         r.state.GetCurrentTerm(),
++		LeaderID:     r.config.NodeID,
++		PrevLogIndex: prevLogIndex,
++		PrevLogTerm:  prevLogTerm,
++		Entries:      entries,
++		LeaderCommit: r.state.GetCommitIndex(),
++	}
++
++	addr := r.getPeerAddress(peerId)
++	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
++	defer cancel()
++
++	resp, err := r.transport.AppendEntries(ctx, addr, req)
++	if err != nil {
++		return
++	}
++
++	if resp.Term > r.state.GetCurrentTerm() {
++		r.stepDown(resp.Term)
++		return
++	}
++
++	if resp.Success {
++		if len(entries) > 0 {
++			newMatchIndex := entries[len(entries)-1].Index
++			r.state.SetMatchIndex(peerId, newMatchIndex)
++			r.state.SetNextIndex(peerId, newMatchIndex+1)
++			r.updateCommitIndex()
++		}
++	} else {
++		if resp.ConflictIndex > 0 {
++			r.state.SetNextIndex(peerId, resp.ConflictIndex)
++		} else if nextIndex > 1 {
++			r.state.SetNextIndex(peerId, nextIndex-1)
++		}
++	}
++}
++
++func (r *Raft) getEntriesForReplication(startIndex uint64) []LogEntry {
++	lastIndex := r.wal.GetLastIndex()
++	if startIndex > lastIndex {
++		return nil
++	}
++
++	walEntries := r.wal.GetEntries(startIndex, lastIndex)
++	entries := make([]LogEntry, len(walEntries))
++	for i, e := range walEntries {
++		entries[i] = LogEntry{
++			Term:    e.Term,
++			Index:   e.Index,
++			Command: e.Command,
++			Type:    EntryType(e.Type),
++		}
++	}
++	return entries
++}
++
++func (r *Raft) sendSnapshot(peerId string, snapshot *wal.Snapshot) {
++	members := make([]ClusterMember, 0)
++	for _, m := range snapshot.Metadata.Configuration {
++		members = append(members, ClusterMember{
++			NodeID:  m.NodeID,
++			Address: m.Address,
++			Voting:  m.Voting,
++		})
++	}
++
++	req := &InstallSnapshotRequest{
++		Term:              r.state.GetCurrentTerm(),
++		LeaderID:          r.config.NodeID,
++		LastIncludedIndex: snapshot.Metadata.LastIncludedIndex,
++		LastIncludedTerm:  snapshot.Metadata.LastIncludedTerm,
++		Data:              snapshot.Data,
++		Configuration:     members,
++	}
++
++	addr := r.getPeerAddress(peerId)
++	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
++	defer cancel()
++
++	resp, err := r.transport.InstallSnapshot(ctx, addr, req)
++	if err != nil {
++		return
++	}
++
++	if resp.Term > r.state.GetCurrentTerm() {
++		r.stepDown(resp.Term)
++		return
++	}
++
++	r.state.SetNextIndex(peerId, snapshot.Metadata.LastIncludedIndex+1)
++	r.state.SetMatchIndex(peerId, snapshot.Metadata.LastIncludedIndex)
++}
++
++func (r *Raft) updateCommitIndex() {
++	r.clusterMu.RLock()
++	nodeCount := len(r.clusterConfig.Members)
++	r.clusterMu.RUnlock()
++
++	matchIndices := make([]uint64, 0, nodeCount)
++	matchIndices = append(matchIndices, r.wal.GetLastIndex())
++
++	r.clusterMu.RLock()
++	for nodeID := range r.clusterConfig.Members {
++		if nodeID != r.config.NodeID {
++			matchIndices = append(matchIndices, r.state.GetMatchIndex(nodeID))
++		}
++	}
++	r.clusterMu.RUnlock()
++
++	sort.Slice(matchIndices, func(i, j int) bool {
++		return matchIndices[i] > matchIndices[j]
++	})
++
++	majorityIdx := len(matchIndices) / 2
++	newCommitIndex := matchIndices[majorityIdx]
++
++	if newCommitIndex > r.state.GetCommitIndex() {
++		entry := r.wal.GetEntry(newCommitIndex)
++		if entry != nil && entry.Term == r.state.GetCurrentTerm() {
++			r.state.SetCommitIndex(newCommitIndex)
++			r.applyCommittedEntries()
++		}
++	}
++}
++
++func (r *Raft) applyCommittedEntries() {
++	commitIndex := r.state.GetCommitIndex()
++	lastApplied := r.state.GetLastApplied()
++
++	for lastApplied < commitIndex {
++		lastApplied++
++		entry := r.wal.GetEntry(lastApplied)
++		if entry == nil {
++			continue
++		}
++
++		var result ApplyResult
++		result.Index = entry.Index
++
++		if entry.Type == wal.EntryNormal && len(entry.Command) > 0 {
++			resp, err := r.kv.Apply(entry.Command)
++			result.Response = resp
++			result.Error = err
++		} else if entry.Type == wal.EntryConfigChange {
++			r.applyConfigChange(entry)
++		}
++
++		// Track committed entry for verification
++		r.committedMu.Lock()
++		r.committedEntries[entry.Index] = CommittedEntry{
++			Index:   entry.Index,
++			Term:    entry.Term,
++			Command: entry.Command,
++		}
++		r.committedMu.Unlock()
++
++		r.state.SetLastApplied(lastApplied)
++
++		r.pendingMu.Lock()
++		if ch, ok := r.pending[entry.Index]; ok {
++			ch <- result
++			close(ch)
++			delete(r.pending, entry.Index)
++		}
++		r.pendingMu.Unlock()
++	}
++}
++
++func (r *Raft) applyConfigChange(entry *wal.Entry) {
++	var change ConfigChange
++	dec := gob.NewDecoder(bytes.NewReader(entry.Command))
++	if err := dec.Decode(&change); err != nil {
++		r.logger.Printf("Failed to decode config change: %v", err)
++		return
++	}
++
++	r.clusterMu.Lock()
++	defer r.clusterMu.Unlock()
++
++	switch change.Type {
++	case ConfigChangeAddCommit:
++		// Complete the joint consensus
++		r.clusterConfig.IsJoint = false
++		r.clusterConfig.OldNodes = nil
++		r.jointMu.Lock()
++		r.inJointConsensus = false
++		r.pendingConfigChange = nil
++		r.jointMu.Unlock()
++	case ConfigChangeRemoveCommit:
++		// Complete the removal
++		delete(r.clusterConfig.Members, change.NodeID)
++		r.clusterConfig.IsJoint = false
++		r.clusterConfig.OldNodes = nil
++		r.jointMu.Lock()
++		r.inJointConsensus = false
++		r.pendingConfigChange = nil
++		r.jointMu.Unlock()
++	}
++}
++
++func (r *Raft) takeSnapshot() {
++	r.logger.Printf("[%s] Taking snapshot", r.config.NodeID)
++
++	data, err := r.kv.Snapshot()
++	if err != nil {
++		r.logger.Printf("[%s] Failed to take snapshot: %v", r.config.NodeID, err)
++		return
++	}
++
++	lastApplied := r.state.GetLastApplied()
++	lastEntry := r.wal.GetEntry(lastApplied)
++	if lastEntry == nil {
++		return
++	}
++
++	r.clusterMu.RLock()
++	members := make([]wal.ClusterMember, 0)
++	for _, m := range r.clusterConfig.Members {
++		members = append(members, wal.ClusterMember{
++			NodeID:  m.NodeID,
++			Address: m.Address,
++			Voting:  m.Voting,
++		})
++	}
++	r.clusterMu.RUnlock()
++
++	snapshot := wal.Snapshot{
++		Metadata: wal.SnapshotMetadata{
++			LastIncludedIndex: lastApplied,
++			LastIncludedTerm:  lastEntry.Term,
++			Configuration:     members,
++		},
++		Data: data,
++	}
++
++	if err := r.wal.SaveSnapshot(snapshot); err != nil {
++		r.logger.Printf("[%s] Failed to save snapshot: %v", r.config.NodeID, err)
++	}
++}
++
++func (r *Raft) stepDown(term uint64) {
++	r.state.SetCurrentTerm(term)
++	r.state.SetState(Follower)
++	r.state.SetVotedFor("")
++	r.persistState()
++}
++
++func (r *Raft) persistState() {
++	entries := r.wal.GetAllEntries()
++	if err := r.wal.Save(r.state.GetCurrentTerm(), r.state.GetVotedFor(), entries); err != nil {
++		r.logger.Printf("[%s] Failed to persist state: %v", r.config.NodeID, err)
++	}
++}
++
++func (r *Raft) randomElectionTimeout() time.Duration {
++	return r.config.ElectionTimeout + time.Duration(r.rand.Int63n(int64(r.config.ElectionTimeout)))
++}
++
++func (r *Raft) HandleRequestVote(req *RequestVoteRequest) *RequestVoteResponse {
++	r.mu.Lock()
++	defer r.mu.Unlock()
++
++	resp := &RequestVoteResponse{
++		Term:        r.state.GetCurrentTerm(),
++		VoteGranted: false,
++	}
++
++	if req.Term < r.state.GetCurrentTerm() {
++		return resp
++	}
++
++	if req.Term > r.state.GetCurrentTerm() {
++		r.stepDown(req.Term)
++		resp.Term = req.Term
++	}
++
++	votedFor := r.state.GetVotedFor()
++	lastLogIndex := r.wal.GetLastIndex()
++	lastLogTerm := r.wal.GetLastTerm()
++
++	canVote := (votedFor == "" || votedFor == req.CandidateID)
++	logUpToDate := req.LastLogTerm > lastLogTerm ||
++		(req.LastLogTerm == lastLogTerm && req.LastLogIndex >= lastLogIndex)
++
++	if canVote && logUpToDate {
++		r.state.SetVotedFor(req.CandidateID)
++		r.state.SetLastHeartbeat(time.Now())
++		resp.VoteGranted = true
++		r.persistState()
++	}
++
++	return resp
++}
++
++func (r *Raft) HandleAppendEntries(req *AppendEntriesRequest) *AppendEntriesResponse {
++	r.mu.Lock()
++	defer r.mu.Unlock()
++
++	resp := &AppendEntriesResponse{
++		Term:    r.state.GetCurrentTerm(),
++		Success: false,
++	}
++
++	if req.Term < r.state.GetCurrentTerm() {
++		return resp
++	}
++
++	r.state.SetLastHeartbeat(time.Now())
++	r.state.SetLeaderId(req.LeaderID)
++
++	if req.Term > r.state.GetCurrentTerm() {
++		r.stepDown(req.Term)
++		resp.Term = req.Term
++	}
++
++	if r.state.GetState() != Follower {
++		r.state.SetState(Follower)
++	}
++
++	if req.PrevLogIndex > 0 {
++		entry := r.wal.GetEntry(req.PrevLogIndex)
++		if entry == nil {
++			resp.ConflictIndex = r.wal.GetLastIndex() + 1
++			return resp
++		}
++		if entry.Term != req.PrevLogTerm {
++			resp.ConflictTerm = entry.Term
++			for i := req.PrevLogIndex; i > 0; i-- {
++				e := r.wal.GetEntry(i)
++				if e == nil || e.Term != resp.ConflictTerm {
++					resp.ConflictIndex = i + 1
++					break
++				}
++			}
++			r.wal.TruncateAfter(req.PrevLogIndex - 1)
++			return resp
++		}
++	}
++
++	if len(req.Entries) > 0 {
++		newEntries := make([]wal.Entry, len(req.Entries))
++		for i, e := range req.Entries {
++			newEntries[i] = wal.Entry{
++				Term:    e.Term,
++				Index:   e.Index,
++				Command: e.Command,
++				Type:    wal.EntryType(e.Type),
++			}
++		}
++
++		for _, entry := range newEntries {
++			existing := r.wal.GetEntry(entry.Index)
++			if existing != nil && existing.Term != entry.Term {
++				r.wal.TruncateAfter(entry.Index - 1)
++			}
++		}
++
++		if err := r.wal.AppendEntries(newEntries); err != nil {
++			r.logger.Printf("[%s] Failed to append entries: %v", r.config.NodeID, err)
++			return resp
++		}
++	}
++
++	resp.Success = true
++	resp.MatchIndex = r.wal.GetLastIndex()
++
++	if req.LeaderCommit > r.state.GetCommitIndex() {
++		lastIndex := r.wal.GetLastIndex()
++		if req.LeaderCommit < lastIndex {
++			r.state.SetCommitIndex(req.LeaderCommit)
++		} else {
++			r.state.SetCommitIndex(lastIndex)
++		}
++		r.applyCommittedEntries()
++	}
++
++	return resp
++}
++
++func (r *Raft) HandleInstallSnapshot(req *InstallSnapshotRequest) *InstallSnapshotResponse {
++	r.mu.Lock()
++	defer r.mu.Unlock()
++
++	resp := &InstallSnapshotResponse{
++		Term: r.state.GetCurrentTerm(),
++	}
++
++	if req.Term < r.state.GetCurrentTerm() {
++		return resp
++	}
++
++	if req.Term > r.state.GetCurrentTerm() {
++		r.stepDown(req.Term)
++		resp.Term = req.Term
++	}
++
++	r.state.SetLastHeartbeat(time.Now())
++	r.state.SetLeaderId(req.LeaderID)
++
++	if err := r.kv.Restore(req.Data); err != nil {
++		r.logger.Printf("[%s] Failed to restore snapshot: %v", r.config.NodeID, err)
++		return resp
++	}
++
++	r.clusterMu.Lock()
++	r.clusterConfig.Members = make(map[string]ClusterMember)
++	for _, m := range req.Configuration {
++		r.clusterConfig.Members[m.NodeID] = m
++	}
++	r.clusterMu.Unlock()
++
++	members := make([]wal.ClusterMember, len(req.Configuration))
++	for i, m := range req.Configuration {
++		members[i] = wal.ClusterMember{
++			NodeID:  m.NodeID,
++			Address: m.Address,
++			Voting:  m.Voting,
++		}
++	}
++
++	snapshot := wal.Snapshot{
++		Metadata: wal.SnapshotMetadata{
++			LastIncludedIndex: req.LastIncludedIndex,
++			LastIncludedTerm:  req.LastIncludedTerm,
++			Configuration:     members,
++		},
++		Data: req.Data,
++	}
++
++	if err := r.wal.SaveSnapshot(snapshot); err != nil {
++		r.logger.Printf("[%s] Failed to save snapshot: %v", r.config.NodeID, err)
++	}
++
++	r.state.SetCommitIndex(req.LastIncludedIndex)
++	r.state.SetLastApplied(req.LastIncludedIndex)
++
++	return resp
++}
++
++func (r *Raft) Propose(command []byte) (uint64, <-chan ApplyResult) {
++	r.mu.Lock()
++	defer r.mu.Unlock()
++
++	if r.state.GetState() != Leader {
++		ch := make(chan ApplyResult, 1)
++		ch <- ApplyResult{Error: fmt.Errorf("not leader")}
++		close(ch)
++		return 0, ch
++	}
++
++	index := r.wal.GetLastIndex() + 1
++	entry := wal.Entry{
++		Term:    r.state.GetCurrentTerm(),
++		Index:   index,
++		Command: command,
++		Type:    wal.EntryNormal,
++	}
++
++	if err := r.wal.AppendEntries([]wal.Entry{entry}); err != nil {
++		ch := make(chan ApplyResult, 1)
++		ch <- ApplyResult{Error: fmt.Errorf("failed to append entry: %w", err)}
++		close(ch)
++		return 0, ch
++	}
++
++	ch := make(chan ApplyResult, 1)
++	r.pendingMu.Lock()
++	r.pending[index] = ch
++	r.pendingMu.Unlock()
++
++	go r.sendHeartbeats()
++
++	return index, ch
++}
++
++func (r *Raft) checkReadIndex() {
++	r.readIndexMu.Lock()
++	defer r.readIndexMu.Unlock()
++
++	for i := len(r.readIndexReqs) - 1; i >= 0; i-- {
++		req := r.readIndexReqs[i]
++		if r.state.GetCommitIndex() >= req.index {
++			req.respCh <- nil
++			close(req.respCh)
++			r.readIndexReqs = append(r.readIndexReqs[:i], r.readIndexReqs[i+1:]...)
++		}
++	}
++}
++
++func (r *Raft) ReadIndex() error {
++	if r.state.GetState() != Leader {
++		return fmt.Errorf("not leader")
++	}
++
++	readIndex := r.state.GetCommitIndex()
++	respCh := make(chan error, 1)
++
++	r.readIndexMu.Lock()
++	r.readIndexReqs = append(r.readIndexReqs, readIndexRequest{
++		index:  readIndex,
++		respCh: respCh,
++	})
++	r.readIndexMu.Unlock()
++
++	r.sendHeartbeats()
++
++	select {
++	case err := <-respCh:
++		return err
++	case <-time.After(r.config.ElectionTimeout * 2):
++		return fmt.Errorf("read index timeout")
++	}
++}
++
++func (r *Raft) Get(key string, linearizable bool) ([]byte, bool, error) {
++	if linearizable {
++		if err := r.ReadIndex(); err != nil {
++			return nil, false, err
++		}
++	}
++	value, found := r.kv.Get(key)
++	return value, found, nil
++}
++
++func (r *Raft) Set(key string, value []byte, clientID string, requestID uint64) error {
++	cmd, err := kv.EncodeCommand(kv.CommandSet, key, value, clientID, requestID)
++	if err != nil {
++		return fmt.Errorf("failed to encode command: %w", err)
++	}
++
++	_, ch := r.Propose(cmd)
++	result := <-ch
++	return result.Error
++}
++
++func (r *Raft) Delete(key string, clientID string, requestID uint64) error {
++	cmd, err := kv.EncodeCommand(kv.CommandDelete, key, nil, clientID, requestID)
++	if err != nil {
++		return fmt.Errorf("failed to encode command: %w", err)
++	}
++
++	_, ch := r.Propose(cmd)
++	result := <-ch
++	return result.Error
++}
++
++// ConfigChangeType defines the type of configuration change
++type ConfigChangeType int
++
++const (
++	ConfigChangeAdd ConfigChangeType = iota
++	ConfigChangeRemove
++	ConfigChangeAddCommit
++	ConfigChangeRemoveCommit
++)
++
++// ConfigChange represents a cluster configuration change
++type ConfigChange struct {
++	Type    ConfigChangeType
++	NodeID  string
++	Address string
++}
++
++// AddNode adds a new node using joint consensus
++func (r *Raft) AddNode(nodeID, address string) error {
++	if r.state.GetState() != Leader {
++		return fmt.Errorf("not leader")
++	}
++
++	r.jointMu.Lock()
++	if r.inJointConsensus {
++		r.jointMu.Unlock()
++		return fmt.Errorf("another membership change in progress")
++	}
++	r.inJointConsensus = true
++	r.jointMu.Unlock()
++
++	// Step 1: Enter joint consensus (Cold,new)
++	r.clusterMu.Lock()
++	r.clusterConfig.OldNodes = make(map[string]ClusterMember)
++	for k, v := range r.clusterConfig.Members {
++		r.clusterConfig.OldNodes[k] = v
++	}
++	r.clusterConfig.Members[nodeID] = ClusterMember{
++		NodeID:  nodeID,
++		Address: address,
++		Voting:  true,
++	}
++	r.clusterConfig.IsJoint = true
++	r.clusterMu.Unlock()
++
++	// Step 2: Commit the joint configuration
++	configChange := ConfigChange{
++		Type:    ConfigChangeAdd,
++		NodeID:  nodeID,
++		Address: address,
++	}
++
++	var buf bytes.Buffer
++	if err := gob.NewEncoder(&buf).Encode(configChange); err != nil {
++		r.jointMu.Lock()
++		r.inJointConsensus = false
++		r.jointMu.Unlock()
++		return fmt.Errorf("failed to encode config change: %w", err)
++	}
++
++	entry := wal.Entry{
++		Term:    r.state.GetCurrentTerm(),
++		Index:   r.wal.GetLastIndex() + 1,
++		Command: buf.Bytes(),
++		Type:    wal.EntryConfigChange,
++	}
++
++	if err := r.wal.AppendEntries([]wal.Entry{entry}); err != nil {
++		r.jointMu.Lock()
++		r.inJointConsensus = false
++		r.jointMu.Unlock()
++		return err
++	}
++
++	// Wait for joint config to be committed
++	r.sendHeartbeats()
++	time.Sleep(r.config.HeartbeatInterval * 3)
++
++	// Step 3: Transition to new config (Cnew)
++	commitChange := ConfigChange{
++		Type:   ConfigChangeAddCommit,
++		NodeID: nodeID,
++	}
++
++	var buf2 bytes.Buffer
++	if err := gob.NewEncoder(&buf2).Encode(commitChange); err != nil {
++		return err
++	}
++
++	entry2 := wal.Entry{
++		Term:    r.state.GetCurrentTerm(),
++		Index:   r.wal.GetLastIndex() + 1,
++		Command: buf2.Bytes(),
++		Type:    wal.EntryConfigChange,
++	}
++
++	if err := r.wal.AppendEntries([]wal.Entry{entry2}); err != nil {
++		return err
++	}
++
++	// Wait for the commit entry to be applied (which clears inJointConsensus)
++	r.sendHeartbeats()
++	time.Sleep(r.config.HeartbeatInterval * 3)
++
++	return nil
++}
++
++// RemoveNode removes a node using joint consensus
++func (r *Raft) RemoveNode(nodeID string) error {
++	if r.state.GetState() != Leader {
++		return fmt.Errorf("not leader")
++	}
++
++	r.jointMu.Lock()
++	if r.inJointConsensus {
++		r.jointMu.Unlock()
++		return fmt.Errorf("another membership change in progress")
++	}
++	r.inJointConsensus = true
++	r.jointMu.Unlock()
++
++	// Step 1: Enter joint consensus
++	r.clusterMu.Lock()
++	r.clusterConfig.OldNodes = make(map[string]ClusterMember)
++	for k, v := range r.clusterConfig.Members {
++		r.clusterConfig.OldNodes[k] = v
++	}
++	// Mark as leaving but keep in members until committed
++	if member, ok := r.clusterConfig.Members[nodeID]; ok {
++		member.Voting = false
++		r.clusterConfig.Members[nodeID] = member
++	}
++	r.clusterConfig.IsJoint = true
++	r.clusterMu.Unlock()
++
++	configChange := ConfigChange{
++		Type:   ConfigChangeRemove,
++		NodeID: nodeID,
++	}
++
++	var buf bytes.Buffer
++	if err := gob.NewEncoder(&buf).Encode(configChange); err != nil {
++		r.jointMu.Lock()
++		r.inJointConsensus = false
++		r.jointMu.Unlock()
++		return err
++	}
++
++	entry := wal.Entry{
++		Term:    r.state.GetCurrentTerm(),
++		Index:   r.wal.GetLastIndex() + 1,
++		Command: buf.Bytes(),
++		Type:    wal.EntryConfigChange,
++	}
++
++	if err := r.wal.AppendEntries([]wal.Entry{entry}); err != nil {
++		r.jointMu.Lock()
++		r.inJointConsensus = false
++		r.jointMu.Unlock()
++		return err
++	}
++
++	r.sendHeartbeats()
++	time.Sleep(r.config.HeartbeatInterval * 3)
++
++	// Commit removal
++	commitChange := ConfigChange{
++		Type:   ConfigChangeRemoveCommit,
++		NodeID: nodeID,
++	}
++
++	var buf2 bytes.Buffer
++	if err := gob.NewEncoder(&buf2).Encode(commitChange); err != nil {
++		return err
++	}
++
++	entry2 := wal.Entry{
++		Term:    r.state.GetCurrentTerm(),
++		Index:   r.wal.GetLastIndex() + 1,
++		Command: buf2.Bytes(),
++		Type:    wal.EntryConfigChange,
++	}
++
++	if err := r.wal.AppendEntries([]wal.Entry{entry2}); err != nil {
++		return err
++	}
++
++	// Wait for the commit entry to be applied (which clears inJointConsensus)
++	r.sendHeartbeats()
++	time.Sleep(r.config.HeartbeatInterval * 3)
++
++	return nil
++}
++
++// GetClusterInfo returns cluster information
++func (r *Raft) GetClusterInfo() (leaderID string, term uint64, members []ClusterMember) {
++	r.clusterMu.RLock()
++	defer r.clusterMu.RUnlock()
++
++	leaderID = r.state.GetLeaderId()
++	term = r.state.GetCurrentTerm()
++
++	members = make([]ClusterMember, 0)
++	for _, m := range r.clusterConfig.Members {
++		members = append(members, m)
++	}
++
++	return
++}
++
++// GetCommittedEntry returns committed entry at index for verification
++func (r *Raft) GetCommittedEntry(index uint64) *CommittedEntry {
++	r.committedMu.RLock()
++	defer r.committedMu.RUnlock()
++	if entry, ok := r.committedEntries[index]; ok {
++		return &entry
++	}
++	return nil
++}
++
++// GetAllCommittedEntries returns all committed entries
++func (r *Raft) GetAllCommittedEntries() map[uint64]CommittedEntry {
++	r.committedMu.RLock()
++	defer r.committedMu.RUnlock()
++	result := make(map[uint64]CommittedEntry)
++	for k, v := range r.committedEntries {
++		result[k] = v
++	}
++	return result
++}
++
++func (r *Raft) GetState() State {
++	return r.state.GetState()
++}
++
++func (r *Raft) GetNodeID() string {
++	return r.config.NodeID
++}
++
++func (r *Raft) IsLeader() bool {
++	return r.state.IsLeader()
++}
++
++func max(a, b int) int {
++	if a > b {
++		return a
++	}
++	return b
++}
+\ No newline at end of file
+diff --git a/repository_after/pkg/raft/state.go b/repository_after/pkg/raft/state.go
+new file mode 100644
+index 0000000..2ec8053
+--- /dev/null
++++ b/repository_after/pkg/raft/state.go
+@@ -0,0 +1,219 @@
++package raft
++
++import (
++	"sync"
++	"time"
++)
++
++// State represents the Raft node state
++type State int
++
++const (
++	Follower State = iota
++	Candidate
++	Leader
++)
++
++func (s State) String() string {
++	switch s {
++	case Follower:
++		return "Follower"
++	case Candidate:
++		return "Candidate"
++	case Leader:
++		return "Leader"
++	default:
++		return "Unknown"
++	}
++}
++
++// NodeState holds the volatile state of a Raft node
++type NodeState struct {
++	mu              sync.RWMutex
++	state           State
++	currentTerm     uint64
++	votedFor        string
++	commitIndex     uint64
++	lastApplied     uint64
++	leaderId        string
++	lastHeartbeat   time.Time
++	electionTimeout time.Duration
++	
++	// Leader state
++	nextIndex  map[string]uint64
++	matchIndex map[string]uint64
++}
++
++// NewNodeState creates a new node state
++func NewNodeState() *NodeState {
++	return &NodeState{
++		state:       Follower,
++		currentTerm: 0,
++		votedFor:    "",
++		commitIndex: 0,
++		lastApplied: 0,
++		nextIndex:   make(map[string]uint64),
++		matchIndex:  make(map[string]uint64),
++	}
++}
++
++// GetState returns the current state
++func (ns *NodeState) GetState() State {
++	ns.mu.RLock()
++	defer ns.mu.RUnlock()
++	return ns.state
++}
++
++// SetState sets the current state
++func (ns *NodeState) SetState(state State) {
++	ns.mu.Lock()
++	defer ns.mu.Unlock()
++	ns.state = state
++}
++
++// GetCurrentTerm returns the current term
++func (ns *NodeState) GetCurrentTerm() uint64 {
++	ns.mu.RLock()
++	defer ns.mu.RUnlock()
++	return ns.currentTerm
++}
++
++// SetCurrentTerm sets the current term
++func (ns *NodeState) SetCurrentTerm(term uint64) {
++	ns.mu.Lock()
++	defer ns.mu.Unlock()
++	ns.currentTerm = term
++}
++
++// GetVotedFor returns the voted for candidate
++func (ns *NodeState) GetVotedFor() string {
++	ns.mu.RLock()
++	defer ns.mu.RUnlock()
++	return ns.votedFor
++}
++
++// SetVotedFor sets the voted for candidate
++func (ns *NodeState) SetVotedFor(votedFor string) {
++	ns.mu.Lock()
++	defer ns.mu.Unlock()
++	ns.votedFor = votedFor
++}
++
++// GetCommitIndex returns the commit index
++func (ns *NodeState) GetCommitIndex() uint64 {
++	ns.mu.RLock()
++	defer ns.mu.RUnlock()
++	return ns.commitIndex
++}
++
++// SetCommitIndex sets the commit index
++func (ns *NodeState) SetCommitIndex(index uint64) {
++	ns.mu.Lock()
++	defer ns.mu.Unlock()
++	ns.commitIndex = index
++}
++
++// GetLastApplied returns the last applied index
++func (ns *NodeState) GetLastApplied() uint64 {
++	ns.mu.RLock()
++	defer ns.mu.RUnlock()
++	return ns.lastApplied
++}
++
++// SetLastApplied sets the last applied index
++func (ns *NodeState) SetLastApplied(index uint64) {
++	ns.mu.Lock()
++	defer ns.mu.Unlock()
++	ns.lastApplied = index
++}
++
++// GetLeaderId returns the leader ID
++func (ns *NodeState) GetLeaderId() string {
++	ns.mu.RLock()
++	defer ns.mu.RUnlock()
++	return ns.leaderId
++}
++
++// SetLeaderId sets the leader ID
++func (ns *NodeState) SetLeaderId(leaderId string) {
++	ns.mu.Lock()
++	defer ns.mu.Unlock()
++	ns.leaderId = leaderId
++}
++
++// GetNextIndex returns the next index for a peer
++func (ns *NodeState) GetNextIndex(peerId string) uint64 {
++	ns.mu.RLock()
++	defer ns.mu.RUnlock()
++	return ns.nextIndex[peerId]
++}
++
++// SetNextIndex sets the next index for a peer
++func (ns *NodeState) SetNextIndex(peerId string, index uint64) {
++	ns.mu.Lock()
++	defer ns.mu.Unlock()
++	ns.nextIndex[peerId] = index
++}
++
++// GetMatchIndex returns the match index for a peer
++func (ns *NodeState) GetMatchIndex(peerId string) uint64 {
++	ns.mu.RLock()
++	defer ns.mu.RUnlock()
++	return ns.matchIndex[peerId]
++}
++
++// SetMatchIndex sets the match index for a peer
++func (ns *NodeState) SetMatchIndex(peerId string, index uint64) {
++	ns.mu.Lock()
++	defer ns.mu.Unlock()
++	ns.matchIndex[peerId] = index
++}
++
++// ResetLeaderState resets the leader-specific state
++func (ns *NodeState) ResetLeaderState(peers []string, lastLogIndex uint64) {
++	ns.mu.Lock()
++	defer ns.mu.Unlock()
++
++	ns.nextIndex = make(map[string]uint64)
++	ns.matchIndex = make(map[string]uint64)
++
++	for _, peer := range peers {
++		ns.nextIndex[peer] = lastLogIndex + 1
++		ns.matchIndex[peer] = 0
++	}
++}
++
++// GetLastHeartbeat returns the last heartbeat time
++func (ns *NodeState) GetLastHeartbeat() time.Time {
++	ns.mu.RLock()
++	defer ns.mu.RUnlock()
++	return ns.lastHeartbeat
++}
++
++// SetLastHeartbeat sets the last heartbeat time
++func (ns *NodeState) SetLastHeartbeat(t time.Time) {
++	ns.mu.Lock()
++	defer ns.mu.Unlock()
++	ns.lastHeartbeat = t
++}
++
++// GetElectionTimeout returns the election timeout
++func (ns *NodeState) GetElectionTimeout() time.Duration {
++	ns.mu.RLock()
++	defer ns.mu.RUnlock()
++	return ns.electionTimeout
++}
++
++// SetElectionTimeout sets the election timeout
++func (ns *NodeState) SetElectionTimeout(d time.Duration) {
++	ns.mu.Lock()
++	defer ns.mu.Unlock()
++	ns.electionTimeout = d
++}
++
++// IsLeader returns true if the node is the leader
++func (ns *NodeState) IsLeader() bool {
++	ns.mu.RLock()
++	defer ns.mu.RUnlock()
++	return ns.state == Leader
++}
+\ No newline at end of file
+diff --git a/repository_after/pkg/rpc/client.go b/repository_after/pkg/rpc/client.go
+new file mode 100644
+index 0000000..8aac0c6
+--- /dev/null
++++ b/repository_after/pkg/rpc/client.go
+@@ -0,0 +1,166 @@
++package rpc
++
++import (
++	"context"
++	"encoding/gob"
++	"fmt"
++	"net"
++	"sync"
++	"time"
++
++	"github.com/vzdtic/raft-kv-store/repository_after/pkg/raft"
++)
++
++// Client is a simple RPC client for Raft communication
++type Client struct {
++	mu      sync.RWMutex
++	conns   map[string]net.Conn
++	timeout time.Duration
++}
++
++// NewClient creates a new RPC client
++func NewClient(timeout time.Duration) *Client {
++	return &Client{
++		conns:   make(map[string]net.Conn),
++		timeout: timeout,
++	}
++}
++
++// Transport implements the raft.Transport interface
++type Transport struct {
++	client *Client
++}
++
++// NewTransport creates a new transport
++func NewTransport() *Transport {
++	return &Transport{
++		client: NewClient(100 * time.Millisecond),
++	}
++}
++
++// RequestVote sends a RequestVote RPC
++func (t *Transport) RequestVote(ctx context.Context, target string, req *raft.RequestVoteRequest) (*raft.RequestVoteResponse, error) {
++	conn, err := t.client.getConn(target)
++	if err != nil {
++		return nil, err
++	}
++
++	// Encode request
++	enc := gob.NewEncoder(conn)
++	if err := enc.Encode("RequestVote"); err != nil {
++		t.client.removeConn(target)
++		return nil, err
++	}
++	if err := enc.Encode(req); err != nil {
++		t.client.removeConn(target)
++		return nil, err
++	}
++
++	// Decode response
++	var resp raft.RequestVoteResponse
++	dec := gob.NewDecoder(conn)
++	if err := dec.Decode(&resp); err != nil {
++		t.client.removeConn(target)
++		return nil, err
++	}
++
++	return &resp, nil
++}
++
++// AppendEntries sends an AppendEntries RPC
++func (t *Transport) AppendEntries(ctx context.Context, target string, req *raft.AppendEntriesRequest) (*raft.AppendEntriesResponse, error) {
++	conn, err := t.client.getConn(target)
++	if err != nil {
++		return nil, err
++	}
++
++	// Encode request
++	enc := gob.NewEncoder(conn)
++	if err := enc.Encode("AppendEntries"); err != nil {
++		t.client.removeConn(target)
++		return nil, err
++	}
++	if err := enc.Encode(req); err != nil {
++		t.client.removeConn(target)
++		return nil, err
++	}
++
++	// Decode response
++	var resp raft.AppendEntriesResponse
++	dec := gob.NewDecoder(conn)
++	if err := dec.Decode(&resp); err != nil {
++		t.client.removeConn(target)
++		return nil, err
++	}
++
++	return &resp, nil
++}
++
++// InstallSnapshot sends an InstallSnapshot RPC
++func (t *Transport) InstallSnapshot(ctx context.Context, target string, req *raft.InstallSnapshotRequest) (*raft.InstallSnapshotResponse, error) {
++	conn, err := t.client.getConn(target)
++	if err != nil {
++		return nil, err
++	}
++
++	// Encode request
++	enc := gob.NewEncoder(conn)
++	if err := enc.Encode("InstallSnapshot"); err != nil {
++		t.client.removeConn(target)
++		return nil, err
++	}
++	if err := enc.Encode(req); err != nil {
++		t.client.removeConn(target)
++		return nil, err
++	}
++
++	// Decode response
++	var resp raft.InstallSnapshotResponse
++	dec := gob.NewDecoder(conn)
++	if err := dec.Decode(&resp); err != nil {
++		t.client.removeConn(target)
++		return nil, err
++	}
++
++	return &resp, nil
++}
++
++// getConn gets or creates a connection to target
++func (c *Client) getConn(target string) (net.Conn, error) {
++	c.mu.Lock()
++	defer c.mu.Unlock()
++
++	if conn, ok := c.conns[target]; ok {
++		return conn, nil
++	}
++
++	conn, err := net.DialTimeout("tcp", target, c.timeout)
++	if err != nil {
++		return nil, fmt.Errorf("failed to connect to %s: %w", target, err)
++	}
++
++	c.conns[target] = conn
++	return conn, nil
++}
++
++// removeConn removes a connection
++func (c *Client) removeConn(target string) {
++	c.mu.Lock()
++	defer c.mu.Unlock()
++
++	if conn, ok := c.conns[target]; ok {
++		conn.Close()
++		delete(c.conns, target)
++	}
++}
++
++// Close closes all connections
++func (c *Client) Close() {
++	c.mu.Lock()
++	defer c.mu.Unlock()
++
++	for target, conn := range c.conns {
++		conn.Close()
++		delete(c.conns, target)
++	}
++}
+\ No newline at end of file
+diff --git a/repository_after/pkg/rpc/server.go b/repository_after/pkg/rpc/server.go
+new file mode 100644
+index 0000000..d930491
+--- /dev/null
++++ b/repository_after/pkg/rpc/server.go
+@@ -0,0 +1,369 @@
++package rpc
++
++import (
++	"context"
++	"fmt"
++	"log"
++	"net"
++
++	"github.com/vzdtic/raft-kv-store/repository_after/pkg/raft"
++	"google.golang.org/grpc"
++)
++
++// Server wraps the gRPC server
++type Server struct {
++	raftNode   *raft.Raft
++	grpcServer *grpc.Server
++	listener   net.Listener
++	logger     *log.Logger
++	UnimplementedRaftServiceServer
++	UnimplementedKVServiceServer
++	UnimplementedClusterServiceServer
++}
++
++// Unimplemented servers for gRPC (we'll define interfaces inline)
++type UnimplementedRaftServiceServer struct{}
++type UnimplementedKVServiceServer struct{}
++type UnimplementedClusterServiceServer struct{}
++
++// NewServer creates a new gRPC server
++func NewServer(raftNode *raft.Raft, address string, logger *log.Logger) (*Server, error) {
++	listener, err := net.Listen("tcp", address)
++	if err != nil {
++		return nil, fmt.Errorf("failed to listen on %s: %w", address, err)
++	}
++
++	s := &Server{
++		raftNode:   raftNode,
++		grpcServer: grpc.NewServer(),
++		listener:   listener,
++		logger:     logger,
++	}
++
++	// Register services manually (without generated code)
++	// In production, we'd use the generated proto service registrations
++
++	return s, nil
++}
++
++// Start starts the gRPC server
++func (s *Server) Start() error {
++	s.logger.Printf("gRPC server listening on %s", s.listener.Addr().String())
++	return s.grpcServer.Serve(s.listener)
++}
++
++// Stop stops the gRPC server
++func (s *Server) Stop() {
++	s.grpcServer.GracefulStop()
++}
++
++// RequestVote handles RequestVote RPC
++func (s *Server) RequestVote(ctx context.Context, req *RequestVoteRequest) (*RequestVoteResponse, error) {
++	raftReq := &raft.RequestVoteRequest{
++		Term:         req.Term,
++		CandidateID:  req.CandidateId,
++		LastLogIndex: req.LastLogIndex,
++		LastLogTerm:  req.LastLogTerm,
++	}
++
++	resp := s.raftNode.HandleRequestVote(raftReq)
++
++	return &RequestVoteResponse{
++		Term:        resp.Term,
++		VoteGranted: resp.VoteGranted,
++	}, nil
++}
++
++// AppendEntries handles AppendEntries RPC
++func (s *Server) AppendEntries(ctx context.Context, req *AppendEntriesRequest) (*AppendEntriesResponse, error) {
++	entries := make([]raft.LogEntry, len(req.Entries))
++	for i, e := range req.Entries {
++		entries[i] = raft.LogEntry{
++			Term:    e.Term,
++			Index:   e.Index,
++			Command: e.Command,
++			Type:    raft.EntryType(e.Type),
++		}
++	}
++
++	raftReq := &raft.AppendEntriesRequest{
++		Term:         req.Term,
++		LeaderID:     req.LeaderId,
++		PrevLogIndex: req.PrevLogIndex,
++		PrevLogTerm:  req.PrevLogTerm,
++		Entries:      entries,
++		LeaderCommit: req.LeaderCommit,
++	}
++
++	resp := s.raftNode.HandleAppendEntries(raftReq)
++
++	return &AppendEntriesResponse{
++		Term:          resp.Term,
++		Success:       resp.Success,
++		MatchIndex:    resp.MatchIndex,
++		ConflictIndex: resp.ConflictIndex,
++		ConflictTerm:  resp.ConflictTerm,
++	}, nil
++}
++
++// InstallSnapshot handles InstallSnapshot RPC
++func (s *Server) InstallSnapshot(ctx context.Context, req *InstallSnapshotRequest) (*InstallSnapshotResponse, error) {
++	members := make([]raft.ClusterMember, len(req.Configuration))
++	for i, m := range req.Configuration {
++		members[i] = raft.ClusterMember{
++			NodeID:  m.NodeId,
++			Address: m.Address,
++			Voting:  m.Voting,
++		}
++	}
++
++	raftReq := &raft.InstallSnapshotRequest{
++		Term:              req.Term,
++		LeaderID:          req.LeaderId,
++		LastIncludedIndex: req.LastIncludedIndex,
++		LastIncludedTerm:  req.LastIncludedTerm,
++		Data:              req.Data,
++		Configuration:     members,
++	}
++
++	resp := s.raftNode.HandleInstallSnapshot(raftReq)
++
++	return &InstallSnapshotResponse{
++		Term: resp.Term,
++	}, nil
++}
++
++// Set handles Set RPC
++func (s *Server) Set(ctx context.Context, req *SetRequest) (*SetResponse, error) {
++	if !s.raftNode.IsLeader() {
++		leaderID, _, _ := s.raftNode.GetClusterInfo()
++		return &SetResponse{
++			Success:    false,
++			Error:      "not leader",
++			LeaderHint: leaderID,
++		}, nil
++	}
++
++	err := s.raftNode.Set(req.Key, req.Value, req.ClientId, req.RequestId)
++	if err != nil {
++		return &SetResponse{
++			Success: false,
++			Error:   err.Error(),
++		}, nil
++	}
++
++	return &SetResponse{
++		Success: true,
++	}, nil
++}
++
++// Get handles Get RPC
++func (s *Server) Get(ctx context.Context, req *GetRequest) (*GetResponse, error) {
++	value, found, err := s.raftNode.Get(req.Key, req.Linearizable)
++	if err != nil {
++		leaderID, _, _ := s.raftNode.GetClusterInfo()
++		return &GetResponse{
++			Error:      err.Error(),
++			LeaderHint: leaderID,
++		}, nil
++	}
++
++	return &GetResponse{
++		Found: found,
++		Value: value,
++	}, nil
++}
++
++// Delete handles Delete RPC
++func (s *Server) Delete(ctx context.Context, req *DeleteRequest) (*DeleteResponse, error) {
++	if !s.raftNode.IsLeader() {
++		leaderID, _, _ := s.raftNode.GetClusterInfo()
++		return &DeleteResponse{
++			Success:    false,
++			Error:      "not leader",
++			LeaderHint: leaderID,
++		}, nil
++	}
++
++	err := s.raftNode.Delete(req.Key, req.ClientId, req.RequestId)
++	if err != nil {
++		return &DeleteResponse{
++			Success: false,
++			Error:   err.Error(),
++		}, nil
++	}
++
++	return &DeleteResponse{
++		Success: true,
++	}, nil
++}
++
++// AddNode handles AddNode RPC
++func (s *Server) AddNode(ctx context.Context, req *AddNodeRequest) (*AddNodeResponse, error) {
++	err := s.raftNode.AddNode(req.NodeId, req.Address)
++	if err != nil {
++		return &AddNodeResponse{
++			Success: false,
++			Error:   err.Error(),
++		}, nil
++	}
++
++	return &AddNodeResponse{
++		Success: true,
++	}, nil
++}
++
++// RemoveNode handles RemoveNode RPC
++func (s *Server) RemoveNode(ctx context.Context, req *RemoveNodeRequest) (*RemoveNodeResponse, error) {
++	err := s.raftNode.RemoveNode(req.NodeId)
++	if err != nil {
++		return &RemoveNodeResponse{
++			Success: false,
++			Error:   err.Error(),
++		}, nil
++	}
++
++	return &RemoveNodeResponse{
++		Success: true,
++	}, nil
++}
++
++// GetClusterInfo handles GetClusterInfo RPC
++func (s *Server) GetClusterInfo(ctx context.Context, req *GetClusterInfoRequest) (*GetClusterInfoResponse, error) {
++	leaderID, term, members := s.raftNode.GetClusterInfo()
++
++	protoMembers := make([]*ClusterMember, len(members))
++	for i, m := range members {
++		protoMembers[i] = &ClusterMember{
++			NodeId:  m.NodeID,
++			Address: m.Address,
++			Voting:  m.Voting,
++		}
++	}
++
++	return &GetClusterInfoResponse{
++		LeaderId: leaderID,
++		Term:     term,
++		Members:  protoMembers,
++	}, nil
++}
++
++// Message types (these would normally come from generated proto code)
++type RequestVoteRequest struct {
++	Term         uint64
++	CandidateId  string
++	LastLogIndex uint64
++	LastLogTerm  uint64
++}
++
++type RequestVoteResponse struct {
++	Term        uint64
++	VoteGranted bool
++}
++
++type LogEntry struct {
++	Term    uint64
++	Index   uint64
++	Command []byte
++	Type    int32
++}
++
++type AppendEntriesRequest struct {
++	Term         uint64
++	LeaderId     string
++	PrevLogIndex uint64
++	PrevLogTerm  uint64
++	Entries      []*LogEntry
++	LeaderCommit uint64
++}
++
++type AppendEntriesResponse struct {
++	Term          uint64
++	Success       bool
++	MatchIndex    uint64
++	ConflictIndex uint64
++	ConflictTerm  uint64
++}
++
++type ClusterMember struct {
++	NodeId  string
++	Address string
++	Voting  bool
++}
++
++type InstallSnapshotRequest struct {
++	Term              uint64
++	LeaderId          string
++	LastIncludedIndex uint64
++	LastIncludedTerm  uint64
++	Data              []byte
++	Configuration     []*ClusterMember
++}
++
++type InstallSnapshotResponse struct {
++	Term uint64
++}
++
++type SetRequest struct {
++	Key       string
++	Value     []byte
++	ClientId  string
++	RequestId uint64
++}
++
++type SetResponse struct {
++	Success    bool
++	Error      string
++	LeaderHint string
++}
++
++type GetRequest struct {
++	Key          string
++	Linearizable bool
++}
++
++type GetResponse struct {
++	Found      bool
++	Value      []byte
++	Error      string
++	LeaderHint string
++}
++
++type DeleteRequest struct {
++	Key       string
++	ClientId  string
++	RequestId uint64
++}
++
++type DeleteResponse struct {
++	Success    bool
++	Error      string
++	LeaderHint string
++}
++
++type AddNodeRequest struct {
++	NodeId  string
++	Address string
++}
++
++type AddNodeResponse struct {
++	Success bool
++	Error   string
++}
++
++type RemoveNodeRequest struct {
++	NodeId string
++}
++
++type RemoveNodeResponse struct {
++	Success bool
++	Error   string
++}
++
++type GetClusterInfoRequest struct{}
++
++type GetClusterInfoResponse struct {
++	LeaderId string
++	Term     uint64
++	Members  []*ClusterMember
++}
+\ No newline at end of file
+diff --git a/repository_after/pkg/simulation/network.go b/repository_after/pkg/simulation/network.go
+new file mode 100644
+index 0000000..7c3494b
+--- /dev/null
++++ b/repository_after/pkg/simulation/network.go
+@@ -0,0 +1,362 @@
++package simulation
++
++import (
++	"context"
++	"fmt"
++	"math/rand"
++	"sync"
++	"time"
++
++	"github.com/vzdtic/raft-kv-store/repository_after/pkg/raft"
++)
++
++// Network simulates a network with partitions, delays, and message loss
++type Network struct {
++	mu              sync.RWMutex
++	nodes           map[string]*SimNode
++	partitions      map[string]map[string]bool
++	dropRate        float64
++	minDelay        time.Duration
++	maxDelay        time.Duration
++	rand            *rand.Rand
++	seed            int64
++	messageLog      []Message
++	deliveredMsgs   []Message
++	deterministic   bool
++}
++
++// SimNode represents a simulated node
++type SimNode struct {
++	ID        string
++	Raft      *raft.Raft
++	Transport *SimTransport
++	Inbox     chan interface{}
++}
++
++// Message represents a message in the simulation
++type Message struct {
++	From      string
++	To        string
++	Type      string
++	Request   interface{}
++	Response  interface{}
++	Timestamp time.Time
++	Delivered bool
++	Dropped   bool
++}
++
++// NewNetwork creates a new simulated network with time-based seed
++func NewNetwork(dropRate float64, minDelay, maxDelay time.Duration) *Network {
++	return NewDeterministicNetwork(dropRate, minDelay, maxDelay, time.Now().UnixNano())
++}
++
++// NewDeterministicNetwork creates a network with fixed seed for reproducibility
++func NewDeterministicNetwork(dropRate float64, minDelay, maxDelay time.Duration, seed int64) *Network {
++	return &Network{
++		nodes:         make(map[string]*SimNode),
++		partitions:    make(map[string]map[string]bool),
++		dropRate:      dropRate,
++		minDelay:      minDelay,
++		maxDelay:      maxDelay,
++		rand:          rand.New(rand.NewSource(seed)),
++		seed:          seed,
++		deterministic: true,
++	}
++}
++
++// GetSeed returns the random seed for replay
++func (n *Network) GetSeed() int64 {
++	return n.seed
++}
++
++// Reset resets the network to initial state with same seed
++func (n *Network) Reset() {
++	n.mu.Lock()
++	defer n.mu.Unlock()
++	n.rand = rand.New(rand.NewSource(n.seed))
++	n.partitions = make(map[string]map[string]bool)
++	n.messageLog = nil
++	n.deliveredMsgs = nil
++}
++
++// AddNode adds a node to the network
++func (n *Network) AddNode(id string, node *raft.Raft, transport *SimTransport) {
++	n.mu.Lock()
++	defer n.mu.Unlock()
++	n.nodes[id] = &SimNode{
++		ID:        id,
++		Raft:      node,
++		Transport: transport,
++		Inbox:     make(chan interface{}, 100),
++	}
++	n.partitions[id] = make(map[string]bool)
++}
++
++// Partition partitions a node from the rest
++func (n *Network) Partition(nodeID string) {
++	n.mu.Lock()
++	defer n.mu.Unlock()
++	for otherID := range n.nodes {
++		if otherID != nodeID {
++			n.partitions[nodeID][otherID] = true
++			n.partitions[otherID][nodeID] = true
++		}
++	}
++}
++
++// Heal heals a partition
++func (n *Network) Heal(nodeID string) {
++	n.mu.Lock()
++	defer n.mu.Unlock()
++	for otherID := range n.nodes {
++		if otherID != nodeID {
++			delete(n.partitions[nodeID], otherID)
++			delete(n.partitions[otherID], nodeID)
++		}
++	}
++}
++
++// PartitionBetween partitions two specific nodes
++func (n *Network) PartitionBetween(nodeA, nodeB string) {
++	n.mu.Lock()
++	defer n.mu.Unlock()
++	if n.partitions[nodeA] == nil {
++		n.partitions[nodeA] = make(map[string]bool)
++	}
++	if n.partitions[nodeB] == nil {
++		n.partitions[nodeB] = make(map[string]bool)
++	}
++	n.partitions[nodeA][nodeB] = true
++	n.partitions[nodeB][nodeA] = true
++}
++
++// HealBetween heals partition between two nodes
++func (n *Network) HealBetween(nodeA, nodeB string) {
++	n.mu.Lock()
++	defer n.mu.Unlock()
++	delete(n.partitions[nodeA], nodeB)
++	delete(n.partitions[nodeB], nodeA)
++}
++
++// IsPartitioned checks if two nodes are partitioned
++func (n *Network) IsPartitioned(nodeA, nodeB string) bool {
++	n.mu.RLock()
++	defer n.mu.RUnlock()
++	if partitions, ok := n.partitions[nodeA]; ok {
++		return partitions[nodeB]
++	}
++	return false
++}
++
++// SetDropRate sets the message drop rate
++func (n *Network) SetDropRate(rate float64) {
++	n.mu.Lock()
++	defer n.mu.Unlock()
++	n.dropRate = rate
++}
++
++// SetDelay sets the message delay range
++func (n *Network) SetDelay(min, max time.Duration) {
++	n.mu.Lock()
++	defer n.mu.Unlock()
++	n.minDelay = min
++	n.maxDelay = max
++}
++
++// ShouldDrop returns true if a message should be dropped (deterministic)
++func (n *Network) ShouldDrop() bool {
++	n.mu.Lock()
++	defer n.mu.Unlock()
++	return n.rand.Float64() < n.dropRate
++}
++
++// GetDelay returns a deterministic random delay
++func (n *Network) GetDelay() time.Duration {
++	n.mu.Lock()
++	defer n.mu.Unlock()
++	if n.maxDelay <= n.minDelay {
++		return n.minDelay
++	}
++	return n.minDelay + time.Duration(n.rand.Int63n(int64(n.maxDelay-n.minDelay)))
++}
++
++// GetMessages returns all messages
++func (n *Network) GetMessages() []Message {
++	n.mu.RLock()
++	defer n.mu.RUnlock()
++	result := make([]Message, len(n.messageLog))
++	copy(result, n.messageLog)
++	return result
++}
++
++// GetDeliveredMessages returns delivered messages
++func (n *Network) GetDeliveredMessages() []Message {
++	n.mu.RLock()
++	defer n.mu.RUnlock()
++	result := make([]Message, len(n.deliveredMsgs))
++	copy(result, n.deliveredMsgs)
++	return result
++}
++
++// LogMessage logs a message
++func (n *Network) LogMessage(msg Message) {
++	n.mu.Lock()
++	defer n.mu.Unlock()
++	n.messageLog = append(n.messageLog, msg)
++	if msg.Delivered {
++		n.deliveredMsgs = append(n.deliveredMsgs, msg)
++	}
++}
++
++// GetNode returns a node by ID
++func (n *Network) GetNode(id string) *SimNode {
++	n.mu.RLock()
++	defer n.mu.RUnlock()
++	return n.nodes[id]
++}
++
++// GetNodes returns all nodes
++func (n *Network) GetNodes() map[string]*SimNode {
++	n.mu.RLock()
++	defer n.mu.RUnlock()
++	result := make(map[string]*SimNode)
++	for k, v := range n.nodes {
++		result[k] = v
++	}
++	return result
++}
++
++// SimTransport is a simulated transport
++type SimTransport struct {
++	network  *Network
++	localID  string
++	handlers map[string]*raft.Raft
++}
++
++// NewSimTransport creates a new simulated transport
++func NewSimTransport(network *Network, localID string) *SimTransport {
++	return &SimTransport{
++		network:  network,
++		localID:  localID,
++		handlers: make(map[string]*raft.Raft),
++	}
++}
++
++// RegisterHandler registers a Raft handler for a node
++func (t *SimTransport) RegisterHandler(nodeID string, handler *raft.Raft) {
++	t.handlers[nodeID] = handler
++}
++
++// RequestVote implements the Transport interface
++func (t *SimTransport) RequestVote(ctx context.Context, target string, req *raft.RequestVoteRequest) (*raft.RequestVoteResponse, error) {
++	msg := Message{
++		From:      t.localID,
++		To:        target,
++		Type:      "RequestVote",
++		Request:   req,
++		Timestamp: time.Now(),
++	}
++
++	if t.network.IsPartitioned(t.localID, target) {
++		msg.Dropped = true
++		t.network.LogMessage(msg)
++		return nil, fmt.Errorf("node partitioned")
++	}
++
++	if t.network.ShouldDrop() {
++		msg.Dropped = true
++		t.network.LogMessage(msg)
++		return nil, fmt.Errorf("message dropped")
++	}
++
++	delay := t.network.GetDelay()
++	time.Sleep(delay)
++
++	handler, ok := t.handlers[target]
++	if !ok {
++		return nil, fmt.Errorf("unknown target: %s", target)
++	}
++
++	resp := handler.HandleRequestVote(req)
++	msg.Response = resp
++	msg.Delivered = true
++	t.network.LogMessage(msg)
++
++	return resp, nil
++}
++
++// AppendEntries implements the Transport interface
++func (t *SimTransport) AppendEntries(ctx context.Context, target string, req *raft.AppendEntriesRequest) (*raft.AppendEntriesResponse, error) {
++	msg := Message{
++		From:      t.localID,
++		To:        target,
++		Type:      "AppendEntries",
++		Request:   req,
++		Timestamp: time.Now(),
++	}
++
++	if t.network.IsPartitioned(t.localID, target) {
++		msg.Dropped = true
++		t.network.LogMessage(msg)
++		return nil, fmt.Errorf("node partitioned")
++	}
++
++	if t.network.ShouldDrop() {
++		msg.Dropped = true
++		t.network.LogMessage(msg)
++		return nil, fmt.Errorf("message dropped")
++	}
++
++	delay := t.network.GetDelay()
++	time.Sleep(delay)
++
++	handler, ok := t.handlers[target]
++	if !ok {
++		return nil, fmt.Errorf("unknown target: %s", target)
++	}
++
++	resp := handler.HandleAppendEntries(req)
++	msg.Response = resp
++	msg.Delivered = true
++	t.network.LogMessage(msg)
++
++	return resp, nil
++}
++
++// InstallSnapshot implements the Transport interface
++func (t *SimTransport) InstallSnapshot(ctx context.Context, target string, req *raft.InstallSnapshotRequest) (*raft.InstallSnapshotResponse, error) {
++	msg := Message{
++		From:      t.localID,
++		To:        target,
++		Type:      "InstallSnapshot",
++		Request:   req,
++		Timestamp: time.Now(),
++	}
++
++	if t.network.IsPartitioned(t.localID, target) {
++		msg.Dropped = true
++		t.network.LogMessage(msg)
++		return nil, fmt.Errorf("node partitioned")
++	}
++
++	if t.network.ShouldDrop() {
++		msg.Dropped = true
++		t.network.LogMessage(msg)
++		return nil, fmt.Errorf("message dropped")
++	}
++
++	delay := t.network.GetDelay()
++	time.Sleep(delay)
++
++	handler, ok := t.handlers[target]
++	if !ok {
++		return nil, fmt.Errorf("unknown target: %s", target)
++	}
++
++	resp := handler.HandleInstallSnapshot(req)
++	msg.Response = resp
++	msg.Delivered = true
++	t.network.LogMessage(msg)
++
++	return resp, nil
++}
+\ No newline at end of file
+diff --git a/repository_after/pkg/wal/wal.go b/repository_after/pkg/wal/wal.go
+new file mode 100644
+index 0000000..1ac9bd0
+--- /dev/null
++++ b/repository_after/pkg/wal/wal.go
+@@ -0,0 +1,416 @@
++package wal
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/gob"
++	"fmt"
++	"hash/crc32"
++	"io"
++	"os"
++	"path/filepath"
++	"sync"
++)
++
++type WAL struct {
++	mu               sync.RWMutex
++	dir              string
++	file             *os.File
++	currentTerm      uint64
++	votedFor         string
++	entries          []Entry
++	lastIndex        uint64
++	lastTerm         uint64
++	byteSize         int64
++	byteSizeThreshold int64
++}
++
++type Entry struct {
++	Term    uint64
++	Index   uint64
++	Command []byte
++	Type    EntryType
++}
++
++type EntryType int
++
++const (
++	EntryNormal EntryType = iota
++	EntryConfigChange
++	EntryNoop
++)
++
++type PersistentState struct {
++	CurrentTerm uint64
++	VotedFor    string
++	Entries     []Entry
++}
++
++type SnapshotMetadata struct {
++	LastIncludedIndex uint64
++	LastIncludedTerm  uint64
++	Configuration     []ClusterMember
++}
++
++type ClusterMember struct {
++	NodeID  string
++	Address string
++	Voting  bool
++}
++
++type Snapshot struct {
++	Metadata SnapshotMetadata
++	Data     []byte
++}
++
++const (
++	walFileName           = "raft.wal"
++	snapshotFileName      = "snapshot.dat"
++	recordHeaderSize      = 8
++	DefaultByteSizeThreshold = 10 * 1024 * 1024 // 10MB default
++)
++
++func New(dir string) (*WAL, error) {
++	return NewWithThreshold(dir, DefaultByteSizeThreshold)
++}
++
++func NewWithThreshold(dir string, byteSizeThreshold int64) (*WAL, error) {
++	if err := os.MkdirAll(dir, 0755); err != nil {
++		return nil, fmt.Errorf("failed to create WAL directory: %w", err)
++	}
++	wal := &WAL{
++		dir:              dir,
++		entries:          make([]Entry, 0),
++		byteSizeThreshold: byteSizeThreshold,
++	}
++	if err := wal.recover(); err != nil {
++		return nil, fmt.Errorf("failed to recover WAL: %w", err)
++	}
++	return wal, nil
++}
++
++func (w *WAL) recover() error {
++	w.mu.Lock()
++	defer w.mu.Unlock()
++	if err := w.loadSnapshot(); err != nil && !os.IsNotExist(err) {
++		return err
++	}
++	walPath := filepath.Join(w.dir, walFileName)
++	file, err := os.OpenFile(walPath, os.O_RDWR|os.O_CREATE, 0644)
++	if err != nil {
++		return err
++	}
++	w.file = file
++	if err := w.readEntries(); err != nil && err != io.EOF {
++		return err
++	}
++	return nil
++}
++
++func (w *WAL) readEntries() error {
++	for {
++		header := make([]byte, recordHeaderSize)
++		if _, err := io.ReadFull(w.file, header); err != nil {
++			if err == io.EOF {
++				return nil
++			}
++			return err
++		}
++		crc := binary.LittleEndian.Uint32(header[:4])
++		length := binary.LittleEndian.Uint32(header[4:8])
++		data := make([]byte, length)
++		if _, err := io.ReadFull(w.file, data); err != nil {
++			return err
++		}
++		if crc32.ChecksumIEEE(data) != crc {
++			return fmt.Errorf("CRC mismatch")
++		}
++		var state PersistentState
++		if err := gob.NewDecoder(bytes.NewReader(data)).Decode(&state); err != nil {
++			return err
++		}
++		w.currentTerm = state.CurrentTerm
++		w.votedFor = state.VotedFor
++		w.entries = state.Entries
++		w.byteSize = int64(recordHeaderSize + len(data))
++		if len(w.entries) > 0 {
++			last := w.entries[len(w.entries)-1]
++			w.lastIndex = last.Index
++			w.lastTerm = last.Term
++		}
++	}
++}
++
++func (w *WAL) Save(term uint64, votedFor string, entries []Entry) error {
++	w.mu.Lock()
++	defer w.mu.Unlock()
++	w.currentTerm = term
++	w.votedFor = votedFor
++	w.entries = entries
++	if len(entries) > 0 {
++		last := entries[len(entries)-1]
++		w.lastIndex = last.Index
++		w.lastTerm = last.Term
++	}
++	return w.persist()
++}
++
++func (w *WAL) persist() error {
++	state := PersistentState{CurrentTerm: w.currentTerm, VotedFor: w.votedFor, Entries: w.entries}
++	var buf bytes.Buffer
++	if err := gob.NewEncoder(&buf).Encode(state); err != nil {
++		return err
++	}
++	data := buf.Bytes()
++	w.byteSize = int64(recordHeaderSize + len(data))
++	crc := crc32.ChecksumIEEE(data)
++	header := make([]byte, recordHeaderSize)
++	binary.LittleEndian.PutUint32(header[:4], crc)
++	binary.LittleEndian.PutUint32(header[4:8], uint32(len(data)))
++	if _, err := w.file.Seek(0, 0); err != nil {
++		return err
++	}
++	if err := w.file.Truncate(0); err != nil {
++		return err
++	}
++	if _, err := w.file.Write(header); err != nil {
++		return err
++	}
++	if _, err := w.file.Write(data); err != nil {
++		return err
++	}
++	return w.file.Sync()
++}
++
++func (w *WAL) AppendEntries(entries []Entry) error {
++	w.mu.Lock()
++	defer w.mu.Unlock()
++	w.entries = append(w.entries, entries...)
++	if len(entries) > 0 {
++		last := entries[len(entries)-1]
++		w.lastIndex = last.Index
++		w.lastTerm = last.Term
++	}
++	return w.persist()
++}
++
++func (w *WAL) GetEntries(startIndex, endIndex uint64) []Entry {
++	w.mu.RLock()
++	defer w.mu.RUnlock()
++	if len(w.entries) == 0 {
++		return nil
++	}
++	var result []Entry
++	for _, entry := range w.entries {
++		if entry.Index >= startIndex && entry.Index <= endIndex {
++			result = append(result, entry)
++		}
++	}
++	return result
++}
++
++func (w *WAL) GetEntry(index uint64) *Entry {
++	w.mu.RLock()
++	defer w.mu.RUnlock()
++	for _, entry := range w.entries {
++		if entry.Index == index {
++			return &entry
++		}
++	}
++	return nil
++}
++
++func (w *WAL) GetLastEntry() *Entry {
++	w.mu.RLock()
++	defer w.mu.RUnlock()
++	if len(w.entries) == 0 {
++		return nil
++	}
++	return &w.entries[len(w.entries)-1]
++}
++
++func (w *WAL) GetLastIndex() uint64 {
++	w.mu.RLock()
++	defer w.mu.RUnlock()
++	return w.lastIndex
++}
++
++func (w *WAL) GetLastTerm() uint64 {
++	w.mu.RLock()
++	defer w.mu.RUnlock()
++	return w.lastTerm
++}
++
++func (w *WAL) GetCurrentTerm() uint64 {
++	w.mu.RLock()
++	defer w.mu.RUnlock()
++	return w.currentTerm
++}
++
++func (w *WAL) GetVotedFor() string {
++	w.mu.RLock()
++	defer w.mu.RUnlock()
++	return w.votedFor
++}
++
++func (w *WAL) SetCurrentTerm(term uint64) error {
++	w.mu.Lock()
++	defer w.mu.Unlock()
++	w.currentTerm = term
++	return w.persist()
++}
++
++func (w *WAL) SetVotedFor(votedFor string) error {
++	w.mu.Lock()
++	defer w.mu.Unlock()
++	w.votedFor = votedFor
++	return w.persist()
++}
++
++func (w *WAL) TruncateAfter(index uint64) error {
++	w.mu.Lock()
++	defer w.mu.Unlock()
++	var newEntries []Entry
++	for _, entry := range w.entries {
++		if entry.Index <= index {
++			newEntries = append(newEntries, entry)
++		}
++	}
++	w.entries = newEntries
++	if len(w.entries) > 0 {
++		last := w.entries[len(w.entries)-1]
++		w.lastIndex = last.Index
++		w.lastTerm = last.Term
++	} else {
++		w.lastIndex = 0
++		w.lastTerm = 0
++	}
++	return w.persist()
++}
++
++func (w *WAL) SaveSnapshot(snapshot Snapshot) error {
++	w.mu.Lock()
++	defer w.mu.Unlock()
++	snapshotPath := filepath.Join(w.dir, snapshotFileName)
++	var buf bytes.Buffer
++	if err := gob.NewEncoder(&buf).Encode(snapshot); err != nil {
++		return err
++	}
++	data := buf.Bytes()
++	crc := crc32.ChecksumIEEE(data)
++	header := make([]byte, recordHeaderSize)
++	binary.LittleEndian.PutUint32(header[:4], crc)
++	binary.LittleEndian.PutUint32(header[4:8], uint32(len(data)))
++	file, err := os.Create(snapshotPath)
++	if err != nil {
++		return err
++	}
++	defer file.Close()
++	if _, err := file.Write(header); err != nil {
++		return err
++	}
++	if _, err := file.Write(data); err != nil {
++		return err
++	}
++	if err := file.Sync(); err != nil {
++		return err
++	}
++	// Compact log entries included in snapshot
++	var newEntries []Entry
++	for _, entry := range w.entries {
++		if entry.Index > snapshot.Metadata.LastIncludedIndex {
++			newEntries = append(newEntries, entry)
++		}
++	}
++	w.entries = newEntries
++	return w.persist()
++}
++
++func (w *WAL) LoadSnapshot() (*Snapshot, error) {
++	w.mu.RLock()
++	defer w.mu.RUnlock()
++	var snapshot Snapshot
++	if err := w.loadSnapshotInternal(&snapshot); err != nil {
++		return nil, err
++	}
++	return &snapshot, nil
++}
++
++func (w *WAL) loadSnapshot() error {
++	var snapshot Snapshot
++	return w.loadSnapshotInternal(&snapshot)
++}
++
++func (w *WAL) loadSnapshotInternal(snapshot *Snapshot) error {
++	snapshotPath := filepath.Join(w.dir, snapshotFileName)
++	file, err := os.Open(snapshotPath)
++	if err != nil {
++		return err
++	}
++	defer file.Close()
++	header := make([]byte, recordHeaderSize)
++	if _, err := io.ReadFull(file, header); err != nil {
++		return err
++	}
++	crc := binary.LittleEndian.Uint32(header[:4])
++	length := binary.LittleEndian.Uint32(header[4:8])
++	data := make([]byte, length)
++	if _, err := io.ReadFull(file, data); err != nil {
++		return err
++	}
++	if crc32.ChecksumIEEE(data) != crc {
++		return fmt.Errorf("CRC mismatch in snapshot")
++	}
++	return gob.NewDecoder(bytes.NewReader(data)).Decode(snapshot)
++}
++
++func (w *WAL) GetAllEntries() []Entry {
++	w.mu.RLock()
++	defer w.mu.RUnlock()
++	result := make([]Entry, len(w.entries))
++	copy(result, w.entries)
++	return result
++}
++
++func (w *WAL) Size() int {
++	w.mu.RLock()
++	defer w.mu.RUnlock()
++	return len(w.entries)
++}
++
++// ByteSize returns the current WAL size in bytes
++func (w *WAL) ByteSize() int64 {
++	w.mu.RLock()
++	defer w.mu.RUnlock()
++	return w.byteSize
++}
++
++// NeedsCompaction returns true if WAL exceeds byte size threshold
++func (w *WAL) NeedsCompaction() bool {
++	w.mu.RLock()
++	defer w.mu.RUnlock()
++	return w.byteSize > w.byteSizeThreshold
++}
++
++// SetByteSizeThreshold sets the byte size threshold for compaction
++func (w *WAL) SetByteSizeThreshold(threshold int64) {
++	w.mu.Lock()
++	defer w.mu.Unlock()
++	w.byteSizeThreshold = threshold
++}
++
++// GetByteSizeThreshold returns the byte size threshold
++func (w *WAL) GetByteSizeThreshold() int64 {
++	w.mu.RLock()
++	defer w.mu.RUnlock()
++	return w.byteSizeThreshold
++}
++
++func (w *WAL) Close() error {
++	w.mu.Lock()
++	defer w.mu.Unlock()
++	if w.file != nil {
++		return w.file.Close()
++	}
++	return nil
++}
+\ No newline at end of file
+diff --git a/repository_after/proto/raft.proto b/repository_after/proto/raft.proto
+new file mode 100644
+index 0000000..d67786e
+--- /dev/null
++++ b/repository_after/proto/raft.proto
+@@ -0,0 +1,162 @@
++syntax = "proto3";
++
++package raft;
++
++option go_package = "github.com/vzdtic/raft-kv-store/repository_after/proto";
++
++// Raft RPC Service
++service RaftService {
++    // Vote request for leader election
++    rpc RequestVote(RequestVoteRequest) returns (RequestVoteResponse);
++    
++    // Append entries for log replication and heartbeat
++    rpc AppendEntries(AppendEntriesRequest) returns (AppendEntriesResponse);
++    
++    // Install snapshot for log compaction
++    rpc InstallSnapshot(InstallSnapshotRequest) returns (InstallSnapshotResponse);
++}
++
++// Client KV Service
++service KVService {
++    rpc Set(SetRequest) returns (SetResponse);
++    rpc Get(GetRequest) returns (GetResponse);
++    rpc Delete(DeleteRequest) returns (DeleteResponse);
++}
++
++// Cluster Management Service
++service ClusterService {
++    rpc AddNode(AddNodeRequest) returns (AddNodeResponse);
++    rpc RemoveNode(RemoveNodeRequest) returns (RemoveNodeResponse);
++    rpc GetClusterInfo(GetClusterInfoRequest) returns (GetClusterInfoResponse);
++}
++
++// Log Entry
++message LogEntry {
++    uint64 term = 1;
++    uint64 index = 2;
++    bytes command = 3;
++    EntryType type = 4;
++}
++
++enum EntryType {
++    ENTRY_NORMAL = 0;
++    ENTRY_CONFIG_CHANGE = 1;
++    ENTRY_NOOP = 2;
++}
++
++// RequestVote RPC
++message RequestVoteRequest {
++    uint64 term = 1;
++    string candidate_id = 2;
++    uint64 last_log_index = 3;
++    uint64 last_log_term = 4;
++}
++
++message RequestVoteResponse {
++    uint64 term = 1;
++    bool vote_granted = 2;
++}
++
++// AppendEntries RPC
++message AppendEntriesRequest {
++    uint64 term = 1;
++    string leader_id = 2;
++    uint64 prev_log_index = 3;
++    uint64 prev_log_term = 4;
++    repeated LogEntry entries = 5;
++    uint64 leader_commit = 6;
++}
++
++message AppendEntriesResponse {
++    uint64 term = 1;
++    bool success = 2;
++    uint64 match_index = 3;
++    uint64 conflict_index = 4;
++    uint64 conflict_term = 5;
++}
++
++// InstallSnapshot RPC
++message InstallSnapshotRequest {
++    uint64 term = 1;
++    string leader_id = 2;
++    uint64 last_included_index = 3;
++    uint64 last_included_term = 4;
++    bytes data = 5;
++    repeated ClusterMember configuration = 6;
++}
++
++message InstallSnapshotResponse {
++    uint64 term = 1;
++}
++
++// Client KV Messages
++message SetRequest {
++    string key = 1;
++    bytes value = 2;
++    string client_id = 3;
++    uint64 request_id = 4;
++}
++
++message SetResponse {
++    bool success = 1;
++    string error = 2;
++    string leader_hint = 3;
++}
++
++message GetRequest {
++    string key = 1;
++    bool linearizable = 2;
++}
++
++message GetResponse {
++    bool found = 1;
++    bytes value = 2;
++    string error = 3;
++    string leader_hint = 4;
++}
++
++message DeleteRequest {
++    string key = 1;
++    string client_id = 2;
++    uint64 request_id = 3;
++}
++
++message DeleteResponse {
++    bool success = 1;
++    string error = 2;
++    string leader_hint = 3;
++}
++
++// Cluster Management Messages
++message ClusterMember {
++    string node_id = 1;
++    string address = 2;
++    bool voting = 3;
++}
++
++message AddNodeRequest {
++    string node_id = 1;
++    string address = 2;
++}
++
++message AddNodeResponse {
++    bool success = 1;
++    string error = 2;
++}
++
++message RemoveNodeRequest {
++    string node_id = 1;
++}
++
++message RemoveNodeResponse {
++    bool success = 1;
++    string error = 2;
++}
++
++message GetClusterInfoRequest {}
++
++message GetClusterInfoResponse {
++    string leader_id = 1;
++    uint64 term = 2;
++    repeated ClusterMember members = 3;
++}
+\ No newline at end of file
