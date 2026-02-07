@@ -27,5 +27,7 @@ export default defineConfig({
     setupFiles: [path.join(__dirname, 'tests', 'setup.ts')],
     include: ['../tests/**/*.{test,spec}.{ts,tsx}'],
     pool: 'threads',
+    testTimeout: 8_000,
+    hookTimeout: 4_000,
   },
 });

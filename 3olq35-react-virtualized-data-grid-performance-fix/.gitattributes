@@ -1,0 +1,3 @@
+# Ensure scripts run in Docker/Linux have LF (no CRLF)
+*.mjs text eol=lf
+evaluation/*.mjs text eol=lf

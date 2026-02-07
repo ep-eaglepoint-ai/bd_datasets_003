@@ -1,8 +1,8 @@
 {
   "private": true,
   "name": "data-grid-task",
-  "workspaces": [
-    "repository_before",
-    "repository_after"
-  ]
+  "workspaces": ["repository_before", "repository_after"],
+  "scripts": {
+    "evaluate": "node evaluation/evaluation.js"
+  }
 }

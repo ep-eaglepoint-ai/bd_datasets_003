@@ -3,7 +3,4 @@ services:
     build: .
     working_dir: /app
     volumes:
-      - node_modules_cache:/app/node_modules
-
-volumes:
-  node_modules_cache:
+      - ./evaluation:/app/evaluation
