@@ -1,11 +1,10 @@
 # CCQS9L - Semantic Version Comparator in Go
 
     ## Before Test Docker Command
-    <docker before command here>
 
     ## After Test Docker Command
-    <docker after command here>
+    docker compose run --rm app go test tests/semver_meta_test.go
 
     ## Evaluation Docker Command
-    <evaluation command here>
+    docekr compose run --rm app
     
