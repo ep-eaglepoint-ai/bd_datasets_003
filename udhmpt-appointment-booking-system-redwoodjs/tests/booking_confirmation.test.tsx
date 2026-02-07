@@ -13,7 +13,7 @@ describe('Booking confirmation screen', () => {
     expect(screen.getByText('Booking confirmed!')).toBeInTheDocument();
     expect(screen.getByTestId('booking-reference')).toHaveTextContent(`Reference: ${reference}`);
     expect(screen.getByTestId('booking-confirmation-message')).toHaveTextContent('booked successfully');
-  });  
+  }); 
 
   test('displays service name and time when provided', () => {
     const reference = 'REF-ABC-123';
