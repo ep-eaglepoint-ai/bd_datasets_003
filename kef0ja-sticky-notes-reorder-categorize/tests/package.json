@@ -1,0 +1,27 @@
+{
+  "name": "sticky-notes-refactor-project",
+  "version": "1.0.0",
+  "scripts": {
+    "test": "cross-env REPO_PATH=repository_after npx jest --watchAll=false --testTimeout=10000 --silent",
+    "test:before": "cross-env REPO_PATH=repository_before npx jest --watchAll=false --testTimeout=10000 --silent",
+    "test:after": "cross-env REPO_PATH=repository_after npx jest --watchAll=false --testTimeout=10000 --silent"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.21.0",
+    "@babel/preset-env": "^7.21.0",
+    "@babel/preset-react": "^7.18.0",
+    "@jest/globals": "^29.7.0",
+    "@testing-library/jest-dom": "^5.17.0",
+    "@testing-library/react": "^13.4.0",
+    "@testing-library/user-event": "^13.5.0",
+    "babel-jest": "^29.0.0",
+    "cross-env": "^7.0.3",
+    "expect": "^29.7.0",
+    "identity-obj-proxy": "^3.0.0",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.0.0",
+    "jest-transform-stub": "^2.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  }
+}

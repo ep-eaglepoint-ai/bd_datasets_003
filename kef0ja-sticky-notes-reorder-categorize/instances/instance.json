@@ -1,0 +1,11 @@
+{
+            "instance_id": "KEF0JA",
+            "problem_statement": "The existing sticky notes app allows users to create, edit, delete, and color-code notes with auto-saving. However, as a productivity tool, it lacks advanced organizational features needed for project planning. Users cannot reorder notes intuitively or categorize them effectively, making it difficult to prioritize tasks and visualize projects. The goal is to add drag-and-drop reordering and a categories/tags system while preserving existing functionality and localStorage data.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/kef0ja-sticky-notes-reorder-categorize",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
