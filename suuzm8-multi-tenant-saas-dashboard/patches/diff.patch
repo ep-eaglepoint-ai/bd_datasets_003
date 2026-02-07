@@ -5708,12 +5708,17 @@ index 0000000..4263d3b
 +}
 diff --git a/repository_after/client/src/App.tsx b/repository_after/client/src/App.tsx
 new file mode 100644
-index 0000000..b250b62
+index 0000000..1b2fbb7
 --- /dev/null
 +++ b/repository_after/client/src/App.tsx
-@@ -0,0 +1,76 @@
+@@ -0,0 +1,81 @@
 +import React from "react";
-+import { QueryClient, QueryClientProvider, dehydrate, hydrate } from "@tanstack/react-query";
++import {
++  QueryClient,
++  QueryClientProvider,
++  dehydrate,
++  hydrate,
++} from "@tanstack/react-query";
 +import { BrowserRouter, Route, Routes } from "react-router-dom";
 +import { JoinPage } from "./JoinPage";
 +import { OrganizationsPage } from "./OrganizationsPage";
@@ -6566,7 +6571,7 @@ index 0000000..ac7a1c5
 Binary files /dev/null and b/repository_after/server/organizations/__pycache__/auth.cpython-311.pyc differ
 diff --git a/repository_after/server/organizations/__pycache__/models.cpython-311.pyc b/repository_after/server/organizations/__pycache__/models.cpython-311.pyc
 new file mode 100644
-index 0000000..db75b28
+index 0000000..d8a2ce6
 Binary files /dev/null and b/repository_after/server/organizations/__pycache__/models.cpython-311.pyc differ
 diff --git a/repository_after/server/organizations/__pycache__/permissions.cpython-311.pyc b/repository_after/server/organizations/__pycache__/permissions.cpython-311.pyc
 new file mode 100644
@@ -6574,7 +6579,7 @@ index 0000000..0de48eb
 Binary files /dev/null and b/repository_after/server/organizations/__pycache__/permissions.cpython-311.pyc differ
 diff --git a/repository_after/server/organizations/__pycache__/serializers.cpython-311.pyc b/repository_after/server/organizations/__pycache__/serializers.cpython-311.pyc
 new file mode 100644
-index 0000000..bd7287f
+index 0000000..7c2681f
 Binary files /dev/null and b/repository_after/server/organizations/__pycache__/serializers.cpython-311.pyc differ
 diff --git a/repository_after/server/organizations/__pycache__/throttling.cpython-311.pyc b/repository_after/server/organizations/__pycache__/throttling.cpython-311.pyc
 new file mode 100644
@@ -6586,7 +6591,7 @@ index 0000000..bd2b5a7
 Binary files /dev/null and b/repository_after/server/organizations/__pycache__/urls.cpython-311.pyc differ
 diff --git a/repository_after/server/organizations/__pycache__/views.cpython-311.pyc b/repository_after/server/organizations/__pycache__/views.cpython-311.pyc
 new file mode 100644
-index 0000000..93069aa
+index 0000000..813f59a
 Binary files /dev/null and b/repository_after/server/organizations/__pycache__/views.cpython-311.pyc differ
 diff --git a/repository_after/server/organizations/apps.py b/repository_after/server/organizations/apps.py
 new file mode 100644
@@ -7722,7 +7727,7 @@ index 0000000..f92572d
 +]
 diff --git a/repository_after/server/organizations/views.py b/repository_after/server/organizations/views.py
 new file mode 100644
-index 0000000..f4d1e2e
+index 0000000..fefc05c
 --- /dev/null
 +++ b/repository_after/server/organizations/views.py
 @@ -0,0 +1,309 @@
@@ -7801,7 +7806,7 @@ index 0000000..f4d1e2e
 +
 +    def get_queryset(self):
 +        org = self.get_organization()
-+        return OrganizationMembership.objects.filter(organization=org).select_related("user")
++        return OrganizationMembership.objects.filter(organization=org).select_related("user", "organization")
 +
 +    def get_permissions(self):
 +        if self.action in {"list", "retrieve"}:
