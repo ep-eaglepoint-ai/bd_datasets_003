@@ -1,6 +1,9 @@
 services:
   app:
     build: .
-    command: pytest -q tests
+    command: python -m pytest -q tests
     volumes:
-      - .:/app
+      - ./repository_after:/app/repository_after
+      - ./repository_before:/app/repository_before
+      - ./tests:/app/tests
+      - ./evaluation:/app/evaluation

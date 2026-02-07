@@ -1,7 +1,7 @@
 # 9AJV9V -  Basic ReAct Loop with Error Feedback
 
 ```bash
-docker compose run --rm -e PYTHONPATH=/app/repository_after app pytest -q
+docker compose run --rm -e PYTHONPATH=/app/repository_after app python -m pytest -q tests
 ```
 
 ```bash
