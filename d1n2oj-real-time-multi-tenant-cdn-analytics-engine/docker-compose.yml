@@ -49,4 +49,5 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  
+volumes:
+  clickhouse_data:
