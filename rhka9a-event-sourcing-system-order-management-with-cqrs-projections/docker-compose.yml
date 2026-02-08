@@ -1,0 +1,65 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: event_sourcing_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: mvn test -f pom.xml
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/event_sourcing_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+    volumes:
+      - ~/.m2:/root/.m2
+
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: mvn test -f pom.xml
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/event_sourcing_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_JPA_DATABASE_PLATFORM: org.hibernate.dialect.H2Dialect
+    volumes:
+      - ~/.m2:/root/.m2
+
+  evaluation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: sh -c "CP=$$(mvn -q dependency:build-classpath -f pom.xml -Dmdep.outputFile=/dev/stdout 2>/dev/null || echo ''):target/classes:evaluation && java -cp \"$$CP\" com.example.evaluation.Evaluation"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/event_sourcing_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+    volumes:
+      - ./evaluation/reports:/app/evaluation/reports
+
+volumes:
+  postgres_data:
