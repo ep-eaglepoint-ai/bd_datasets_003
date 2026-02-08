@@ -1,0 +1,6 @@
+pandas
+pybloom_live
+memory_profiler
+psutil
+pytest
+pytest-json-report
