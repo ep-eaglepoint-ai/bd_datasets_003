@@ -48,3 +48,5 @@ services:
       clickhouse:
         condition: service_healthy
     restart: unless-stopped
+
+  
