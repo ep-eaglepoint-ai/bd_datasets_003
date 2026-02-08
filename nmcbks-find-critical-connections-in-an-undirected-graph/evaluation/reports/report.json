@@ -1,0 +1,34 @@
+{
+  "run_id": "dc1f250c-1a9a-4bf4-92fe-d3621672cd28",
+  "started_at": "2026-02-08T12:04:42.523925",
+  "finished_at": "2026-02-08T12:04:43.531777",
+  "duration_seconds": 1.007852,
+  "environment": {
+    "python_version": "3.11.14 (main, Feb  4 2026, 20:24:25) [GCC 14.2.0]",
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.41",
+    "architecture": "x86_64",
+    "processor": ""
+  },
+  "before": {
+    "tests": {
+      "passed": false,
+      "return_code": 4,
+      "output": "============================= test session starts ==============================\nplatform linux -- Python 3.11.14, pytest-7.4.3, pluggy-1.6.0 -- /usr/local/bin/python\ncachedir: .pytest_cache\nmetadata: {'Python': '3.11.14', 'Platform': 'Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.41', 'Packages': {'pytest': '7.4.3', 'pluggy': '1.6.0'}, 'Plugins': {'metadata': '3.1.1', 'json-report': '1.5.0'}}\nrootdir: /app/repository_before\nplugins: metadata-3.1.1, json-report-1.5.0\ncollecting ... collected 0 items\n\n--------------------------------- JSON report ----------------------------------\nreport saved to: test_report.json\n============================ no tests ran in 0.02s =============================\nERROR: file or directory not found: test/\n\n"
+    },
+    "metrics": {}
+  },
+  "after": {
+    "tests": {
+      "passed": true,
+      "return_code": 0,
+      "output": "============================= test session starts ==============================\nplatform linux -- Python 3.11.14, pytest-7.4.3, pluggy-1.6.0 -- /usr/local/bin/python\ncachedir: .pytest_cache\nmetadata: {'Python': '3.11.14', 'Platform': 'Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.41', 'Packages': {'pytest': '7.4.3', 'pluggy': '1.6.0'}, 'Plugins': {'metadata': '3.1.1', 'json-report': '1.5.0'}}\nrootdir: /app/repository_after\nplugins: metadata-3.1.1, json-report-1.5.0\ncollecting ... collected 2 items\n\ntest/test_solution.py::TestBridgeFinding::test_parallel_edges PASSED     [ 50%]\ntest/test_solution.py::TestBridgeFinding::test_sorting_complex PASSED    [100%]\n\n--------------------------------- JSON report ----------------------------------\nreport saved to: test_report.json\n============================== 2 passed in 0.13s ===============================\n"
+    },
+    "metrics": {}
+  },
+  "comparison": {
+    "passed_gate": true,
+    "summary": "All tests passed and met requirements."
+  },
+  "success": true,
+  "error": null
+}
