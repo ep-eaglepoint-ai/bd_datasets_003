@@ -1,20 +1,19 @@
 version: 0.2
+
 phases:
   pre_build:
     commands:
-      - echo Building Docker image
-      - cd x7yx6p-industrial-weighbridge-auto-zeroing-and-stability-detection
-      - docker compose build
+      - echo "Building Docker image"
+      - cd x7yx6p-industrial-weighbridge-auto-zeroing-and-stability-detection && docker compose build
   build:
     commands:
-      - echo Running after tests
-      - cd x7yx6p-industrial-weighbridge-auto-zeroing-and-stability-detection
-      - docker compose run --rm -e REPO_PATH=repository_after app bash -c "cd tests && cp ../repository_after/main.go . && go test -v ."
+      - echo "Running after tests"
+      - cd x7yx6p-industrial-weighbridge-auto-zeroing-and-stability-detection && docker compose run --rm -e REPO_PATH=repository_after app bash -c "cd tests && cp ../repository_after/main.go . && go test -v ."
   post_build:
     commands:
-      - echo Running evaluation
-      - cd x7yx6p-industrial-weighbridge-auto-zeroing-and-stability-detection
-      - docker compose run --rm app bash -c "cd evaluation && go mod tidy && go run evaluate.go"
+      - echo "Running evaluation"
+      - cd x7yx6p-industrial-weighbridge-auto-zeroing-and-stability-detection && docker compose run --rm app bash -c "cd evaluation && go mod tidy && go run evaluate.go"
+
 artifacts:
   files:
     - "**/*"
