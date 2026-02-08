@@ -1,4 +1,4 @@
-version: "3.9"
+
 
 services:
   app:
@@ -10,6 +10,7 @@ services:
       
       - ./repository_after:/app/repository_after:cached
       - ./tests:/app/tests:cached
+      - ./evaluation:/app/evaluation
       
     environment:
       - NODE_ENV=test
