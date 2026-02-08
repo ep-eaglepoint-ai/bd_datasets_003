@@ -1,0 +1,6 @@
+services:
+  app:
+    build: .
+    command: npm test
+    volumes:
+      - ./evaluation:/app/evaluation
