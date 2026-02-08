@@ -1,0 +1,14 @@
+
+services:
+  app:
+    build: .
+    working_dir: /app
+    command: mvn -q test -Drepo=after
+    volumes:
+      - .:/app
+  evaluation:
+    build: .
+    working_dir: /app
+    command: sh -c "mkdir -p target/eval-classes && javac -d target/eval-classes evaluation/Evaluation.java && java -cp target/eval-classes evaluation.Evaluation"
+    volumes:
+      - .:/app

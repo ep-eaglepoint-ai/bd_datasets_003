@@ -1,0 +1,29 @@
+{
+            "instance_id": "M4M6AB",
+            "problem_statement": "Optimize a Java-based financial symbol lookup service to reduce p99 latency. The current implementation uses an O(N) linear search through a large list of market symbols, causing significant delays during high-frequency trading updates. update to O(1)",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/m4m6ab-high-throughput-symbol-lookup-optimizer",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [
+                "MarketRegistryStructureTest#usesHashBasedLookupStructure",
+                "MarketRegistryStructureTest#usesThreadSafeCollectionForQueriesWhenRequired",
+                "MarketRegistryConcurrencyTest#supportsConcurrentReadsAndSymbolLoads",
+                "MarketRegistryEdgeCasesTest#loadSymbolsAllowsNullElementsInList"
+            ],
+            "PASS_TO_PASS": [
+                "MarketRegistryBenchmarkTest#benchmarkDemonstratesO1OutperformsON",
+                "MarketRegistryCorrectnessTest#returnsTickerForExistingId",
+                "MarketRegistryCorrectnessTest#returnsNullForMissingId",
+                "MarketRegistryCorrectnessTest#supportsMultipleInternalIdsMappingToSameTicker",
+                "MarketRegistryEdgeCasesTest#emptyRegistryReturnsNullForAnyId",
+                "MarketRegistryEdgeCasesTest#getTickerByIdWithNullIdReturnsNull",
+                "MarketRegistryEdgeCasesTest#multipleLoadsAccumulateSymbolsWithNonOverlappingIds",
+                "MarketRegistryEdgeCasesTest#duplicateInternalIdsPreserveFirstMatchSemantics",
+                "MarketRegistryEdgeCasesTest#loadSymbolsWithNullThrowsNullPointerException",
+                "MarketRegistryEdgeCasesTest#symbolRecordConstructorAllowsNulls",
+                "MarketRegistryInitPerformanceTest#loadSymbolsForHundredThousandEntriesCompletesWithinReasonableTime",
+                "MarketRegistryMemoryTest#registryWithHundredThousandSymbolsStaysWithinMemoryLimit"
+            ]
+        }
+        

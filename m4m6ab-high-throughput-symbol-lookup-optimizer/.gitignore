@@ -1,0 +1,10 @@
+# Java
+target/
+.mvn/
+
+# Task Specific
+reports/
+
+# OS
+.DS_Store
+evaluation/*.json
