@@ -1,8 +1,23 @@
-# Docker Compose file for running tests. You should customize this as needed.
+version: "3.9"
 
 services:
   app:
-    build: .
-    command: pytest -q tests
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /app
     volumes:
-      - .:/app
+      # Mount source code for live reload / watching
+      - ./repository_after:/app/repository_after:cached
+      - ./tests:/app/tests:cached
+      # Optional: mount node_modules to avoid re-install on host
+      # - node_modules:/app/node_modules
+    environment:
+      - NODE_ENV=test
+      - CI=false                     # allows colors in terminal
+    tty: true                        # better terminal experience
+    stdin_open: true
+
+# Optional named volume if you uncomment the node_modules mount above
+# volumes:
+#   node_modules:
