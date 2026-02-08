@@ -1,33 +1,22 @@
 version: 0.2
 
 phases:
-  install:
-    runtime-versions:
-      go: 1.18
-    commands:
-      - echo "Installing dependencies..."
-      - cd tests && go mod tidy
-      - cd ../evaluation && go mod tidy
-
   pre_build:
     commands:
-      - echo "Preparing test environment..."
-      - cd tests
-      - cp ../repository_after/main.go .
+      - echo "Building Docker image..."
+      - cd x7yx6p-industrial-weighbridge-auto-zeroing-and-stability-detection
+      - docker compose build
 
   build:
     commands:
-      - echo "Running tests..."
-      - cd tests
-      - go test -v .
+      - echo "Running after tests..."
+      - docker compose run --rm -e REPO_PATH=repository_after app bash -c "cd tests && cp ../repository_after/main.go . && go test -v ."
 
   post_build:
     commands:
       - echo "Running evaluation..."
-      - cd evaluation
-      - go run evaluate.go
+      - docker compose run --rm app bash -c "cd evaluation && go mod tidy && go run evaluate.go"
 
 artifacts:
   files:
-    - evaluation/reports/report.json
-
+    - "**/*"
