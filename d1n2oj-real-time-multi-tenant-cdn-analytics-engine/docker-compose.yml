@@ -1,11 +1,11 @@
 services:
-  # ───────────────────────── ClickHouse ─────────────────────────
+
   clickhouse:
     image: clickhouse/clickhouse-server:24.3-alpine
     container_name: cdn-clickhouse
     ports:
-      - "8123:8123"   # HTTP interface
-      - "9000:9000"   # Native TCP interface
+      - "8123:8123"   
+      - "9000:9000"   
     environment:
       CLICKHOUSE_DB: cdn_analytics
       CLICKHOUSE_USER: default
@@ -26,7 +26,7 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  # ───────────────────────── Production App ─────────────────────
+
   app:
     build:
       context: .
@@ -49,7 +49,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # ───────────────────────── Dev (hot-reload) ───────────────────
+
   dev:
     image: golang:1.25-alpine
     container_name: cdn-analytics-dev
