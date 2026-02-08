@@ -1,4 +1,4 @@
-# Engineering Trajectory: Event Sourcing System with CQRS Projections
+# Trajectory: Event Sourcing System with CQRS Projections
 
 ## 1. Problem Statement
 
