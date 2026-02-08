@@ -1,0 +1,41 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String           @id @default(uuid())
+  email           String           @unique
+  name            String
+  password        String           // Added for basic auth
+  created_at      DateTime         @default(now())
+  documents       Document[]       @relation("DocumentOwner")
+  documentAccess  DocumentAccess[]
+}
+
+model Document {
+  id              String           @id @default(uuid())
+  title           String
+  content         String?
+  owner           User             @relation("DocumentOwner", fields: [owner_id], references: [id])
+  owner_id        String
+  created_at      DateTime         @default(now())
+  updated_at      DateTime         @updatedAt
+  access          DocumentAccess[]
+}
+
+model DocumentAccess {
+  id              String           @id @default(uuid())
+  document        Document         @relation(fields: [document_id], references: [id], onDelete: Cascade)
+  document_id     String
+  user            User             @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user_id         String
+  permission      String           // "view" or "edit"
+  created_at      DateTime         @default(now())
+
+  @@unique([document_id, user_id])
+}
