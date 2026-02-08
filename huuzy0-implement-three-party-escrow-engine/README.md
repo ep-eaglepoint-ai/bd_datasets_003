@@ -7,5 +7,6 @@ docker compose run --rm test
 docker compose run --rm test-report
 
 This command also writes:
-- `evaluation/reports/report.json` (standard evaluation report)
+- `evaluation/report.xml` (JUnit XML)
+- `evaluation/report.json` (JSON metadata used by evaluators)
     

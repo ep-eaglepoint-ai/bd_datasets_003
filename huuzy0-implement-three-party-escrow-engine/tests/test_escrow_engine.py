@@ -1,18 +1,16 @@
 from __future__ import annotations
 
 import copy
-import os
 import sys
 from pathlib import Path
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-REPO_NAME = os.environ.get("EVAL_REPO", "repository_after")
-REPO_PATH = REPO_ROOT / REPO_NAME
-sys.path.insert(0, str(REPO_PATH))
+REPO_AFTER = REPO_ROOT / "repository_after"
+sys.path.insert(0, str(REPO_AFTER))
 
-from escrow_engine import EscrowEngine, StateError
+from escrow_engine import EscrowEngine, StateError  
 
 
 def test_invariant_false_before_deposit() -> None:

@@ -2,13 +2,16 @@ services:
   test:
     build: .
     environment:
-      - EVAL_REPO=repository_after
+      - PYTHONPATH=/app/repository_after
     command: pytest -q tests
     volumes:
       - .:/app
 
   test-report:
     build: .
-    command: python evaluation/evaluation.py
+    environment:
+      - PYTHONPATH=/app/repository_after
+    command: >-
+      sh -c "pytest -q tests --junitxml=/app/evaluation/report.xml; code=$?; python evaluation/generate_report_json.py $code; exit 0"
     volumes:
       - .:/app

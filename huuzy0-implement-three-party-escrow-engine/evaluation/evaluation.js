@@ -57,23 +57,7 @@ function reportXmlPaths() {
 }
 
 function reportJsonPath() {
-  return path.join(projectRoot(), "evaluation", "reports", "report.json");
-}
-
-function runPythonEvaluation() {
-  const res = spawnSync("python", [path.join("evaluation", "evaluation.py")], {
-    cwd: projectRoot(),
-    encoding: "utf8",
-    maxBuffer: 10 * 1024 * 1024,
-  });
-  return {
-    command: "python evaluation/evaluation.py",
-    code: typeof res.status === "number" ? res.status : null,
-    signal: res.signal || null,
-    stdout: res.stdout || "",
-    stderr: res.stderr || "",
-    error: res.error ? String(res.error && res.error.message ? res.error.message : res.error) : null,
-  };
+  return path.join(projectRoot(), "evaluation", "report.json");
 }
 
 function runDockerCompose(args) {
@@ -100,26 +84,38 @@ function truncate(s, maxChars) {
 }
 
 function main() {
-  const exec = runPythonEvaluation();
-  const reportPath = reportJsonPath();
-  const report = safeReadFile(reportPath);
-  const ok = exec.code === 0;
+  const results = {
+    ok: true,
+    test: null,
+    test_report: null,
+    report_url: "No report available",
+    report_content: "",
+  };
+  results.test = runDockerCompose(["run", "--rm", "test"]);
+  if (results.test.code !== 0) results.ok = false;
+  results.test_report = runDockerCompose(["run", "--rm", "test-report"]);
+  if (results.test_report.code !== 0) results.ok = false;
+  const { primary, fallback } = reportXmlPaths();
+  const xml = safeReadFile(primary) ?? safeReadFile(fallback);
 
-  if (!report) {
-    const fallback = {
-      ok: false,
-      error: exec.error || "Failed to generate report.json",
-      logs: {
-        stdout: truncate(exec.stdout, 50_000),
-        stderr: truncate(exec.stderr, 50_000),
-      },
-    };
-    safeWriteFile(reportPath, JSON.stringify(fallback, null, 2));
-    safeStdout(JSON.stringify({ ok: false, report_url: "evaluation/reports/report.json" }));
-    process.exit(0);
+  if (xml) {
+    results.report_url = fs.existsSync(primary) ? "evaluation/report.xml" : "report.xml";
+    results.report_content = truncate(xml, 200_000);
+  } else {
+    results.ok = false;
+    results.report_url = "No report available";
+    results.report_content = "Error: report.xml not found";
   }
 
-  safeStdout(JSON.stringify({ ok, report_url: "evaluation/reports/report.json" }));
+  results.logs = {
+    test_stdout: truncate(results.test.stdout, 50_000),
+    test_stderr: truncate(results.test.stderr, 50_000),
+    report_stdout: truncate(results.test_report.stdout, 50_000),
+    report_stderr: truncate(results.test_report.stderr, 50_000),
+  };
+
+  safeWriteFile(reportJsonPath(), JSON.stringify(results, null, 2));
+  safeStdout(JSON.stringify({ ok: results.ok, report_url: results.report_url }));
   process.exit(0);
 }
 

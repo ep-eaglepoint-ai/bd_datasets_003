@@ -4,4 +4,5 @@ Run:
 - `node evaluation/evaluation.js`
 
 Outputs:
-- `evaluation/reports/report.json`
+- `evaluation/report.json`
+- `evaluation/report.xml` (JUnit XML; generated via `docker compose run --rm test-report`)
