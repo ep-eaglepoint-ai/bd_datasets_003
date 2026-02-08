@@ -48,6 +48,11 @@ const activeSubscriptions = new client.Gauge({
 });
 register.registerMetric(activeSubscriptions);
 
+// Export for use in resolvers
+export function getPermissionDenialsCounter() {
+    return permissionDenials;
+}
+
 async function startServer() {
     const app = express();
     const httpServer = createServer(app);
@@ -91,6 +96,7 @@ async function startServer() {
                 }
 
                 (ctx.extra as any).user = user;
+                (ctx.extra as any).joinedDocuments = new Set<string>();
                 activeConnections.inc();
                 return true;
             },
@@ -103,12 +109,84 @@ async function startServer() {
                     // Cleanup subscription metrics would need onSubscribe/onNext tracking
                 }
             },
-            onSubscribe: (ctx, msg) => {
+            onSubscribe: async (ctx, msg) => {
                 const docId = (msg.payload.variables as any)?.documentId;
-                if (docId) {
+                const user = (ctx.extra as any).user;
+                
+                if (docId && user) {
                     const opType = (msg.payload.query.includes('documentChanged') ? 'documentChanged' :
                         msg.payload.query.includes('presenceUpdated') ? 'presenceUpdated' : 'cursorMoved');
                     activeSubscriptions.inc({ documentId: docId, type: opType });
+
+                    // Track subscription metadata for cleanup
+                    const subscriptionMeta = (ctx.extra as any).subscriptionMeta || new Map();
+                    subscriptionMeta.set(msg.id, { documentId: docId, type: opType });
+                    (ctx.extra as any).subscriptionMeta = subscriptionMeta;
+
+                    // Track document join for presence broadcasting
+                    const joinedDocs = (ctx.extra as any).joinedDocuments as Set<string>;
+                    if (!joinedDocs.has(docId)) {
+                        joinedDocs.add(docId);
+                        
+                        // Publish join event
+                        const { pubsub } = await import('./pubsub/redis.js');
+                        const { PresenceService } = await import('./services/presence.js');
+                        
+                        const presence = await PresenceService.getPresence(docId);
+                        pubsub.publish(`PRESENCE_UPDATED.${docId}`, {
+                            presenceUpdated: {
+                                documentId: docId,
+                                users: presence,
+                                type: 'join',
+                                userId: user.userId,
+                            },
+                        });
+                    }
+                }
+            },
+            onComplete: async (ctx, msg) => {
+                const user = (ctx.extra as any).user;
+                const subscriptionMeta = (ctx.extra as any).subscriptionMeta as Map<string, any>;
+                
+                if (subscriptionMeta && subscriptionMeta.has(msg.id)) {
+                    const meta = subscriptionMeta.get(msg.id);
+                    const docId = meta.documentId;
+                    const opType = meta.type;
+                    
+                    // Decrement subscription metric
+                    activeSubscriptions.dec({ documentId: docId, type: opType });
+                    
+                    // Check if this was the last subscription to this document
+                    const joinedDocs = (ctx.extra as any).joinedDocuments as Set<string>;
+                    let hasOtherSubs = false;
+                    for (const [id, m] of subscriptionMeta.entries()) {
+                        if (id !== msg.id && m.documentId === docId) {
+                            hasOtherSubs = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!hasOtherSubs && joinedDocs.has(docId)) {
+                        joinedDocs.delete(docId);
+                        
+                        // Publish leave event
+                        const { pubsub } = await import('./pubsub/redis.js');
+                        const { PresenceService } = await import('./services/presence.js');
+                        
+                        await PresenceService.removePresence(docId, user.userId);
+                        const presence = await PresenceService.getPresence(docId);
+                        
+                        pubsub.publish(`PRESENCE_UPDATED.${docId}`, {
+                            presenceUpdated: {
+                                documentId: docId,
+                                users: presence,
+                                type: 'leave',
+                                userId: user.userId,
+                            },
+                        });
+                    }
+                    
+                    subscriptionMeta.delete(msg.id);
                 }
             },
         },
@@ -117,22 +195,36 @@ async function startServer() {
 
     // Heartbeat Mechanism (30s ping, 90s cleanup)
     const heartbeatInterval = setInterval(() => {
+        const now = Date.now();
         wsServer.clients.forEach((ws: any) => {
-            if (ws.isAlive === false) {
-                console.log('Terminating inactive connection');
+            // Check if 90 seconds have passed since last pong
+            if (ws.lastPongTime && (now - ws.lastPongTime) > 90000) {
+                console.log('Terminating inactive connection (90s timeout)');
                 return ws.terminate();
             }
-            ws.isAlive = false;
             ws.ping();
         });
     }, 30000);
 
     // Backpressure Monitoring & Heartbeat Init
     wsServer.on('connection', (socket: any) => {
-        socket.isAlive = true;
+        socket.lastPongTime = Date.now();
         socket.on('pong', () => {
-            socket.isAlive = true;
+            socket.lastPongTime = Date.now();
         });
+
+        // Store original send method
+        const originalSend = socket.send.bind(socket);
+        
+        // Override send to respect backpressure
+        socket.send = function(data: any, callback?: any) {
+            if (socket._isPaused) {
+                console.warn('Dropping message for slow consumer');
+                if (callback) callback(new Error('Consumer paused due to backpressure'));
+                return;
+            }
+            originalSend(data, callback);
+        };
 
         // Backpressure: Monitor buffer and pause if necessary
         const checkBackpressure = setInterval(() => {
@@ -140,8 +232,6 @@ async function startServer() {
                 if (!socket._isPaused) {
                     console.warn('Pausing slow consumer');
                     socket._isPaused = true;
-                    // Unfortunately graphql-ws doesn't expose a simple pause for emissions.
-                    // But standard approach is to let the buffer drain and only continue when it's below a threshold.
                 }
             } else if (socket._isPaused && socket.bufferedAmount < BACKPRESSURE_THRESHOLD / 2) {
                 console.log('Resuming consumer');

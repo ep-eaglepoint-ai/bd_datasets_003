@@ -7,7 +7,7 @@ const DOCUMENT_CHANGED = 'DOCUMENT_CHANGED';
 const PRESENCE_UPDATED = 'PRESENCE_UPDATED';
 const CURSOR_MOVED = 'CURSOR_MOVED';
 
-async function validateAccess(documentId: string, userId: string) {
+async function validateAccess(documentId: string, userId: string, incrementMetric = false) {
     const doc = await prisma.document.findUnique({
         where: { id: documentId },
         include: { access: true },
@@ -15,7 +15,15 @@ async function validateAccess(documentId: string, userId: string) {
     if (!doc) throw new Error('Document not found');
     const hasAccess = doc.owner_id === userId ||
         doc.access.some(a => a.user_id === userId);
-    if (!hasAccess) throw new Error('Unauthorized');
+    if (!hasAccess) {
+        if (incrementMetric) {
+            // Import dynamically to avoid circular dependency
+            const { getPermissionDenialsCounter } = await import('../index.js');
+            const counter = getPermissionDenialsCounter();
+            if (counter) counter.inc();
+        }
+        throw new Error('Unauthorized');
+    }
     return doc;
 }
 
@@ -23,7 +31,7 @@ export const resolvers = {
     Query: {
         document: async (_: any, { id }: { id: string }, context: any) => {
             if (!context.user) throw new Error('Unauthenticated');
-            return validateAccess(id, context.user.userId);
+            return validateAccess(id, context.user.userId, true);
         },
         documents: async (_: any, __: any, context: any) => {
             if (!context.user) throw new Error('Unauthenticated');
@@ -38,7 +46,7 @@ export const resolvers = {
         },
         documentPresence: async (_: any, { documentId }: { documentId: string }, context: any) => {
             if (!context.user) throw new Error('Unauthenticated');
-            await validateAccess(documentId, context.user.userId);
+            await validateAccess(documentId, context.user.userId, true);
             return PresenceService.getPresence(documentId);
         },
         me: (_: any, __: any, context: any) => {
@@ -98,12 +106,23 @@ export const resolvers = {
 
             await PresenceService.updatePresence(documentId, context.user.userId, position);
 
+            // Publish cursor movement
             console.log(`Publishing CURSOR_MOVED.${documentId} for user ${context.user.userId}`);
             pubsub.publish(`${CURSOR_MOVED}.${documentId}`, {
                 cursorMoved: {
                     documentId,
                     userId: context.user.userId,
                     position,
+                },
+            });
+
+            // Publish presence update for cursor change
+            const presence = await PresenceService.getPresence(documentId);
+            pubsub.publish(`${PRESENCE_UPDATED}.${documentId}`, {
+                presenceUpdated: {
+                    documentId,
+                    users: presence,
+                    type: 'update',
                 },
             });
 
@@ -136,7 +155,7 @@ export const resolvers = {
         documentChanged: {
             subscribe: async function* (_: any, { documentId }: { documentId: string }, context: any) {
                 if (!context.user) throw new Error('Unauthenticated');
-                await validateAccess(documentId, context.user.userId);
+                await validateAccess(documentId, context.user.userId, true);
                 const iterator = pubsub.asyncIterator(`${DOCUMENT_CHANGED}.${documentId}`) as AsyncIterable<any>;
                 for await (const payload of iterator) {
                     if (payload.documentChanged.updatedBy !== context.user.userId) {
@@ -148,7 +167,7 @@ export const resolvers = {
         presenceUpdated: {
             subscribe: async function* (_: any, { documentId }: { documentId: string }, context: any) {
                 if (!context.user) throw new Error('Unauthenticated');
-                await validateAccess(documentId, context.user.userId);
+                await validateAccess(documentId, context.user.userId, true);
                 const iterator = pubsub.asyncIterator(`${PRESENCE_UPDATED}.${documentId}`) as AsyncIterable<any>;
                 for await (const payload of iterator) {
                     yield payload;
@@ -158,7 +177,7 @@ export const resolvers = {
         cursorMoved: {
             subscribe: async function* (_: any, { documentId }: { documentId: string }, context: any) {
                 if (!context.user) throw new Error('Unauthenticated');
-                await validateAccess(documentId, context.user.userId);
+                await validateAccess(documentId, context.user.userId, true);
                 console.log(`Subscribing to CURSOR_MOVED.${documentId}`);
                 const iterator = pubsub.asyncIterator(`${CURSOR_MOVED}.${documentId}`) as AsyncIterable<any>;
                 for await (const payload of iterator) {
