@@ -1,0 +1,11 @@
+{
+            "instance_id": "IA5H43",
+            "problem_statement": "Stateless packet inspectors are easily bypassed by splitting malicious payloads across multiple TCP segments. The "Reassembly Trap" requires the engineer to track the Sequence Number of every packet. If Packet A has Seq=100, Len=10 (ends at 110), and Packet C arrives with Seq=120, the system must buffer Packet C and wait for Packet B (Seq=110, Len=10). Naive models often just concatenate payloads as they arrive, which fails when packets arrive out of order (a common occurrence on the internet)",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/ia5h43-stateful-ids-with-tcp-stream-reassembly",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
