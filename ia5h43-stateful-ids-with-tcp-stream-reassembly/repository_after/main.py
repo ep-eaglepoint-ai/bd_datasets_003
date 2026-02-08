@@ -45,40 +45,42 @@ class PacketProcessor:
             if len(ip_packet) < 20:
                 return []
             
-            # Unpack first byte to get version and IHL
-            ver_ihl = ip_packet[0]
+            # Unpack IP header using struct.unpack
+            # Format: version/IHL (1 byte), TOS (1), Total Length (2), ID (2), 
+            # Flags/Fragment (2), TTL (1), Protocol (1), Checksum (2), Src IP (4), Dst IP (4)
+            ip_header = struct.unpack('!BBHHHBBH4s4s', ip_packet[:20])
+            
+            ver_ihl = ip_header[0]
             version = ver_ihl >> 4
             ihl = ver_ihl & 0xF
             ip_header_len = ihl * 4
             
             if version != 4:
                 return []
-                
-            # Unpack other fields: Total Length, Protocol, Source IP, Dest IP
-            # Protocol is at byte 9 (1-indexed) -> index 9
-            protocol = ip_packet[9]
+            
+            protocol = ip_header[6]
             
             if protocol != 6: # TCP is 6
                 return []
-                
-            src_ip_num = struct.unpack('!I', ip_packet[12:16])[0]
-            dst_ip_num = struct.unpack('!I', ip_packet[16:20])[0]
             
-            src_ip = socket.inet_ntoa(ip_packet[12:16])
-            dst_ip = socket.inet_ntoa(ip_packet[16:20])
+            src_ip = socket.inet_ntoa(ip_header[8])
+            dst_ip = socket.inet_ntoa(ip_header[9])
             
             # --- TCP Parsing ---
             tcp_packet = ip_packet[ip_header_len:]
             if len(tcp_packet) < 20:
                 return []
                 
-            # Unpack TCP header
-            # Source Port (2), Dest Port (2), Seq Num (4), Ack Num (4)
-            # Data Offset (4 bits in byte 12)
-            tcp_header_fmt = '!HHII' 
-            src_port, dst_port, seq_num, ack_num = struct.unpack(tcp_header_fmt, tcp_packet[:12])
+            # Unpack TCP header using struct.unpack
+            # Format: Src Port (2), Dst Port (2), Seq Num (4), Ack Num (4), 
+            # Data Offset/Flags (2), Window (2), Checksum (2), Urgent Ptr (2)
+            tcp_header = struct.unpack('!HHIIBBHHH', tcp_packet[:20])
             
-            data_offset_byte = tcp_packet[12]
+            src_port = tcp_header[0]
+            dst_port = tcp_header[1]
+            seq_num = tcp_header[2]
+            ack_num = tcp_header[3]
+            data_offset_byte = tcp_header[4]
             data_offset = (data_offset_byte >> 4) * 4
             
             # Payload
