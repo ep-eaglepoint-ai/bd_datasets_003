@@ -1,0 +1,7 @@
+# Evaluation Script
+
+Run:
+- `node evaluation/evaluation.js`
+
+Outputs:
+- `evaluation/reports/report.json`

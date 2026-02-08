@@ -1,0 +1,14 @@
+services:
+  test:
+    build: .
+    environment:
+      - EVAL_REPO=repository_after
+    command: pytest -q tests
+    volumes:
+      - .:/app
+
+  test-report:
+    build: .
+    command: python evaluation/evaluation.py
+    volumes:
+      - .:/app
