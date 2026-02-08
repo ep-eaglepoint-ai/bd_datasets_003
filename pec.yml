@@ -1,0 +1,29 @@
+[1mdiff --git a/buildspec.yml b/buildspec.yml[m
+[1mindex ef4f0b0b..fce75a51 100644[m
+[1m--- a/buildspec.yml[m
+[1m+++ b/buildspec.yml[m
+[36m@@ -4,21 +4,15 @@[m [mphases:[m
+   pre_build:[m
+     commands:[m
+       - echo "Building Docker image"[m
+[31m-      - |[m
+[31m-        cd x7yx6p-industrial-weighbridge-auto-zeroing-and-stability-detection &&[m
+[31m-        docker compose build[m
+[32m+[m[32m      - cd x7yx6p-industrial-weighbridge-auto-zeroing-and-stability-detection && docker compose build[m
+   build:[m
+     commands:[m
+       - echo "Running after tests"[m
+[31m-      - |[m
+[31m-        cd x7yx6p-industrial-weighbridge-auto-zeroing-and-stability-detection &&[m
+[31m-        docker compose run --rm -e REPO_PATH=repository_after app bash -c "cd tests && cp ../repository_after/main.go . && go test -v ."[m
+[32m+[m[32m      - cd x7yx6p-industrial-weighbridge-auto-zeroing-and-stability-detection && docker compose run --rm -e REPO_PATH=repository_after app bash -c "cd tests && cp ../repository_after/main.go . && go test -v ."[m
+   post_build:[m
+     commands:[m
+       - echo "Running evaluation"[m
+[31m-      - |[m
+[31m-        cd x7yx6p-industrial-weighbridge-auto-zeroing-and-stability-detection &&[m
+[31m-        docker compose run --rm app bash -c "cd evaluation && go mod tidy && go run evaluate.go"[m
+[32m+[m[32m      - cd x7yx6p-industrial-weighbridge-auto-zeroing-and-stability-detection && docker compose run --rm app bash -c "cd evaluation && go mod tidy && go run evaluate.go"[m
+ [m
+ artifacts:[m
+   files:[m
