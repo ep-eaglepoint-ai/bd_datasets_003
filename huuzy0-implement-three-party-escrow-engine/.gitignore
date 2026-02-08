@@ -7,6 +7,5 @@ __pycache__/
 node_modules/
 
 .DS_Store
-
-evaluation/report.json
-evaluation/report.xml
+evaluation/*.json
+evaluation/reports/
