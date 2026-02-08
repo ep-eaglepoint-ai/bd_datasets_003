@@ -86,27 +86,38 @@ void AudioProcessor::processBuffer(const std::vector<int16_t>& samples) {
     for (int16_t sample : samples) {
         bool clapFound = detector.process(sample);
 
-        if (mainState == MachineState::IDLE) {
-            if (clapFound) {
-                mainState = MachineState::WAIT_FOR_SECOND_CLAP;
+        switch (mainState) {
+            case MachineState::IDLE:
+                if (clapFound) {
+                    mainState = MachineState::CLAP1_DETECTED;
+                }
+                break;
+
+            case MachineState::CLAP1_DETECTED:
                 timerSamples = 0;
-            }
-        } 
-        else if (mainState == MachineState::WAIT_FOR_SECOND_CLAP) {
-            timerSamples++;
-            
-            if (clapFound) {
-                if (timerSamples >= WINDOW_START && timerSamples <= WINDOW_END) {
-                    lightState = !lightState;
-                    mainState = MachineState::IDLE;
-                } else {
+                mainState = MachineState::WAIT_INTERVAL;
+                break;
+
+            case MachineState::WAIT_INTERVAL:
+                timerSamples++;
+                
+                if (clapFound) {
+                    if (timerSamples >= WINDOW_START && timerSamples <= WINDOW_END) {
+                        mainState = MachineState::CLAP2_DETECTED;
+                    } else {
+                        // Too fast or invalid timing (implicit too slow handled by timer check below, 
+                        // but if clap arrives inside window bounds logic is cleaner)
+                        mainState = MachineState::IDLE;
+                    }
+                } else if (timerSamples > WINDOW_END) {
                     mainState = MachineState::IDLE;
                 }
-            }
-            
-            if (timerSamples > WINDOW_END) {
+                break;
+
+            case MachineState::CLAP2_DETECTED:
+                lightState = !lightState;
                 mainState = MachineState::IDLE;
-            }
+                break;
         }
     }
 }

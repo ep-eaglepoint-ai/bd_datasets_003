@@ -25,7 +25,9 @@ private:
 
     enum class MachineState {
         IDLE,
-        WAIT_FOR_SECOND_CLAP
+        CLAP1_DETECTED,
+        WAIT_INTERVAL,
+        CLAP2_DETECTED
     };
 
     MachineState mainState;
