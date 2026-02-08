@@ -8,5 +8,4 @@ node_modules/
 
 .DS_Store
 
-evaluation/report.json
-evaluation/report.xml
+evaluation/reports
