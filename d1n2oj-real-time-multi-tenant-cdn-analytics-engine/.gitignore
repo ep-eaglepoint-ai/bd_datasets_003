@@ -2,11 +2,46 @@
 __pycache__/
 *.pyc
 .venv/
-.env
 
 # Node
 node_modules/
 
 # OS
 .DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.*
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+*.prof
+*.pprof
+vendor/
+
+# Evaluation reports
 evaluation/*.json
+evaluation/reports/
+
+# ClickHouse data (Docker volume)
+clickhouse_data/
+
+# GeoIP databases
+*.mmdb
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
