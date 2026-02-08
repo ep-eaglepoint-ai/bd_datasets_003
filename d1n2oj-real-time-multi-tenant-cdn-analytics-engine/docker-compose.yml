@@ -1,8 +1,76 @@
-# Docker Compose file for running tests. You should customize this as needed.
-
 services:
+  # ───────────────────────── ClickHouse ─────────────────────────
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3-alpine
+    container_name: cdn-clickhouse
+    ports:
+      - "8123:8123"   # HTTP interface
+      - "9000:9000"   # Native TCP interface
+    environment:
+      CLICKHOUSE_DB: cdn_analytics
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ""
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./repository_after/migrations:/docker-entrypoint-initdb.d
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  # ───────────────────────── Production App ─────────────────────
   app:
-    build: .
-    command: pytest -q tests
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cdn-analytics-engine
+    ports:
+      - "8080:8080"
+    environment:
+      - APP_ENV=production
+      - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_PORT=9000
+      - CLICKHOUSE_DATABASE=cdn_analytics
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=
+      - WORKER_COUNT=4
+      - BATCH_SIZE=5000
+      - FLUSH_INTERVAL=10
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ───────────────────────── Dev (hot-reload) ───────────────────
+  dev:
+    image: golang:1.25-alpine
+    container_name: cdn-analytics-dev
+    working_dir: /app
     volumes:
       - .:/app
+    ports:
+      - "8080:8080"
+    environment:
+      - APP_ENV=development
+      - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_PORT=9000
+      - CLICKHOUSE_DATABASE=cdn_analytics
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=
+      - WORKER_COUNT=4
+      - BATCH_SIZE=1000
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    command: go run ./repository_after/cmd/api
+
+volumes:
+  clickhouse_data:
