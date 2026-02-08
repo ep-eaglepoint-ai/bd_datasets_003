@@ -13,3 +13,13 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 # Database configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost:5432/webhooks")
+
+# Encryption configuration
+ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
+if not ENCRYPTION_KEY:
+    # Fallback for dev (not persistent across restarts unless env var set)
+    try:
+        from cryptography.fernet import Fernet
+        ENCRYPTION_KEY = Fernet.generate_key().decode()
+    except ImportError:
+        ENCRYPTION_KEY = "A" * 44 # Dummy invalid key if lib missing, will crash late

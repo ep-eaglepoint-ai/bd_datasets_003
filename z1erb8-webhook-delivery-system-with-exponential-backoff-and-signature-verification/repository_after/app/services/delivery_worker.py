@@ -22,7 +22,18 @@ async def deliver_webhook(
     timeout = endpoint.timeout_seconds
     
     # Generate signature
-    signature = webhook_service.generate_signature(delivery.payload, endpoint.secret)
+    # Decrypt secret from DB
+    try:
+        plain_secret = webhook_service.decrypt_secret(endpoint.secret)
+    except Exception:
+        # Fallback if already plain (e.g. in broken test state) or error
+        # In prod, this should log error. For now, assume it might be plain if coming from insecure source?
+        # No, strict security: if fail to decrypt, it's invalid.
+        # But for test compatibility if I miss one, I might log?
+        # Let's assume strict.
+        raise ValueError("Could not decrypt webhook secret")
+
+    signature = webhook_service.generate_signature(delivery.payload, plain_secret)
     
     headers = {
         "Content-Type": "application/json",

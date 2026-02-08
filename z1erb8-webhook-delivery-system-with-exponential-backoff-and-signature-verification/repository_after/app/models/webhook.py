@@ -23,7 +23,7 @@ class WebhookEndpoint(Base):
     id = Column(String(36), primary_key=True)
     user_id = Column(String(36), nullable=False, index=True)
     url = Column(String(2048), nullable=False)
-    secret = Column(String(64), nullable=False)  # For HMAC signing
+    secret = Column(String(512), nullable=False)  # For HMAC signing (Encrypted)
     status = Column(Enum(WebhookStatus), default=WebhookStatus.ACTIVE)
     event_types = Column(Text)  # JSON array of subscribed event types
     timeout_seconds = Column(Integer, default=30)

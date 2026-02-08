@@ -15,8 +15,16 @@ from app.models.webhook import (
     WebhookStatus,
     DeliveryStatus,
 )
-from app.config import RETRY_DELAYS, CONSECUTIVE_FAILURE_THRESHOLD
+from app.config import RETRY_DELAYS, CONSECUTIVE_FAILURE_THRESHOLD, ENCRYPTION_KEY
+from cryptography.fernet import Fernet
 
+fernet = Fernet(ENCRYPTION_KEY)
+
+def encrypt_secret(secret: str) -> str:
+    return fernet.encrypt(secret.encode()).decode()
+
+def decrypt_secret(secret_hash: str) -> str:
+    return fernet.decrypt(secret_hash.encode()).decode()
 
 def generate_signature(payload: str, secret: str) -> str:
     """Generate HMAC-SHA256 signature for webhook payload"""
@@ -59,13 +67,14 @@ def create_endpoint(
 ) -> WebhookEndpoint:
     """Create a new webhook endpoint"""
     # Requirement 14: secure secret
-    secret = secrets.token_hex(32)  # 32 bytes = 64 chars hex
+    plain_secret = secrets.token_hex(32)  # 32 bytes = 64 chars hex
+    encrypted_secret = encrypt_secret(plain_secret)
     
     endpoint = WebhookEndpoint(
         id=str(uuid.uuid4()),
         user_id=user_id,
         url=url,
-        secret=secret,
+        secret=encrypted_secret,
         event_types=json.dumps(event_types),
         timeout_seconds=timeout_seconds,
         status=WebhookStatus.ACTIVE
@@ -73,6 +82,8 @@ def create_endpoint(
     db.add(endpoint)
     db.commit()
     db.refresh(endpoint)
+    # Inject plain secret for response (do not overwrite secret column to avoid accidental commit)
+    endpoint.plain_secret = plain_secret 
     return endpoint
 
 
@@ -80,11 +91,13 @@ def create_delivery(
     db: Session,
     endpoint: WebhookEndpoint,
     event_type: str,
-    payload: dict
+    data: dict
 ) -> WebhookDelivery:
-    """Create a new webhook delivery record"""
-    payload_json = json.dumps(payload)
-    idempotency_key = generate_idempotency_key(endpoint.id, event_type, payload_json)
+    """Create a new webhook delivery record with metadata envelope"""
+    # Generate idempotency key based on core data, not the full envelope
+    # ensuring we don't deliver the same data twice to the same endpoint
+    data_json = json.dumps(data)
+    idempotency_key = generate_idempotency_key(endpoint.id, event_type, data_json)
     
     # Check for existing delivery
     existing = db.query(WebhookDelivery).filter(
@@ -94,8 +107,20 @@ def create_delivery(
     if existing:
         return existing
         
+    delivery_id = str(uuid.uuid4())
+    timestamp = datetime.utcnow().isoformat() + "Z"
+    
+    # Construct payload with metadata (Requirement: Metadata fields embedded in payload)
+    envelope = {
+        "event_type": event_type,
+        "delivery_id": delivery_id,
+        "timestamp": timestamp,
+        "data": data
+    }
+    payload_json = json.dumps(envelope)
+    
     delivery = WebhookDelivery(
-        id=str(uuid.uuid4()),
+        id=delivery_id,
         endpoint_id=endpoint.id,
         event_type=event_type,
         payload=payload_json,

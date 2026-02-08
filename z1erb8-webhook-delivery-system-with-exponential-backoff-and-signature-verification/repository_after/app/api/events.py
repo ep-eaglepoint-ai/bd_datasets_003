@@ -57,9 +57,15 @@ async def trigger_event(
             deliveries.append(delivery)
             
     # Queue deliveries
+    delivery_ids = []
     for d in deliveries:
         # Requirement 1: "event trigger endpoint returns immediately ... actual ... in background worker"
         # task queue (Celery)
         delivery_task.delay(d.id)
+        delivery_ids.append(d.id)
         
-    return {"status": "triggered", "delivery_count": len(deliveries)}
+    return {
+        "status": "triggered", 
+        "delivery_count": len(deliveries),
+        "delivery_ids": delivery_ids
+    }

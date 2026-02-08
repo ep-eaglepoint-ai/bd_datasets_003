@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
+from datetime import datetime
 from app.database import get_db
 from app.schemas.webhook import (
     WebhookEndpointCreate,
@@ -118,6 +119,8 @@ def delete_endpoint(
 def list_deliveries(
     endpoint_id: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
+    start_date: Optional[datetime] = Query(None),
+    end_date: Optional[datetime] = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db)
@@ -137,6 +140,11 @@ def list_deliveries(
             query = query.filter(WebhookDelivery.status == status_enum)
         except ValueError:
             pass # Or raise validation error
+
+    if start_date:
+        query = query.filter(WebhookDelivery.created_at >= start_date)
+    if end_date:
+        query = query.filter(WebhookDelivery.created_at <= end_date)
 
     # Pagination
     offset = (page - 1) * limit

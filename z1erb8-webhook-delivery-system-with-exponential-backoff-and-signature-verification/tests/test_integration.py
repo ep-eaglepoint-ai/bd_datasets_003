@@ -58,6 +58,8 @@ def test_event_filtering(client, db, mock_celery_task):
 async def test_delivery_execution_success(db):
     # Setup
     endpoint = webhook_service.create_endpoint(db, "user-123", "http://example.com/hook", ["test"])
+    plain_secret = endpoint.plain_secret
+    
     delivery = webhook_service.create_delivery(db, endpoint, "test", {"msg": "hello"})
     
     # Mock httpx
@@ -84,7 +86,7 @@ async def test_delivery_execution_success(db):
         
         # Verify signature correctness
         from app.services.webhook_service import generate_signature
-        expected_sig = generate_signature(delivery.payload, endpoint.secret)
+        expected_sig = generate_signature(delivery.payload, plain_secret)
         assert headers["X-Webhook-Signature"] == expected_sig
 
 # Requirement 14: Secret Visibility

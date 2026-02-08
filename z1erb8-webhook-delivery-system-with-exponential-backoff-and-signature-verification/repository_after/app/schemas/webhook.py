@@ -1,4 +1,4 @@
-from pydantic import BaseModel, HttpUrl, field_validator
+from pydantic import BaseModel, HttpUrl, field_validator, Field
 from typing import Optional, List
 import json
 from datetime import datetime
@@ -45,7 +45,7 @@ class WebhookEndpointResponse(BaseModel):
         from_attributes = True
 
 class WebhookEndpointSecretResponse(WebhookEndpointResponse):
-    secret: str
+    secret: str = Field(validation_alias='plain_secret')
 
 class DeliveryAttemptResponse(BaseModel):
     id: str
