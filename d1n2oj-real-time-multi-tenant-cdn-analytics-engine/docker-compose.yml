@@ -48,29 +48,3 @@ services:
       clickhouse:
         condition: service_healthy
     restart: unless-stopped
-
-
-  dev:
-    image: golang:1.25-alpine
-    container_name: cdn-analytics-dev
-    working_dir: /app
-    volumes:
-      - .:/app
-    ports:
-      - "8080:8080"
-    environment:
-      - APP_ENV=development
-      - CLICKHOUSE_HOST=clickhouse
-      - CLICKHOUSE_PORT=9000
-      - CLICKHOUSE_DATABASE=cdn_analytics
-      - CLICKHOUSE_USER=default
-      - CLICKHOUSE_PASSWORD=
-      - WORKER_COUNT=4
-      - BATCH_SIZE=1000
-    depends_on:
-      clickhouse:
-        condition: service_healthy
-    command: go run ./repository_after/cmd/api
-
-volumes:
-  clickhouse_data:
