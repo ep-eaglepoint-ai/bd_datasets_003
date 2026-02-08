@@ -9,17 +9,13 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Lightweight initialization performance sanity checks.
- *
- * NOTE: We deliberately use conservative thresholds so tests remain stable
- * across different machines and CI environments. The product requirement
- * targets &lt; 500ms initialization for 100k symbols on typical hardware;
- * this test simply guards against obviously pathological implementations.
+ * Initialization performance test to verify that the registry loads
+ * 100,000 symbols within the required 500ms time limit.
  */
 public class MarketRegistryInitPerformanceTest {
 
     @Test
-    void loadSymbolsForHundredThousandEntriesCompletesWithinReasonableTime() throws Exception {
+    void loadSymbolsForHundredThousandEntriesCompletesWithinRequiredTime() throws Exception {
         RegistryTestSupport.LoadedRegistry loaded = RegistryTestSupport.loadRegistry();
 
         Object registry = loaded.registryInstance;
@@ -36,16 +32,12 @@ public class MarketRegistryInitPerformanceTest {
         long elapsedMillis = (System.nanoTime() - startNanos) / 1_000_000L;
 
         // Requirement 5: initialization should complete in under 500ms for 100k symbols
-        // We allow some margin (1000ms) for CI/test environments, but the implementation
-        // should be optimized to meet the 500ms target on typical hardware.
         assertTrue(
-                elapsedMillis < 1_000,
+                elapsedMillis < 500,
                 String.format(
-                        "loadSymbols for 100k symbols should complete in under 500ms (allowing 1000ms for test environments); actual ms=%d",
+                        "loadSymbols for 100k symbols should complete in under 500ms; actual ms=%d",
                         elapsedMillis
                 )
         );
     }
 }
-
-
