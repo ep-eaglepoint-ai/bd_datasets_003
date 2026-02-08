@@ -4,8 +4,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.validation.FieldError;
-import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -14,105 +12,62 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Global exception handler for REST controllers.
+ * Global exception handler for REST API.
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
     
-    private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
-    
-    @ExceptionHandler(ConcurrencyException.class)
-    public ResponseEntity<ErrorResponse> handleConcurrencyException(ConcurrencyException ex) {
-        logger.warn("Concurrency exception: {}", ex.getMessage());
-        
-        ErrorResponse error = new ErrorResponse(
-                HttpStatus.CONFLICT.value(),
-                "Concurrent modification detected",
-                ex.getMessage(),
-                Instant.now()
-        );
-        
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(error);
-    }
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
     
     @ExceptionHandler(AggregateNotFoundException.class)
-    public ResponseEntity<ErrorResponse> handleAggregateNotFoundException(AggregateNotFoundException ex) {
-        logger.warn("Aggregate not found: {}", ex.getMessage());
-        
-        ErrorResponse error = new ErrorResponse(
-                HttpStatus.NOT_FOUND.value(),
-                "Aggregate not found",
-                ex.getMessage(),
-                Instant.now()
-        );
-        
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
+    public ResponseEntity<Map<String, Object>> handleAggregateNotFound(AggregateNotFoundException ex) {
+        log.error("Aggregate not found: {}", ex.getMessage());
+        return buildErrorResponse(HttpStatus.NOT_FOUND, "Aggregate not found", ex.getMessage());
     }
     
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ValidationErrorResponse> handleValidationException(MethodArgumentNotValidException ex) {
-        logger.warn("Validation error: {}", ex.getMessage());
-        
-        Map<String, String> errors = new HashMap<>();
-        ex.getBindingResult().getAllErrors().forEach(error -> {
-            String fieldName = ((FieldError) error).getField();
-            String errorMessage = error.getDefaultMessage();
-            errors.put(fieldName, errorMessage);
-        });
-        
-        ValidationErrorResponse error = new ValidationErrorResponse(
-                HttpStatus.BAD_REQUEST.value(),
-                "Validation failed",
-                errors,
-                Instant.now()
-        );
-        
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+    @ExceptionHandler(ConcurrencyException.class)
+    public ResponseEntity<Map<String, Object>> handleConcurrencyException(ConcurrencyException ex) {
+        log.error("Concurrency conflict: {}", ex.getMessage());
+        return buildErrorResponse(HttpStatus.CONFLICT, "Concurrent modification detected", ex.getMessage());
+    }
+    
+    @ExceptionHandler(InvalidOrderStatusException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidOrderStatus(InvalidOrderStatusException ex) {
+        log.error("Invalid order status: {}", ex.getMessage());
+        return buildErrorResponse(HttpStatus.BAD_REQUEST, "Invalid order status", ex.getMessage());
+    }
+    
+    @ExceptionHandler(EmptyOrderException.class)
+    public ResponseEntity<Map<String, Object>> handleEmptyOrder(EmptyOrderException ex) {
+        log.error("Empty order: {}", ex.getMessage());
+        return buildErrorResponse(HttpStatus.BAD_REQUEST, "Empty order", ex.getMessage());
+    }
+    
+    @ExceptionHandler(ItemNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleItemNotFound(ItemNotFoundException ex) {
+        log.error("Item not found: {}", ex.getMessage());
+        return buildErrorResponse(HttpStatus.NOT_FOUND, "Item not found", ex.getMessage());
     }
     
     @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<ErrorResponse> handleIllegalArgumentException(IllegalArgumentException ex) {
-        logger.warn("Illegal argument: {}", ex.getMessage());
-        
-        ErrorResponse error = new ErrorResponse(
-                HttpStatus.BAD_REQUEST.value(),
-                "Invalid argument",
-                ex.getMessage(),
-                Instant.now()
-        );
-        
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
-    }
-    
-    @ExceptionHandler(IllegalStateException.class)
-    public ResponseEntity<ErrorResponse> handleIllegalStateException(IllegalStateException ex) {
-        logger.warn("Illegal state: {}", ex.getMessage());
-        
-        ErrorResponse error = new ErrorResponse(
-                HttpStatus.BAD_REQUEST.value(),
-                "Invalid state",
-                ex.getMessage(),
-                Instant.now()
-        );
-        
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+    public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex) {
+        log.error("Invalid argument: {}", ex.getMessage());
+        return buildErrorResponse(HttpStatus.BAD_REQUEST, "Invalid argument", ex.getMessage());
     }
     
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleGenericException(Exception ex) {
-        logger.error("Unexpected error", ex);
-        
-        ErrorResponse error = new ErrorResponse(
-                HttpStatus.INTERNAL_SERVER_ERROR.value(),
-                "Internal server error",
-                "An unexpected error occurred",
-                Instant.now()
-        );
-        
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+    public ResponseEntity<Map<String, Object>> handleGenericException(Exception ex) {
+        log.error("Unexpected error: {}", ex.getMessage(), ex);
+        return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error", "An unexpected error occurred");
     }
     
-    public record ErrorResponse(int status, String error, String message, Instant timestamp) {}
-    
-    public record ValidationErrorResponse(int status, String error, Map<String, String> validationErrors, Instant timestamp) {}
+    private ResponseEntity<Map<String, Object>> buildErrorResponse(HttpStatus status, String error, String message) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", Instant.now());
+        body.put("status", status.value());
+        body.put("error", error);
+        body.put("message", message);
+        return ResponseEntity.status(status).body(body);
+    }
 }
+

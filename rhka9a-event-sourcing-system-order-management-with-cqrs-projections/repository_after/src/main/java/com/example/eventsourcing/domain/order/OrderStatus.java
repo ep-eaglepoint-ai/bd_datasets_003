@@ -1,10 +1,12 @@
 package com.example.eventsourcing.domain.order;
 
 /**
- * Enumeration representing the possible statuses of an order.
+ * Order status enum.
  */
 public enum OrderStatus {
     DRAFT,
     SUBMITTED,
+    COMPLETED,
     CANCELLED
 }
+

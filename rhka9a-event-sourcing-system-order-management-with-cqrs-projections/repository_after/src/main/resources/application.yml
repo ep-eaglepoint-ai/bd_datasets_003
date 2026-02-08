@@ -13,13 +13,19 @@ spring:
   
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: none  # Use schema.sql instead
     show-sql: true
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
         default_schema: public
+  
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+      continue-on-error: false
     
   jackson:
     serialization:
@@ -28,8 +34,18 @@ spring:
       fail-on-unknown-properties: false
 
 # Event Sourcing Configuration
-eventsourcing:
+event-sourcing:
   snapshot:
-    threshold: 10  # Create snapshot after every 10 events
+    enabled: true
+    interval: 50  # Create snapshot after every 50 events
   projection:
-    batch-size: 100  # Batch size for projection rebuild
+    rebuild-batch-size: 1000  # Batch size for projection rebuild
+
+logging:
+  level:
+    root: INFO
+    com.example.eventsourcing: DEBUG
+    org.hibernate.SQL: DEBUG
+
+server:
+  port: 8080

@@ -1,28 +1,14 @@
 package com.example.eventsourcing.domain.order;
 
-import jakarta.validation.constraints.NotBlank;
+import java.util.Objects;
+import java.util.UUID;
 
 /**
  * Command to remove an item from an order.
  */
-public class RemoveItemCommand {
-    
-    @NotBlank(message = "Product ID is required")
-    private String productId;
-    
-    public RemoveItemCommand() {
-    }
-    
-    public RemoveItemCommand(String productId) {
-        this.productId = productId;
-    }
-    
-    public String getProductId() {
-        return productId;
-    }
-    
-    public void setProductId(String productId) {
-        this.productId = productId;
+public record RemoveItemCommand(UUID orderId, UUID productId) {
+    public RemoveItemCommand {
+        Objects.requireNonNull(orderId, "Order ID cannot be null");
+        Objects.requireNonNull(productId, "Product ID cannot be null");
     }
 }
-

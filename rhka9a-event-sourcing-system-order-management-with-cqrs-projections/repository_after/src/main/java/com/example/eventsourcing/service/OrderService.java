@@ -1,144 +1,87 @@
 package com.example.eventsourcing.service;
 
-import com.example.eventsourcing.domain.DomainEvent;
-import com.example.eventsourcing.domain.order.OrderAggregate;
-import com.example.eventsourcing.domain.order.OrderCreatedEvent;
-import com.example.eventsourcing.domain.order.OrderItem;
+import com.example.eventsourcing.domain.order.*;
 import com.example.eventsourcing.exception.AggregateNotFoundException;
 import com.example.eventsourcing.infrastructure.AggregateRepository;
-import com.example.eventsourcing.infrastructure.projection.OrderProjection;
-import com.example.eventsourcing.infrastructure.projection.OrderProjectionEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
-import java.util.List;
-import java.util.Map;
+import java.util.UUID;
 
 /**
- * Service for managing orders using event sourcing.
+ * Command service for order operations (write side).
  */
 @Service
+@Transactional
 public class OrderService {
     
-    private static final Logger logger = LoggerFactory.getLogger(OrderService.class);
+    private static final Logger log = LoggerFactory.getLogger(OrderService.class);
     
-    private final AggregateRepository<OrderAggregate, DomainEvent> aggregateRepository;
-    private final OrderProjection orderProjection;
-    
-    public OrderService(AggregateRepository<OrderAggregate, DomainEvent> aggregateRepository,
-                       OrderProjection orderProjection) {
-        this.aggregateRepository = aggregateRepository;
-        this.orderProjection = orderProjection;
-    }
+    @Autowired
+    private AggregateRepository<OrderAggregate> repository;
     
     /**
      * Create a new order.
      */
-    @Transactional
-    public OrderAggregate createOrder(String customerId) {
-        logger.info("Creating order for customer {}", customerId);
+    public UUID createOrder(CreateOrderCommand command) {
+        UUID orderId = UUID.randomUUID();
+        OrderAggregate order = new OrderAggregate(orderId);
+        order.createOrder(command.customerId());
         
-        // Create the aggregate
-        OrderAggregate aggregate = OrderAggregate.createOrder(customerId);
+        repository.save(order);
         
-        // Get the initial event
-        OrderCreatedEvent initialEvent = (OrderCreatedEvent) aggregate.getUncommittedEvents().get(0);
-        
-        // Save the new aggregate
-        OrderAggregate savedAggregate = aggregateRepository.saveNew(aggregate, initialEvent);
-        
-        logger.info("Created order {} for customer {}", savedAggregate.getAggregateId(), customerId);
-        return savedAggregate;
+        log.info("Order created: {}", orderId);
+        return orderId;
     }
     
     /**
      * Add an item to an order.
      */
-    @Transactional
-    public OrderAggregate addItem(String orderId, String productId, String productName,
-                                  int quantity, BigDecimal unitPrice) {
-        logger.info("Adding item {} to order {}", productId, orderId);
+    public void addItem(AddItemCommand command) {
+        OrderAggregate order = repository.load(command.orderId(), OrderAggregate.class)
+            .orElseThrow(() -> new AggregateNotFoundException(
+                "Order not found: " + command.orderId()));
         
-        OrderAggregate aggregate = loadOrder(orderId);
-        aggregate.addItem(productId, productName, quantity, unitPrice);
+        order.addItem(command.productId(), command.quantity(), command.unitPrice());
         
-        return aggregateRepository.save(aggregate);
+        repository.save(order);
+        
+        log.info("Item added to order {}: product={}, quantity={}",
+            command.orderId(), command.productId(), command.quantity());
     }
     
     /**
      * Remove an item from an order.
      */
-    @Transactional
-    public OrderAggregate removeItem(String orderId, String productId) {
-        logger.info("Removing item {} from order {}", productId, orderId);
+    public void removeItem(RemoveItemCommand command) {
+        OrderAggregate order = repository.load(command.orderId(), OrderAggregate.class)
+            .orElseThrow(() -> new AggregateNotFoundException(
+                "Order not found: " + command.orderId()));
         
-        OrderAggregate aggregate = loadOrder(orderId);
-        aggregate.removeItem(productId);
+        order.removeItem(command.productId());
         
-        return aggregateRepository.save(aggregate);
+        repository.save(order);
+        
+        log.info("Item removed from order {}: product={}",
+            command.orderId(), command.productId());
     }
     
     /**
      * Submit an order.
      */
-    @Transactional
-    public OrderAggregate submitOrder(String orderId) {
-        logger.info("Submitting order {}", orderId);
+    public void submitOrder(SubmitOrderCommand command) {
+        OrderAggregate order = repository.load(command.orderId(), OrderAggregate.class)
+            .orElseThrow(() -> new AggregateNotFoundException(
+                "Order not found: " + command.orderId()));
         
-        OrderAggregate aggregate = loadOrder(orderId);
-        aggregate.submitOrder();
+        order.submitOrder();
         
-        return aggregateRepository.save(aggregate);
-    }
-    
-    /**
-     * Get an order by ID.
-     */
-    @Transactional(readOnly = true)
-    public OrderAggregate getOrder(String orderId) {
-        return loadOrder(orderId);
-    }
-    
-    /**
-     * Get the read model projection for an order.
-     */
-    @Transactional(readOnly = true)
-    public OrderProjectionEntity getOrderProjection(String orderId) {
-        return orderProjection.getOrder(orderId);
-    }
-    
-    /**
-     * Get all orders for a customer.
-     */
-    @Transactional(readOnly = true)
-    public List<OrderProjectionEntity> getOrdersByCustomer(String customerId) {
-        return orderProjection.getOrdersByCustomer(customerId);
-    }
-    
-    /**
-     * Rebuild the order projection from scratch.
-     */
-    @Transactional
-    public void rebuildProjection() {
-        logger.info("Rebuilding order projection");
-        orderProjection.rebuildProjection();
-    }
-    
-    /**
-     * Load an order aggregate from the event store.
-     */
-    private OrderAggregate loadOrder(String orderId) {
-        return aggregateRepository.load(orderId);
-    }
-    
-    /**
-     * Check if an order exists.
-     */
-    @Transactional(readOnly = true)
-    public boolean orderExists(String orderId) {
-        return aggregateRepository.exists(orderId);
+        repository.save(order);
+        
+        log.info("Order submitted: {}", command.orderId());
     }
 }
+

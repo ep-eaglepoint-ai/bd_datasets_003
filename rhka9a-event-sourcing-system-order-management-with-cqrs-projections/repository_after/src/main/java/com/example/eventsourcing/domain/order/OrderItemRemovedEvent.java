@@ -4,87 +4,54 @@ import com.example.eventsourcing.domain.DomainEvent;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.UUID;
 
 /**
- * Event representing an item being removed from an order.
+ * Event emitted when an item is removed from an order.
  */
-public class OrderItemRemovedEvent extends DomainEvent {
-    
-    private final String productId;
-    private final int previousQuantity;
-    private final BigDecimal previousTotalAmount;
-    private final BigDecimal newTotalAmount;
+public record OrderItemRemovedEvent(
+    UUID eventId,
+    UUID aggregateId,
+    Long version,
+    Instant occurredAt,
+    UUID productId
+) implements DomainEvent {
     
     @JsonCreator
     public OrderItemRemovedEvent(
-            @JsonProperty("eventId") String eventId,
-            @JsonProperty("aggregateId") String aggregateId,
-            @JsonProperty("version") Long version,
-            @JsonProperty("timestamp") Instant timestamp,
-            @JsonProperty("productId") String productId,
-            @JsonProperty("previousQuantity") int previousQuantity,
-            @JsonProperty("previousTotalAmount") BigDecimal previousTotalAmount,
-            @JsonProperty("newTotalAmount") BigDecimal newTotalAmount) {
-        super(eventId, aggregateId, version, timestamp);
+        @JsonProperty("eventId") UUID eventId,
+        @JsonProperty("aggregateId") UUID aggregateId,
+        @JsonProperty("version") Long version,
+        @JsonProperty("occurredAt") Instant occurredAt,
+        @JsonProperty("productId") UUID productId
+    ) {
+        this.eventId = Objects.requireNonNull(eventId, "Event ID cannot be null");
+        this.aggregateId = Objects.requireNonNull(aggregateId, "Aggregate ID cannot be null");
+        this.version = Objects.requireNonNull(version, "Version cannot be null");
+        this.occurredAt = Objects.requireNonNull(occurredAt, "Occurred at cannot be null");
         this.productId = Objects.requireNonNull(productId, "Product ID cannot be null");
-        this.previousQuantity = previousQuantity;
-        this.previousTotalAmount = previousTotalAmount != null ? previousTotalAmount : BigDecimal.ZERO;
-        this.newTotalAmount = newTotalAmount != null ? newTotalAmount : BigDecimal.ZERO;
-    }
-    
-    public OrderItemRemovedEvent(String aggregateId, Long version, String productId,
-                                 int previousQuantity, BigDecimal previousTotalAmount,
-                                 BigDecimal newTotalAmount) {
-        super(aggregateId, version);
-        this.productId = Objects.requireNonNull(productId, "Product ID cannot be null");
-        this.previousQuantity = previousQuantity;
-        this.previousTotalAmount = previousTotalAmount != null ? previousTotalAmount : BigDecimal.ZERO;
-        this.newTotalAmount = newTotalAmount != null ? newTotalAmount : BigDecimal.ZERO;
-    }
-    
-    public String getProductId() {
-        return productId;
-    }
-    
-    public int getPreviousQuantity() {
-        return previousQuantity;
-    }
-    
-    public BigDecimal getPreviousTotalAmount() {
-        return previousTotalAmount;
-    }
-    
-    public BigDecimal getNewTotalAmount() {
-        return newTotalAmount;
     }
     
     @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        if (!super.equals(o)) return false;
-        OrderItemRemovedEvent that = (OrderItemRemovedEvent) o;
-        return previousQuantity == that.previousQuantity &&
-               Objects.equals(productId, that.productId) &&
-               Objects.equals(previousTotalAmount, that.previousTotalAmount) &&
-               Objects.equals(newTotalAmount, that.newTotalAmount);
+    public UUID getEventId() {
+        return eventId;
     }
     
     @Override
-    public int hashCode() {
-        return Objects.hash(super.hashCode(), productId, previousQuantity, previousTotalAmount, newTotalAmount);
+    public UUID getAggregateId() {
+        return aggregateId;
     }
     
     @Override
-    public String toString() {
-        return "OrderItemRemovedEvent{" +
-               "productId='" + productId + '\'' +
-               ", previousQuantity=" + previousQuantity +
-               ", previousTotalAmount=" + previousTotalAmount +
-               ", newTotalAmount=" + newTotalAmount +
-               "} " + super.toString();
+    public Long getVersion() {
+        return version;
+    }
+    
+    @Override
+    public Instant getOccurredAt() {
+        return occurredAt;
     }
 }
+

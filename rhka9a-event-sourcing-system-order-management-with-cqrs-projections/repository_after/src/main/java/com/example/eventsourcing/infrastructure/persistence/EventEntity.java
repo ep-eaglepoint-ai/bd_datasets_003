@@ -1,85 +1,88 @@
 package com.example.eventsourcing.infrastructure.persistence;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.Type;
+import io.hypersistence.utils.hibernate.type.json.JsonBinaryType;
+
 import java.time.Instant;
+import java.util.UUID;
 
 /**
- * JPA Entity representing a persisted domain event.
+ * JPA Entity for event storage.
  */
 @Entity
-@Table(name = "domain_events", 
-    indexes = {
-        @Index(name = "idx_aggregate_id", columnList = "aggregate_id"),
-        @Index(name = "idx_aggregate_version", columnList = "aggregate_id, version")
-    },
-    uniqueConstraints = {
-        @UniqueConstraint(name = "uk_aggregate_version", columnNames = {"aggregate_id", "version"})
-    }
-)
+@Table(name = "event_store",
+       uniqueConstraints = @UniqueConstraint(columnNames = {"aggregate_id", "event_version"}),
+       indexes = {
+           @Index(name = "idx_aggregate_id", columnList = "aggregate_id"),
+           @Index(name = "idx_created_at", columnList = "created_at"),
+           @Index(name = "idx_event_type", columnList = "event_type")
+       })
 public class EventEntity {
     
     @Id
-    @Column(name = "event_id", length = 36)
-    private String eventId;
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @Column(columnDefinition = "UUID")
+    private UUID eventId;
     
-    @Column(name = "aggregate_id", nullable = false, length = 36)
-    private String aggregateId;
+    @Column(nullable = false, columnDefinition = "UUID")
+    private UUID aggregateId;
     
-    @Column(name = "version", nullable = false)
-    private Long version;
+    @Column(nullable = false, length = 500)
+    private String aggregateType;
     
-    @Column(name = "timestamp", nullable = false)
-    private Instant timestamp;
+    @Column(nullable = false)
+    private Long eventVersion;
     
-    @Column(name = "event_type", nullable = false, length = 255)
+    @Column(nullable = false, length = 500)
     private String eventType;
     
-    @Column(name = "payload", nullable = false, columnDefinition = "TEXT")
-    private String payload;
+    @Type(JsonBinaryType.class)
+    @Column(columnDefinition = "jsonb", nullable = false)
+    private String eventPayload;
     
+    @Column(nullable = false)
+    private Instant createdAt;
+    
+    @Type(JsonBinaryType.class)
+    @Column(columnDefinition = "jsonb")
+    private String metadata;
+    
+    // Constructors
     public EventEntity() {
     }
     
-    public EventEntity(String eventId, String aggregateId, Long version, 
-                       Instant timestamp, String eventType, String payload) {
-        this.eventId = eventId;
-        this.aggregateId = aggregateId;
-        this.version = version;
-        this.timestamp = timestamp;
-        this.eventType = eventType;
-        this.payload = payload;
-    }
-    
-    public String getEventId() {
+    // Getters and Setters
+    public UUID getEventId() {
         return eventId;
     }
     
-    public void setEventId(String eventId) {
+    public void setEventId(UUID eventId) {
         this.eventId = eventId;
     }
     
-    public String getAggregateId() {
+    public UUID getAggregateId() {
         return aggregateId;
     }
     
-    public void setAggregateId(String aggregateId) {
+    public void setAggregateId(UUID aggregateId) {
         this.aggregateId = aggregateId;
     }
     
-    public Long getVersion() {
-        return version;
+    public String getAggregateType() {
+        return aggregateType;
     }
     
-    public void setVersion(Long version) {
-        this.version = version;
+    public void setAggregateType(String aggregateType) {
+        this.aggregateType = aggregateType;
     }
     
-    public Instant getTimestamp() {
-        return timestamp;
+    public Long getEventVersion() {
+        return eventVersion;
     }
     
-    public void setTimestamp(Instant timestamp) {
-        this.timestamp = timestamp;
+    public void setEventVersion(Long eventVersion) {
+        this.eventVersion = eventVersion;
     }
     
     public String getEventType() {
@@ -90,11 +93,28 @@ public class EventEntity {
         this.eventType = eventType;
     }
     
-    public String getPayload() {
-        return payload;
+    public String getEventPayload() {
+        return eventPayload;
     }
     
-    public void setPayload(String payload) {
-        this.payload = payload;
+    public void setEventPayload(String eventPayload) {
+        this.eventPayload = eventPayload;
+    }
+    
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+    
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
+    }
+    
+    public String getMetadata() {
+        return metadata;
+    }
+    
+    public void setMetadata(String metadata) {
+        this.metadata = metadata;
     }
 }
+

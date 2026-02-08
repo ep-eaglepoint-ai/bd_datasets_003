@@ -4,31 +4,22 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
+import java.util.UUID;
 
 /**
- * Repository for persisting and retrieving aggregate snapshots.
+ * Spring Data JPA repository for snapshots.
  */
 @Repository
-public interface SnapshotRepository extends JpaRepository<SnapshotEntity, String> {
+public interface SnapshotRepository extends JpaRepository<SnapshotEntity, UUID> {
     
     /**
-     * Find the latest snapshot for an aggregate.
+     * Find latest snapshot for an aggregate.
      */
-    Optional<SnapshotEntity> findByAggregateId(String aggregateId);
+    Optional<SnapshotEntity> findByAggregateId(UUID aggregateId);
     
     /**
-     * Find the snapshot with the highest version for an aggregate.
-     * Uses Spring Data method naming instead of non-portable JPQL LIMIT.
+     * Delete snapshot for an aggregate.
      */
-    Optional<SnapshotEntity> findTopByAggregateIdOrderByVersionDesc(String aggregateId);
-    
-    /**
-     * Delete all snapshots for an aggregate.
-     */
-    void deleteByAggregateId(String aggregateId);
-    
-    /**
-     * Check if a snapshot exists for an aggregate.
-     */
-    boolean existsByAggregateId(String aggregateId);
+    void deleteByAggregateId(UUID aggregateId);
 }
+

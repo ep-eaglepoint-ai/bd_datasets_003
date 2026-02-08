@@ -1,147 +1,119 @@
 package com.example.eventsourcing.controller;
 
+import com.example.eventsourcing.controller.dto.AddItemRequest;
+import com.example.eventsourcing.controller.dto.CreateOrderRequest;
+import com.example.eventsourcing.controller.dto.CreateOrderResponse;
 import com.example.eventsourcing.domain.order.*;
-import com.example.eventsourcing.infrastructure.projection.OrderProjection;
-import com.example.eventsourcing.infrastructure.projection.OrderProjectionEntity;
+import com.example.eventsourcing.service.OrderQueryService;
 import com.example.eventsourcing.service.OrderService;
+import com.example.eventsourcing.service.dto.OrderProjectionDTO;
 import jakarta.validation.Valid;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.UUID;
 
 /**
- * REST Controller for Order operations.
+ * REST controller for order operations.
  */
 @RestController
 @RequestMapping("/api/orders")
 public class OrderController {
     
-    private static final Logger logger = LoggerFactory.getLogger(OrderController.class);
+    @Autowired
+    private OrderService commandService;
     
-    private final OrderService orderService;
-    private final OrderProjection orderProjection;
+    @Autowired
+    private OrderQueryService queryService;
     
-    public OrderController(OrderService orderService, OrderProjection orderProjection) {
-        this.orderService = orderService;
-        this.orderProjection = orderProjection;
-    }
-    
+    /**
+     * Create a new order.
+     */
     @PostMapping
-    public ResponseEntity<OrderResponse> createOrder(@Valid @RequestBody CreateOrderCommand command) {
-        logger.info("Creating order for customer: {}", command.getCustomerId());
-        
-        OrderAggregate order = orderService.createOrder(command.getCustomerId());
-        
-        OrderResponse response = new OrderResponse(
-                order.getAggregateId(),
-                order.getCustomerId(),
-                order.getStatus().name(),
-                order.getTotalAmount(),
-                order.getItemCount(),
-                order.getCreatedAt()
+    public ResponseEntity<CreateOrderResponse> createOrder(
+        @RequestBody @Valid CreateOrderRequest request
+    ) {
+        UUID orderId = commandService.createOrder(
+            new CreateOrderCommand(request.customerId())
         );
         
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        return ResponseEntity.status(HttpStatus.CREATED)
+            .body(new CreateOrderResponse(orderId));
     }
     
+    /**
+     * Add an item to an order.
+     */
     @PostMapping("/{orderId}/items")
-    public ResponseEntity<OrderResponse> addItem(
-            @PathVariable String orderId,
-            @Valid @RequestBody AddItemCommand command) {
-        logger.info("Adding item to order: {}", orderId);
+    public ResponseEntity<Void> addItem(
+        @PathVariable UUID orderId,
+        @RequestBody @Valid AddItemRequest request
+    ) {
+        commandService.addItem(new AddItemCommand(
+            orderId,
+            request.productId(),
+            request.quantity(),
+            request.unitPrice()
+        ));
         
-        OrderAggregate order = orderService.addItem(
-                orderId,
-                command.getProductId(),
-                command.getProductName(),
-                command.getQuantity(),
-                command.getUnitPrice()
-        );
-        
-        return ResponseEntity.ok(toResponse(order));
+        return ResponseEntity.noContent().build();
     }
     
+    /**
+     * Remove an item from an order.
+     */
     @DeleteMapping("/{orderId}/items/{productId}")
-    public ResponseEntity<OrderResponse> removeItem(
-            @PathVariable String orderId,
-            @PathVariable String productId) {
-        logger.info("Removing item {} from order: {}", productId, orderId);
-        
-        OrderAggregate order = orderService.removeItem(orderId, productId);
-        
-        return ResponseEntity.ok(toResponse(order));
+    public ResponseEntity<Void> removeItem(
+        @PathVariable UUID orderId,
+        @PathVariable UUID productId
+    ) {
+        commandService.removeItem(new RemoveItemCommand(orderId, productId));
+        return ResponseEntity.noContent().build();
     }
     
+    /**
+     * Submit an order.
+     */
     @PostMapping("/{orderId}/submit")
-    public ResponseEntity<OrderResponse> submitOrder(@PathVariable String orderId) {
-        logger.info("Submitting order: {}", orderId);
-        
-        OrderAggregate order = orderService.submitOrder(orderId);
-        
-        return ResponseEntity.ok(toResponse(order));
+    public ResponseEntity<Void> submitOrder(@PathVariable UUID orderId) {
+        commandService.submitOrder(new SubmitOrderCommand(orderId));
+        return ResponseEntity.noContent().build();
     }
     
+    /**
+     * Get an order by ID.
+     */
     @GetMapping("/{orderId}")
-    public ResponseEntity<OrderAggregate> getOrder(@PathVariable String orderId) {
-        logger.debug("Getting order: {}", orderId);
-        
-        OrderAggregate order = orderService.getOrder(orderId);
-        
-        return ResponseEntity.ok(order);
+    public ResponseEntity<OrderProjectionDTO> getOrder(@PathVariable UUID orderId) {
+        return queryService.getOrder(orderId)
+            .map(ResponseEntity::ok)
+            .orElse(ResponseEntity.notFound().build());
     }
     
-    @GetMapping("/{orderId}/projection")
-    public ResponseEntity<OrderProjectionEntity> getOrderProjection(@PathVariable String orderId) {
-        logger.debug("Getting order projection: {}", orderId);
-        
-        OrderProjectionEntity projection = orderService.getOrderProjection(orderId);
-        
-        if (projection == null) {
-            return ResponseEntity.notFound().build();
-        }
-        
-        return ResponseEntity.ok(projection);
-    }
-    
+    /**
+     * Get all orders for a customer.
+     */
     @GetMapping("/customer/{customerId}")
-    public ResponseEntity<List<OrderProjectionEntity>> getOrdersByCustomer(@PathVariable String customerId) {
-        logger.debug("Getting orders for customer: {}", customerId);
-        
-        List<OrderProjectionEntity> orders = orderService.getOrdersByCustomer(customerId);
-        
+    public ResponseEntity<List<OrderProjectionDTO>> getOrdersByCustomer(
+        @PathVariable UUID customerId
+    ) {
+        List<OrderProjectionDTO> orders = queryService.getOrdersByCustomer(customerId);
         return ResponseEntity.ok(orders);
     }
     
-    @PostMapping("/projection/rebuild")
-    public ResponseEntity<Void> rebuildProjection() {
-        logger.info("Rebuilding order projection");
-        
-        orderService.rebuildProjection();
-        
-        return ResponseEntity.accepted().build();
+    /**
+     * Get orders by customer and status.
+     */
+    @GetMapping("/customer/{customerId}/status/{status}")
+    public ResponseEntity<List<OrderProjectionDTO>> getOrdersByCustomerAndStatus(
+        @PathVariable UUID customerId,
+        @PathVariable OrderStatus status
+    ) {
+        List<OrderProjectionDTO> orders = queryService.getOrdersByCustomerAndStatus(customerId, status);
+        return ResponseEntity.ok(orders);
     }
-    
-    private OrderResponse toResponse(OrderAggregate order) {
-        return new OrderResponse(
-                order.getAggregateId(),
-                order.getCustomerId(),
-                order.getStatus().name(),
-                order.getTotalAmount(),
-                order.getItemCount(),
-                order.getCreatedAt()
-        );
-    }
-    
-    public record OrderResponse(
-            String orderId,
-            String customerId,
-            String status,
-            java.math.BigDecimal totalAmount,
-            int itemCount,
-            java.time.Instant createdAt
-    ) {}
 }
+

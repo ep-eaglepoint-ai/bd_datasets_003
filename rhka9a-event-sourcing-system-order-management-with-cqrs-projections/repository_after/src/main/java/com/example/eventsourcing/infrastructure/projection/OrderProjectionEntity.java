@@ -5,66 +5,67 @@ import jakarta.persistence.*;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.UUID;
 
 /**
- * JPA Entity representing an order projection (denormalized read model).
+ * Order projection entity (read model).
  */
 @Entity
-@Table(name = "order_projections")
+@Table(name = "order_projections",
+       indexes = {
+           @Index(name = "idx_projection_customer_id", columnList = "customer_id"),
+           @Index(name = "idx_projection_status", columnList = "status"),
+           @Index(name = "idx_projection_created_at", columnList = "created_at")
+       })
 public class OrderProjectionEntity {
     
     @Id
-    @Column(name = "order_id", length = 36)
-    private String orderId;
+    @Column(columnDefinition = "UUID")
+    private UUID orderId;
     
-    @Column(name = "customer_id", nullable = false, length = 36)
-    private String customerId;
+    @Column(nullable = false, columnDefinition = "UUID")
+    private UUID customerId;
     
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 20)
+    @Column(nullable = false, length = 50)
     private OrderStatus status;
     
-    @Column(name = "total_amount", nullable = false, precision = 19, scale = 4)
+    @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal totalAmount;
     
-    @Column(name = "item_count", nullable = false)
-    private int itemCount;
+    @Column(nullable = false)
+    private Integer itemCount;
     
-    @Column(name = "created_at", nullable = false)
+    @Column(nullable = false)
     private Instant createdAt;
     
-    @Column(name = "submitted_at")
+    @Column
     private Instant submittedAt;
     
-    @Column(name = "last_processed_event_id", length = 36)
-    private String lastProcessedEventId;
+    @Column(nullable = false)
+    private Instant updatedAt;
     
+    @Version
+    private Long version;
+    
+    // Constructors
     public OrderProjectionEntity() {
     }
     
-    public OrderProjectionEntity(String orderId, String customerId, OrderStatus status,
-                                  BigDecimal totalAmount, int itemCount, Instant createdAt) {
-        this.orderId = orderId;
-        this.customerId = customerId;
-        this.status = status;
-        this.totalAmount = totalAmount;
-        this.itemCount = itemCount;
-        this.createdAt = createdAt;
-    }
-    
-    public String getOrderId() {
+    // Getters and Setters
+    public UUID getOrderId() {
         return orderId;
     }
     
-    public void setOrderId(String orderId) {
+    public void setOrderId(UUID orderId) {
         this.orderId = orderId;
     }
     
-    public String getCustomerId() {
+    public UUID getCustomerId() {
         return customerId;
     }
     
-    public void setCustomerId(String customerId) {
+    public void setCustomerId(UUID customerId) {
         this.customerId = customerId;
     }
     
@@ -84,11 +85,11 @@ public class OrderProjectionEntity {
         this.totalAmount = totalAmount;
     }
     
-    public int getItemCount() {
+    public Integer getItemCount() {
         return itemCount;
     }
     
-    public void setItemCount(int itemCount) {
+    public void setItemCount(Integer itemCount) {
         this.itemCount = itemCount;
     }
     
@@ -108,11 +109,20 @@ public class OrderProjectionEntity {
         this.submittedAt = submittedAt;
     }
     
-    public String getLastProcessedEventId() {
-        return lastProcessedEventId;
+    public Instant getUpdatedAt() {
+        return updatedAt;
     }
     
-    public void setLastProcessedEventId(String lastProcessedEventId) {
-        this.lastProcessedEventId = lastProcessedEventId;
+    public void setUpdatedAt(Instant updatedAt) {
+        this.updatedAt = updatedAt;
+    }
+    
+    public Long getVersion() {
+        return version;
+    }
+    
+    public void setVersion(Long version) {
+        this.version = version;
     }
 }
+

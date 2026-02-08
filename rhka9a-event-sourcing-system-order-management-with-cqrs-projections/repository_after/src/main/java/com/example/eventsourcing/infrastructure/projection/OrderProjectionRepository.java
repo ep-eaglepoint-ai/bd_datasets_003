@@ -1,19 +1,33 @@
 package com.example.eventsourcing.infrastructure.projection;
 
 import com.example.eventsourcing.domain.order.OrderStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
-import java.time.Instant;
 import java.util.List;
-import java.util.Optional;
+import java.util.UUID;
 
+/**
+ * Spring Data JPA repository for order projections.
+ */
 @Repository
-public interface OrderProjectionRepository extends JpaRepository<OrderProjectionEntity, String> {
-    boolean existsByOrderId(String orderId);
-    boolean existsByOrderIdAndLastProcessedEventId(String orderId, String lastProcessedEventId);
-    Optional<OrderProjectionEntity> findByOrderId(String orderId);
-    List<OrderProjectionEntity> findByCustomerId(String customerId);
-    List<OrderProjectionEntity> findByStatus(OrderStatus status);
-    List<OrderProjectionEntity> findByCreatedAtAfter(Instant timestamp);
+public interface OrderProjectionRepository extends JpaRepository<OrderProjectionEntity, UUID> {
+    
+    /**
+     * Find orders by customer ID.
+     */
+    List<OrderProjectionEntity> findByCustomerId(UUID customerId);
+    
+    /**
+     * Find orders by status.
+     */
+    Page<OrderProjectionEntity> findByStatus(OrderStatus status, Pageable pageable);
+    
+    /**
+     * Find orders by customer and status.
+     */
+    List<OrderProjectionEntity> findByCustomerIdAndStatus(UUID customerId, OrderStatus status);
 }
+

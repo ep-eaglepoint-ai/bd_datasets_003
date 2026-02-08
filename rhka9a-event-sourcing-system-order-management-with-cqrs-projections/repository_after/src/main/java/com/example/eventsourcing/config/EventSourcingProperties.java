@@ -4,52 +4,62 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Configuration properties for the Event Sourcing system.
+ * Event sourcing configuration properties.
  */
 @Configuration
-@ConfigurationProperties(prefix = "eventsourcing")
+@ConfigurationProperties(prefix = "event-sourcing")
 public class EventSourcingProperties {
     
-    private SnapshotConfig snapshot = new SnapshotConfig();
-    private ProjectionConfig projection = new ProjectionConfig();
+    private Snapshot snapshot = new Snapshot();
+    private Projection projection = new Projection();
     
-    public SnapshotConfig getSnapshot() {
+    public Snapshot getSnapshot() {
         return snapshot;
     }
     
-    public void setSnapshot(SnapshotConfig snapshot) {
+    public void setSnapshot(Snapshot snapshot) {
         this.snapshot = snapshot;
     }
     
-    public ProjectionConfig getProjection() {
+    public Projection getProjection() {
         return projection;
     }
     
-    public void setProjection(ProjectionConfig projection) {
+    public void setProjection(Projection projection) {
         this.projection = projection;
     }
     
-    public static class SnapshotConfig {
-        private int threshold = 10;
+    public static class Snapshot {
+        private boolean enabled = true;
+        private int interval = 50;
         
-        public int getThreshold() {
-            return threshold;
+        public boolean isEnabled() {
+            return enabled;
         }
         
-        public void setThreshold(int threshold) {
-            this.threshold = threshold;
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+        
+        public int getInterval() {
+            return interval;
+        }
+        
+        public void setInterval(int interval) {
+            this.interval = interval;
         }
     }
     
-    public static class ProjectionConfig {
-        private int batchSize = 100;
+    public static class Projection {
+        private int rebuildBatchSize = 1000;
         
-        public int getBatchSize() {
-            return batchSize;
+        public int getRebuildBatchSize() {
+            return rebuildBatchSize;
         }
         
-        public void setBatchSize(int batchSize) {
-            this.batchSize = batchSize;
+        public void setRebuildBatchSize(int rebuildBatchSize) {
+            this.rebuildBatchSize = rebuildBatchSize;
         }
     }
 }
+

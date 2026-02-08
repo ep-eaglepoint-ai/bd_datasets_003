@@ -2,195 +2,221 @@ package com.example.eventsourcing.domain.order;
 
 import com.example.eventsourcing.domain.Aggregate;
 import com.example.eventsourcing.domain.DomainEvent;
+import com.example.eventsourcing.exception.EmptyOrderException;
+import com.example.eventsourcing.exception.InvalidOrderStatusException;
+import com.example.eventsourcing.exception.ItemNotFoundException;
+import com.example.eventsourcing.exception.UnknownEventTypeException;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
- * Aggregate representing an order in the system.
- * Handles CreateOrder, AddItem, RemoveItem, and SubmitOrder commands.
+ * Order aggregate root.
+ * Implements business logic for order management using event sourcing.
  */
-public class OrderAggregate extends Aggregate<DomainEvent> {
+@JsonIgnoreProperties(ignoreUnknown = true)
+public class OrderAggregate extends Aggregate {
     
-    private String customerId;
+    // State fields (reconstructed from events)
+    private UUID customerId;
     private OrderStatus status;
+    private Map<UUID, OrderItem> items;
     private BigDecimal totalAmount;
-    private Map<String, OrderItem> items;
     private Instant createdAt;
     private Instant submittedAt;
     
+    /**
+     * Constructor for new aggregates.
+     */
     public OrderAggregate() {
         super();
         this.items = new HashMap<>();
         this.totalAmount = BigDecimal.ZERO;
     }
     
-    public OrderAggregate(String aggregateId, Long version) {
-        super(aggregateId, version);
-        this.items = new HashMap<>();
-        this.totalAmount = BigDecimal.ZERO;
+    /**
+     * Constructor for loading from history.
+     */
+    public OrderAggregate(UUID aggregateId) {
+        this();
+        this.aggregateId = aggregateId;
     }
     
+    
+    // ========== COMMANDS ==========
+    
     /**
-     * Create a new order with the given customer ID.
+     * Create a new order.
      */
-    public static OrderAggregate createOrder(String customerId) {
-        OrderAggregate aggregate = new OrderAggregate();
-        aggregate.setAggregateId(UUID.randomUUID().toString());
-        aggregate.setCustomerId(customerId);
-        aggregate.setStatus(OrderStatus.DRAFT);
-        aggregate.setTotalAmount(BigDecimal.ZERO);
-        aggregate.setCreatedAt(Instant.now());
+    public void createOrder(UUID customerId) {
+        // Validation
+        if (this.aggregateId == null) {
+            throw new IllegalStateException("Aggregate ID must be set before creating order");
+        }
+        if (this.version > 0) {
+            throw new IllegalStateException("Order already created");
+        }
+        Objects.requireNonNull(customerId, "Customer ID cannot be null");
         
+        // Create and apply event
         OrderCreatedEvent event = new OrderCreatedEvent(
-                aggregate.getAggregateId(),
-                1L,
-                customerId,
-                BigDecimal.ZERO
+            UUID.randomUUID(),
+            this.aggregateId,
+            1L,
+            Instant.now(),
+            customerId
         );
-        aggregate.registerEvent(event);
-        
-        return aggregate;
+        applyNewEvent(event);
     }
     
     /**
      * Add an item to the order.
-     * Only allowed when order is in DRAFT status.
      */
-    public void addItem(String productId, String productName, int quantity, BigDecimal unitPrice) {
-        validateDraftStatus();
-        validateAddItemParams(productId, productName, quantity, unitPrice);
+    public void addItem(UUID productId, int quantity, BigDecimal unitPrice) {
+        ensureAggregateId();
         
+        // Business rule validation
+        if (status != OrderStatus.DRAFT) {
+            throw new InvalidOrderStatusException(
+                "Items can only be added to orders in DRAFT status. Current status: " + status);
+        }
+        if (quantity <= 0) {
+            throw new IllegalArgumentException("Quantity must be positive");
+        }
+        Objects.requireNonNull(productId, "Product ID cannot be null");
+        Objects.requireNonNull(unitPrice, "Unit price cannot be null");
+        if (unitPrice.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Unit price must be positive");
+        }
+        
+        // Create and apply event
         OrderItemAddedEvent event = new OrderItemAddedEvent(
-                getAggregateId(),
-                getNextVersion(),
-                productId,
-                productName,
-                quantity,
-                unitPrice,
-                getTotalAmount().add(unitPrice.multiply(BigDecimal.valueOf(quantity)))
+            UUID.randomUUID(),
+            this.aggregateId,
+            this.version + 1,
+            Instant.now(),
+            productId,
+            quantity,
+            unitPrice
         );
-        registerEvent(event);
+        applyNewEvent(event);
     }
     
     /**
      * Remove an item from the order.
-     * Only allowed when order is in DRAFT status.
      */
-    public void removeItem(String productId) {
-        validateDraftStatus();
-        validateRemoveItemParams(productId);
+    public void removeItem(UUID productId) {
+        ensureAggregateId();
         
-        OrderItem item = items.get(productId);
-        if (item == null) {
-            return; // Item not found, nothing to remove
+        // Business rule validation
+        if (status != OrderStatus.DRAFT) {
+            throw new InvalidOrderStatusException(
+                "Items can only be removed from orders in DRAFT status. Current status: " + status);
+        }
+        if (!items.containsKey(productId)) {
+            throw new ItemNotFoundException("Product not found in order: " + productId);
         }
         
-        BigDecimal itemTotal = item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity()));
-        BigDecimal newTotal = getTotalAmount().subtract(itemTotal);
-        
+        // Create and apply event
         OrderItemRemovedEvent event = new OrderItemRemovedEvent(
-                getAggregateId(),
-                getNextVersion(),
-                productId,
-                item.getQuantity(),
-                getTotalAmount(),
-                newTotal
+            UUID.randomUUID(),
+            this.aggregateId,
+            this.version + 1,
+            Instant.now(),
+            productId
         );
-        registerEvent(event);
+        applyNewEvent(event);
     }
     
     /**
      * Submit the order.
-     * Only allowed when order is in DRAFT status and has at least one item.
      */
     public void submitOrder() {
-        validateDraftStatus();
-        validateCanSubmit();
+        ensureAggregateId();
         
+        // Business rule validation
+        if (status != OrderStatus.DRAFT) {
+            throw new InvalidOrderStatusException(
+                "Only DRAFT orders can be submitted. Current status: " + status);
+        }
+        if (items.isEmpty()) {
+            throw new EmptyOrderException("Cannot submit an empty order");
+        }
+        
+        // Create and apply event
         OrderSubmittedEvent event = new OrderSubmittedEvent(
-                getAggregateId(),
-                getNextVersion(),
-                getCustomerId(),
-                getTotalAmount(),
-                items.size()
+            UUID.randomUUID(),
+            this.aggregateId,
+            this.version + 1,
+            Instant.now()
         );
-        registerEvent(event);
+        applyNewEvent(event);
     }
     
-    @Override
-    public String getAggregateType() {
-        return "OrderAggregate";
-    }
+    // ========== EVENT HANDLERS ==========
     
-    /**
-     * Apply DomainEvent to rebuild aggregate state (dispatches to specific event handlers).
-     */
     @Override
-    public void apply(DomainEvent event) {
+    protected void applyEvent(DomainEvent event) {
         if (event instanceof OrderCreatedEvent) {
-            apply((OrderCreatedEvent) event);
+            handleOrderCreated((OrderCreatedEvent) event);
         } else if (event instanceof OrderItemAddedEvent) {
-            apply((OrderItemAddedEvent) event);
+            handleItemAdded((OrderItemAddedEvent) event);
         } else if (event instanceof OrderItemRemovedEvent) {
-            apply((OrderItemRemovedEvent) event);
+            handleItemRemoved((OrderItemRemovedEvent) event);
         } else if (event instanceof OrderSubmittedEvent) {
-            apply((OrderSubmittedEvent) event);
+            handleOrderSubmitted((OrderSubmittedEvent) event);
+        } else {
+            throw new UnknownEventTypeException(
+                "Unknown event type: " + event.getClass().getName());
         }
     }
     
-    /**
-     * Apply OrderCreatedEvent to rebuild aggregate state.
-     */
-    public void apply(OrderCreatedEvent event) {
-        setAggregateId(event.getAggregateId());
-        setCustomerId(event.getCustomerId());
-        setStatus(OrderStatus.DRAFT);
-        setTotalAmount(event.getTotalAmount());
+    private void handleOrderCreated(OrderCreatedEvent event) {
+        this.customerId = event.customerId();
+        this.status = OrderStatus.DRAFT;
         this.items = new HashMap<>();
-        setCreatedAt(event.getTimestamp());
-        setSubmittedAt(null);
+        this.totalAmount = BigDecimal.ZERO;
+        this.createdAt = event.occurredAt();
     }
     
-    /**
-     * Apply OrderItemAddedEvent to rebuild aggregate state.
-     */
-    public void apply(OrderItemAddedEvent event) {
+    private void handleItemAdded(OrderItemAddedEvent event) {
         OrderItem item = new OrderItem(
-                event.getProductId(),
-                event.getProductName(),
-                event.getQuantity(),
-                event.getUnitPrice()
+            event.productId(),
+            event.quantity(),
+            event.unitPrice()
         );
-        items.put(event.getProductId(), item);
-        setTotalAmount(event.getTotalAmount());
+        
+        // If product already exists, update (replace)
+        items.put(event.productId(), item);
+        
+        // Recalculate total
+        recalculateTotal();
     }
     
-    /**
-     * Apply OrderItemRemovedEvent to rebuild aggregate state.
-     */
-    public void apply(OrderItemRemovedEvent event) {
-        OrderItem item = items.get(event.getProductId());
-        if (item != null) {
-            BigDecimal itemTotal = item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity()));
-            setTotalAmount(getTotalAmount().subtract(itemTotal));
-        }
-        items.remove(event.getProductId());
+    private void handleItemRemoved(OrderItemRemovedEvent event) {
+        items.remove(event.productId());
+        recalculateTotal();
     }
     
-    /**
-     * Apply OrderSubmittedEvent to rebuild aggregate state.
-     */
-    public void apply(OrderSubmittedEvent event) {
-        setStatus(OrderStatus.SUBMITTED);
-        setSubmittedAt(event.getTimestamp());
+    private void handleOrderSubmitted(OrderSubmittedEvent event) {
+        this.status = OrderStatus.SUBMITTED;
+        this.submittedAt = event.occurredAt();
     }
     
-    // Getters
-    public String getCustomerId() {
+    private void recalculateTotal() {
+        this.totalAmount = items.values().stream()
+            .map(OrderItem::getTotalPrice)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+    
+    // ========== GETTERS ==========
+    
+    public UUID getCustomerId() {
         return customerId;
     }
     
@@ -198,16 +224,12 @@ public class OrderAggregate extends Aggregate<DomainEvent> {
         return status;
     }
     
-    public BigDecimal getTotalAmount() {
-        return totalAmount;
-    }
-    
-    public Map<String, OrderItem> getItems() {
+    public Map<UUID, OrderItem> getItems() {
         return new HashMap<>(items);
     }
     
-    public int getItemCount() {
-        return items.size();
+    public BigDecimal getTotalAmount() {
+        return totalAmount;
     }
     
     public Instant getCreatedAt() {
@@ -218,87 +240,37 @@ public class OrderAggregate extends Aggregate<DomainEvent> {
         return submittedAt;
     }
     
-    // Setters (for internal use during state reconstruction)
-    protected void setCustomerId(String customerId) {
+    // Setters for Jackson deserialization
+    public void setAggregateId(UUID aggregateId) {
+        this.aggregateId = aggregateId;
+    }
+    
+    public void setVersion(Long version) {
+        this.version = version;
+    }
+    
+    public void setCustomerId(UUID customerId) {
         this.customerId = customerId;
     }
     
-    protected void setStatus(OrderStatus status) {
+    public void setStatus(OrderStatus status) {
         this.status = status;
     }
     
-    protected void setTotalAmount(BigDecimal totalAmount) {
-        this.totalAmount = totalAmount;
-    }
-    
-    protected void setCreatedAt(Instant createdAt) {
-        this.createdAt = createdAt;
-    }
-    
-    protected void setSubmittedAt(Instant submittedAt) {
-        this.submittedAt = submittedAt;
-    }
-    
-    /**
-     * Set the items map (for internal use during state reconstruction from snapshots).
-     */
-    protected void setItems(Map<String, OrderItem> items) {
+    public void setItems(Map<UUID, OrderItem> items) {
         this.items = items != null ? new HashMap<>(items) : new HashMap<>();
     }
     
-    /**
-     * Restore state from a snapshot aggregate.
-     * This method is called by OrderAggregateRepository to restore all state fields
-     * from a snapshot. It's public to allow access from the infrastructure package.
-     * 
-     * @param snapshotAggregate The aggregate loaded from snapshot
-     */
-    public void restoreFromSnapshot(OrderAggregate snapshotAggregate) {
-        if (snapshotAggregate == null) {
-            return;
-        }
-        
-        // Copy all state fields from snapshot
-        setCustomerId(snapshotAggregate.getCustomerId());
-        setStatus(snapshotAggregate.getStatus());
-        setTotalAmount(snapshotAggregate.getTotalAmount());
-        setItems(snapshotAggregate.getItems());
-        setCreatedAt(snapshotAggregate.getCreatedAt());
-        setSubmittedAt(snapshotAggregate.getSubmittedAt());
+    public void setTotalAmount(BigDecimal totalAmount) {
+        this.totalAmount = totalAmount != null ? totalAmount : BigDecimal.ZERO;
     }
     
-    // Validation methods
-    private void validateDraftStatus() {
-        if (status != OrderStatus.DRAFT) {
-            throw new IllegalStateException(
-                    "Cannot modify order when status is " + status + ". Only DRAFT orders can be modified.");
-        }
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
     }
     
-    private void validateAddItemParams(String productId, String productName, int quantity, BigDecimal unitPrice) {
-        if (productId == null || productId.isBlank()) {
-            throw new IllegalArgumentException("Product ID cannot be null or empty");
-        }
-        if (productName == null || productName.isBlank()) {
-            throw new IllegalArgumentException("Product name cannot be null or empty");
-        }
-        if (quantity <= 0) {
-            throw new IllegalArgumentException("Quantity must be positive");
-        }
-        if (unitPrice == null || unitPrice.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException("Unit price must be positive");
-        }
-    }
-    
-    private void validateRemoveItemParams(String productId) {
-        if (productId == null || productId.isBlank()) {
-            throw new IllegalArgumentException("Product ID cannot be null or empty");
-        }
-    }
-    
-    private void validateCanSubmit() {
-        if (items.isEmpty()) {
-            throw new IllegalStateException("Cannot submit empty order. Order must have at least one item.");
-        }
+    public void setSubmittedAt(Instant submittedAt) {
+        this.submittedAt = submittedAt;
     }
 }
+

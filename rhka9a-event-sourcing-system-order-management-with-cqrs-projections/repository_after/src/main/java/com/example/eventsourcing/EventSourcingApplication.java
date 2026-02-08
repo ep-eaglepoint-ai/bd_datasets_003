@@ -2,16 +2,19 @@ package com.example.eventsourcing;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.transaction.annotation.EnableTransactionManagement;
 
 /**
- * Main Spring Boot application for the Event Sourcing Order Management System.
+ * Main Spring Boot application for Event Sourcing System.
  */
 @SpringBootApplication
-@EnableAsync
+@EnableTransactionManagement
+@EnableConfigurationProperties
 public class EventSourcingApplication {
     
     public static void main(String[] args) {
         SpringApplication.run(EventSourcingApplication.class, args);
     }
 }
+

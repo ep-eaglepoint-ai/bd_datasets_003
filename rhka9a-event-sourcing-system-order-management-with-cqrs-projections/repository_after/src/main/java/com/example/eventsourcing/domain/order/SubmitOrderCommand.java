@@ -1,16 +1,14 @@
 package com.example.eventsourcing.domain.order;
 
+import java.util.Objects;
+import java.util.UUID;
+
 /**
  * Command to submit an order.
- * This command has no parameters as submission only requires the order ID,
- * which is provided separately in the service layer.
  */
-public class SubmitOrderCommand {
-    
-    // Optional metadata fields can be added here if needed
-    // For example: submittedBy, submissionNotes, etc.
-    
-    public SubmitOrderCommand() {
+public record SubmitOrderCommand(UUID orderId) {
+    public SubmitOrderCommand {
+        Objects.requireNonNull(orderId, "Order ID cannot be null");
     }
 }
 

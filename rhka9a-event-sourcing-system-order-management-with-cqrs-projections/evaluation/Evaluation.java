@@ -19,7 +19,7 @@ public class Evaluation {
     private static final String REPORTS_DIR = "evaluation/reports";
     private static final String ROOT_DIR = ".";
     private static final int MAX_OUTPUT_LENGTH = 8000;
-    private static final int TEST_TIMEOUT_SECONDS = 300;
+    private static final int TEST_TIMEOUT_SECONDS = 600; // Increased timeout to 10 minutes for full test suite
 
     public static void main(String[] args) {
         try {
@@ -119,11 +119,22 @@ public class Evaluation {
     private static ObjectNode evaluateRepositoryAfter() throws Exception {
         ObjectMapper mapper = new ObjectMapper();
         
-        // Run Maven tests for repository_after
+        // Run Maven tests for repository_after module
+        // Use -pl to specify the module, -am to also build dependencies
         ProcessBuilder pb = new ProcessBuilder();
-        pb.command("mvn", "test", "-f", "pom.xml", "-q");
+        pb.command("mvn", "clean", "test", "-pl", "repository_after", "-am");
         pb.directory(new File(ROOT_DIR));
         pb.redirectErrorStream(true);
+        
+        // Set environment variables for database connection (from docker-compose)
+        String dbUrl = System.getenv().getOrDefault("SPRING_DATASOURCE_URL", 
+            "jdbc:postgresql://postgres:5432/event_sourcing_db");
+        String dbUser = System.getenv().getOrDefault("SPRING_DATASOURCE_USERNAME", "postgres");
+        String dbPassword = System.getenv().getOrDefault("SPRING_DATASOURCE_PASSWORD", "postgres");
+        
+        pb.environment().put("SPRING_DATASOURCE_URL", dbUrl);
+        pb.environment().put("SPRING_DATASOURCE_USERNAME", dbUser);
+        pb.environment().put("SPRING_DATASOURCE_PASSWORD", dbPassword);
 
         Process process = pb.start();
         
@@ -150,7 +161,7 @@ public class Evaluation {
             output.append("\n[Timeout - tests took longer than ").append(TEST_TIMEOUT_SECONDS).append(" seconds]");
         }
         
-        outputReader.join(1000);
+        outputReader.join(2000); // Give more time for output reader to finish
         
         int returnCode = finished ? process.exitValue() : -1;
         

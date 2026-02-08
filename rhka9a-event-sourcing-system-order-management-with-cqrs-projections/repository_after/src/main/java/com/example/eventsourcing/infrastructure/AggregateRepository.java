@@ -1,288 +1,130 @@
 package com.example.eventsourcing.infrastructure;
 
-import com.example.eventsourcing.config.EventSourcingProperties;
 import com.example.eventsourcing.domain.Aggregate;
 import com.example.eventsourcing.domain.DomainEvent;
-import com.example.eventsourcing.exception.AggregateNotFoundException;
-import com.example.eventsourcing.infrastructure.persistence.SnapshotEntity;
-import com.example.eventsourcing.infrastructure.persistence.SnapshotRepository;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.example.eventsourcing.exception.AggregateInstantiationException;
+import com.example.eventsourcing.infrastructure.snapshot.SnapshotData;
+import com.example.eventsourcing.infrastructure.snapshot.SnapshotService;
+import com.example.eventsourcing.infrastructure.snapshot.SnapshotStore;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.scheduling.annotation.Async;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Supplier;
+import java.util.Optional;
+import java.util.UUID;
 
 /**
- * Repository for loading and saving aggregates with event sourcing and snapshot support.
- * 
- * @param <T> The type of aggregate
- * @param <E> The type of event the aggregate handles
+ * Generic repository for loading and saving aggregates with event sourcing.
+ * Supports snapshot optimization.
  */
-@Service
-public class AggregateRepository<T extends Aggregate<E>, E extends DomainEvent> {
+@Repository
+public class AggregateRepository<T extends Aggregate> {
     
-    private static final Logger logger = LoggerFactory.getLogger(AggregateRepository.class);
+    private static final Logger log = LoggerFactory.getLogger(AggregateRepository.class);
     
-    private final EventStore eventStore;
-    private final SnapshotRepository snapshotRepository;
-    /** ObjectMapper used for event serialization (polymorphic, configured in JacksonConfig). */
-    private final ObjectMapper objectMapper;
-
-    /**
-     * Dedicated ObjectMapper for snapshot serialization/deserialization.
-     * This mapper does NOT use default typing to keep snapshot JSON simple and
-     * avoid polymorphic/proxy-related issues when restoring aggregate state.
-     */
-    private final ObjectMapper snapshotMapper;
-    private final ApplicationEventPublisher eventPublisher;
-    private final EventSourcingProperties properties;
-    private final Supplier<T> aggregateFactory;
+    @Autowired
+    private EventStore eventStore;
     
-    public AggregateRepository(EventStore eventStore,
-                               SnapshotRepository snapshotRepository,
-                               ObjectMapper objectMapper,
-                               ApplicationEventPublisher eventPublisher,
-                               EventSourcingProperties properties,
-                               Supplier<T> aggregateFactory) {
-        this.eventStore = eventStore;
-        this.snapshotRepository = snapshotRepository;
-        this.objectMapper = objectMapper;
-        // Configure a separate mapper for snapshots, without default typing
-        this.snapshotMapper = new ObjectMapper();
-        this.snapshotMapper.registerModule(new JavaTimeModule());
-        this.snapshotMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-        this.snapshotMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-        this.eventPublisher = eventPublisher;
-        this.properties = properties;
-        this.aggregateFactory = aggregateFactory;
-    }
+    @Autowired
+    private SnapshotStore snapshotStore;
+    
+    @Autowired
+    private SnapshotService snapshotService;
+    
+    @Autowired
+    private ObjectMapper objectMapper;
     
     /**
-     * Load an aggregate by its ID, using snapshots if available.
+     * Load an aggregate by ID, using snapshot if available.
      */
-    @SuppressWarnings("unchecked")
     @Transactional(readOnly = true)
-    public T load(String aggregateId) {
-        logger.debug("Loading aggregate {}", aggregateId);
+    public Optional<T> load(UUID aggregateId, Class<T> aggregateClass) {
+        // 1. Try to load from snapshot
+        Optional<SnapshotData> snapshotOpt = snapshotStore.getLatestSnapshot(aggregateId);
+        T aggregate;
+        Long fromVersion = 0L;
         
-        // Try to load from snapshot first
-        SnapshotEntity snapshot = snapshotRepository
-                .findTopByAggregateIdOrderByVersionDesc(aggregateId)
-                .orElse(null);
-        Long snapshotVersion = snapshot != null ? snapshot.getVersion() : 0L;
-        
-        T aggregate = aggregateFactory.get();
-        aggregate.setAggregateId(aggregateId);
-        
-        if (snapshot != null) {
-            logger.debug("Found snapshot for aggregate {} at version {}", aggregateId, snapshotVersion);
-            // Load aggregate state from snapshot
-            restoreFromSnapshot(aggregate, snapshot);
+        if (snapshotOpt.isPresent()) {
+            // Deserialize aggregate from snapshot
+            SnapshotData snapshot = snapshotOpt.get();
+            aggregate = deserializeSnapshot(snapshot.getData(), aggregateClass);
+            fromVersion = snapshot.getVersion();
+            log.debug("Loaded aggregate {} from snapshot at version {}", aggregateId, fromVersion);
+        } else {
+            // No snapshot, create new instance
+            try {
+                aggregate = aggregateClass.getDeclaredConstructor(UUID.class)
+                    .newInstance(aggregateId);
+            } catch (Exception e) {
+                throw new AggregateInstantiationException(
+                    "Failed to instantiate aggregate: " + aggregateClass.getName(), e);
+            }
         }
         
-        // Load events after snapshot version
-        List<DomainEvent> rawEvents = eventStore.loadEventsAfterVersion(aggregateId, snapshotVersion);
-        List<E> events = new ArrayList<>(rawEvents.size());
-        for (DomainEvent e : rawEvents) {
-            @SuppressWarnings("unchecked")
-            E casted = (E) e;
-            events.add(casted);
-        }
-        if (!events.isEmpty()) {
-            logger.debug("Loading {} events after snapshot for aggregate {}", events.size(), aggregateId);
-            aggregate.loadFromHistory(events);
+        // 2. Load and apply events after snapshot
+        List<DomainEvent> events = eventStore.getEventsAfterVersion(aggregateId, fromVersion);
+        
+        if (events.isEmpty() && fromVersion == 0L) {
+            return Optional.empty(); // Aggregate doesn't exist
         }
         
-        aggregate.setVersion(eventStore.getCurrentVersion(aggregateId));
-        return aggregate;
+        aggregate.loadFromHistory(events);
+        
+        log.debug("Loaded aggregate {} with {} events after snapshot", aggregateId, events.size());
+        
+        return Optional.of(aggregate);
     }
     
     /**
-     * Save an aggregate by appending its uncommitted events to the event store.
+     * Save an aggregate by persisting uncommitted events.
      */
     @Transactional
-    public T save(T aggregate) {
-        String aggregateId = aggregate.getAggregateId();
-        Long expectedVersion = aggregate.getVersion();
-        List<E> events = aggregate.getUncommittedEvents();
+    public void save(T aggregate) {
+        List<DomainEvent> events = aggregate.getUncommittedEvents();
         
         if (events.isEmpty()) {
-            logger.debug("No uncommitted events for aggregate {}", aggregateId);
-            return aggregate;
+            return; // Nothing to save
         }
         
-        logger.debug("Saving aggregate {} with {} uncommitted events, expected version {}",
-                aggregateId, events.size(), expectedVersion);
+        // Calculate expected version (before new events)
+        Long expectedVersion = aggregate.getVersion() - events.size();
         
-        // Append events with optimistic locking
-        List<DomainEvent> rawSavedEvents = eventStore.appendEvents(aggregateId, expectedVersion, events);
-        List<E> savedEvents = new ArrayList<>(rawSavedEvents.size());
-        for (DomainEvent e : rawSavedEvents) {
-            @SuppressWarnings("unchecked")
-            E casted = (E) e;
-            savedEvents.add(casted);
-        }
+        // Save events with optimistic locking
+        eventStore.appendEvents(
+            aggregate.getAggregateId(),
+            aggregate.getClass().getName(),
+            expectedVersion,
+            events
+        );
         
-        // Update aggregate version
-        aggregate.setVersion(expectedVersion + savedEvents.size());
-        
-        // Mark events as committed
+        // Clear uncommitted events
         aggregate.markEventsAsCommitted();
         
-        // Publish events for projections
-        for (E event : savedEvents) {
-            eventStore.publishEvent(event);
-        }
+        // Schedule snapshot creation (async, separate transaction)
+        snapshotService.createSnapshotAsync(
+            aggregate.getAggregateId(),
+            aggregate.getClass().getName(),
+            aggregate.getVersion(),
+            aggregate
+        );
         
-        logger.info("Saved aggregate {} with {} events, new version {}",
-                aggregateId, savedEvents.size(), aggregate.getVersion());
-        
-        // Check if we need to create a snapshot (async, in separate transaction)
-        checkAndCreateSnapshot(aggregate);
-        
-        return aggregate;
+        log.debug("Saved {} events for aggregate {}", events.size(), aggregate.getAggregateId());
     }
     
     /**
-     * Save a new aggregate with its first event.
-     * Ensures the initial event is marked as committed so it won't be re-appended on subsequent saves.
+     * Deserialize snapshot data to aggregate instance.
      */
-    @Transactional
-    public T saveNew(T aggregate, E initialEvent) {
-        String aggregateId = aggregate.getAggregateId();
-        
-        logger.debug("Saving new aggregate {}", aggregateId);
-        
-        // Append the initial event (with optimistic locking check)
-        DomainEvent persistedEvent = eventStore.appendInitialEvent(aggregateId, initialEvent);
-        
-        // Apply the event to the aggregate using the persisted version
-        @SuppressWarnings("unchecked")
-        E appliedEvent = (E) persistedEvent;
-        aggregate.apply(appliedEvent);
-        aggregate.setVersion(appliedEvent.getVersion());
-        
-        // Mark the initial event as committed so it is not re-appended on the next save()
-        aggregate.markEventsAsCommitted();
-        
-        // Publish event for projections
-        eventStore.publishEvent(persistedEvent);
-        
-        logger.info("Saved new aggregate {} with version {}", aggregateId, aggregate.getVersion());
-        return aggregate;
-    }
-    
-    /**
-     * Check if a snapshot should be created and create it if needed.
-     * This method is called after save() to potentially trigger async snapshot creation.
-     * Snapshots are created at threshold, 2*threshold, 3*threshold, etc. (not at version 0).
-     */
-    private void checkAndCreateSnapshot(T aggregate) {
-        int snapshotThreshold = properties.getSnapshot().getThreshold();
-        
-        // Check if we've reached the snapshot threshold
-        // Only create snapshots at threshold, 2*threshold, 3*threshold, etc. (not at version 0)
-        if (snapshotThreshold > 0 && aggregate.getVersion() >= snapshotThreshold
-                && aggregate.getVersion() % snapshotThreshold == 0) {
-            // Create snapshot in a separate transaction (async, non-blocking)
-            createSnapshotAsync(aggregate);
-        }
-    }
-    
-    /**
-     * Create a snapshot asynchronously in a separate transaction.
-     * This ensures snapshot creation doesn't block command processing.
-     */
-    @Async("eventTaskExecutor")
-    public void createSnapshotAsync(T aggregate) {
-        String aggregateId = aggregate.getAggregateId();
-        
-        logger.debug("Async snapshot creation for aggregate {} at version {}", aggregateId, aggregate.getVersion());
-        
+    private T deserializeSnapshot(String data, Class<T> aggregateClass) {
         try {
-            createSnapshot(aggregate);
+            return objectMapper.readValue(data, aggregateClass);
         } catch (Exception e) {
-            logger.error("Failed to create snapshot for aggregate {}: {}", aggregateId, e.getMessage(), e);
+            log.error("Failed to deserialize snapshot for {}: {}", aggregateClass.getName(), e.getMessage());
+            throw new RuntimeException("Snapshot deserialization failed", e);
         }
-    }
-    
-    /**
-     * Create a snapshot of the aggregate state.
-     * This method runs in a separate transaction to avoid blocking command processing.
-     */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void createSnapshot(T aggregate) {
-        String aggregateId = aggregate.getAggregateId();
-        
-        logger.debug("Creating snapshot for aggregate {} at version {}", aggregateId, aggregate.getVersion());
-        
-        try {
-            // Use the dedicated snapshot mapper (no default typing) to serialize the aggregate state
-            String state = snapshotMapper.writeValueAsString(aggregate);
-            SnapshotEntity snapshot = new SnapshotEntity(
-                    aggregateId,
-                    aggregate.getVersion(),
-                    Instant.now(),
-                    aggregate.getAggregateType(),
-                    state
-            );
-            snapshotRepository.save(snapshot);
-            
-            logger.info("Created snapshot for aggregate {} at version {}", aggregateId, aggregate.getVersion());
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("Failed to serialize aggregate state for snapshot", e);
-        }
-    }
-    
-    /**
-     * Restore aggregate state from a snapshot.
-     *
-     * We explicitly deserialize into the concrete aggregate type produced by the
-     * {@code aggregateFactory}. This avoids any surprises with proxy classes or
-     * generic {@code Object} deserialization and keeps the snapshot JSON format
-     * aligned with the aggregate implementation.
-     */
-    @SuppressWarnings("unchecked")
-    private void restoreFromSnapshot(T aggregate, SnapshotEntity snapshot) {
-        try {
-            // Determine the concrete aggregate class from the factory
-            Class<?> aggregateClass = aggregateFactory.get().getClass();
-            T snapshotAggregate = (T) snapshotMapper.readValue(snapshot.getState(), aggregateClass);
-
-            // Copy relevant state from snapshot to current aggregate
-            aggregate.setAggregateId(snapshotAggregate.getAggregateId());
-            aggregate.setVersion(snapshotAggregate.getVersion());
-            copyStateFromSnapshot(aggregate, snapshotAggregate);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("Failed to deserialize aggregate state from snapshot", e);
-        }
-    }
-    
-    /**
-     * Copy state from a snapshot aggregate to the current aggregate.
-     * Subclasses should override this if they have additional state to restore.
-     */
-    protected void copyStateFromSnapshot(T aggregate, T snapshotAggregate) {
-        // Default implementation does nothing - subclasses can override
-    }
-    
-    /**
-     * Check if an aggregate exists.
-     */
-    @Transactional(readOnly = true)
-    public boolean exists(String aggregateId) {
-        return eventStore.getCurrentVersion(aggregateId) > 0L;
     }
 }
+

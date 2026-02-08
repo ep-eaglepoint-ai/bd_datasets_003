@@ -1,28 +1,20 @@
 package com.example.eventsourcing.infrastructure;
 
 import com.example.eventsourcing.domain.DomainEvent;
-import org.springframework.context.ApplicationEvent;
 
 /**
- * Wrapper for domain events to be published through Spring's application event publisher.
+ * Wrapper for domain events to be published via Spring's event system.
  */
-public class DomainEventWrapper extends ApplicationEvent {
+public class DomainEventWrapper<T extends DomainEvent> {
     
-    private final DomainEvent domainEvent;
+    private final T event;
     
-    public DomainEventWrapper(Object source, DomainEvent domainEvent) {
-        super(source);
-        this.domainEvent = domainEvent;
+    public DomainEventWrapper(T event) {
+        this.event = event;
     }
     
-    public DomainEvent getDomainEvent() {
-        return domainEvent;
-    }
-    
-    @Override
-    public String toString() {
-        return "DomainEventWrapper{" +
-               "domainEvent=" + domainEvent +
-               '}';
+    public T getEvent() {
+        return event;
     }
 }
+

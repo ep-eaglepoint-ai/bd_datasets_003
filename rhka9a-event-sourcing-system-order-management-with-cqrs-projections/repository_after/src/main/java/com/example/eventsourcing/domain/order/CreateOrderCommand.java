@@ -1,27 +1,14 @@
 package com.example.eventsourcing.domain.order;
 
-import jakarta.validation.constraints.NotBlank;
+import java.util.Objects;
+import java.util.UUID;
 
 /**
  * Command to create a new order.
  */
-public class CreateOrderCommand {
-    
-    @NotBlank(message = "Customer ID is required")
-    private String customerId;
-    
-    public CreateOrderCommand() {
-    }
-    
-    public CreateOrderCommand(String customerId) {
-        this.customerId = customerId;
-    }
-    
-    public String getCustomerId() {
-        return customerId;
-    }
-    
-    public void setCustomerId(String customerId) {
-        this.customerId = customerId;
+public record CreateOrderCommand(UUID customerId) {
+    public CreateOrderCommand {
+        Objects.requireNonNull(customerId, "Customer ID cannot be null");
     }
 }
+

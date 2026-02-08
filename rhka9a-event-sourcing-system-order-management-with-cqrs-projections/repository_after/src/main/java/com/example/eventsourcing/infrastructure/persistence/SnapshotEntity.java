@@ -1,67 +1,63 @@
 package com.example.eventsourcing.infrastructure.persistence;
 
+import io.hypersistence.utils.hibernate.type.json.JsonBinaryType;
 import jakarta.persistence.*;
+import org.hibernate.annotations.Type;
+
 import java.time.Instant;
+import java.util.UUID;
 
 /**
- * JPA Entity representing a snapshot of an aggregate's state.
+ * JPA Entity for aggregate snapshots.
  */
 @Entity
-@Table(name = "aggregate_snapshots", indexes = {
-    @Index(name = "idx_snapshot_aggregate_id", columnList = "aggregate_id")
-})
+@Table(name = "aggregate_snapshots",
+       indexes = {
+           @Index(name = "idx_snapshot_aggregate_id", columnList = "aggregate_id"),
+           @Index(name = "idx_snapshot_created_at", columnList = "created_at")
+       })
 public class SnapshotEntity {
     
     @Id
-    @Column(name = "aggregate_id", length = 36)
-    private String aggregateId;
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @Column(columnDefinition = "UUID")
+    private UUID snapshotId;
     
-    @Column(name = "version", nullable = false)
-    private Long version;
+    @Column(nullable = false, unique = true, columnDefinition = "UUID")
+    private UUID aggregateId;
     
-    @Column(name = "timestamp", nullable = false)
-    private Instant timestamp;
-    
-    @Column(name = "aggregate_type", nullable = false, length = 255)
+    @Column(nullable = false, length = 500)
     private String aggregateType;
     
-    @Column(name = "state", nullable = false, columnDefinition = "TEXT")
-    private String state;
+    @Column(nullable = false)
+    private Long snapshotVersion;
     
+    @Type(JsonBinaryType.class)
+    @Column(columnDefinition = "jsonb", nullable = false)
+    private String snapshotData;
+    
+    @Column(nullable = false)
+    private Instant createdAt;
+    
+    // Constructors
     public SnapshotEntity() {
     }
     
-    public SnapshotEntity(String aggregateId, Long version, Instant timestamp,
-                          String aggregateType, String state) {
-        this.aggregateId = aggregateId;
-        this.version = version;
-        this.timestamp = timestamp;
-        this.aggregateType = aggregateType;
-        this.state = state;
+    // Getters and Setters
+    public UUID getSnapshotId() {
+        return snapshotId;
     }
     
-    public String getAggregateId() {
+    public void setSnapshotId(UUID snapshotId) {
+        this.snapshotId = snapshotId;
+    }
+    
+    public UUID getAggregateId() {
         return aggregateId;
     }
     
-    public void setAggregateId(String aggregateId) {
+    public void setAggregateId(UUID aggregateId) {
         this.aggregateId = aggregateId;
-    }
-    
-    public Long getVersion() {
-        return version;
-    }
-    
-    public void setVersion(Long version) {
-        this.version = version;
-    }
-    
-    public Instant getTimestamp() {
-        return timestamp;
-    }
-    
-    public void setTimestamp(Instant timestamp) {
-        this.timestamp = timestamp;
     }
     
     public String getAggregateType() {
@@ -72,11 +68,28 @@ public class SnapshotEntity {
         this.aggregateType = aggregateType;
     }
     
-    public String getState() {
-        return state;
+    public Long getSnapshotVersion() {
+        return snapshotVersion;
     }
     
-    public void setState(String state) {
-        this.state = state;
+    public void setSnapshotVersion(Long snapshotVersion) {
+        this.snapshotVersion = snapshotVersion;
+    }
+    
+    public String getSnapshotData() {
+        return snapshotData;
+    }
+    
+    public void setSnapshotData(String snapshotData) {
+        this.snapshotData = snapshotData;
+    }
+    
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+    
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
     }
 }
+

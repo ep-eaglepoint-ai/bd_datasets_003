@@ -4,77 +4,51 @@ import com.example.eventsourcing.domain.DomainEvent;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-import java.math.BigDecimal;
 import java.time.Instant;
-import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 
 /**
- * Event representing an order being submitted.
+ * Event emitted when an order is submitted.
  */
-public class OrderSubmittedEvent extends DomainEvent {
-    
-    private final String customerId;
-    private final BigDecimal totalAmount;
-    private final int itemCount;
+public record OrderSubmittedEvent(
+    UUID eventId,
+    UUID aggregateId,
+    Long version,
+    Instant occurredAt
+) implements DomainEvent {
     
     @JsonCreator
     public OrderSubmittedEvent(
-            @JsonProperty("eventId") String eventId,
-            @JsonProperty("aggregateId") String aggregateId,
-            @JsonProperty("version") Long version,
-            @JsonProperty("timestamp") Instant timestamp,
-            @JsonProperty("customerId") String customerId,
-            @JsonProperty("totalAmount") BigDecimal totalAmount,
-            @JsonProperty("itemCount") int itemCount) {
-        super(eventId, aggregateId, version, timestamp);
-        this.customerId = Objects.requireNonNull(customerId, "Customer ID cannot be null");
-        this.totalAmount = totalAmount != null ? totalAmount : BigDecimal.ZERO;
-        this.itemCount = itemCount;
-    }
-    
-    public OrderSubmittedEvent(String aggregateId, Long version, String customerId,
-                               BigDecimal totalAmount, int itemCount) {
-        super(aggregateId, version);
-        this.customerId = Objects.requireNonNull(customerId, "Customer ID cannot be null");
-        this.totalAmount = totalAmount != null ? totalAmount : BigDecimal.ZERO;
-        this.itemCount = itemCount;
-    }
-    
-    public String getCustomerId() {
-        return customerId;
-    }
-    
-    public BigDecimal getTotalAmount() {
-        return totalAmount;
-    }
-    
-    public int getItemCount() {
-        return itemCount;
+        @JsonProperty("eventId") UUID eventId,
+        @JsonProperty("aggregateId") UUID aggregateId,
+        @JsonProperty("version") Long version,
+        @JsonProperty("occurredAt") Instant occurredAt
+    ) {
+        this.eventId = Objects.requireNonNull(eventId, "Event ID cannot be null");
+        this.aggregateId = Objects.requireNonNull(aggregateId, "Aggregate ID cannot be null");
+        this.version = Objects.requireNonNull(version, "Version cannot be null");
+        this.occurredAt = Objects.requireNonNull(occurredAt, "Occurred at cannot be null");
     }
     
     @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        if (!super.equals(o)) return false;
-        OrderSubmittedEvent that = (OrderSubmittedEvent) o;
-        return itemCount == that.itemCount &&
-               Objects.equals(customerId, that.customerId) &&
-               Objects.equals(totalAmount, that.totalAmount);
+    public UUID getEventId() {
+        return eventId;
     }
     
     @Override
-    public int hashCode() {
-        return Objects.hash(super.hashCode(), customerId, totalAmount, itemCount);
+    public UUID getAggregateId() {
+        return aggregateId;
     }
     
     @Override
-    public String toString() {
-        return "OrderSubmittedEvent{" +
-               "customerId='" + customerId + '\'' +
-               ", totalAmount=" + totalAmount +
-               ", itemCount=" + itemCount +
-               "} " + super.toString();
+    public Long getVersion() {
+        return version;
+    }
+    
+    @Override
+    public Instant getOccurredAt() {
+        return occurredAt;
     }
 }
+
