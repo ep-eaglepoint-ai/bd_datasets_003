@@ -4,7 +4,7 @@
     No command
 
     ## After Test Docker Command
-    docker compose run --rm -it app npm run test
+    docker compose run --rm app npm run test
 
     ## Evaluation Docker Command
     docker-compose run --rm app npm run evaluate
