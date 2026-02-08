@@ -1,10 +1,10 @@
 # 23DQF9 - Task-Concurrency-Orchestrator
 
     ## Before Test Docker Command
-    <docker before command here>
+    No command
 
     ## After Test Docker Command
-    <docker after command here>
+    docker compose run --rm -it app npm run test
 
     ## Evaluation Docker Command
     <evaluation command here>

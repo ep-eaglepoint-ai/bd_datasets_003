@@ -19,23 +19,21 @@ describe('QueueManager', () => {
 
     for (let i = 0; i < 12; i++) {
       q.addJob(async () => {
-        // Record the executing count at the moment the task starts
+        
         activeAt.push(q.getStatus().executing);
         await new Promise(res => setTimeout(res, 1000));
       });
     }
 
-    // Process initial batch
+    
     await vi.advanceTimersByTimeAsync(0);
     expect(q.getStatus().executing).toBe(3);
 
-    // Advance 1500ms. Batch 1 finishes, Batch 2 starts.
+    
     await vi.advanceTimersByTimeAsync(1500);
     expect(q.getStatus().executing).toBe(3);
 
-    // DRAIN EVERYTHING
-    // runAllTimersAsync is the most reliable way to ensure 
-    // all timers AND their resulting .finally() blocks finish.
+    
     await vi.runAllTimersAsync();
     
     expect(q.getStatus().executing).toBe(0);
@@ -54,7 +52,7 @@ describe('QueueManager', () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(q.getStatus().executing).toBe(3);
 
-    // At 150ms: Job 1 and 3 are done. Job 4 has started.
+    
     await vi.advanceTimersByTimeAsync(150);
     expect(q.getStatus().executing).toBe(2);
     expect(startOrder).toEqual([1, 2, 3, 4]);
@@ -94,7 +92,7 @@ describe('QueueManager', () => {
     for (let i = 0; i < 8; i++) {
       q2.addJob(async () => {
         started();
-        // Use a tiny delay to ensure Vitest can step through the loop
+       
         await new Promise(res => setTimeout(res, 1)); 
       });
     }

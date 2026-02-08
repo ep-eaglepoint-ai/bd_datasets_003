@@ -1,4 +1,4 @@
-// repository_after/src/QueueManager.ts
+
 
 type JobId = string | number;
 type JobState = 'pending' | 'executing' | 'completed' | 'failed';
@@ -17,9 +17,9 @@ type StateChangeListener<T> = (job: JobEntry<T>) => void;
 
 export class QueueManager<T = any> {
   private readonly maxConcurrency: number;
-  private queue: JobEntry<T>[] = [];                    // waiting jobs
-  private inFlight = new Map<JobId, JobEntry<T>>();     // currently running
-  private completed = new Map<JobId, JobEntry<T>>();    // finished (success+fail)
+  private queue: JobEntry<T>[] = [];                    
+  private inFlight = new Map<JobId, JobEntry<T>>();     
+  private completed = new Map<JobId, JobEntry<T>>();    
 
   private paused = false;
   private nextId = 0;
@@ -33,10 +33,7 @@ export class QueueManager<T = any> {
     this.maxConcurrency = maxConcurrency;
   }
 
-  // ────────────────────────────────────────────────
-  //  Core public API
-  // ────────────────────────────────────────────────
-
+  
   addJob(task: () => Promise<T>, customId?: JobId): JobId {
     const id = customId ?? `job-${this.nextId++}`;
 
@@ -49,7 +46,7 @@ export class QueueManager<T = any> {
     this.queue.push(entry);
     this.notifyChange(entry);
 
-    // Try to start immediately if we have free slots
+    
     this.tryStartNext();
 
     return id;
@@ -63,7 +60,7 @@ export class QueueManager<T = any> {
   resume(): void {
     if (!this.paused) return;
     this.paused = false;
-    // Fill all available slots
+    
     while (this.inFlight.size < this.maxConcurrency && this.queue.length > 0) {
       this.startNextJob();
     }
@@ -88,7 +85,7 @@ export class QueueManager<T = any> {
   }
 
   getJob(id: JobId): JobEntry<T> | undefined {
-    // Check in order: queue → inflight → completed
+   
     let job = this.queue.find(j => j.id === id);
     if (job) return { ...job };
 
@@ -106,10 +103,7 @@ export class QueueManager<T = any> {
     return () => this.onStateChangeListeners.delete(listener);
   }
 
-  // ────────────────────────────────────────────────
-  //  Internal orchestration
-  // ────────────────────────────────────────────────
-
+  
   private tryStartNext(): void {
     if (this.paused) return;
     if (this.inFlight.size >= this.maxConcurrency) return;
@@ -127,7 +121,7 @@ export class QueueManager<T = any> {
     this.inFlight.set(job.id, job);
     this.notifyChange(job);
 
-    // Very important: start the promise **now**
+   
     job.task()
       .then(result => {
         this.completeJob(job, "completed", result);
@@ -136,13 +130,12 @@ export class QueueManager<T = any> {
         this.completeJob(job, "failed", undefined, error);
       })
       .finally(() => {
-        // This finally block runs synchronously after then/catch
-        // → it guarantees we try to fill the slot immediately
+        
         this.inFlight.delete(job.id);
-        this.completed.set(job.id, job); // keep reference
+        this.completed.set(job.id, job); 
         this.notifyChange(job);
 
-        // Critical: try to start next job **right now**
+        
         this.tryStartNext();
       });
   }
@@ -163,7 +156,7 @@ export class QueueManager<T = any> {
   }
 
   private notifyChange(job: JobEntry<T>): void {
-    // Avoid mutation issues by passing shallow copy
+    
     const snapshot = { ...job };
     for (const listener of this.onStateChangeListeners) {
       try {
@@ -174,7 +167,7 @@ export class QueueManager<T = any> {
     }
   }
 
-  // Optional: clean up completed jobs (memory optimization)
+  
   clearCompleted(): void {
     this.completed.clear();
   }
