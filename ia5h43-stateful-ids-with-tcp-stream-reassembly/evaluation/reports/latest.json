@@ -1,0 +1,32 @@
+{
+  "run_id": "d65cc143-a895-417c-8638-4a4bc983e6e0",
+  "started_at": "2026-02-08T10:35:38.191508Z",
+  "finished_at": "2026-02-08T10:35:38.565845Z",
+  "duration_seconds": 0.374337,
+  "environment": {
+    "python_version": "3.11.14",
+    "platform": "Linux-6.18.7-200.fc43.x86_64-x86_64-with-glibc2.41"
+  },
+  "before": {
+    "tests": {
+      "passed": false,
+      "return_code": 1,
+      "output": "Baseline repository_before is empty. Implementation missing."
+    },
+    "metrics": {}
+  },
+  "after": {
+    "tests": {
+      "passed": true,
+      "return_code": 0,
+      "output": "============================= test session starts ==============================\nplatform linux -- Python 3.11.14, pytest-9.0.2, pluggy-1.6.0 -- /usr/local/bin/python3.11\nrootdir: /app\ncollecting ... collected 5 items\n\ntests/test_ids.py::TestStatefulIDS::test_cleanup PASSED                  [ 20%]\ntests/test_ids.py::TestStatefulIDS::test_noise PASSED                    [ 40%]\ntests/test_ids.py::TestStatefulIDS::test_out_of_order PASSED             [ 60%]\ntests/test_ids.py::TestStatefulIDS::test_overlap PASSED                  [ 80%]\ntests/test_ids.py::TestStatefulIDS::test_split_attack PASSED             [100%]\n\n============================== 5 passed in 0.01s ===============================\n"
+    },
+    "metrics": {}
+  },
+  "comparison": {
+    "passed_gate": true,
+    "improvement_summary": "Implementation passed all stateful IDS reassembly tests. Verified split attacks, out-of-order delivery, and session timeouts."
+  },
+  "success": true,
+  "error": null
+}
