@@ -8,17 +8,14 @@ const after = require('../repository_after/autocomplete');
 
 let perfNow = () => Date.now();
 try {
-  // eslint-disable-next-line global-require
   const { performance } = require('node:perf_hooks');
   if (performance && typeof performance.now === 'function') perfNow = () => performance.now();
 } catch {
-  // ignore
 }
 
 test('requirement 1: legacy bottleneck analysis is documented in comments', () => {
   const filePath = path.join(__dirname, '..', 'repository_after', 'autocomplete.js');
   const content = fs.readFileSync(filePath, 'utf8');
-  // Basic smoke-check that analysis + complexity notes exist.
   assert.match(content, /Legacy bottleneck analysis/i);
   assert.match(content, /O\(n\)/);
 });
@@ -52,19 +49,12 @@ test('requirement 4: ranking prefers prefix over contains and uses score', () =>
   ];
   const search = new after.ProductSearch(products);
   search._debounceMs = 0;
-
-  // Query "alpha" should return prefix matches (a,c) above contains (b)
-  // and higher score should rank higher among same matchType.
   const results = search.searchProducts('alpha', 10);
   assert.ok(results.length >= 2);
   assert.equal(results[0].matchType, 'prefix');
   assert.equal(results[1].matchType, 'prefix');
-
-  // Among prefix results, c (score 50) should appear before a (score 1)
   const ids = results.map(r => r.id);
   assert.ok(ids.indexOf('c') < ids.indexOf('a'));
-
-  // Contains result should be present after prefixes
   assert.ok(ids.includes('b'));
   assert.ok(ids.indexOf('b') > ids.indexOf('a'));
 });
@@ -85,24 +75,20 @@ test('requirement 5: throttle/debounce coalesces rapid calls; only latest execut
   const computeAfterFirst = search._computeCount;
   assert.equal(computeAfterFirst, 1);
 
-  t = 50; // within 100ms
+  t = 50; 
   const r2 = search.searchProducts('tech', 10);
   assert.equal(search._computeCount, 1, 'should not compute immediately inside throttle window');
-  // should return last results (could be empty or previous)
   assert.ok(Array.isArray(r2));
 
-  t = 70; // still within window, update pending again
+  t = 70; 
   search.searchProducts('techco w', 10);
   assert.equal(search._computeCount, 1);
 
-  // Force execution of latest pending
   const flushed = search.flushPending();
   assert.ok(flushed.every(x => x.id && x.name && typeof x.score === 'number'));
   assert.ok(flushed.length > 0);
   assert.ok(flushed[0].name.toLowerCase().includes('techco'));
   assert.equal(search._computeCount, 2, 'flush should compute exactly once');
-
-  // let timer system settle (no-op, just to be safe in CI)
   await new Promise(r => setTimeout(r, 0));
 });
 
@@ -139,7 +125,6 @@ test('requirement 9: memory overhead is documented in comments', () => {
 });
 
 test('performance: search is sub-50ms for 100k prefix query (after)', () => {
-  // Deterministic dataset: huge shared prefix; search should still be fast.
   const n = 100000;
   const products = new Array(n);
   for (let i = 0; i < n; i++) {
@@ -152,7 +137,6 @@ test('performance: search is sub-50ms for 100k prefix query (after)', () => {
   }
 
   const search = new after.ProductSearch(products);
-  // Disable throttle for timing stability in this test.
   search._debounceMs = 0;
   const start = perfNow();
   const results = search.searchProducts('techco w', 10);
@@ -187,8 +171,6 @@ test('performance: optimized implementation is significantly faster than legacy'
   const t2 = perfNow();
   optimized.searchProducts(query, 10);
   const optMs = perfNow() - t2;
-
-  // Use ratio to reduce flakiness across environments.
   assert.ok(optMs <= legacyMs / 3 || legacyMs - optMs >= 20, `legacy=${legacyMs.toFixed(2)}ms optimized=${optMs.toFixed(2)}ms`);
 });
 
@@ -208,8 +190,6 @@ test('compatibility: optimized finds the same matches as legacy (>=2 chars)', ()
   const a = legacy.searchProducts(query, 10);
   const b = optimized.searchProducts(query, 10);
 
-  // We require compatibility in signature/shape and that it finds the same items,
-  // but ranking can be improved in the optimized implementation.
   const setA = new Set(a.map(x => x.id));
   const setB = new Set(b.map(x => x.id));
   assert.deepEqual([...setB].sort(), [...setA].sort());

@@ -1,13 +1,56 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const REPORT_PATH = path.join(__dirname, 'report.json');
+const REPORT_DIR = path.join(__dirname, 'reports');
+const REPORT_PATH = path.join(REPORT_DIR, 'report.json');
 
 function safeWriteReportFile(obj) {
   try {
+    fs.mkdirSync(REPORT_DIR, { recursive: true });
     fs.writeFileSync(REPORT_PATH, JSON.stringify(obj, null, 2) + '\n', 'utf8');
   } catch {
   }
+}
+
+function isoNow() {
+  return new Date().toISOString();
+}
+
+function newRunId() {
+  try {
+    const crypto = require('node:crypto');
+    if (crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  } catch {
+  }
+  return `run-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function makeCanonicalReport({
+  runId,
+  startedAt,
+  finishedAt,
+  durationSeconds,
+  before,
+  after,
+  comparison,
+  success,
+  error,
+}) {
+  return {
+    run_id: runId,
+    started_at: startedAt,
+    finished_at: finishedAt,
+    duration_seconds: durationSeconds,
+    environment: {
+      python_version: process.env.PYTHON_VERSION ? String(process.env.PYTHON_VERSION) : 'unknown',
+      platform: `${process.platform}-${process.arch}`,
+    },
+    before,
+    after,
+    comparison,
+    success,
+    error,
+  };
 }
 
 function die_oom() {
@@ -15,7 +58,18 @@ function die_oom() {
     process.stderr.write('evaluation: OOM detected (heap out of memory)\n');
   } catch {
   }
-  const report = { ok: false, error: 'oom' };
+  const now = isoNow();
+  const report = makeCanonicalReport({
+    runId: newRunId(),
+    startedAt: now,
+    finishedAt: now,
+    durationSeconds: 0.0,
+    before: { tests: { passed: false, return_code: 1, output: 'oom' }, metrics: {} },
+    after: { tests: { passed: false, return_code: 1, output: 'oom' }, metrics: {} },
+    comparison: { passed_gate: false, improvement_summary: 'failed due to out-of-memory' },
+    success: false,
+    error: 'oom',
+  });
   safeWriteReportFile(report);
   try {
     process.stdout.write(JSON.stringify(report, null, 2) + '\n');
@@ -89,6 +143,10 @@ function benchSearch({ label, SearchClass, products, queries, limit = 10, reps =
 }
 
 function main() {
+  const runId = newRunId();
+  const startedAt = isoNow();
+  const startedPerf = perfNow();
+
   const before = require(path.join('..', 'repository_before', 'autocomplete.js'));
   const after = require(path.join('..', 'repository_after', 'autocomplete.js'));
 
@@ -124,13 +182,45 @@ function main() {
 
   const ok = afterGate.every((g) => g.ok);
 
-  const report = {
-    ok,
-    thresholdMs,
-    afterGate,
-    before: beforeReport,
-    after: afterReport,
-  };
+  const finishedAt = isoNow();
+  const durationSeconds = (perfNow() - startedPerf) / 1000;
+
+  const improvementSummary = ok
+    ? `passed performance gate (<${thresholdMs}ms median) for ${afterGate.length}/${afterGate.length} queries`
+    : `failed performance gate (<${thresholdMs}ms median) for ${afterGate.filter((g) => g.ok).length}/${afterGate.length} queries`;
+
+  const report = makeCanonicalReport({
+    runId,
+    startedAt,
+    finishedAt,
+    durationSeconds,
+    before: {
+      tests: { passed: true, return_code: 0, output: 'benchmark completed' },
+      metrics: {
+        initMs: beforeReport.initMs,
+        queryStats: beforeReport.queryStats,
+        memory: beforeReport.memory,
+      },
+    },
+    after: {
+      tests: { passed: true, return_code: 0, output: 'benchmark completed' },
+      metrics: {
+        initMs: afterReport.initMs,
+        queryStats: afterReport.queryStats,
+        memory: afterReport.memory,
+        gate: {
+          thresholdMs,
+          queries: afterGate,
+        },
+      },
+    },
+    comparison: {
+      passed_gate: ok,
+      improvement_summary: improvementSummary,
+    },
+    success: ok,
+    error: null,
+  });
   safeWriteReportFile(report);
   process.stdout.write(JSON.stringify(report, null, 2) + '\n');
   process.exit(0);
@@ -143,7 +233,20 @@ process.on('unhandledRejection', (e) => {
     process.stderr.write(`evaluation: unhandled rejection: ${msg}\n`);
   } catch {
   }
-  safeWriteReportFile({ ok: false, error: 'unhandledRejection', message: msg });
+  const now = isoNow();
+  safeWriteReportFile(
+    makeCanonicalReport({
+      runId: newRunId(),
+      startedAt: now,
+      finishedAt: now,
+      durationSeconds: 0.0,
+      before: { tests: { passed: false, return_code: 1, output: msg }, metrics: {} },
+      after: { tests: { passed: false, return_code: 1, output: msg }, metrics: {} },
+      comparison: { passed_gate: false, improvement_summary: 'failed due to unhandled rejection' },
+      success: false,
+      error: 'unhandledRejection',
+    })
+  );
   process.exit(0);
 });
 
@@ -156,6 +259,19 @@ try {
     process.stderr.write(`evaluation: fatal error: ${msg}\n`);
   } catch {
   }
-  safeWriteReportFile({ ok: false, error: 'fatal', message: msg });
+  const now = isoNow();
+  safeWriteReportFile(
+    makeCanonicalReport({
+      runId: newRunId(),
+      startedAt: now,
+      finishedAt: now,
+      durationSeconds: 0.0,
+      before: { tests: { passed: false, return_code: 1, output: msg }, metrics: {} },
+      after: { tests: { passed: false, return_code: 1, output: msg }, metrics: {} },
+      comparison: { passed_gate: false, improvement_summary: 'failed due to fatal error' },
+      success: false,
+      error: 'fatal',
+    })
+  );
   process.exit(0);
 }
