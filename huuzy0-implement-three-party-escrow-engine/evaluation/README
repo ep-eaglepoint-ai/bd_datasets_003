@@ -1,7 +1,7 @@
 # Evaluation Script
 
 Run:
-- `python evaluation/evaluation.py`
+- `node evaluation/evaluation.js`
 
 Outputs:
 - `evaluation/reports/report.json`
