@@ -531,6 +531,7 @@ describe('CommandPalette', () => {
             consoleErrorSpy.mockRestore();
         });
 
+
         it('should handle async action execution', async () => {
             const asyncExecuteMock = vi.fn().mockResolvedValue(undefined);
             const asyncActions: Action[] = [
@@ -549,6 +550,118 @@ describe('CommandPalette', () => {
 
             await waitFor(() => {
                 expect(asyncExecuteMock).toHaveBeenCalledTimes(1);
+                expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+            });
+        });
+
+        it('should prevent duplicate execution on rapid Enter presses', async () => {
+            let resolveAction: () => void;
+            const asyncPromise = new Promise<void>((resolve) => {
+                resolveAction = resolve;
+            });
+
+            const asyncExecuteMock = vi.fn().mockReturnValue(asyncPromise);
+            const asyncActions: Action[] = [
+                {
+                    id: '1',
+                    title: 'Async Action',
+                    category: 'Test',
+                    onExecute: asyncExecuteMock,
+                },
+            ];
+
+            render(<CommandPalette actions={asyncActions} />);
+
+            await user.keyboard('{Control>}k{/Control}');
+
+            // Rapidly press Enter multiple times
+            await user.keyboard('{Enter}');
+            await user.keyboard('{Enter}');
+            await user.keyboard('{Enter}');
+
+            // Action should only be called once
+            expect(asyncExecuteMock).toHaveBeenCalledTimes(1);
+
+            // Resolve the async action
+            resolveAction!();
+
+            await waitFor(() => {
+                expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+            });
+        });
+
+        it('should prevent duplicate execution on rapid clicks', async () => {
+            let resolveAction: () => void;
+            const asyncPromise = new Promise<void>((resolve) => {
+                resolveAction = resolve;
+            });
+
+            const asyncExecuteMock = vi.fn().mockReturnValue(asyncPromise);
+            const asyncActions: Action[] = [
+                {
+                    id: '1',
+                    title: 'Async Action',
+                    category: 'Test',
+                    onExecute: asyncExecuteMock,
+                },
+            ];
+
+            render(<CommandPalette actions={asyncActions} />);
+
+            await user.keyboard('{Control>}k{/Control}');
+
+            const actionItem = await screen.findByText('Async Action');
+
+            // Rapidly click multiple times
+            await user.click(actionItem);
+            await user.click(actionItem);
+            await user.click(actionItem);
+
+            // Action should only be called once
+            expect(asyncExecuteMock).toHaveBeenCalledTimes(1);
+
+            // Resolve the async action
+            resolveAction!();
+
+            await waitFor(() => {
+                expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+            });
+        });
+
+        it('should prevent mixed Enter and click during async execution', async () => {
+            let resolveAction: () => void;
+            const asyncPromise = new Promise<void>((resolve) => {
+                resolveAction = resolve;
+            });
+
+            const asyncExecuteMock = vi.fn().mockReturnValue(asyncPromise);
+            const asyncActions: Action[] = [
+                {
+                    id: '1',
+                    title: 'Async Action',
+                    category: 'Test',
+                    onExecute: asyncExecuteMock,
+                },
+            ];
+
+            render(<CommandPalette actions={asyncActions} />);
+
+            await user.keyboard('{Control>}k{/Control}');
+
+            const actionItem = await screen.findByText('Async Action');
+
+            // Mix Enter and clicks
+            await user.keyboard('{Enter}');
+            await user.click(actionItem);
+            await user.keyboard('{Enter}');
+
+            // Action should only be called once
+            expect(asyncExecuteMock).toHaveBeenCalledTimes(1);
+
+            // Resolve the async action
+            resolveAction!();
+
+            await waitFor(() => {
                 expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
             });
         });

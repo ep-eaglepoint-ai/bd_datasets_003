@@ -6,9 +6,12 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ actions }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [query, setQuery] = useState('');
     const [activeIndex, setActiveIndex] = useState(0);
+
     const searchInputRef = useRef<HTMLInputElement>(null);
     const resultsListRef = useRef<HTMLUListElement>(null);
     const previousFocusRef = useRef<HTMLElement | null>(null);
+    const focusTimeoutRef = useRef<number | null>(null);
+    const isExecutingRef = useRef(false);
 
     // Filter actions based on query
     const filteredActions = useMemo(() => {
@@ -76,7 +79,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ actions }) => {
             previousFocusRef.current = document.activeElement as HTMLElement;
 
             // Focus search input
-            setTimeout(() => searchInputRef.current?.focus(), 0);
+            focusTimeoutRef.current = window.setTimeout(() => searchInputRef.current?.focus(), 0);
 
             // Disable background scrolling
             document.body.style.overflow = 'hidden';
@@ -92,11 +95,16 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ actions }) => {
             // Reset state
             setQuery('');
             setActiveIndex(0);
+            isExecutingRef.current = false;
         }
 
         // Cleanup on unmount
         return () => {
             document.body.style.overflow = '';
+            if (focusTimeoutRef.current !== null) {
+                clearTimeout(focusTimeoutRef.current);
+                focusTimeoutRef.current = null;
+            }
         };
     }, [isOpen]);
 
@@ -143,6 +151,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ actions }) => {
 
     // Execute action and handle errors
     const executeAction = useCallback(async (action: Action) => {
+        // Prevent duplicate execution
+        if (isExecutingRef.current) return;
+
+        isExecutingRef.current = true;
         try {
             await action.onExecute();
         } catch (error) {
