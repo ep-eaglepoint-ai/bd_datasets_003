@@ -1,0 +1,11 @@
+{
+            "instance_id": "VV4FWV",
+            "problem_statement": "The dashboard currently lacks a unified navigation and action hub, forcing users to rely on scattered menus and shortcuts that reduce productivity and accessibility. The task is to build a high-performance Command Palette component in React that serves as the primary navigation and action interface, triggered via a keyboard shortcut (Cmd+K / Ctrl+K). The component must handle filtering, grouping, keyboard navigation, focus trapping, and accessibility requirements while remaining performant with hundreds of actions. The implementation must be fully encapsulated, avoid global side-effect leaks, tolerate dynamic action updates, and provide a robust, accessible user experience suitable for production use.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/vv4fwv-accessible-high-performance-command-palette-for-react-dashboard-navigation",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
