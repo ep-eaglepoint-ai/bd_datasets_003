@@ -1,0 +1,17 @@
+{
+  "name": "repository_after",
+  "version": "1.0.0",
+  "main": "PromisePool.js",
+  "type": "module",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "dev": "node PromisePool.js",
+    "test": "node ./test/PromisePool.test.js",
+    "evaluate": "node ../evaluation/evaluation.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": ""
+}
