@@ -182,3 +182,32 @@ test('Empty State Test: client with no Last-Event-ID receives no immediate data'
   clientC.close();
   server.close();
 });
+
+test('Disconnect handling: server removes disconnected clients from active pool', async () => {
+  const app = createApp();
+  const { server, clients } = app;
+
+  server.listen(0);
+  const port = server.address().port;
+
+  const client = connectSse({ port });
+  await client.ready;
+
+  // Give the server a moment to register the client.
+  await new Promise((r) => setTimeout(r, 25));
+  assert.equal(clients.size, 1, 'Expected exactly one active SSE client');
+
+  // Simulate abrupt disconnect.
+  client.close();
+
+  // Give the server time to see close/aborted and cleanup.
+  const start = Date.now();
+  while (Date.now() - start < 500) {
+    if (clients.size === 0) break;
+    await new Promise((r) => setTimeout(r, 10));
+  }
+
+  assert.equal(clients.size, 0, 'Expected disconnected client to be removed from active pool');
+
+  server.close();
+});
