@@ -7,15 +7,12 @@ import (
 	"time"
 )
 
-
 type RuntimeConfig struct {
-
-	MaxProcs int
-	TargetRatePerSec int           
-	ThrottleWindow   time.Duration 
-	ThrottleBurstMs int
+	MaxProcs         int
+	TargetRatePerSec int
+	ThrottleWindow   time.Duration
+	ThrottleBurstMs  int
 }
-
 
 func DefaultRuntimeConfig() *RuntimeConfig {
 	return &RuntimeConfig{
@@ -25,7 +22,6 @@ func DefaultRuntimeConfig() *RuntimeConfig {
 		ThrottleBurstMs:  500,
 	}
 }
-
 
 func ApplyGOMAXPROCS(cfg *RuntimeConfig, logger *slog.Logger) int {
 	prev := runtime.GOMAXPROCS(cfg.MaxProcs)
@@ -37,23 +33,19 @@ func ApplyGOMAXPROCS(cfg *RuntimeConfig, logger *slog.Logger) int {
 	return prev
 }
 
-
 type RateMonitor struct {
 	cfg *RuntimeConfig
 
+	currentCount  atomic.Int64
+	windowStart   atomic.Int64
+	totalIngested atomic.Int64
+	throttled     atomic.Bool
 
-	currentCount  atomic.Int64 
-	windowStart   atomic.Int64 
-	totalIngested atomic.Int64 
-	throttled     atomic.Bool  
-
-	
 	throttleActivations atomic.Int64
 	droppedEvents       atomic.Int64
 
 	logger *slog.Logger
 }
-
 
 func NewRateMonitor(cfg *RuntimeConfig, logger *slog.Logger) *RateMonitor {
 	rm := &RateMonitor{
@@ -64,17 +56,15 @@ func NewRateMonitor(cfg *RuntimeConfig, logger *slog.Logger) *RateMonitor {
 	return rm
 }
 
-
 func (rm *RateMonitor) RecordEvents(n int) bool {
 	rm.totalIngested.Add(int64(n))
 	newCount := rm.currentCount.Add(int64(n))
-
 
 	ws := rm.windowStart.Load()
 	elapsed := time.Duration(time.Now().UnixNano() - ws)
 
 	if elapsed >= rm.cfg.ThrottleWindow {
-	
+
 		now := time.Now().UnixNano()
 		if rm.windowStart.CompareAndSwap(ws, now) {
 			rm.currentCount.Store(int64(n))
@@ -82,12 +72,14 @@ func (rm *RateMonitor) RecordEvents(n int) bool {
 		}
 	}
 	windowFraction := float64(elapsed) / float64(rm.cfg.ThrottleWindow)
-	if windowFraction <= 0 {
-		windowFraction = 0.001
+	// Use a generous minimum fraction to avoid false throttling during
+	// the very first milliseconds after a window reset / service start.
+	if windowFraction < 0.05 {
+		windowFraction = 0.05
 	}
 	allowedInWindow := float64(rm.cfg.TargetRatePerSec) * windowFraction
 
-	shouldThrottle := float64(newCount) > allowedInWindow*1.1 
+	shouldThrottle := float64(newCount) > allowedInWindow*1.1
 	wasThrottled := rm.throttled.Load()
 	if shouldThrottle && !wasThrottled {
 		rm.throttled.Store(true)
