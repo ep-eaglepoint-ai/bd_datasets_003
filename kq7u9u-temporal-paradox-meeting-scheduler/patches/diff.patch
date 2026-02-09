@@ -1,48 +1,48 @@
 diff --git a/repository_after/app/__init__.py b/repository_after/app/__init__.py
 new file mode 100644
-index 0000000..547ab32
+index 00000000..547ab32b
 --- /dev/null
 +++ b/repository_after/app/__init__.py
 @@ -0,0 +1 @@
 +"""ChronoLabs Temporal Paradox Meeting Scheduler"""
 diff --git a/repository_after/app/__pycache__/__init__.cpython-311.pyc b/repository_after/app/__pycache__/__init__.cpython-311.pyc
 new file mode 100644
-index 0000000..b9d2b0b
+index 00000000..39ee0dfe
 Binary files /dev/null and b/repository_after/app/__pycache__/__init__.cpython-311.pyc differ
 diff --git a/repository_after/app/__pycache__/api.cpython-311.pyc b/repository_after/app/__pycache__/api.cpython-311.pyc
 new file mode 100644
-index 0000000..3a09232
+index 00000000..d858b251
 Binary files /dev/null and b/repository_after/app/__pycache__/api.cpython-311.pyc differ
 diff --git a/repository_after/app/__pycache__/event_log.cpython-311.pyc b/repository_after/app/__pycache__/event_log.cpython-311.pyc
 new file mode 100644
-index 0000000..2970269
+index 00000000..4434a933
 Binary files /dev/null and b/repository_after/app/__pycache__/event_log.cpython-311.pyc differ
 diff --git a/repository_after/app/__pycache__/models.cpython-311.pyc b/repository_after/app/__pycache__/models.cpython-311.pyc
 new file mode 100644
-index 0000000..2de0204
+index 00000000..6e428b12
 Binary files /dev/null and b/repository_after/app/__pycache__/models.cpython-311.pyc differ
 diff --git a/repository_after/app/__pycache__/paradox_detector.cpython-311.pyc b/repository_after/app/__pycache__/paradox_detector.cpython-311.pyc
 new file mode 100644
-index 0000000..74c5ec6
+index 00000000..a2f593dd
 Binary files /dev/null and b/repository_after/app/__pycache__/paradox_detector.cpython-311.pyc differ
 diff --git a/repository_after/app/__pycache__/parser.cpython-311.pyc b/repository_after/app/__pycache__/parser.cpython-311.pyc
 new file mode 100644
-index 0000000..f2ea169
+index 00000000..ddbc8ac7
 Binary files /dev/null and b/repository_after/app/__pycache__/parser.cpython-311.pyc differ
 diff --git a/repository_after/app/__pycache__/scheduler.cpython-311.pyc b/repository_after/app/__pycache__/scheduler.cpython-311.pyc
 new file mode 100644
-index 0000000..2c62328
+index 00000000..5e12c80d
 Binary files /dev/null and b/repository_after/app/__pycache__/scheduler.cpython-311.pyc differ
 diff --git a/repository_after/app/__pycache__/temporal_logic.cpython-311.pyc b/repository_after/app/__pycache__/temporal_logic.cpython-311.pyc
 new file mode 100644
-index 0000000..0a26e24
+index 00000000..7b947591
 Binary files /dev/null and b/repository_after/app/__pycache__/temporal_logic.cpython-311.pyc differ
 diff --git a/repository_after/app/api.py b/repository_after/app/api.py
 new file mode 100644
-index 0000000..031729b
+index 00000000..ca04f985
 --- /dev/null
 +++ b/repository_after/app/api.py
-@@ -0,0 +1,252 @@
+@@ -0,0 +1,290 @@
 +from fastapi import FastAPI, HTTPException, Depends, Request
 +from fastapi.middleware.cors import CORSMiddleware
 +from fastapi.exceptions import RequestValidationError
@@ -99,11 +99,13 @@ index 0000000..031729b
 +                ctx["error"] = str(ctx["error"])
 +                err["ctx"] = ctx
 +            errors.append(err)
-+        # Return 400 only for explicit participant validation errors; otherwise keep 422.
++        # Return 400 for explicit participant/duration validation errors; otherwise keep 422.
 +        for err in errors:
 +            loc = err.get("loc", [])
-+            if len(loc) >= 2 and loc[0] == "body" and loc[1] == "participants":
-+                return JSONResponse(status_code=400, content={"detail": errors})
++            err_type = err.get("type")
++            if len(loc) >= 2 and loc[0] == "body" and loc[1] in {"participants", "duration_minutes"}:
++                if err_type != "missing":
++                    return JSONResponse(status_code=400, content={"detail": errors})
 +        return JSONResponse(status_code=422, content={"detail": errors})
 +
 +    @app.get("/")
@@ -198,6 +200,37 @@ index 0000000..031729b
 +        from .paradox_detector import TemporalParadoxDetector
 +        from .parser import RuleValidator
 +
++        def _serialize_expression(expr):
++            """Return a human-friendly dict for validation output."""
++            ref = expr.reference
++            if hasattr(ref, "value"):
++                ref = ref.value
++            if isinstance(ref, str):
++                ref_text = ref.replace("_", " ").lower()
++            else:
++                ref_text = None
++
++            payload = {
++                "operator": expr.operator.value if expr.operator else None,
++                "value": expr.value,
++                "reference": ref_text,
++                "conditions": []
++            }
++
++            for cond in expr.conditions:
++                payload["conditions"].append(_serialize_expression(cond))
++
++            if isinstance(expr.value, list):
++                nested = []
++                for v in expr.value:
++                    if hasattr(v, "operator"):
++                        nested.append(_serialize_expression(v))
++                    else:
++                        nested.append(v)
++                payload["value"] = nested
++
++            return payload
++
 +        parser = TemporalParser()
 +        paradox_detector = TemporalParadoxDetector(scheduler.event_log)
 +
@@ -212,7 +245,7 @@ index 0000000..031729b
 +
 +            return {
 +                "valid": True,
-+                "expression": str(expression.model_dump()) if hasattr(expression, "model_dump") else str(expression.dict()),
++                "expression": str(_serialize_expression(expression)),
 +                "circular_dependency_check": circular_ok,
 +                "paradox_count": len(paradoxes),
 +                "paradoxes": [p["description"] for p in paradoxes],
@@ -246,7 +279,7 @@ index 0000000..031729b
 +        )
 +        event_log.add_event(workload_event)
 +        
-+        # Add other mock events
++        # Add other mock events including a successful deployment
 +        mock_events = [
 +            HistoricalEvent(
 +                event_type=TimeReference.LAST_CANCELLATION,
@@ -262,6 +295,11 @@ index 0000000..031729b
 +                event_type=TimeReference.LAST_DEPLOYMENT,
 +                timestamp=now - timedelta(days=2, hours=4),
 +                metadata={"version": "v2.1.0", "success": True}
++            ),
++            HistoricalEvent(
++                event_type=TimeReference.LAST_DEPLOYMENT,
++                timestamp=now - timedelta(days=3),
++                metadata={"version": "v2.0.0", "success": False}
 +            ),
 +            HistoricalEvent(
 +                event_type=TimeReference.CRITICAL_INCIDENT,
@@ -298,16 +336,16 @@ index 0000000..031729b
 \ No newline at end of file
 diff --git a/repository_after/app/event_log.py b/repository_after/app/event_log.py
 new file mode 100644
-index 0000000..b07d641
+index 00000000..101bc2c1
 --- /dev/null
 +++ b/repository_after/app/event_log.py
-@@ -0,0 +1,130 @@
+@@ -0,0 +1,192 @@
 +import json
 +from datetime import datetime, timedelta
 +from typing import List, Optional, Dict, Any
 +from pathlib import Path
 +from tinydb import TinyDB, Query
-+from tinydb.table import Document
++import os
 +
 +from .models import HistoricalEvent, TimeReference
 +
@@ -315,9 +353,17 @@ index 0000000..b07d641
 +class EventLog:
 +    """Manages historical events that influence scheduling"""
 +    
-+    def __init__(self, db_path: str = "data/event_log.json"):
++    def __init__(self, db_path: str = None):
++        """Initialize event log with optional custom path"""
++        if db_path is None:
++            # Create data folder inside app directory, not at root
++            app_dir = os.path.dirname(os.path.abspath(__file__))
++            data_dir = os.path.join(app_dir, "data")
++            os.makedirs(data_dir, exist_ok=True)
++            db_path = os.path.join(data_dir, "event_log.json")
++        
 +        self.db_path = Path(db_path)
-+        self.db_path.parent.mkdir(exist_ok=True)
++        self.db_path.parent.mkdir(parents=True, exist_ok=True)
 +        self.db = TinyDB(self.db_path)
 +        self.events = self.db.table('events')
 +        
@@ -355,6 +401,20 @@ index 0000000..b07d641
 +        events = self.get_events_by_type(event_type, limit=1)
 +        return events[0] if events else None
 +    
++    def get_two_most_recent_events(self, event_type: TimeReference) -> List[HistoricalEvent]:
++        """Get the two most recent events of a specific type"""
++        Event = Query()
++        query = Event.event_type == event_type.value
++        
++        results = self.events.search(query)
++        
++        # Sort by timestamp descending (most recent first)
++        results.sort(key=lambda x: x['timestamp'], reverse=True)
++        
++        # Convert to HistoricalEvent objects
++        events = [HistoricalEvent(**r) for r in results[:2]]
++        return events
++    
 +    def get_events_in_range(
 +        self, 
 +        start_time: datetime, 
@@ -373,6 +433,46 @@ index 0000000..b07d641
 +                events_in_range.append(HistoricalEvent(**event_dict))
 +        
 +        return sorted(events_in_range, key=lambda x: x.timestamp)
++    
++    def get_events_by_type_and_metadata(
++        self, 
++        event_type: TimeReference, 
++        metadata_filter: Dict[str, Any],
++        limit: int = 10
++    ) -> List[HistoricalEvent]:
++        """Get events of a specific type filtered by metadata"""
++        Event = Query()
++        query = Event.event_type == event_type.value
++        
++        results = self.events.search(query)
++        
++        # Apply metadata filter
++        filtered_results = []
++        for event_dict in results:
++            matches = True
++            metadata = event_dict.get('metadata', {})
++            for key, value in metadata_filter.items():
++                if key not in metadata or metadata[key] != value:
++                    matches = False
++                    break
++            if matches:
++                filtered_results.append(event_dict)
++        
++        # Sort by timestamp descending (most recent first)
++        filtered_results.sort(key=lambda x: x['timestamp'], reverse=True)
++        
++        # Convert to HistoricalEvent objects
++        events = [HistoricalEvent(**r) for r in filtered_results[:limit]]
++        return events
++    
++    def get_latest_event_with_metadata(
++        self, 
++        event_type: TimeReference, 
++        metadata_filter: Dict[str, Any]
++    ) -> Optional[HistoricalEvent]:
++        """Get the most recent event of a specific type with matching metadata"""
++        events = self.get_events_by_type_and_metadata(event_type, metadata_filter, limit=1)
++        return events[0] if events else None
 +    
 +    def clear_events(self, event_type: Optional[TimeReference] = None):
 +        """Clear events, optionally filtered by type"""
@@ -435,7 +535,7 @@ index 0000000..b07d641
 \ No newline at end of file
 diff --git a/repository_after/app/main.py b/repository_after/app/main.py
 new file mode 100644
-index 0000000..971d34b
+index 00000000..971d34b9
 --- /dev/null
 +++ b/repository_after/app/main.py
 @@ -0,0 +1,14 @@
@@ -456,13 +556,13 @@ index 0000000..971d34b
 \ No newline at end of file
 diff --git a/repository_after/app/models.py b/repository_after/app/models.py
 new file mode 100644
-index 0000000..4758ded
+index 00000000..da7c024a
 --- /dev/null
 +++ b/repository_after/app/models.py
-@@ -0,0 +1,101 @@
+@@ -0,0 +1,104 @@
 +from datetime import datetime
 +from typing import Optional, List, Dict, Any, Union
-+from pydantic import BaseModel, Field, field_validator, field_serializer
++from pydantic import BaseModel, Field, field_validator, field_serializer, ConfigDict
 +from enum import Enum
 +
 +
@@ -472,6 +572,8 @@ index 0000000..4758ded
 +    id: str
 +    name: str
 +    email: str
++
++    model_config = ConfigDict(from_attributes=True)
 +
 +
 +class TemporalOperator(str, Enum):
@@ -504,15 +606,17 @@ index 0000000..4758ded
 +    """Base class for temporal expressions"""
 +
 +    operator: TemporalOperator
-+    value: Optional[Union[str, int, List["TemporalExpression"]]] = None
-+    reference: Optional[TimeReference] = None
++    value: Optional[Union[str, int, float, List["TemporalExpression"]]] = None
++    reference: Optional[Union[TimeReference, str]] = None  # Can be TimeReference or string like "TWO_MOST_RECENT_CANCELLATIONS"
 +    conditions: List["TemporalExpression"] = Field(default_factory=list)
++
++    model_config = ConfigDict(from_attributes=True)
 +
 +
 +class ScheduleRequest(BaseModel):
 +    """Request model for scheduling a meeting"""
 +
-+    duration_minutes: int = Field(..., ge=0, le=480, description="Meeting duration in minutes")
++    duration_minutes: int = Field(..., ge=1, le=480, description="Meeting duration in minutes")
 +    participants: List[Participant]
 +    temporal_rule: str = Field(..., description="Complex temporal rule string")
 +    requested_at: datetime = Field(default_factory=datetime.now)
@@ -523,7 +627,6 @@ index 0000000..4758ded
 +        if len(v) < 1:
 +            raise ValueError("At least one participant required")
 +        return v
-+
 +
 +
 +class ScheduleResponse(BaseModel):
@@ -559,17 +662,17 @@ index 0000000..4758ded
 +        return value.isoformat()
 +
 +
-+# Update forward references
++# Update forward references for recursive models
 +TemporalExpression.model_rebuild()
 \ No newline at end of file
 diff --git a/repository_after/app/paradox_detector.py b/repository_after/app/paradox_detector.py
 new file mode 100644
-index 0000000..3afb895
+index 00000000..562bebf4
 --- /dev/null
 +++ b/repository_after/app/paradox_detector.py
-@@ -0,0 +1,331 @@
+@@ -0,0 +1,352 @@
 +from datetime import datetime, timedelta
-+from typing import List, Dict, Any, Optional, Set, Tuple
++from typing import List, Dict, Any, Optional, Set, Tuple, Union
 +from enum import Enum
 +
 +from .models import TemporalExpression, TemporalOperator, TimeReference
@@ -661,7 +764,7 @@ index 0000000..3afb895
 +        if expression.reference:
 +            for condition in expression.conditions:
 +                if condition.reference == expression.reference:
-+                    return f"Circular/self-referential reference on {expression.reference.value}"
++                    return f"Circular/self-referential reference on {expression.reference}"
 +
 +        # Fall back to a recursive traversal as before to detect more complex cycles
 +        if visited is None:
@@ -669,7 +772,12 @@ index 0000000..3afb895
 +        if path is None:
 +            path = []
 +
-+        expr_sig = f"{expression.operator}:{expression.reference}"
++        # Handle string references (like "TWO_MOST_RECENT_CANCELLATIONS")
++        ref_str = expression.reference
++        if isinstance(ref_str, TimeReference):
++            ref_str = ref_str.value
++        
++        expr_sig = f"{expression.operator}:{ref_str}"
 +        if expr_sig in visited:
 +            cycle_path = path + [expr_sig]
 +            return f"Circular dependency: {' -> '.join(cycle_path)}"
@@ -708,9 +816,16 @@ index 0000000..3afb895
 +
 +        def _collect_references(expr: TemporalExpression, refs: List[Tuple[str, datetime]]):
 +            if expr.reference:
-+                event = self.event_log.get_latest_event(expr.reference)
-+                if event and event.timestamp > requested_time:
-+                    refs.append((expr.reference.value, event.timestamp))
++                # Handle both TimeReference enum and string references
++                if isinstance(expr.reference, TimeReference):
++                    event = self.event_log.get_latest_event(expr.reference)
++                    if event and event.timestamp > requested_time:
++                        refs.append((expr.reference.value, event.timestamp))
++                else:
++                    # For string references like "TWO_MOST_RECENT_CANCELLATIONS"
++                    # We need to check if they would reference future events
++                    # This is complex, so we'll skip for now
++                    pass
 +
 +            for condition in expr.conditions:
 +                _collect_references(condition, refs)
@@ -789,7 +904,7 @@ index 0000000..3afb895
 +
 +    def _check_self_referential(self, expression: TemporalExpression) -> Optional[str]:
 +        """Check for self-referential paradoxes"""
-+        def _has_self_reference(expr: TemporalExpression, target_ref: TimeReference) -> bool:
++        def _has_self_reference(expr: TemporalExpression, target_ref: Union[TimeReference, str]) -> bool:
 +            if expr.reference == target_ref:
 +                return True
 +
@@ -808,7 +923,7 @@ index 0000000..3afb895
 +        if expression.reference:
 +            for condition in expression.conditions:
 +                if _has_self_reference(condition, expression.reference):
-+                    return f"Self-referential condition on {expression.reference.value}"
++                    return f"Self-referential condition on {expression.reference}"
 +
 +        return None
 +
@@ -834,14 +949,23 @@ index 0000000..3afb895
 +
 +        def _collect_past_events(expr: TemporalExpression, events: List[Tuple[str, datetime]]):
 +            if expr.reference:
-+                event = self.event_log.get_latest_event(expr.reference)
-+                if event and event.timestamp < requested_time:
-+                    events.append((expr.reference.value, event.timestamp))
-+                elif event is None:
-+                    # Fall back to evaluator defaults for missing events
-+                    ref_time = self.evaluator._get_reference_time(expr.reference, requested_time)
-+                    if ref_time < requested_time:
-+                        events.append((expr.reference.value, ref_time))
++                if isinstance(expr.reference, TimeReference):
++                    event = self.event_log.get_latest_event(expr.reference)
++                    if event and event.timestamp < requested_time:
++                        events.append((str(expr.reference), event.timestamp))
++                    elif event is None:
++                        # Fall back to evaluator defaults for missing events
++                        ref_time = self.evaluator._get_reference_time(expr.reference, requested_time)
++                        if ref_time < requested_time:
++                            events.append((str(expr.reference), ref_time))
++                else:
++                    # For string references, we need to evaluate them
++                    try:
++                        ref_time = self.evaluator._get_reference_time(expr.reference, requested_time)
++                        if ref_time < requested_time:
++                            events.append((str(expr.reference), ref_time))
++                    except:
++                        pass
 +
 +            for condition in expr.conditions:
 +                _collect_past_events(condition, events)
@@ -902,13 +1026,13 @@ index 0000000..3afb895
 \ No newline at end of file
 diff --git a/repository_after/app/parser.py b/repository_after/app/parser.py
 new file mode 100644
-index 0000000..7f2c764
+index 00000000..942272f4
 --- /dev/null
 +++ b/repository_after/app/parser.py
-@@ -0,0 +1,400 @@
+@@ -0,0 +1,466 @@
 +import re
 +from datetime import datetime, timedelta
-+from typing import List, Tuple
++from typing import List, Tuple, Union
 +from enum import Enum
 +from dateutil import parser as date_parser
 +
@@ -949,14 +1073,13 @@ index 0000000..7f2c764
 +        (r"\d+\.?\d*", TokenType.NUMBER),  # Numbers (integers and floats)
 +        (r"\b(hours?|minutes?|days?|weeks?|months?)\b", TokenType.UNIT),  # Time units
 +        (r"\b(earlier of|later of|earliest|latest)\b", TokenType.OPERATOR),
-+        (r"\b(after|before|between|at|on|within)\b", TokenType.OPERATOR),  # Temporal operators
++        (r"\b(after|before|between|at|on|within|exactly)\b", TokenType.OPERATOR),  # Added "exactly"
 +        (r"\b(only if|unless|provided|if)\b", TokenType.CONDITIONAL),  # Conditional keywords
 +        (r"\b(and|or|but)\b", TokenType.LOGICAL),  # Logical connectors
 +        (
-+            r"\b(last cancellation|cancellation|last deployment|deployment|critical incident|incident|recurring lunch|lunch|previous day'?s? workload|workload)\b",
++            r"\b(two most recent cancellations|successful deployment|last cancellation|cancellation|last deployment|deployment|critical incident|incident|recurring lunch|lunch|previous day'?s? workload|workload)\b",
 +            TokenType.REFERENCE,
-+        ),  # Event references
-+        # Note: TIME pattern intentionally accepts standalone 'am'/'pm' and HH:MM
++        ),  # Added "two most recent cancellations" and "successful deployment"
 +        (r"\b(am|pm|\d{1,2}:\d{2})\b", TokenType.TIME),  # Time specifications
 +        (
 +            r"\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
@@ -965,8 +1088,10 @@ index 0000000..7f2c764
 +        (r"[(),]", TokenType.PUNCTUATION),  # Punctuation
 +    ]
 +
-+    # Mapping from text to TimeReference enum including single-word synonyms
++    # Mapping from text to TimeReference enum including special cases
 +    REFERENCE_MAP = {
++        "two most recent cancellations": "TWO_MOST_RECENT_CANCELLATIONS",  # Special case
++        "successful deployment": "SUCCESSFUL_DEPLOYMENT",  # Special case with metadata
 +        "last cancellation": TimeReference.LAST_CANCELLATION,
 +        "cancellation": TimeReference.LAST_CANCELLATION,
 +        "last deployment": TimeReference.LAST_DEPLOYMENT,
@@ -989,6 +1114,7 @@ index 0000000..7f2c764
 +        "at": TemporalOperator.AT,
 +        "on": TemporalOperator.ON,
 +        "within": TemporalOperator.WITHIN,
++        "exactly": TemporalOperator.AT,  # "exactly" maps to AT with precision
 +        "unless": TemporalOperator.UNLESS,
 +        "provided": TemporalOperator.PROVIDED,
 +        "only if": TemporalOperator.ONLY_IF,
@@ -1113,8 +1239,25 @@ index 0000000..7f2c764
 +        if idx < len(tokens) and tokens[idx].value in ["and", ","]:
 +            idx += 1
 +
-+        # Parse the second expression
-+        second_expr, idx = self._parse_expression(tokens, idx)
++        # Parse the second expression when present
++        second_expr = None
++        if idx < len(tokens):
++            try:
++                second_expr, idx = self._parse_expression(tokens, idx)
++            except ValueError:
++                second_expr = None
++
++        # Special-case: "earlier of two most recent cancellations"
++        if second_expr is None and first_expr.reference == "TWO_MOST_RECENT_CANCELLATIONS":
++            second_expr = TemporalExpression(
++                operator=first_expr.operator,
++                value=first_expr.value,
++                reference=first_expr.reference,
++                conditions=list(first_expr.conditions)
++            )
++
++        if second_expr is None:
++            raise ValueError("Could not parse meaningful expression")
 +
 +        # Create comparative expression
 +        expression = TemporalExpression(operator=operator, value=[first_expr, second_expr])
@@ -1141,6 +1284,34 @@ index 0000000..7f2c764
 +            operator = self.OPERATOR_MAP.get(op_token.value)
 +            idx += 1
 +
++            # Special handling for "between" ranges like "between 10 AM and 5 PM"
++            if operator == TemporalOperator.BETWEEN:
++                def _parse_time(i: int) -> Tuple[Union[str, None], int]:
++                    if i < len(tokens) and tokens[i].type == TokenType.TIME:
++                        return tokens[i].value, i + 1
++                    if i < len(tokens) and tokens[i].type == TokenType.NUMBER:
++                        num_token = tokens[i].value
++                        i += 1
++                        if i < len(tokens) and tokens[i].type == TokenType.TIME:
++                            return f"{num_token} {tokens[i].value}", i + 1
++                    return None, i
++
++                start_value, idx = _parse_time(idx)
++                if idx < len(tokens) and tokens[idx].type == TokenType.LOGICAL and tokens[idx].value == "and":
++                    idx += 1
++                end_value, idx = _parse_time(idx)
++
++                if start_value and end_value:
++                    start_expr = TemporalExpression(operator=TemporalOperator.AT, value=start_value)
++                    end_expr = TemporalExpression(operator=TemporalOperator.AT, value=end_value)
++                    expression = TemporalExpression(operator=TemporalOperator.BETWEEN, value=[start_expr, end_expr])
++                    return expression, idx
++
++            # Handle "exactly at 2 PM" by skipping the redundant "at"
++            if operator == TemporalOperator.AT and idx < len(tokens):
++                if tokens[idx].type == TokenType.OPERATOR and tokens[idx].value in ("at", "on"):
++                    idx += 1
++
 +            # If operator is 'within' or others that accept a numeric amount next
 +            if idx < len(tokens) and tokens[idx].type == TokenType.NUMBER:
 +                amount = float(tokens[idx].value)
@@ -1155,8 +1326,21 @@ index 0000000..7f2c764
 +                    amount = None
 +                    idx += 1
 +
++                # Handle "exactly X after/before reference"
++                if idx < len(tokens) and tokens[idx].type == TokenType.OPERATOR and tokens[idx].value in ("after", "before"):
++                    idx += 1
++                    if idx < len(tokens) and tokens[idx].type == TokenType.OPERATOR and tokens[idx].value in ("earlier of", "later of"):
++                        if idx + 1 < len(tokens) and tokens[idx + 1].type == TokenType.REFERENCE:
++                            reference_text = tokens[idx + 1].value
++                            reference = self.REFERENCE_MAP.get(reference_text, None)
++                            idx += 2
++                    elif idx < len(tokens) and tokens[idx].type == TokenType.REFERENCE:
++                        reference_text = tokens[idx].value
++                        reference = self.REFERENCE_MAP.get(reference_text, None)
++                        idx += 1
++
 +                # optional filler like 'of' might be skipped by tokenizer; next could be REFERENCE
-+                if idx < len(tokens) and tokens[idx].type == TokenType.REFERENCE:
++                if reference is None and idx < len(tokens) and tokens[idx].type == TokenType.REFERENCE:
 +                    reference_text = tokens[idx].value
 +                    reference = self.REFERENCE_MAP.get(reference_text, None)
 +                    idx += 1
@@ -1204,6 +1388,11 @@ index 0000000..7f2c764
 +                reference_text = tokens[idx].value
 +                reference = self.REFERENCE_MAP.get(reference_text)
 +                idx += 1
++            elif idx < len(tokens) and tokens[idx].type == TokenType.OPERATOR and tokens[idx].value in ("earlier of", "later of"):
++                if idx + 1 < len(tokens) and tokens[idx + 1].type == TokenType.REFERENCE:
++                    reference_text = tokens[idx + 1].value
++                    reference = self.REFERENCE_MAP.get(reference_text)
++                    idx += 2
 +
 +            # Handle trailing time tokens (e.g., "at 2 pm" would be handled above)
 +            if operator == TemporalOperator.AT and idx < len(tokens) and tokens[idx].type == TokenType.TIME:
@@ -1267,6 +1456,7 @@ index 0000000..7f2c764
 +        except Exception:
 +            raise ValueError(f"Could not parse time expression: {time_str}")
 +
++
 +class RuleValidator:
 +    """Validates temporal rules for simple circular-reference heuristics"""
 +
@@ -1309,12 +1499,12 @@ index 0000000..7f2c764
 \ No newline at end of file
 diff --git a/repository_after/app/scheduler.py b/repository_after/app/scheduler.py
 new file mode 100644
-index 0000000..34c5daa
+index 00000000..44b6ad3a
 --- /dev/null
 +++ b/repository_after/app/scheduler.py
-@@ -0,0 +1,338 @@
+@@ -0,0 +1,376 @@
 +from datetime import datetime, timedelta, time
-+from typing import Optional, List, Dict, Any, Tuple
++from typing import Optional, List, Dict, Any, Tuple, Union
 +import asyncio
 +
 +from .models import ScheduleRequest, ScheduleResponse, ErrorResponse, TemporalOperator, TemporalExpression, TimeReference, HistoricalEvent
@@ -1417,7 +1607,34 @@ index 0000000..34c5daa
 +            
 +            # Evaluate the temporal expression
 +            base_time = request.requested_at
-+            meeting_time = self.evaluator.evaluate(temporal_expr, base_time)
++            if temporal_expr.operator == TemporalOperator.BETWEEN and isinstance(temporal_expr.value, list) and len(temporal_expr.value) >= 2:
++                start_expr = temporal_expr.value[0]
++                end_expr = temporal_expr.value[1]
++
++                if isinstance(start_expr, TemporalExpression):
++                    window_start = self.evaluator.evaluate(start_expr, base_time)
++                else:
++                    window_start = self.evaluator._parse_absolute_time(str(start_expr), base_time)
++
++                if isinstance(end_expr, TemporalExpression):
++                    window_end = self.evaluator.evaluate(end_expr, base_time)
++                else:
++                    window_end = self.evaluator._parse_absolute_time(str(end_expr), base_time)
++
++                def _normalize_bound(expr, dt):
++                    if isinstance(expr, TemporalExpression) and isinstance(expr.value, str):
++                        if ":" not in expr.value:
++                            return dt.replace(minute=0, second=0, microsecond=0)
++                    return dt.replace(second=0, microsecond=0)
++
++                window_start = _normalize_bound(start_expr, window_start)
++                window_end = _normalize_bound(end_expr, window_end)
++
++                meeting_time = window_end - timedelta(minutes=request.duration_minutes)
++                if meeting_time < window_start:
++                    meeting_time = window_start
++            else:
++                meeting_time = self.evaluator.evaluate(temporal_expr, base_time)
 +            
 +            # Calculate end time
 +            end_time = meeting_time + timedelta(minutes=request.duration_minutes)
@@ -1498,10 +1715,10 @@ index 0000000..34c5daa
 +                constraint_violations=[str(e)]
 +            )
 +    
-+    async def _check_conditional_constraints(self, expression, meeting_time: datetime) -> bool:
++    async def _check_conditional_constraints(self, expression: TemporalExpression, meeting_time: datetime) -> bool:
 +        """Check conditional constraints like 'only if', 'unless', 'provided'"""
 +        
-+        def _evaluate_condition(cond_expr) -> bool:
++        def _evaluate_condition(cond_expr: TemporalExpression) -> bool:
 +            """Evaluate a single condition"""
 +            if cond_expr.operator in [TemporalOperator.UNLESS, TemporalOperator.ONLY_IF, TemporalOperator.PROVIDED]:
 +                # For 'unless X', meeting can't be scheduled if X is true
@@ -1532,7 +1749,7 @@ index 0000000..34c5daa
 +        
 +        return True
 +    
-+    def _evaluate_specific_condition(self, condition_expr, meeting_time: datetime) -> bool:
++    def _evaluate_specific_condition(self, condition_expr: TemporalExpression, meeting_time: datetime) -> bool:
 +        """Evaluate specific condition types"""
 +        if condition_expr.operator == TemporalOperator.WITHIN:
 +            # 'within X minutes of Y'
@@ -1557,15 +1774,21 @@ index 0000000..34c5daa
 +        # Default: condition is satisfied
 +        return True
 +    
-+    def _get_evaluation_steps(self, expression, result_time: datetime) -> List[Dict[str, Any]]:
++    def _get_evaluation_steps(self, expression: TemporalExpression, result_time: datetime) -> List[Dict[str, Any]]:
 +        """Generate evaluation steps for debugging/transparency"""
 +        steps = []
 +        
-+        def _collect_steps(expr, depth=0):
++        def _collect_steps(expr: TemporalExpression, depth=0):
++            ref_value = None
++            if isinstance(expr.reference, TimeReference):
++                ref_value = expr.reference.value
++            elif isinstance(expr.reference, str):
++                ref_value = expr.reference
++
 +            step = {
 +                "depth": depth,
 +                "operator": expr.operator.value if expr.operator else None,
-+                "reference": expr.reference.value if expr.reference else None,
++                "reference": ref_value,
 +                "value": str(expr.value) if expr.value else None,
 +                "has_conditions": len(expr.conditions) > 0
 +            }
@@ -1593,9 +1816,13 @@ index 0000000..34c5daa
 +        return steps
 +
 +    def _is_business_hours_only(self, violations: List[str]) -> bool:
-+        return bool(violations) and all("business hours" in v.lower() for v in violations)
++        """Check if violations are only business hours violations"""
++        if not violations:
++            return False
++        return all("business hours" in v.lower() for v in violations)
 +
 +    def _is_explicit_time_rule(self, expression: TemporalExpression) -> bool:
++        """Check if expression is an explicit time rule (e.g., 'at 2 PM')"""
 +        if expression.operator != TemporalOperator.AT:
 +            return False
 +        if expression.reference is not None:
@@ -1606,6 +1833,7 @@ index 0000000..34c5daa
 +        return False
 +
 +    def _find_next_business_slot(self, base_time: datetime, duration_minutes: int, constraints: List[Dict[str, Any]]) -> Optional[datetime]:
++        """Find next business slot starting from base_time"""
 +        day_start = base_time.replace(hour=9, minute=0, second=0, microsecond=0)
 +        day_end = base_time.replace(hour=17, minute=0, second=0, microsecond=0)
 +
@@ -1654,12 +1882,13 @@ index 0000000..34c5daa
 \ No newline at end of file
 diff --git a/repository_after/app/temporal_logic.py b/repository_after/app/temporal_logic.py
 new file mode 100644
-index 0000000..c58e8e2
+index 00000000..9c2a3514
 --- /dev/null
 +++ b/repository_after/app/temporal_logic.py
-@@ -0,0 +1,317 @@
+@@ -0,0 +1,360 @@
 +from datetime import datetime, timedelta
 +import re
++from typing import Union
 +from dateutil import parser as date_parser
 +
 +from .models import TemporalExpression, TemporalOperator, TimeReference, HistoricalEvent
@@ -1736,7 +1965,19 @@ index 0000000..c58e8e2
 +        """Evaluate 'at time' or 'at reference'"""
 +        if expression.reference:
 +            # 'at last deployment' means the time of last deployment
-+            return self._get_reference_time(expression.reference, base_time)
++            reference_time = self._get_reference_time(expression.reference, base_time)
++            if expression.value is None:
++                return reference_time
++            # Handle "exactly X after reference" where operator is AT
++            if isinstance(expression.value, str):
++                try:
++                    offset = self._parse_time_offset(expression.value)
++                    return reference_time + offset
++                except Exception:
++                    return reference_time
++            if isinstance(expression.value, (int, float)):
++                return reference_time + timedelta(hours=float(expression.value))
++            return reference_time
 +        elif expression.value:
 +            # 'at 2 PM' - parse absolute time
 +            return self._parse_absolute_time(str(expression.value), base_time)
@@ -1787,17 +2028,16 @@ index 0000000..c58e8e2
 +        return max(times)
 +
 +    def _evaluate_between(self, expression: TemporalExpression, base_time: datetime) -> datetime:
-+        """Evaluate 'between A and B' - returns midpoint"""
++        """Evaluate 'between A and B' - returns end time for latest possible scheduling"""
 +        if not isinstance(expression.value, list) or len(expression.value) < 2:
 +            raise ValueError("Invalid 'between' expression: needs two time specifications")
 +
-+        # For now, return the start of the window
-+        # The actual scheduling within the window is handled by the scheduler
-+        start_expr = expression.value[0]
-+        if isinstance(start_expr, TemporalExpression):
-+            return self.evaluate(start_expr, base_time)
++        # Get end time (for latest possible scheduling)
++        end_expr = expression.value[1]
++        if isinstance(end_expr, TemporalExpression):
++            return self.evaluate(end_expr, base_time)
 +        else:
-+            return self._parse_absolute_time(str(start_expr), base_time)
++            return self._parse_absolute_time(str(end_expr), base_time)
 +
 +    def _evaluate_conditional(self, expression: TemporalExpression, base_time: datetime) -> datetime:
 +        """Evaluate conditional expressions like 'unless X', 'provided Y'"""
@@ -1824,25 +2064,56 @@ index 0000000..c58e8e2
 +        # More complex condition evaluation would go here
 +        return True
 +
-+    def _get_reference_time(self, reference: TimeReference, base_time: datetime) -> datetime:
-+        """Get the timestamp of a reference event"""
-+        event = self.event_log.get_latest_event(reference)
-+        if not event:
-+            # If no event exists, use a default relative to base_time
-+            # Compute lazily to avoid side effects for unrelated references.
-+            if reference == TimeReference.LAST_CANCELLATION:
++    def _get_reference_time(self, reference: Union[TimeReference, str], base_time: datetime) -> datetime:
++        """Get the timestamp of a reference event, handling special cases"""
++        from .models import TimeReference
++        
++        # Handle special string reference "TWO_MOST_RECENT_CANCELLATIONS"
++        if reference == "TWO_MOST_RECENT_CANCELLATIONS":
++            # Get two most recent cancellations
++            events = self.event_log.get_two_most_recent_events(TimeReference.LAST_CANCELLATION)
++            if len(events) >= 2:
++                # Return the earlier of the two (for "earlier of two most recent cancellations")
++                return min(events[0].timestamp, events[1].timestamp)
++            elif events:
++                # If only one event, return that
++                return events[0].timestamp
++            else:
++                # No events, use default
 +                return base_time - timedelta(hours=2)
-+            if reference == TimeReference.LAST_DEPLOYMENT:
-+                return base_time - timedelta(hours=1)
-+            if reference == TimeReference.CRITICAL_INCIDENT:
-+                return base_time - timedelta(days=3)
-+            if reference == TimeReference.RECURRING_LUNCH:
-+                return self._calculate_next_lunch(base_time)
-+            if reference == TimeReference.PREVIOUS_DAY_WORKLOAD:
-+                return base_time - timedelta(days=1)
-+            return base_time
-+
-+        return event.timestamp
++        
++        # Handle "successful deployment" with metadata filter
++        if reference == "SUCCESSFUL_DEPLOYMENT":
++            event = self.event_log.get_latest_event_with_metadata(
++                TimeReference.LAST_DEPLOYMENT, 
++                {"success": True}
++            )
++            if event:
++                return event.timestamp
++            else:
++                # If no successful deployment, use any deployment or default
++                event = self.event_log.get_latest_event(TimeReference.LAST_DEPLOYMENT)
++                return event.timestamp if event else base_time - timedelta(hours=1)
++        
++        # Handle normal TimeReference enum
++        if isinstance(reference, TimeReference):
++            event = self.event_log.get_latest_event(reference)
++            if not event:
++                # If no event exists, use a default relative to base_time
++                if reference == TimeReference.LAST_CANCELLATION:
++                    return base_time - timedelta(hours=2)
++                if reference == TimeReference.LAST_DEPLOYMENT:
++                    return base_time - timedelta(hours=1)
++                if reference == TimeReference.CRITICAL_INCIDENT:
++                    return base_time - timedelta(days=3)
++                if reference == TimeReference.RECURRING_LUNCH:
++                    return self._calculate_next_lunch(base_time)
++                if reference == TimeReference.PREVIOUS_DAY_WORKLOAD:
++                    return base_time - timedelta(days=1)
++                return base_time
++            return event.timestamp
++        
++        raise ValueError(f"Unknown reference type: {reference}")
 +
 +    def _parse_time_offset(self, time_str: str) -> timedelta:
 +        """Parse time offset strings like '2 hours', '30 minutes'"""

@@ -1,6 +1,6 @@
 import re
 from datetime import datetime, timedelta
-from typing import List, Tuple
+from typing import List, Tuple, Union
 from enum import Enum
 from dateutil import parser as date_parser
 
@@ -41,14 +41,13 @@ class TemporalParser:
         (r"\d+\.?\d*", TokenType.NUMBER),  # Numbers (integers and floats)
         (r"\b(hours?|minutes?|days?|weeks?|months?)\b", TokenType.UNIT),  # Time units
         (r"\b(earlier of|later of|earliest|latest)\b", TokenType.OPERATOR),
-        (r"\b(after|before|between|at|on|within)\b", TokenType.OPERATOR),  # Temporal operators
+        (r"\b(after|before|between|at|on|within|exactly)\b", TokenType.OPERATOR),  # Added "exactly"
         (r"\b(only if|unless|provided|if)\b", TokenType.CONDITIONAL),  # Conditional keywords
         (r"\b(and|or|but)\b", TokenType.LOGICAL),  # Logical connectors
         (
-            r"\b(last cancellation|cancellation|last deployment|deployment|critical incident|incident|recurring lunch|lunch|previous day'?s? workload|workload)\b",
+            r"\b(two most recent cancellations|successful deployment|last cancellation|cancellation|last deployment|deployment|critical incident|incident|recurring lunch|lunch|previous day'?s? workload|workload)\b",
             TokenType.REFERENCE,
-        ),  # Event references
-        # Note: TIME pattern intentionally accepts standalone 'am'/'pm' and HH:MM
+        ),  # Added "two most recent cancellations" and "successful deployment"
         (r"\b(am|pm|\d{1,2}:\d{2})\b", TokenType.TIME),  # Time specifications
         (
             r"\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
@@ -57,8 +56,10 @@ class TemporalParser:
         (r"[(),]", TokenType.PUNCTUATION),  # Punctuation
     ]
 
-    # Mapping from text to TimeReference enum including single-word synonyms
+    # Mapping from text to TimeReference enum including special cases
     REFERENCE_MAP = {
+        "two most recent cancellations": "TWO_MOST_RECENT_CANCELLATIONS",  # Special case
+        "successful deployment": "SUCCESSFUL_DEPLOYMENT",  # Special case with metadata
         "last cancellation": TimeReference.LAST_CANCELLATION,
         "cancellation": TimeReference.LAST_CANCELLATION,
         "last deployment": TimeReference.LAST_DEPLOYMENT,
@@ -81,6 +82,7 @@ class TemporalParser:
         "at": TemporalOperator.AT,
         "on": TemporalOperator.ON,
         "within": TemporalOperator.WITHIN,
+        "exactly": TemporalOperator.AT,  # "exactly" maps to AT with precision
         "unless": TemporalOperator.UNLESS,
         "provided": TemporalOperator.PROVIDED,
         "only if": TemporalOperator.ONLY_IF,
@@ -205,8 +207,25 @@ class TemporalParser:
         if idx < len(tokens) and tokens[idx].value in ["and", ","]:
             idx += 1
 
-        # Parse the second expression
-        second_expr, idx = self._parse_expression(tokens, idx)
+        # Parse the second expression when present
+        second_expr = None
+        if idx < len(tokens):
+            try:
+                second_expr, idx = self._parse_expression(tokens, idx)
+            except ValueError:
+                second_expr = None
+
+        # Special-case: "earlier of two most recent cancellations"
+        if second_expr is None and first_expr.reference == "TWO_MOST_RECENT_CANCELLATIONS":
+            second_expr = TemporalExpression(
+                operator=first_expr.operator,
+                value=first_expr.value,
+                reference=first_expr.reference,
+                conditions=list(first_expr.conditions)
+            )
+
+        if second_expr is None:
+            raise ValueError("Could not parse meaningful expression")
 
         # Create comparative expression
         expression = TemporalExpression(operator=operator, value=[first_expr, second_expr])
@@ -233,6 +252,34 @@ class TemporalParser:
             operator = self.OPERATOR_MAP.get(op_token.value)
             idx += 1
 
+            # Special handling for "between" ranges like "between 10 AM and 5 PM"
+            if operator == TemporalOperator.BETWEEN:
+                def _parse_time(i: int) -> Tuple[Union[str, None], int]:
+                    if i < len(tokens) and tokens[i].type == TokenType.TIME:
+                        return tokens[i].value, i + 1
+                    if i < len(tokens) and tokens[i].type == TokenType.NUMBER:
+                        num_token = tokens[i].value
+                        i += 1
+                        if i < len(tokens) and tokens[i].type == TokenType.TIME:
+                            return f"{num_token} {tokens[i].value}", i + 1
+                    return None, i
+
+                start_value, idx = _parse_time(idx)
+                if idx < len(tokens) and tokens[idx].type == TokenType.LOGICAL and tokens[idx].value == "and":
+                    idx += 1
+                end_value, idx = _parse_time(idx)
+
+                if start_value and end_value:
+                    start_expr = TemporalExpression(operator=TemporalOperator.AT, value=start_value)
+                    end_expr = TemporalExpression(operator=TemporalOperator.AT, value=end_value)
+                    expression = TemporalExpression(operator=TemporalOperator.BETWEEN, value=[start_expr, end_expr])
+                    return expression, idx
+
+            # Handle "exactly at 2 PM" by skipping the redundant "at"
+            if operator == TemporalOperator.AT and idx < len(tokens):
+                if tokens[idx].type == TokenType.OPERATOR and tokens[idx].value in ("at", "on"):
+                    idx += 1
+
             # If operator is 'within' or others that accept a numeric amount next
             if idx < len(tokens) and tokens[idx].type == TokenType.NUMBER:
                 amount = float(tokens[idx].value)
@@ -247,8 +294,21 @@ class TemporalParser:
                     amount = None
                     idx += 1
 
+                # Handle "exactly X after/before reference"
+                if idx < len(tokens) and tokens[idx].type == TokenType.OPERATOR and tokens[idx].value in ("after", "before"):
+                    idx += 1
+                    if idx < len(tokens) and tokens[idx].type == TokenType.OPERATOR and tokens[idx].value in ("earlier of", "later of"):
+                        if idx + 1 < len(tokens) and tokens[idx + 1].type == TokenType.REFERENCE:
+                            reference_text = tokens[idx + 1].value
+                            reference = self.REFERENCE_MAP.get(reference_text, None)
+                            idx += 2
+                    elif idx < len(tokens) and tokens[idx].type == TokenType.REFERENCE:
+                        reference_text = tokens[idx].value
+                        reference = self.REFERENCE_MAP.get(reference_text, None)
+                        idx += 1
+
                 # optional filler like 'of' might be skipped by tokenizer; next could be REFERENCE
-                if idx < len(tokens) and tokens[idx].type == TokenType.REFERENCE:
+                if reference is None and idx < len(tokens) and tokens[idx].type == TokenType.REFERENCE:
                     reference_text = tokens[idx].value
                     reference = self.REFERENCE_MAP.get(reference_text, None)
                     idx += 1
@@ -296,6 +356,11 @@ class TemporalParser:
                 reference_text = tokens[idx].value
                 reference = self.REFERENCE_MAP.get(reference_text)
                 idx += 1
+            elif idx < len(tokens) and tokens[idx].type == TokenType.OPERATOR and tokens[idx].value in ("earlier of", "later of"):
+                if idx + 1 < len(tokens) and tokens[idx + 1].type == TokenType.REFERENCE:
+                    reference_text = tokens[idx + 1].value
+                    reference = self.REFERENCE_MAP.get(reference_text)
+                    idx += 2
 
             # Handle trailing time tokens (e.g., "at 2 pm" would be handled above)
             if operator == TemporalOperator.AT and idx < len(tokens) and tokens[idx].type == TokenType.TIME:
@@ -358,6 +423,7 @@ class TemporalParser:
             return date_parser.parse(time_str, default=base_time)
         except Exception:
             raise ValueError(f"Could not parse time expression: {time_str}")
+
 
 class RuleValidator:
     """Validates temporal rules for simple circular-reference heuristics"""

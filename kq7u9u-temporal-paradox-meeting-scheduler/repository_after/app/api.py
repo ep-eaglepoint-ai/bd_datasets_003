@@ -54,11 +54,13 @@ def create_app() -> FastAPI:
                 ctx["error"] = str(ctx["error"])
                 err["ctx"] = ctx
             errors.append(err)
-        # Return 400 only for explicit participant validation errors; otherwise keep 422.
+        # Return 400 for explicit participant/duration validation errors; otherwise keep 422.
         for err in errors:
             loc = err.get("loc", [])
-            if len(loc) >= 2 and loc[0] == "body" and loc[1] == "participants":
-                return JSONResponse(status_code=400, content={"detail": errors})
+            err_type = err.get("type")
+            if len(loc) >= 2 and loc[0] == "body" and loc[1] in {"participants", "duration_minutes"}:
+                if err_type != "missing":
+                    return JSONResponse(status_code=400, content={"detail": errors})
         return JSONResponse(status_code=422, content={"detail": errors})
 
     @app.get("/")
@@ -153,6 +155,37 @@ def create_app() -> FastAPI:
         from .paradox_detector import TemporalParadoxDetector
         from .parser import RuleValidator
 
+        def _serialize_expression(expr):
+            """Return a human-friendly dict for validation output."""
+            ref = expr.reference
+            if hasattr(ref, "value"):
+                ref = ref.value
+            if isinstance(ref, str):
+                ref_text = ref.replace("_", " ").lower()
+            else:
+                ref_text = None
+
+            payload = {
+                "operator": expr.operator.value if expr.operator else None,
+                "value": expr.value,
+                "reference": ref_text,
+                "conditions": []
+            }
+
+            for cond in expr.conditions:
+                payload["conditions"].append(_serialize_expression(cond))
+
+            if isinstance(expr.value, list):
+                nested = []
+                for v in expr.value:
+                    if hasattr(v, "operator"):
+                        nested.append(_serialize_expression(v))
+                    else:
+                        nested.append(v)
+                payload["value"] = nested
+
+            return payload
+
         parser = TemporalParser()
         paradox_detector = TemporalParadoxDetector(scheduler.event_log)
 
@@ -167,7 +200,7 @@ def create_app() -> FastAPI:
 
             return {
                 "valid": True,
-                "expression": str(expression.model_dump()) if hasattr(expression, "model_dump") else str(expression.dict()),
+                "expression": str(_serialize_expression(expression)),
                 "circular_dependency_check": circular_ok,
                 "paradox_count": len(paradoxes),
                 "paradoxes": [p["description"] for p in paradoxes],
@@ -201,7 +234,7 @@ def create_app() -> FastAPI:
         )
         event_log.add_event(workload_event)
         
-        # Add other mock events
+        # Add other mock events including a successful deployment
         mock_events = [
             HistoricalEvent(
                 event_type=TimeReference.LAST_CANCELLATION,
@@ -217,6 +250,11 @@ def create_app() -> FastAPI:
                 event_type=TimeReference.LAST_DEPLOYMENT,
                 timestamp=now - timedelta(days=2, hours=4),
                 metadata={"version": "v2.1.0", "success": True}
+            ),
+            HistoricalEvent(
+                event_type=TimeReference.LAST_DEPLOYMENT,
+                timestamp=now - timedelta(days=3),
+                metadata={"version": "v2.0.0", "success": False}
             ),
             HistoricalEvent(
                 event_type=TimeReference.CRITICAL_INCIDENT,

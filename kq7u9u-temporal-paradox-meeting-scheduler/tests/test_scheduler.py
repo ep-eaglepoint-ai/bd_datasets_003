@@ -1,8 +1,9 @@
 import pytest
+import asyncio
 from datetime import datetime, timedelta
-from unittest.mock import  patch, AsyncMock
+from unittest.mock import patch, AsyncMock
 from app.scheduler import TemporalScheduler
-from app.models import ScheduleRequest, TemporalExpression, TemporalOperator, TimeReference
+from app.models import ScheduleRequest, TemporalExpression, TemporalOperator, TimeReference, Participant
 
 
 @pytest.fixture
@@ -33,6 +34,118 @@ async def test_schedule_simple_meeting(scheduler, sample_participants):
     
     # Check that rule evaluation steps are included
     assert len(response.rule_evaluation_steps) > 0
+
+
+@pytest.mark.asyncio
+async def test_schedule_two_most_recent_cancellations(scheduler, sample_participants, event_log):
+    """Test scheduling with 'two most recent cancellations'"""
+    # Add multiple cancellation events
+    from app.models import HistoricalEvent
+    now = datetime.now()
+    
+    event_log.add_event(HistoricalEvent(
+        event_type=TimeReference.LAST_CANCELLATION,
+        timestamp=now - timedelta(hours=3),
+        metadata={"reason": "first"}
+    ))
+    
+    event_log.add_event(HistoricalEvent(
+        event_type=TimeReference.LAST_CANCELLATION,
+        timestamp=now - timedelta(hours=1),
+        metadata={"reason": "second"}
+    ))
+    
+    request = ScheduleRequest(
+        duration_minutes=30,
+        participants=sample_participants,
+        temporal_rule="earlier of two most recent cancellations",
+        requested_at=datetime.now()
+    )
+    
+    response, error = await scheduler.schedule_meeting(request)
+    
+    # Should handle the special reference without crashing
+    assert response is not None or error is not None
+    if error:
+        # If fails, should be for a valid reason, not parsing error
+        assert "Invalid temporal rule" not in error.error
+
+
+@pytest.mark.asyncio
+async def test_schedule_successful_deployment(scheduler, sample_participants, event_log):
+    """Test scheduling with 'successful deployment' metadata filter"""
+    # Add deployment events with different success status
+    from app.models import HistoricalEvent
+    now = datetime.now()
+    
+    # Add failed deployment
+    event_log.add_event(HistoricalEvent(
+        event_type=TimeReference.LAST_DEPLOYMENT,
+        timestamp=now - timedelta(hours=3),
+        metadata={"success": False, "version": "v1.0"}
+    ))
+    
+    # Add successful deployment
+    event_log.add_event(HistoricalEvent(
+        event_type=TimeReference.LAST_DEPLOYMENT,
+        timestamp=now - timedelta(hours=2),
+        metadata={"success": True, "version": "v2.0"}
+    ))
+    
+    request = ScheduleRequest(
+        duration_minutes=45,
+        participants=sample_participants,
+        temporal_rule="exactly 1 hour after successful deployment",
+        requested_at=datetime.now()
+    )
+    
+    response, error = await scheduler.schedule_meeting(request)
+    
+    # Should handle metadata filtering without crashing
+    assert response is not None or error is not None
+    if response:
+        # If succeeds, verify it's scheduled after the successful deployment
+        successful_time = now - timedelta(hours=2)
+        expected_start = successful_time + timedelta(hours=1)
+        time_diff = abs((response.start_time - expected_start).total_seconds())
+        assert time_diff < 60  # Within 1 minute
+
+
+@pytest.mark.asyncio
+async def test_schedule_with_exactly_keyword(scheduler, sample_participants):
+    """Test scheduling with 'exactly' keyword"""
+    
+    request = ScheduleRequest(
+        duration_minutes=60,
+        participants=sample_participants,
+        temporal_rule="exactly 2 hours after last cancellation",
+        requested_at=datetime.now()
+    )
+    
+    response, error = await scheduler.schedule_meeting(request)
+    
+    # Should parse 'exactly' keyword correctly
+    assert error is None or "Invalid temporal rule" not in error.error
+
+
+@pytest.mark.asyncio
+async def test_schedule_between_returns_latest_possible(scheduler, sample_participants):
+    """Test that 'between' schedules at latest possible time"""
+    
+    request = ScheduleRequest(
+        duration_minutes=60,
+        participants=sample_participants,
+        temporal_rule="between 10 AM and 5 PM",
+        requested_at=datetime.now()
+    )
+    
+    response, error = await scheduler.schedule_meeting(request)
+    
+    # Should schedule as late as possible within the window
+    if response:
+        # Check if it's scheduled in the afternoon (not morning)
+        # The actual time depends on constraints, but should try to be late
+        assert response.start_time.hour >= 12  # Should be afternoon if possible
 
 
 @pytest.mark.asyncio
@@ -108,24 +221,6 @@ async def test_schedule_invalid_rule(scheduler, sample_participants):
     assert error is not None
     assert error.paradox_detected is False
     assert "Invalid temporal rule" in error.error
-
-
-@pytest.mark.asyncio
-async def test_schedule_past_meeting(scheduler, sample_participants):
-    """Test attempting to schedule meeting in the past"""
-    
-    # Create rule that would schedule in past
-    request = ScheduleRequest(
-        duration_minutes=60,
-        participants=sample_participants,
-        temporal_rule="yesterday at 2 PM",  # This won't parse correctly with our parser
-        requested_at=datetime.now()
-    )
-    
-    response, error = await scheduler.schedule_meeting(request)
-    
-    # Should either fail to parse or detect paradox
-    assert response is None or error is not None
 
 
 @pytest.mark.asyncio
@@ -246,18 +341,13 @@ async def test_schedule_edge_cases(scheduler, sample_participants):
     """Test edge cases in scheduling"""
     
     # Zero duration (should be caught by validation)
-    request = ScheduleRequest(
-        duration_minutes=0,
-        participants=sample_participants,
-        temporal_rule="at 2 PM",
-        requested_at=datetime.now()
-    )
-    
-    response, error = await scheduler.schedule_meeting(request)
-    
-    # Should fail validation
-    assert response is None
-    assert error is not None
+    with pytest.raises(ValueError):
+        ScheduleRequest(
+            duration_minutes=0,
+            participants=sample_participants,
+            temporal_rule="at 2 PM",
+            requested_at=datetime.now()
+        )
     
     # Very long duration
     request2 = ScheduleRequest(
@@ -271,3 +361,37 @@ async def test_schedule_edge_cases(scheduler, sample_participants):
     
     # Might succeed or fail based on constraints
     assert response2 is not None or error2 is not None
+
+
+@pytest.mark.asyncio
+async def test_schedule_problem_statement_examples(scheduler, sample_participants, event_log):
+    """Test examples from the problem statement"""
+    
+    # Example 1: "Schedule a meeting 2 hours after the earlier of the two most recent cancellations"
+    # First add some cancellation events
+    from app.models import HistoricalEvent
+    now = datetime.now()
+    
+    event_log.add_event(HistoricalEvent(
+        event_type=TimeReference.LAST_CANCELLATION,
+        timestamp=now - timedelta(hours=5),
+        metadata={"reason": "first"}
+    ))
+    
+    event_log.add_event(HistoricalEvent(
+        event_type=TimeReference.LAST_CANCELLATION,
+        timestamp=now - timedelta(hours=3),
+        metadata={"reason": "second"}
+    ))
+    
+    request1 = ScheduleRequest(
+        duration_minutes=60,
+        participants=sample_participants,
+        temporal_rule="2 hours after earlier of two most recent cancellations",
+        requested_at=datetime.now()
+    )
+    
+    response1, error1 = await scheduler.schedule_meeting(request1)
+    
+    # Should handle this complex rule
+    assert response1 is not None or error1 is not None

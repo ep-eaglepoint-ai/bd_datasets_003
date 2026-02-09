@@ -228,3 +228,20 @@ def test_multiple_paradox_detection(paradox_detector):
         assert "description" in paradox
         assert "details" in paradox
         assert paradox["description"]  # Not empty
+
+
+def test_string_reference_handling(paradox_detector):
+    """Test paradox detection with string references (like TWO_MOST_RECENT_CANCELLATIONS)"""
+    
+    # Create expression with string reference
+    expr = TemporalExpression(
+        operator=TemporalOperator.AFTER,
+        value="2 hours",
+        reference="TWO_MOST_RECENT_CANCELLATIONS"  # String reference
+    )
+    
+    paradoxes = paradox_detector.detect_paradoxes(expr)
+    
+    # Should handle string references without crashing
+    # May or may not detect paradoxes depending on the reference
+    assert isinstance(paradoxes, list)

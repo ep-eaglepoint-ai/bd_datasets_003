@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import re
+from typing import Union
 from dateutil import parser as date_parser
 
 from .models import TemporalExpression, TemporalOperator, TimeReference, HistoricalEvent
@@ -76,7 +77,19 @@ class TemporalEvaluator:
         """Evaluate 'at time' or 'at reference'"""
         if expression.reference:
             # 'at last deployment' means the time of last deployment
-            return self._get_reference_time(expression.reference, base_time)
+            reference_time = self._get_reference_time(expression.reference, base_time)
+            if expression.value is None:
+                return reference_time
+            # Handle "exactly X after reference" where operator is AT
+            if isinstance(expression.value, str):
+                try:
+                    offset = self._parse_time_offset(expression.value)
+                    return reference_time + offset
+                except Exception:
+                    return reference_time
+            if isinstance(expression.value, (int, float)):
+                return reference_time + timedelta(hours=float(expression.value))
+            return reference_time
         elif expression.value:
             # 'at 2 PM' - parse absolute time
             return self._parse_absolute_time(str(expression.value), base_time)
@@ -127,17 +140,16 @@ class TemporalEvaluator:
         return max(times)
 
     def _evaluate_between(self, expression: TemporalExpression, base_time: datetime) -> datetime:
-        """Evaluate 'between A and B' - returns midpoint"""
+        """Evaluate 'between A and B' - returns end time for latest possible scheduling"""
         if not isinstance(expression.value, list) or len(expression.value) < 2:
             raise ValueError("Invalid 'between' expression: needs two time specifications")
 
-        # For now, return the start of the window
-        # The actual scheduling within the window is handled by the scheduler
-        start_expr = expression.value[0]
-        if isinstance(start_expr, TemporalExpression):
-            return self.evaluate(start_expr, base_time)
+        # Get end time (for latest possible scheduling)
+        end_expr = expression.value[1]
+        if isinstance(end_expr, TemporalExpression):
+            return self.evaluate(end_expr, base_time)
         else:
-            return self._parse_absolute_time(str(start_expr), base_time)
+            return self._parse_absolute_time(str(end_expr), base_time)
 
     def _evaluate_conditional(self, expression: TemporalExpression, base_time: datetime) -> datetime:
         """Evaluate conditional expressions like 'unless X', 'provided Y'"""
@@ -164,25 +176,56 @@ class TemporalEvaluator:
         # More complex condition evaluation would go here
         return True
 
-    def _get_reference_time(self, reference: TimeReference, base_time: datetime) -> datetime:
-        """Get the timestamp of a reference event"""
-        event = self.event_log.get_latest_event(reference)
-        if not event:
-            # If no event exists, use a default relative to base_time
-            # Compute lazily to avoid side effects for unrelated references.
-            if reference == TimeReference.LAST_CANCELLATION:
+    def _get_reference_time(self, reference: Union[TimeReference, str], base_time: datetime) -> datetime:
+        """Get the timestamp of a reference event, handling special cases"""
+        from .models import TimeReference
+        
+        # Handle special string reference "TWO_MOST_RECENT_CANCELLATIONS"
+        if reference == "TWO_MOST_RECENT_CANCELLATIONS":
+            # Get two most recent cancellations
+            events = self.event_log.get_two_most_recent_events(TimeReference.LAST_CANCELLATION)
+            if len(events) >= 2:
+                # Return the earlier of the two (for "earlier of two most recent cancellations")
+                return min(events[0].timestamp, events[1].timestamp)
+            elif events:
+                # If only one event, return that
+                return events[0].timestamp
+            else:
+                # No events, use default
                 return base_time - timedelta(hours=2)
-            if reference == TimeReference.LAST_DEPLOYMENT:
-                return base_time - timedelta(hours=1)
-            if reference == TimeReference.CRITICAL_INCIDENT:
-                return base_time - timedelta(days=3)
-            if reference == TimeReference.RECURRING_LUNCH:
-                return self._calculate_next_lunch(base_time)
-            if reference == TimeReference.PREVIOUS_DAY_WORKLOAD:
-                return base_time - timedelta(days=1)
-            return base_time
-
-        return event.timestamp
+        
+        # Handle "successful deployment" with metadata filter
+        if reference == "SUCCESSFUL_DEPLOYMENT":
+            event = self.event_log.get_latest_event_with_metadata(
+                TimeReference.LAST_DEPLOYMENT, 
+                {"success": True}
+            )
+            if event:
+                return event.timestamp
+            else:
+                # If no successful deployment, use any deployment or default
+                event = self.event_log.get_latest_event(TimeReference.LAST_DEPLOYMENT)
+                return event.timestamp if event else base_time - timedelta(hours=1)
+        
+        # Handle normal TimeReference enum
+        if isinstance(reference, TimeReference):
+            event = self.event_log.get_latest_event(reference)
+            if not event:
+                # If no event exists, use a default relative to base_time
+                if reference == TimeReference.LAST_CANCELLATION:
+                    return base_time - timedelta(hours=2)
+                if reference == TimeReference.LAST_DEPLOYMENT:
+                    return base_time - timedelta(hours=1)
+                if reference == TimeReference.CRITICAL_INCIDENT:
+                    return base_time - timedelta(days=3)
+                if reference == TimeReference.RECURRING_LUNCH:
+                    return self._calculate_next_lunch(base_time)
+                if reference == TimeReference.PREVIOUS_DAY_WORKLOAD:
+                    return base_time - timedelta(days=1)
+                return base_time
+            return event.timestamp
+        
+        raise ValueError(f"Unknown reference type: {reference}")
 
     def _parse_time_offset(self, time_str: str) -> timedelta:
         """Parse time offset strings like '2 hours', '30 minutes'"""

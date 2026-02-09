@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Union
-from pydantic import BaseModel, Field, field_validator, field_serializer
+from pydantic import BaseModel, Field, field_validator, field_serializer, ConfigDict
 from enum import Enum
 
 
@@ -10,6 +10,8 @@ class Participant(BaseModel):
     id: str
     name: str
     email: str
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TemporalOperator(str, Enum):
@@ -42,15 +44,17 @@ class TemporalExpression(BaseModel):
     """Base class for temporal expressions"""
 
     operator: TemporalOperator
-    value: Optional[Union[str, int, List["TemporalExpression"]]] = None
-    reference: Optional[TimeReference] = None
+    value: Optional[Union[str, int, float, List["TemporalExpression"]]] = None
+    reference: Optional[Union[TimeReference, str]] = None  # Can be TimeReference or string like "TWO_MOST_RECENT_CANCELLATIONS"
     conditions: List["TemporalExpression"] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ScheduleRequest(BaseModel):
     """Request model for scheduling a meeting"""
 
-    duration_minutes: int = Field(..., ge=0, le=480, description="Meeting duration in minutes")
+    duration_minutes: int = Field(..., ge=1, le=480, description="Meeting duration in minutes")
     participants: List[Participant]
     temporal_rule: str = Field(..., description="Complex temporal rule string")
     requested_at: datetime = Field(default_factory=datetime.now)
@@ -61,7 +65,6 @@ class ScheduleRequest(BaseModel):
         if len(v) < 1:
             raise ValueError("At least one participant required")
         return v
-
 
 
 class ScheduleResponse(BaseModel):
@@ -97,5 +100,5 @@ class HistoricalEvent(BaseModel):
         return value.isoformat()
 
 
-# Update forward references
+# Update forward references for recursive models
 TemporalExpression.model_rebuild()

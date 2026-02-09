@@ -1,6 +1,6 @@
 import pytest
 from datetime import datetime, timedelta
-from app.parser import TemporalParser, TokenType
+from app.parser import TemporalParser, TokenType, Token
 from app.models import TemporalExpression, TemporalOperator, TimeReference
 
 
@@ -47,6 +47,61 @@ def test_parse_simple_expression():
     expr = parser.parse("at 2 PM")
     assert expr.operator == TemporalOperator.AT
     assert expr.value == "2 pm"
+
+
+def test_parse_exactly_keyword():
+    """Test parsing 'exactly' keyword"""
+    parser = TemporalParser()
+    
+    # Test "exactly 3 days after last deployment"
+    expr = parser.parse("exactly 3 days after last deployment")
+    assert expr.operator == TemporalOperator.AT  # "exactly" maps to AT
+    assert expr.value == "3 days"
+    assert expr.reference == TimeReference.LAST_DEPLOYMENT
+    
+    # Test "exactly at 2 PM"
+    expr = parser.parse("exactly at 2 PM")
+    assert expr.operator == TemporalOperator.AT
+    assert expr.value == "2 pm"
+    
+    # Test "exactly 2 hours after successful deployment"
+    expr = parser.parse("exactly 2 hours after successful deployment")
+    assert expr.operator == TemporalOperator.AT
+    assert expr.value == "2 hours"
+    assert expr.reference == "SUCCESSFUL_DEPLOYMENT"
+
+
+def test_parse_two_most_recent_cancellations():
+    """Test parsing 'two most recent cancellations'"""
+    parser = TemporalParser()
+    
+    # Test "earlier of two most recent cancellations"
+    expr = parser.parse("earlier of two most recent cancellations")
+    assert expr.operator == TemporalOperator.EARLIER_OF
+    assert isinstance(expr.value, list)
+    assert len(expr.value) == 2
+    
+    # Test sub-expressions
+    sub_expr1, sub_expr2 = expr.value
+    assert isinstance(sub_expr1, TemporalExpression)
+    assert isinstance(sub_expr2, TemporalExpression)
+    # The actual evaluation of this special reference is handled by temporal_logic
+
+
+def test_parse_successful_deployment():
+    """Test parsing 'successful deployment' with metadata reference"""
+    parser = TemporalParser()
+    
+    # Test "after successful deployment"
+    expr = parser.parse("after successful deployment")
+    assert expr.operator == TemporalOperator.AFTER
+    assert expr.reference == "SUCCESSFUL_DEPLOYMENT"
+    
+    # Test "exactly 3 days after successful deployment"
+    expr = parser.parse("exactly 3 days after successful deployment")
+    assert expr.operator == TemporalOperator.AT
+    assert expr.value == "3 days"
+    assert expr.reference == "SUCCESSFUL_DEPLOYMENT"
 
 
 def test_parse_comparative_expressions():
@@ -100,14 +155,16 @@ def test_parse_complex_rules():
     assert expr.operator == TemporalOperator.AFTER
     assert expr.value == "2 hours"
     
-    # The reference should be parsed as a comparative expression
-    # Note: "two most recent cancellations" would need special handling
-    # This test verifies basic parsing works
-    
     # Complex rule 2
     rule = "Schedule at the latest possible time between 10 AM and 5 PM on Tuesday"
     expr = parser.parse(rule)
     assert expr is not None  # Should parse without error
+    
+    # Complex rule 3: from problem statement
+    rule = "exactly 3 days after the last successful deployment"
+    expr = parser.parse(rule)
+    assert expr.operator == TemporalOperator.AT
+    assert expr.reference == "SUCCESSFUL_DEPLOYMENT"
 
 
 def test_parse_relative_time():
@@ -177,3 +234,7 @@ def test_parse_edge_cases():
     expr = parser.parse("please schedule 1 hour after deployment thanks")
     assert expr.operator == TemporalOperator.AFTER
     assert expr.reference == TimeReference.LAST_DEPLOYMENT
+    
+    # Test "yesterday" should fail
+    with pytest.raises(ValueError):
+        parser.parse("yesterday at 2 PM")

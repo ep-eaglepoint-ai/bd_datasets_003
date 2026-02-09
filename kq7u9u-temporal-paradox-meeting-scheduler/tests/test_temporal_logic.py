@@ -29,7 +29,35 @@ def mock_event_log():
     def get_latest_event(event_type):
         return mock_events.get(event_type)
     
+    def get_two_most_recent_events(event_type):
+        if event_type == TimeReference.LAST_CANCELLATION:
+            return [
+                HistoricalEvent(
+                    event_type=TimeReference.LAST_CANCELLATION,
+                    timestamp=now - timedelta(hours=2),
+                    metadata={"index": 1}
+                ),
+                HistoricalEvent(
+                    event_type=TimeReference.LAST_CANCELLATION,
+                    timestamp=now - timedelta(hours=5),
+                    metadata={"index": 2}
+                )
+            ]
+        return []
+    
+    def get_latest_event_with_metadata(event_type, metadata_filter):
+        if event_type == TimeReference.LAST_DEPLOYMENT and metadata_filter.get("success") == True:
+            return HistoricalEvent(
+                event_type=TimeReference.LAST_DEPLOYMENT,
+                timestamp=now - timedelta(hours=2),
+                metadata={"success": True, "version": "v2.0"}
+            )
+        return None
+    
     mock_log.get_latest_event = get_latest_event
+    mock_log.get_two_most_recent_events = get_two_most_recent_events
+    mock_log.get_latest_event_with_metadata = get_latest_event_with_metadata
+    
     return mock_log
 
 
@@ -131,6 +159,74 @@ def test_evaluate_earlier_of_expression(mock_event_log):
     # Result should be the earlier of the two
     expected = min(time1, time2)
     assert result == expected
+
+
+def test_evaluate_two_most_recent_cancellations(mock_event_log):
+    """Test evaluating 'two most recent cancellations'"""
+    evaluator = TemporalEvaluator(mock_event_log)
+    
+    # Create expression with special reference
+    expr = TemporalExpression(
+        operator=TemporalOperator.AT,
+        reference="TWO_MOST_RECENT_CANCELLATIONS"
+    )
+    
+    result = evaluator.evaluate(expr)
+    
+    # Should get the earlier of the two most recent cancellations
+    events = mock_event_log.get_two_most_recent_events(TimeReference.LAST_CANCELLATION)
+    expected = min(events[0].timestamp, events[1].timestamp)
+    assert result == expected
+
+
+def test_evaluate_successful_deployment(mock_event_log):
+    """Test evaluating 'successful deployment' with metadata"""
+    evaluator = TemporalEvaluator(mock_event_log)
+    
+    # Create expression with metadata-filtered reference
+    expr = TemporalExpression(
+        operator=TemporalOperator.AT,
+        reference="SUCCESSFUL_DEPLOYMENT"
+    )
+    
+    result = evaluator.evaluate(expr)
+    
+    # Should get the successful deployment timestamp
+    successful_deployment = mock_event_log.get_latest_event_with_metadata(
+        TimeReference.LAST_DEPLOYMENT,
+        {"success": True}
+    )
+    assert result == successful_deployment.timestamp
+
+
+def test_evaluate_between_returns_end_time(mock_event_log):
+    """Test that 'between' returns end time for latest possible scheduling"""
+    evaluator = TemporalEvaluator(mock_event_log)
+    
+    # Create "between" expression
+    expr = TemporalExpression(
+        operator=TemporalOperator.BETWEEN,
+        value=[
+            TemporalExpression(
+                operator=TemporalOperator.AT,
+                value="10 AM"
+            ),
+            TemporalExpression(
+                operator=TemporalOperator.AT,
+                value="5 PM"
+            )
+        ]
+    )
+    
+    base_time = datetime(2024, 1, 1, 0, 0, 0)
+    result = evaluator.evaluate(expr, base_time)
+    
+    # Should return end time (5 PM), not start time (10 AM)
+    expected_end = datetime(2024, 1, 1, 17, 0, 0)  # 5 PM
+    expected_start = datetime(2024, 1, 1, 10, 0, 0)  # 10 AM
+    
+    assert result == expected_end  # Should be 5 PM, not 10 AM
+    assert result != expected_start
 
 
 def test_evaluate_later_of_expression(mock_event_log):

@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 from pathlib import Path
 from tinydb import TinyDB, Query
-from tinydb.table import Document
+import os
 
 from .models import HistoricalEvent, TimeReference
 
@@ -11,9 +11,17 @@ from .models import HistoricalEvent, TimeReference
 class EventLog:
     """Manages historical events that influence scheduling"""
     
-    def __init__(self, db_path: str = "data/event_log.json"):
+    def __init__(self, db_path: str = None):
+        """Initialize event log with optional custom path"""
+        if db_path is None:
+            # Create data folder inside app directory, not at root
+            app_dir = os.path.dirname(os.path.abspath(__file__))
+            data_dir = os.path.join(app_dir, "data")
+            os.makedirs(data_dir, exist_ok=True)
+            db_path = os.path.join(data_dir, "event_log.json")
+        
         self.db_path = Path(db_path)
-        self.db_path.parent.mkdir(exist_ok=True)
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.db = TinyDB(self.db_path)
         self.events = self.db.table('events')
         
@@ -51,6 +59,20 @@ class EventLog:
         events = self.get_events_by_type(event_type, limit=1)
         return events[0] if events else None
     
+    def get_two_most_recent_events(self, event_type: TimeReference) -> List[HistoricalEvent]:
+        """Get the two most recent events of a specific type"""
+        Event = Query()
+        query = Event.event_type == event_type.value
+        
+        results = self.events.search(query)
+        
+        # Sort by timestamp descending (most recent first)
+        results.sort(key=lambda x: x['timestamp'], reverse=True)
+        
+        # Convert to HistoricalEvent objects
+        events = [HistoricalEvent(**r) for r in results[:2]]
+        return events
+    
     def get_events_in_range(
         self, 
         start_time: datetime, 
@@ -69,6 +91,46 @@ class EventLog:
                 events_in_range.append(HistoricalEvent(**event_dict))
         
         return sorted(events_in_range, key=lambda x: x.timestamp)
+    
+    def get_events_by_type_and_metadata(
+        self, 
+        event_type: TimeReference, 
+        metadata_filter: Dict[str, Any],
+        limit: int = 10
+    ) -> List[HistoricalEvent]:
+        """Get events of a specific type filtered by metadata"""
+        Event = Query()
+        query = Event.event_type == event_type.value
+        
+        results = self.events.search(query)
+        
+        # Apply metadata filter
+        filtered_results = []
+        for event_dict in results:
+            matches = True
+            metadata = event_dict.get('metadata', {})
+            for key, value in metadata_filter.items():
+                if key not in metadata or metadata[key] != value:
+                    matches = False
+                    break
+            if matches:
+                filtered_results.append(event_dict)
+        
+        # Sort by timestamp descending (most recent first)
+        filtered_results.sort(key=lambda x: x['timestamp'], reverse=True)
+        
+        # Convert to HistoricalEvent objects
+        events = [HistoricalEvent(**r) for r in filtered_results[:limit]]
+        return events
+    
+    def get_latest_event_with_metadata(
+        self, 
+        event_type: TimeReference, 
+        metadata_filter: Dict[str, Any]
+    ) -> Optional[HistoricalEvent]:
+        """Get the most recent event of a specific type with matching metadata"""
+        events = self.get_events_by_type_and_metadata(event_type, metadata_filter, limit=1)
+        return events[0] if events else None
     
     def clear_events(self, event_type: Optional[TimeReference] = None):
         """Clear events, optionally filtered by type"""

@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, time
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Any, Tuple, Union
 import asyncio
 
 from .models import ScheduleRequest, ScheduleResponse, ErrorResponse, TemporalOperator, TemporalExpression, TimeReference, HistoricalEvent
@@ -102,7 +102,34 @@ class TemporalScheduler:
             
             # Evaluate the temporal expression
             base_time = request.requested_at
-            meeting_time = self.evaluator.evaluate(temporal_expr, base_time)
+            if temporal_expr.operator == TemporalOperator.BETWEEN and isinstance(temporal_expr.value, list) and len(temporal_expr.value) >= 2:
+                start_expr = temporal_expr.value[0]
+                end_expr = temporal_expr.value[1]
+
+                if isinstance(start_expr, TemporalExpression):
+                    window_start = self.evaluator.evaluate(start_expr, base_time)
+                else:
+                    window_start = self.evaluator._parse_absolute_time(str(start_expr), base_time)
+
+                if isinstance(end_expr, TemporalExpression):
+                    window_end = self.evaluator.evaluate(end_expr, base_time)
+                else:
+                    window_end = self.evaluator._parse_absolute_time(str(end_expr), base_time)
+
+                def _normalize_bound(expr, dt):
+                    if isinstance(expr, TemporalExpression) and isinstance(expr.value, str):
+                        if ":" not in expr.value:
+                            return dt.replace(minute=0, second=0, microsecond=0)
+                    return dt.replace(second=0, microsecond=0)
+
+                window_start = _normalize_bound(start_expr, window_start)
+                window_end = _normalize_bound(end_expr, window_end)
+
+                meeting_time = window_end - timedelta(minutes=request.duration_minutes)
+                if meeting_time < window_start:
+                    meeting_time = window_start
+            else:
+                meeting_time = self.evaluator.evaluate(temporal_expr, base_time)
             
             # Calculate end time
             end_time = meeting_time + timedelta(minutes=request.duration_minutes)
@@ -183,10 +210,10 @@ class TemporalScheduler:
                 constraint_violations=[str(e)]
             )
     
-    async def _check_conditional_constraints(self, expression, meeting_time: datetime) -> bool:
+    async def _check_conditional_constraints(self, expression: TemporalExpression, meeting_time: datetime) -> bool:
         """Check conditional constraints like 'only if', 'unless', 'provided'"""
         
-        def _evaluate_condition(cond_expr) -> bool:
+        def _evaluate_condition(cond_expr: TemporalExpression) -> bool:
             """Evaluate a single condition"""
             if cond_expr.operator in [TemporalOperator.UNLESS, TemporalOperator.ONLY_IF, TemporalOperator.PROVIDED]:
                 # For 'unless X', meeting can't be scheduled if X is true
@@ -217,7 +244,7 @@ class TemporalScheduler:
         
         return True
     
-    def _evaluate_specific_condition(self, condition_expr, meeting_time: datetime) -> bool:
+    def _evaluate_specific_condition(self, condition_expr: TemporalExpression, meeting_time: datetime) -> bool:
         """Evaluate specific condition types"""
         if condition_expr.operator == TemporalOperator.WITHIN:
             # 'within X minutes of Y'
@@ -242,15 +269,21 @@ class TemporalScheduler:
         # Default: condition is satisfied
         return True
     
-    def _get_evaluation_steps(self, expression, result_time: datetime) -> List[Dict[str, Any]]:
+    def _get_evaluation_steps(self, expression: TemporalExpression, result_time: datetime) -> List[Dict[str, Any]]:
         """Generate evaluation steps for debugging/transparency"""
         steps = []
         
-        def _collect_steps(expr, depth=0):
+        def _collect_steps(expr: TemporalExpression, depth=0):
+            ref_value = None
+            if isinstance(expr.reference, TimeReference):
+                ref_value = expr.reference.value
+            elif isinstance(expr.reference, str):
+                ref_value = expr.reference
+
             step = {
                 "depth": depth,
                 "operator": expr.operator.value if expr.operator else None,
-                "reference": expr.reference.value if expr.reference else None,
+                "reference": ref_value,
                 "value": str(expr.value) if expr.value else None,
                 "has_conditions": len(expr.conditions) > 0
             }
@@ -278,9 +311,13 @@ class TemporalScheduler:
         return steps
 
     def _is_business_hours_only(self, violations: List[str]) -> bool:
-        return bool(violations) and all("business hours" in v.lower() for v in violations)
+        """Check if violations are only business hours violations"""
+        if not violations:
+            return False
+        return all("business hours" in v.lower() for v in violations)
 
     def _is_explicit_time_rule(self, expression: TemporalExpression) -> bool:
+        """Check if expression is an explicit time rule (e.g., 'at 2 PM')"""
         if expression.operator != TemporalOperator.AT:
             return False
         if expression.reference is not None:
@@ -291,6 +328,7 @@ class TemporalScheduler:
         return False
 
     def _find_next_business_slot(self, base_time: datetime, duration_minutes: int, constraints: List[Dict[str, Any]]) -> Optional[datetime]:
+        """Find next business slot starting from base_time"""
         day_start = base_time.replace(hour=9, minute=0, second=0, microsecond=0)
         day_end = base_time.replace(hour=17, minute=0, second=0, microsecond=0)
 
