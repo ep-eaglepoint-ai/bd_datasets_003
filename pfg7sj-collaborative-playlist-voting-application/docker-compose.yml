@@ -1,0 +1,10 @@
+# Docker Compose file for running tests. You should customize this as needed.
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/project
+    working_dir: /project/repository_after/backend
