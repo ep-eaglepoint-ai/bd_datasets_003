@@ -1,5 +1,3 @@
-import "./ColorCustomizer.css"
-
 const COLOR_MAP = {
     yellow: '#ffd500',
     green: '#008000',

@@ -11,16 +11,16 @@ delete require.cache[require.resolve("@testing-library/jest-dom")];
 const React = require(
   require.resolve("react", {
     paths: [
-      path.join(__dirname, "..", "..", repoPath, "node_modules"),
       path.join(__dirname, "..", "..", "node_modules"),
+      path.join(__dirname, "..", "..", repoPath, "node_modules"),
     ],
   }),
 );
 
 const testingLibraryPath = require.resolve("@testing-library/react", {
   paths: [
-    path.join(__dirname, "..", "..", repoPath, "node_modules"),
     path.join(__dirname, "..", "..", "node_modules"),
+    path.join(__dirname, "..", "..", repoPath, "node_modules"),
   ],
 });
 const { render, screen, fireEvent, waitFor } = require(testingLibraryPath);
@@ -28,25 +28,44 @@ const { render, screen, fireEvent, waitFor } = require(testingLibraryPath);
 require(
   require.resolve("@testing-library/jest-dom", {
     paths: [
-      path.join(__dirname, "..", "..", repoPath, "node_modules"),
       path.join(__dirname, "..", "..", "node_modules"),
+      path.join(__dirname, "..", "..", repoPath, "node_modules"),
     ],
   }),
 );
 
 const getComponents = () => {
-  const StickyNotesGrid = require(
-    `../../${repoPath}/src/components/StickyNotesGrid`,
-  ).default;
-  const StickyNotesProvider = require(
-    `../../${repoPath}/src/context/StickyNotesContext`,
-  ).default;
+  const StickyNotesGrid = require(path.join(
+    __dirname,
+    '..',
+    '..',
+    repoPath,
+    'src',
+    'components',
+    'StickyNotesGrid',
+  )).default;
+  const StickyNotesProvider = require(path.join(
+    __dirname,
+    '..',
+    '..',
+    repoPath,
+    'src',
+    'context',
+    'StickyNotesContext',
+  )).default;
   return { StickyNotesGrid, StickyNotesProvider };
 };
 
 describeBefore('Category Filter Integration - repository_before (baseline)', () => {
   test('should render without category filter', () => {
-    const App = require(`../../${repoPath}/src/App`).default;
+    const App = require(path.join(
+      __dirname,
+      '..',
+      '..',
+      repoPath,
+      'src',
+      'App',
+    )).default;
     render(React.createElement(App));
     expect(screen.getByText(/sticky notes/i)).toBeInTheDocument();
   });

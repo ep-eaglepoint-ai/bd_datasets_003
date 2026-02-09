@@ -2,9 +2,12 @@
   "name": "sticky-notes-refactor-project",
   "version": "1.0.0",
   "scripts": {
-    "test": "cross-env REPO_PATH=repository_after npx jest --watchAll=false --testTimeout=10000 --silent",
-    "test:before": "cross-env REPO_PATH=repository_before npx jest --watchAll=false --testTimeout=10000 --silent",
-    "test:after": "cross-env REPO_PATH=repository_after npx jest --watchAll=false --testTimeout=10000 --silent"
+    "pretest": "npm ci --no-audit --no-fund && npm install --prefix ../repository_after --no-audit --no-fund && npm ci --prefix ../repository_before --no-audit --no-fund",
+    "pretest:before": "npm ci --no-audit --no-fund && npm ci --prefix ../repository_before --no-audit --no-fund",
+    "pretest:after": "npm ci --no-audit --no-fund && npm install --prefix ../repository_after --no-audit --no-fund",
+    "test": "NODE_PATH=./node_modules REPO_PATH=repository_after npx jest --watchAll=false --testTimeout=10000",
+    "test:before": "NODE_PATH=./node_modules REPO_PATH=repository_before npx jest --watchAll=false --testTimeout=10000",
+    "test:after": "NODE_PATH=./node_modules REPO_PATH=repository_after npx jest --watchAll=false --testTimeout=10000"
   },
   "devDependencies": {
     "@babel/core": "^7.21.0",
