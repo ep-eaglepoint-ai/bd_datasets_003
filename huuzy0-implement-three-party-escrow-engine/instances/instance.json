@@ -1,0 +1,11 @@
+{
+            "instance_id": "HUUZY0",
+            "problem_statement": "The goal is to engineer a fault-tolerant state machine for a high-trust marketplace that supports three-party transactions (Buyer, Seller, Escrow Agent). Unlike standard 2-party escrow, this system empowers the Agent to adjudicate disputes and issue partial refunds. The critical engineering challenge is implementing a dynamic fee absorption mechanism: if a refund amount exceeds the Seller's share, the remaining liability must be atomically deducted from the Agent's commission fees while preserving the global invariant that the sum of all balances equals the initial deposit.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/huuzy0-implement-three-party-escrow-engine",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        

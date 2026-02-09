@@ -1,0 +1,8 @@
+# Evaluation Script
+
+Run:
+- `node evaluation/evaluation.js`
+
+Outputs:
+- `evaluation/report.json`
+- `evaluation/report.xml` (JUnit XML; generated via `docker compose run --rm test-report`)
