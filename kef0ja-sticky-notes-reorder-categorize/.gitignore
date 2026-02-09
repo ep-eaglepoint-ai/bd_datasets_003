@@ -1,0 +1,14 @@
+# .gitignore
+node_modules/
+*.log
+.DS_Store
+report.json
+evaluation/reports/
+evaluation/reports/*
+!evaluation/reports/.gitkeep
+build/
+coverage/
+.env*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

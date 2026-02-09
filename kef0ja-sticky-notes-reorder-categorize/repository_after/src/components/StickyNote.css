@@ -1,0 +1,162 @@
+.sticky-note {
+  background-color: #ffd500;
+  border-radius: 7px;
+  padding: 20px;
+  margin: 8px;
+  height: 300px;
+  position: relative;
+  cursor: default;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  outline: none;
+  z-index: 1;
+
+  &:hover {
+    background-color: #f5ba13;
+    opacity: 0.8;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  }
+
+  &.dragging {
+    opacity: 0.5;
+    transform: scale(0.95);
+    z-index: 1000; 
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 0;
+    height: 0;
+    border-style: solid;
+    border-width: 0 20px 20px 0;
+    border-color: transparent rgb(167 166 158) #fff transparent;
+    transform: rotate(270deg);
+  }
+}
+
+.sticky-header {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+
+.sticky-note-circular-button {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background-color: #fff;
+  border: none;
+  outline: none;
+  cursor: pointer;
+  margin-left: 5px;
+  margin-right: 5px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  box-shadow: 1px 2px 4px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s ease;
+
+  &:hover {
+    transform: scale(1.1);
+  }
+
+  &.drag-handle {
+    cursor: grab;
+    
+    &:active {
+      cursor: grabbing;
+    }
+  }
+}
+
+.drag-handle svg {
+  width: 16px;
+  height: 16px;
+  fill: #666;
+}
+
+.category-badge {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.category-display {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+}
+
+.category-badge-small {
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  color: white;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.category-dropdown {
+  position: absolute;
+  top: 50px;
+  right: 10px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 5px;
+  z-index: 10;
+  min-width: 120px;
+}
+
+.category-dropdown-item {
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: #333;
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.9rem;
+  margin: 2px 0;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+  }
+}
+
+.drop-zone {
+  position: relative;
+}
+
+.drop-zone-active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border: 2px dashed #4A90D9;
+  border-radius: 7px;
+  pointer-events: none;
+}
+
+.sticky-note-title,
+.sticky-note-content {
+  user-select: none;
+}
+
+.sticky-note-title-input,
+.sticky-note-content-input {
+  user-select: text;
+}
+
+.touch-ghost {
+  transition: none;
+}

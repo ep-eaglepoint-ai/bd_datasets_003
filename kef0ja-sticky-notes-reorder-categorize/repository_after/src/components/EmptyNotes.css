@@ -1,0 +1,55 @@
+.empty-notes-container {
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr;
+    gap: 1rem;
+    margin: 5rem auto;
+    place-items: center;
+    max-width: 600px;
+    text-align: center;
+}
+
+.empty-notes {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 1.1rem;
+    color: #706c60;
+    line-height: 1.6;
+    padding: 0 1rem;
+}
+
+.empty-notes-image {
+    width: 280px;
+    height: 250px;
+    margin-bottom: 1rem;
+}
+
+.add-note-button {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 1.5rem;
+    padding: 0.7rem 1.5rem;
+    border: none;
+    border-radius: 5px;
+    background-color: #ffd500;
+    color: #000;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+    gap: 0.5rem;
+
+    &:hover {
+        background-color: #f5ba13;
+        opacity: 0.9;
+        transform: scale(1.05);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    }
+}
+
+.plus-svg-icon {
+    width: 20px;
+    height: 20px;
+}
