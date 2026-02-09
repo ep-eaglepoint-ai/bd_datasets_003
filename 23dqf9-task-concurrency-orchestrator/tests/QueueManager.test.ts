@@ -105,7 +105,7 @@ describe('QueueManager', () => {
   });
 
   
-  it('Requirement 5: job rejection does not leak concurrency slots', async () => {
+  it('job rejection does not leak concurrency slots', async () => {
     const qError = new QueueManager(2);
     let finishedCount = 0;
 
@@ -132,7 +132,7 @@ describe('QueueManager', () => {
   });
 
   
-  it('Requirement 10: 10 jobs of 100ms with concurrency 2 take exactly 500ms', async () => {
+  it('10 jobs of 100ms with concurrency 2 take exactly 500ms', async () => {
     const qBench = new QueueManager(2);
     const startTime = Date.now();
     let completed = 0;
