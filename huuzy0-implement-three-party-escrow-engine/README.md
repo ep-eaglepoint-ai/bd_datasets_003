@@ -4,9 +4,4 @@
 docker compose run --rm test
 
 ## Test and report command: 
-docker compose run --rm test-report
-
-This command also writes:
-- `evaluation/report.xml` (JUnit XML)
-- `evaluation/report.json` (JSON metadata used by evaluators)
-    
+docker compose run --rm python evaluation/generate_report_json.py
