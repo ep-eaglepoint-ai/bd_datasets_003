@@ -1,0 +1,11 @@
+{
+            "instance_id": "23DQF9",
+            "problem_statement": "In our data-heavy web application, we need to process batches of asynchronous 'Jobs' (e.g., image optimizations, data exports) without overwhelming the browser's network layer or the user's CPU. You are required to build a standalone 'QueueManager' class. This manager must handle a high volume of tasks by implementing a sliding-window concurrency limit, ensuring that only a fixed number of tasks are 'In-Flight' at any given time. The system must support dynamic job injection, pausing/resuming, and granular state tracking for each job. The primary challenge is ensuring that as soon as one job completes, the next waiting job starts immediately without any 'dead time' or 'stuttering' in the queue execution pipeline.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/23dqf9-task-concurrency-orchestrator",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        

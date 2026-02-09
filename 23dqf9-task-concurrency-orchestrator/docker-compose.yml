@@ -1,0 +1,20 @@
+
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /app
+    volumes:
+      
+      - ./repository_after:/app/repository_after:cached
+      - ./tests:/app/tests:cached
+      - ./evaluation:/app/evaluation
+      
+    environment:
+      - NODE_ENV=test
+      - CI=false                     
+    tty: true                       
+    stdin_open: true
+
