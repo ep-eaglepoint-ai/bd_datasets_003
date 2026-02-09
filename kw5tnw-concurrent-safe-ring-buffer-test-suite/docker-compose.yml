@@ -1,0 +1,6 @@
+services:
+  app:
+    build: .
+    container_name: concurrent-safe-ring-buffer-test-suite
+    volumes:
+      - .:/app
