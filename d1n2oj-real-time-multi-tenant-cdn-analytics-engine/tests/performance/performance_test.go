@@ -76,7 +76,7 @@ func TestSustainedThroughput8KPerSec(t *testing.T) {
 
 	const (
 		targetRatePerSec = 8000
-		durationSec      = 10
+		durationSec      = 300 // 5 minutes as per requirement
 		batchSize        = 100
 		requestsPerSec   = targetRatePerSec / batchSize
 		totalRequests    = requestsPerSec * durationSec
