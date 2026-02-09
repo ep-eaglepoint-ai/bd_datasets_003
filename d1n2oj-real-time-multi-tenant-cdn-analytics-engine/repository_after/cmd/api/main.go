@@ -29,7 +29,6 @@ func main() {
 		"port", cfg.ServerPort,
 	)
 
-	// ── ClickHouse ────────────────────────────────────────────────
 	var svcOpts []service.Option
 	var chConn *clickhouse.ClickHouseConnector
 
@@ -72,7 +71,7 @@ func main() {
 	go func() {
 		addr := ":" + cfg.ServerPort
 		slog.Info("Server starting", "address", addr)
-		if err := e.Start(addr); err != nil {
+		if err := e.Start(addr); err != nil && err.Error() != "http: Server closed" {
 			slog.Error("Server error", "error", err)
 		}
 	}()
@@ -82,10 +81,8 @@ func main() {
 	<-quit
 
 	slog.Info("Shutting down server...")
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
 
-	if err := svc.Shutdown(ctx); err != nil {
+	if err := svc.Shutdown(context.Background()); err != nil {
 		slog.Error("Service shutdown failed", "error", err)
 	}
 
@@ -93,10 +90,6 @@ func main() {
 		if err := chConn.Close(); err != nil {
 			slog.Error("ClickHouse close failed", "error", err)
 		}
-	}
-
-	if err := e.Shutdown(ctx); err != nil {
-		slog.Error("Server forced to shutdown", "error", err)
 	}
 
 	slog.Info("Server exited")
