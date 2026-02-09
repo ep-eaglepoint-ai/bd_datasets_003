@@ -1,0 +1,16 @@
+# Keep context small; image runs npm install so do NOT copy host node_modules (slow, wrong OS)
+.git
+.cursor
+.vscode
+*.log
+.DS_Store
+node_modules
+**/node_modules
+dist
+**/dist
+.vite
+**/.vite
+coverage
+**/coverage
+.cache
+**/.cache

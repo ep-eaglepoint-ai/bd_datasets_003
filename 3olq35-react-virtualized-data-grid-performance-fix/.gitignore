@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.env
+
+# Node
+node_modules/
+repository_before/node_modules/
+repository_after/node_modules/
+repository_after/dist/
+
+# OS
+.DS_Store
+evaluation/*.json

@@ -1,0 +1,844 @@
+Only in repository_after: .gitkeep
+diff -ru '--exclude=node_modules' '--exclude=dist' '--exclude=.vite' repository_before/package.json repository_after/package.json
+--- repository_before/package.json	2026-02-06 22:33:09.060201400 +0300
++++ repository_after/package.json	2026-02-06 22:33:09.075201500 +0300
+@@ -1,5 +1,5 @@
+ {
+-  "name": "trading-dashboard-before",
++  "name": "trading-dashboard-after",
+   "version": "1.0.0",
+   "type": "module",
+   "scripts": {
+@@ -10,6 +10,8 @@
+     "test:watch": "vitest"
+   },
+   "dependencies": {
++    "@tanstack/react-table": "^8.20.0",
++    "@tanstack/react-virtual": "^3.13.18",
+     "react": "^18.2.0",
+     "react-dom": "^18.2.0"
+   },
+@@ -22,7 +24,7 @@
+     "@vitejs/plugin-react": "^4.2.0",
+     "jsdom": "^25.0.1",
+     "typescript": "^5.3.0",
+-    "vite": "^7.3.1",
++    "vite": "7.3.1",
+     "vitest": "^4.0.18"
+   }
+ }
+diff -ru '--exclude=node_modules' '--exclude=dist' '--exclude=.vite' repository_before/src/App.css repository_after/src/App.css
+--- repository_before/src/App.css	2026-02-04 14:00:28.433867500 +0300
++++ repository_after/src/App.css	2026-02-04 15:06:35.012887200 +0300
+@@ -69,9 +69,22 @@
+ 
+ .grid-container {
+   overflow: auto;
++  height: 600px;
+   max-height: 600px;
+ }
+ 
++.grid-container:focus {
++  outline: 2px solid #007bff;
++  outline-offset: 2px;
++}
++
++.filter-loading,
++.sort-loading {
++  font-size: 0.75rem;
++  color: #666;
++  margin-left: 0.5rem;
++}
++
+ .grid-table {
+   width: 100%;
+   border-collapse: collapse;
+diff -ru '--exclude=node_modules' '--exclude=dist' '--exclude=.vite' repository_before/src/App.tsx repository_after/src/App.tsx
+--- repository_before/src/App.tsx	2026-02-04 14:00:28.433867500 +0300
++++ repository_after/src/App.tsx	2026-02-04 15:06:35.016150700 +0300
+@@ -1,10 +1,28 @@
+-import React from 'react';
++import React, { useState, useCallback } from 'react';
+ import { DataGrid } from './components/DataGrid';
++import type { Transaction } from './types';
+ import { generateTransactions } from './utils/dataGenerator';
+ import './App.css';
+ 
++const INITIAL_PAGE_SIZE = 2000;
++const LOAD_MORE_PAGE_SIZE = 2000;
++const MAX_TRANSACTIONS = 100000;
++
+ const App: React.FC = () => {
+-  const transactions = generateTransactions(100000);
++  const [transactions, setTransactions] = useState<Transaction[]>(() =>
++    generateTransactions(INITIAL_PAGE_SIZE, 0)
++  );
++
++  const handleLoadMore = useCallback(() => {
++    setTransactions((prev) => {
++      if (prev.length >= MAX_TRANSACTIONS) return prev;
++      const nextChunk = generateTransactions(
++        Math.min(LOAD_MORE_PAGE_SIZE, MAX_TRANSACTIONS - prev.length),
++        prev.length
++      );
++      return [...prev, ...nextChunk];
++    });
++  }, []);
+ 
+   return (
+     <div className="app">
+@@ -12,7 +30,7 @@
+         <h1>Trading Dashboard</h1>
+       </header>
+       <main className="app-main">
+-        <DataGrid data={transactions} />
++        <DataGrid data={transactions} onLoadMore={handleLoadMore} />
+       </main>
+     </div>
+   );
+diff -ru '--exclude=node_modules' '--exclude=dist' '--exclude=.vite' repository_before/src/components/DataGrid.tsx repository_after/src/components/DataGrid.tsx
+--- repository_before/src/components/DataGrid.tsx	2026-02-04 15:36:49.739799200 +0300
++++ repository_after/src/components/DataGrid.tsx	2026-02-06 17:00:04.633385100 +0300
+@@ -1,15 +1,33 @@
+-import React, { useState } from 'react';
++import React, {
++  useState,
++  useMemo,
++  useCallback,
++  useRef,
++  useLayoutEffect,
++  useEffect,
++  startTransition,
++} from 'react';
++import { useVirtualizer } from '@tanstack/react-virtual';
++import {
++  createColumnHelper,
++  getCoreRowModel,
++  getSortedRowModel,
++  type SortingState,
++  useReactTable,
++} from '@tanstack/react-table';
+ import { Transaction, ColumnDef, FilterState, SortState } from '../types';
+ import { GridHeader } from './GridHeader';
+ import { GridRow } from './GridRow';
+ import { FilterBar } from './FilterBar';
+-import { formatCurrency, formatDate } from '../utils/formatters';
+ 
+ interface DataGridProps {
+   data: Transaction[];
+   onLoadMore?: () => void;
+ }
+ 
++const ROW_HEIGHT = 40;
++const OVERSCAN = 8;
++
+ const columns: ColumnDef[] = [
+   { id: 'select', header: '', accessor: 'id', width: 40, sortable: false, filterable: false },
+   { id: 'date', header: 'Date', accessor: 'date', width: 120, sortable: true, filterable: true },
+@@ -23,88 +41,239 @@
+   { id: 'broker', header: 'Broker', accessor: 'broker', width: 120, sortable: true, filterable: true },
+ ];
+ 
+-export const DataGrid: React.FC<DataGridProps> = ({ data, onLoadMore: _onLoadMore }) => {
++const columnHelper = createColumnHelper<Transaction>();
++
++export const DataGrid: React.FC<DataGridProps> = ({ data, onLoadMore }) => {
+   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+   const [filters, setFilters] = useState<FilterState[]>([]);
+   const [sort, setSort] = useState<SortState | null>(null);
++  const [sorting, setSorting] = useState<SortingState>([]);
+   const [columnWidths, setColumnWidths] = useState<Record<string, number>>(
+-    columns.reduce((acc, col) => ({ ...acc, [col.id]: col.width }), {})
++    () => columns.reduce((acc, col) => ({ ...acc, [col.id]: col.width }), {})
+   );
+   const [searchTerm, setSearchTerm] = useState('');
++  const [isSorting, setIsSorting] = useState(false);
++  const [focusedRowIndex, setFocusedRowIndex] = useState<number>(0);
++  const scrollContainerRef = useRef<HTMLDivElement>(null);
++  const pendingScrollRestoreRef = useRef<number | null>(null);
++  const loadMoreRequestedRef = useRef(false);
++  const dataLengthRef = useRef(data.length);
++
++  const filteredData = useMemo(() => {
++    let result = data;
++
++    if (searchTerm) {
++      const term = searchTerm.toLowerCase();
++      result = result.filter((row) =>
++        Object.values(row).some((val) =>
++          String(val).toLowerCase().includes(term)
++        )
++      );
++    }
+ 
+-  const handleSelectRow = (id: string) => {
+-    const newSelected = new Set(selectedIds);
+-    if (newSelected.has(id)) {
+-      newSelected.delete(id);
+-    } else {
+-      newSelected.add(id);
+-    }
+-    setSelectedIds(newSelected);
+-  };
+-
+-  const handleSelectAll = () => {
+-    if (selectedIds.size === filteredData.length) {
+-      setSelectedIds(new Set());
+-    } else {
+-      setSelectedIds(new Set(filteredData.map(row => row.id)));
+-    }
+-  };
+-
+-  const handleSort = (columnId: string) => {
+-    if (sort?.column === columnId) {
+-      setSort({ column: columnId, direction: sort.direction === 'asc' ? 'desc' : 'asc' });
+-    } else {
+-      setSort({ column: columnId, direction: 'asc' });
+-    }
+-  };
+-
+-  const handleFilter = (column: string, value: string) => {
+-    setFilters(prev => {
+-      const existing = prev.find(f => f.column === column);
+-      if (existing) {
+-        if (value === '') {
+-          return prev.filter(f => f.column !== column);
++    filters.forEach((filter) => {
++      result = result.filter((row) =>
++        String(row[filter.column as keyof Transaction])
++          .toLowerCase()
++          .includes(filter.value.toLowerCase())
++      );
++    });
++
++    return result;
++  }, [data, searchTerm, filters, sort]);
++
++  const tableColumns = useMemo(
++    () =>
++      columns
++        .filter((col) => col.id !== 'select')
++        .map((col) =>
++          columnHelper.accessor(col.accessor, {
++            id: col.id,
++            header: col.header,
++            enableSorting: col.sortable,
++          })
++        ),
++    []
++  );
++
++  const table = useReactTable({
++    data: filteredData,
++    columns: tableColumns,
++    state: { sorting },
++    onSortingChange: setSorting,
++    getCoreRowModel: getCoreRowModel(),
++    getSortedRowModel: getSortedRowModel(),
++  });
++
++  const tableRows = table.getRowModel().rows;
++
++  const rowVirtualizer = useVirtualizer({
++    count: tableRows.length,
++    getScrollElement: () => scrollContainerRef.current,
++    estimateSize: () => ROW_HEIGHT,
++    overscan: OVERSCAN,
++  });
++
++  const virtualItems = rowVirtualizer.getVirtualItems();
++  const totalSize = rowVirtualizer.getTotalSize();
++
++  const handleSelectRow = useCallback((id: string) => {
++    setSelectedIds((prev) => {
++      const next = new Set(prev);
++      if (next.has(id)) next.delete(id);
++      else next.add(id);
++      return next;
++    });
++  }, []);
++
++  const handleSelectAll = useCallback(() => {
++    setSelectedIds((prev) => {
++      if (prev.size === filteredData.length && filteredData.length > 0) {
++        return new Set<string>();
++      }
++      return new Set(filteredData.map((row) => row.id));
++    });
++  }, [filteredData]);
++
++  const handleSort = useCallback((columnId: string) => {
++    if (scrollContainerRef.current) {
++      pendingScrollRestoreRef.current = scrollContainerRef.current.scrollTop;
++    }
++    setIsSorting(true);
++    startTransition(() => {
++      setSort((prev) => {
++        if (prev?.column === columnId) {
++          const nextDirection = prev.direction === 'asc' ? 'desc' : 'asc';
++          return { column: columnId, direction: nextDirection };
+         }
+-        return prev.map(f => f.column === column ? { ...f, value } : f);
++        return { column: columnId, direction: 'asc' as const };
++      });
++    });
++  }, []);
++
++  const handleFilter = useCallback((column: string, value: string) => {
++    if (scrollContainerRef.current) {
++      pendingScrollRestoreRef.current = scrollContainerRef.current.scrollTop;
++    }
++    setFilters((prev) => {
++      const existing = prev.find((f) => f.column === column);
++      if (existing) {
++        if (value === '') return prev.filter((f) => f.column !== column);
++        return prev.map((f) => (f.column === column ? { ...f, value } : f));
+       }
+       return [...prev, { column, value }];
+     });
+-  };
+-
+-  const handleColumnResize = (columnId: string, width: number) => {
+-    setColumnWidths(prev => ({ ...prev, [columnId]: width }));
+-  };
++  }, []);
+ 
+-  const handleSearch = (term: string) => {
++  const handleColumnResize = useCallback((columnId: string, width: number) => {
++    setColumnWidths((prev) => ({ ...prev, [columnId]: width }));
++  }, []);
++
++  const handleSearch = useCallback((term: string) => {
++    if (scrollContainerRef.current) {
++      pendingScrollRestoreRef.current = scrollContainerRef.current.scrollTop;
++    }
+     setSearchTerm(term);
+-  };
++  }, []);
+ 
+-  let filteredData = data;
++  useEffect(() => {
++    if (isSorting) {
++      const id = requestAnimationFrame(() => setIsSorting(false));
++      return () => cancelAnimationFrame(id);
++    }
++  }, [isSorting, sort]);
+ 
+-  if (searchTerm) {
+-    filteredData = filteredData.filter(row =>
+-      Object.values(row).some(val =>
+-        String(val).toLowerCase().includes(searchTerm.toLowerCase())
+-      )
+-    );
+-  }
++  useEffect(() => {
++    if (!sort) {
++      setSorting([]);
++      return;
++    }
++    setSorting([
++      {
++        id: sort.column,
++        desc: sort.direction === 'desc',
++      },
++    ]);
++  }, [sort]);
++
++  useLayoutEffect(() => {
++    const pending = pendingScrollRestoreRef.current;
++    if (pending !== null && scrollContainerRef.current) {
++      const el = scrollContainerRef.current;
++      const maxScroll = totalSize - el.clientHeight;
++      el.scrollTop = Math.min(pending, Math.max(0, maxScroll));
++      pendingScrollRestoreRef.current = null;
++    }
++  }, [filteredData.length, totalSize]);
+ 
+-  filters.forEach(filter => {
+-    filteredData = filteredData.filter(row =>
+-      String(row[filter.column as keyof Transaction])
+-        .toLowerCase()
+-        .includes(filter.value.toLowerCase())
++  useEffect(() => {
++    const lastIndex = virtualItems[virtualItems.length - 1]?.index;
++    const size = filteredData.length;
++    if (
++      onLoadMore &&
++      size > 0 &&
++      lastIndex != null &&
++      lastIndex >= size - 10 &&
++      !loadMoreRequestedRef.current
++    ) {
++      loadMoreRequestedRef.current = true;
++      onLoadMore();
++    }
++  }, [virtualItems, filteredData.length, onLoadMore]);
++
++  useEffect(() => {
++    if (data.length > dataLengthRef.current) {
++      loadMoreRequestedRef.current = false;
++    }
++    dataLengthRef.current = data.length;
++  }, [data.length]);
++
++  const handleKeyDown = useCallback(
++    (e: React.KeyboardEvent) => {
++      const count = filteredData.length;
++      if (count === 0) return;
++
++      switch (e.key) {
++        case 'ArrowDown':
++          e.preventDefault();
++          setFocusedRowIndex((i) => Math.min(i + 1, count - 1));
++          break;
++        case 'ArrowUp':
++          e.preventDefault();
++          setFocusedRowIndex((i) => Math.max(i - 1, 0));
++          break;
++        case 'PageDown':
++          e.preventDefault();
++          setFocusedRowIndex((i) => Math.min(i + 10, count - 1));
++          break;
++        case 'PageUp':
++          e.preventDefault();
++          setFocusedRowIndex((i) => Math.max(i - 10, 0));
++          break;
++        default:
++          return;
++      }
++    },
++    [filteredData.length]
++  );
++
++  useEffect(() => {
++    setFocusedRowIndex((i) =>
++      Math.min(i, Math.max(0, filteredData.length - 1))
+     );
+-  });
++  }, [filteredData.length]);
+ 
+-  if (sort) {
+-    filteredData = [...filteredData].sort((a, b) => {
+-      const aVal = a[sort.column as keyof Transaction];
+-      const bVal = b[sort.column as keyof Transaction];
+-      const comparison = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+-      return sort.direction === 'asc' ? comparison : -comparison;
+-    });
+-  }
++  useEffect(() => {
++    if (filteredData.length > 0) {
++      rowVirtualizer.scrollToIndex(focusedRowIndex, {
++        align: 'auto',
++        behavior: 'smooth',
++      });
++    }
++  }, [focusedRowIndex, filteredData.length, rowVirtualizer]);
++
++  const allSelected =
++    selectedIds.size === filteredData.length && filteredData.length > 0;
+ 
+   return (
+     <div className="data-grid">
+@@ -113,8 +282,18 @@
+         onFilter={handleFilter}
+         onSearch={handleSearch}
+         searchTerm={searchTerm}
++        isSearching={false}
+       />
+-      <div className="grid-container">
++      <div
++        ref={scrollContainerRef}
++        className="grid-container"
++        role="grid"
++        aria-label="Trading transactions"
++        aria-rowcount={filteredData.length}
++        aria-colcount={columns.length}
++        tabIndex={0}
++        onKeyDown={handleKeyDown}
++      >
+         <table className="grid-table">
+           <GridHeader
+             columns={columns}
+@@ -122,25 +301,63 @@
+             sort={sort}
+             onSort={handleSort}
+             onColumnResize={handleColumnResize}
+-            allSelected={selectedIds.size === filteredData.length && filteredData.length > 0}
++            allSelected={allSelected}
+             onSelectAll={handleSelectAll}
++            isSorting={isSorting}
+           />
+           <tbody>
+-            {filteredData.map(row => (
+-              <GridRow
+-                key={row.id}
+-                row={row}
+-                columns={columns}
+-                columnWidths={columnWidths}
+-                isSelected={selectedIds.has(row.id)}
+-                onSelect={handleSelectRow}
+-              />
+-            ))}
++            {virtualItems.length > 0 && virtualItems[0].start > 0 && (
++              <tr aria-hidden="true">
++                <td
++                  colSpan={columns.length}
++                  style={{
++                    height: virtualItems[0].start,
++                    padding: 0,
++                    border: 0,
++                    lineHeight: 0,
++                    verticalAlign: 'top',
++                  }}
++                />
++              </tr>
++            )}
++            {virtualItems.map((virtualRow) => {
++              const row = tableRows[virtualRow.index]?.original;
++              if (!row) return null;
++              return (
++                <GridRow
++                  key={row.id}
++                  row={row}
++                  columns={columns}
++                  columnWidths={columnWidths}
++                  isSelected={selectedIds.has(row.id)}
++                  onSelect={handleSelectRow}
++                  ariaRowIndex={virtualRow.index + 1}
++                />
++              );
++            })}
++            {virtualItems.length > 0 && (
++              <tr aria-hidden="true">
++                <td
++                  colSpan={columns.length}
++                  style={{
++                    height:
++                      totalSize -
++                      (virtualItems[virtualItems.length - 1]?.end ?? 0),
++                    padding: 0,
++                    border: 0,
++                    lineHeight: 0,
++                    verticalAlign: 'top',
++                  }}
++                />
++              </tr>
++            )}
+           </tbody>
+         </table>
+       </div>
+       <div className="grid-footer">
+-        <span>Showing {filteredData.length} of {data.length} transactions</span>
++        <span>
++          Showing {filteredData.length} of {data.length} transactions
++        </span>
+         <span>{selectedIds.size} selected</span>
+       </div>
+     </div>
+diff -ru '--exclude=node_modules' '--exclude=dist' '--exclude=.vite' repository_before/src/components/FilterBar.tsx repository_after/src/components/FilterBar.tsx
+--- repository_before/src/components/FilterBar.tsx	2026-02-04 14:00:28.435875100 +0300
++++ repository_after/src/components/FilterBar.tsx	2026-02-04 15:06:35.087057400 +0300
+@@ -1,11 +1,14 @@
+-import React from 'react';
++import React, { useState, useEffect } from 'react';
+ import { ColumnDef } from '../types';
+ 
++const SEARCH_DEBOUNCE_MS = 300;
++
+ interface FilterBarProps {
+   columns: ColumnDef[];
+   onFilter: (column: string, value: string) => void;
+   onSearch: (term: string) => void;
+   searchTerm: string;
++  isSearching?: boolean;
+ }
+ 
+ export const FilterBar: React.FC<FilterBarProps> = ({
+@@ -13,27 +16,51 @@
+   onFilter,
+   onSearch,
+   searchTerm,
++  isSearching = false,
+ }) => {
++  const [displayValue, setDisplayValue] = useState(searchTerm);
++
++  useEffect(() => {
++    setDisplayValue(searchTerm);
++  }, [searchTerm]);
++
++  useEffect(() => {
++    const id = setTimeout(() => {
++      onSearch(displayValue);
++    }, SEARCH_DEBOUNCE_MS);
++    return () => clearTimeout(id);
++  }, [displayValue, onSearch]);
++
++  const showSearchLoading = displayValue !== searchTerm || isSearching;
++
+   return (
+     <div className="filter-bar">
+       <div className="search-box">
+         <input
+           type="text"
+           placeholder="Search all columns..."
+-          value={searchTerm}
+-          onChange={(e) => onSearch(e.target.value)}
++          value={displayValue}
++          onChange={(e) => setDisplayValue(e.target.value)}
++          aria-label="Search all columns"
+         />
++        {showSearchLoading && (
++          <span className="filter-loading" aria-live="polite">
++            Searching...
++          </span>
++        )}
+       </div>
+       <div className="column-filters">
+         {columns
+-          .filter(col => col.filterable)
+-          .map(column => (
++          .filter((col) => col.filterable)
++          .map((column) => (
+             <div key={column.id} className="filter-input">
+-              <label>{column.header}</label>
++              <label htmlFor={`filter-${column.id}`}>{column.header}</label>
+               <input
++                id={`filter-${column.id}`}
+                 type="text"
+                 placeholder={`Filter ${column.header}...`}
+                 onChange={(e) => onFilter(column.accessor, e.target.value)}
++                aria-label={`Filter by ${column.header}`}
+               />
+             </div>
+           ))}
+diff -ru '--exclude=node_modules' '--exclude=dist' '--exclude=.vite' repository_before/src/components/GridHeader.tsx repository_after/src/components/GridHeader.tsx
+--- repository_before/src/components/GridHeader.tsx	2026-02-04 14:00:28.437871700 +0300
++++ repository_after/src/components/GridHeader.tsx	2026-02-04 15:06:35.016150700 +0300
+@@ -1,4 +1,4 @@
+-import React from 'react';
++import React, { useRef } from 'react';
+ import { ColumnDef, SortState } from '../types';
+ 
+ interface GridHeaderProps {
+@@ -9,6 +9,7 @@
+   onColumnResize: (columnId: string, width: number) => void;
+   allSelected: boolean;
+   onSelectAll: () => void;
++  isSorting?: boolean;
+ }
+ 
+ export const GridHeader: React.FC<GridHeaderProps> = ({
+@@ -19,14 +20,29 @@
+   onColumnResize,
+   allSelected,
+   onSelectAll,
++  isSorting = false,
+ }) => {
++  const rafIdRef = useRef<number | null>(null);
++  const latestClientXRef = useRef(0);
++
+   const handleResizeStart = (columnId: string, startX: number, startWidth: number) => {
+     const handleMouseMove = (e: MouseEvent) => {
+-      const newWidth = Math.max(50, startWidth + (e.clientX - startX));
+-      onColumnResize(columnId, newWidth);
++      latestClientXRef.current = e.clientX;
++      if (rafIdRef.current == null) {
++        rafIdRef.current = requestAnimationFrame(() => {
++          const newWidth = Math.max(
++            50,
++            startWidth + (latestClientXRef.current - startX)
++          );
++          onColumnResize(columnId, newWidth);
++          rafIdRef.current = null;
++        });
++      }
+     };
+ 
+     const handleMouseUp = () => {
++      if (rafIdRef.current != null) cancelAnimationFrame(rafIdRef.current);
++      rafIdRef.current = null;
+       document.removeEventListener('mousemove', handleMouseMove);
+       document.removeEventListener('mouseup', handleMouseUp);
+     };
+@@ -37,18 +53,28 @@
+ 
+   return (
+     <thead>
+-      <tr>
+-        {columns.map(column => (
++      <tr role="row">
++        {columns.map((column, colIndex) => (
+           <th
+             key={column.id}
++            role="columnheader"
+             style={{ width: columnWidths[column.id] }}
+             className={`grid-header-cell ${sort?.column === column.id ? 'sorted' : ''}`}
++            aria-sort={
++              sort?.column === column.id
++                ? sort.direction === 'asc'
++                  ? 'ascending'
++                  : 'descending'
++                : undefined
++            }
++            aria-colindex={colIndex + 1}
+           >
+             {column.id === 'select' ? (
+               <input
+                 type="checkbox"
+                 checked={allSelected}
+                 onChange={onSelectAll}
++                aria-label="Select all rows"
+               />
+             ) : (
+               <>
+@@ -63,9 +89,16 @@
+                     </span>
+                   )}
+                 </span>
++                {isSorting && sort?.column === column.id && (
++                  <span className="sort-loading" aria-live="polite">
++                    Sorting...
++                  </span>
++                )}
+                 <div
+                   className="resize-handle"
+-                  onMouseDown={(e) => handleResizeStart(column.id, e.clientX, columnWidths[column.id])}
++                  onMouseDown={(e) =>
++                    handleResizeStart(column.id, e.clientX, columnWidths[column.id])
++                  }
+                 />
+               </>
+             )}
+diff -ru '--exclude=node_modules' '--exclude=dist' '--exclude=.vite' repository_before/src/components/GridRow.tsx repository_after/src/components/GridRow.tsx
+--- repository_before/src/components/GridRow.tsx	2026-02-04 14:00:28.438875300 +0300
++++ repository_after/src/components/GridRow.tsx	2026-02-04 15:06:35.061037000 +0300
+@@ -8,24 +8,36 @@
+   columnWidths: Record<string, number>;
+   isSelected: boolean;
+   onSelect: (id: string) => void;
++  ariaRowIndex?: number;
+ }
+ 
+-export const GridRow: React.FC<GridRowProps> = ({
++const GridRowComponent: React.FC<GridRowProps> = ({
+   row,
+   columns,
+   columnWidths,
+   isSelected,
+   onSelect,
++  ariaRowIndex,
+ }) => {
+   return (
+-    <tr className={`grid-row ${isSelected ? 'selected' : ''}`}>
+-      {columns.map(column => (
+-        <td key={column.id} style={{ width: columnWidths[column.id] }}>
++    <tr
++      className={`grid-row ${isSelected ? 'selected' : ''}`}
++      role="row"
++      aria-rowindex={ariaRowIndex}
++    >
++      {columns.map((column, colIndex) => (
++        <td
++          key={column.id}
++          role="gridcell"
++          style={{ width: columnWidths[column.id] }}
++          aria-colindex={colIndex + 1}
++        >
+           {column.id === 'select' ? (
+             <input
+               type="checkbox"
+               checked={isSelected}
+               onChange={() => onSelect(row.id)}
++              aria-label={`Select row ${row.id}`}
+             />
+           ) : (
+             <GridCell column={column} value={row[column.accessor]} />
+@@ -35,3 +47,5 @@
+     </tr>
+   );
+ };
++
++export const GridRow = React.memo(GridRowComponent);
+diff -ru '--exclude=node_modules' '--exclude=dist' '--exclude=.vite' repository_before/src/utils/dataGenerator.ts repository_after/src/utils/dataGenerator.ts
+--- repository_before/src/utils/dataGenerator.ts	2026-02-04 15:36:50.095639100 +0300
++++ repository_after/src/utils/dataGenerator.ts	2026-02-04 15:06:35.016150700 +0300
+@@ -6,7 +6,10 @@
+ const accounts = ['IRA-001', 'IRA-002', 'BROK-001', 'BROK-002', 'ROTH-001'];
+ const brokers = ['Fidelity', 'Schwab', 'Vanguard', 'TD Ameritrade', 'E*TRADE'];
+ 
+-export const generateTransactions = (count: number, startIndex = 0): Transaction[] => {
++export const generateTransactions = (
++  count: number,
++  startIndex = 0
++): Transaction[] => {
+   const transactions: Transaction[] = [];
+ 
+   for (let i = 0; i < count; i++) {
+diff -ru '--exclude=node_modules' '--exclude=dist' '--exclude=.vite' repository_before/tests/setup.ts repository_after/tests/setup.ts
+--- repository_before/tests/setup.ts	2026-02-04 15:36:49.778809300 +0300
++++ repository_after/tests/setup.ts	2026-02-04 15:40:12.071706800 +0300
+@@ -1 +1,24 @@
+ import '@testing-library/jest-dom';
++import { vi } from 'vitest';
++
++const ROW_HEIGHT = 40;
++const MOCK_VISIBLE_COUNT = 20;
++
++vi.mock('@tanstack/react-virtual', () => ({
++  useVirtualizer: (config: { count: number; estimateSize: () => number }) => {
++    const count = config.count;
++    const size = config.estimateSize();
++    const numVisible = Math.min(MOCK_VISIBLE_COUNT, count);
++    const virtualItems = Array.from({ length: numVisible }, (_, i) => ({
++      index: i,
++      start: i * size,
++      end: (i + 1) * size,
++      size,
++    }));
++    return {
++      getVirtualItems: () => virtualItems,
++      getTotalSize: () => count * size,
++      scrollToIndex: vi.fn(),
++    };
++  },
++}));
+diff -ru '--exclude=node_modules' '--exclude=dist' '--exclude=.vite' repository_before/tsconfig.json repository_after/tsconfig.json
+--- repository_before/tsconfig.json	2026-02-04 14:00:28.514879100 +0300
++++ repository_after/tsconfig.json	2026-02-04 15:17:33.326909700 +0300
+@@ -16,6 +16,6 @@
+     "noUnusedParameters": true,
+     "noFallthroughCasesInSwitch": true
+   },
+-  "include": ["src"],
++  "include": ["src", "tests"],
+   "references": [{ "path": "./tsconfig.node.json" }]
+ }
+diff -ru '--exclude=node_modules' '--exclude=dist' '--exclude=.vite' repository_before/vite.config.ts repository_after/vite.config.ts
+--- repository_before/vite.config.ts	2026-02-05 17:37:09.880052500 +0300
++++ repository_after/vite.config.ts	2026-02-05 17:37:09.880052500 +0300
+@@ -8,18 +8,18 @@
+ 
+ export default defineConfig({
+   root: __dirname,
++  server: {
++    fs: { allow: [projectRoot, __dirname] },
++  },
+   plugins: [react()],
+   resolve: {
+     alias: {
++      '@': path.join(__dirname, 'src'),
+       '@impl': path.join(__dirname, 'src'),
+-      '@testing-library/react': path.resolve(projectRoot, 'node_modules/@testing-library/react'),
+-      '@testing-library/jest-dom': path.resolve(projectRoot, 'node_modules/@testing-library/jest-dom'),
+-      '@testing-library/user-event': path.resolve(projectRoot, 'node_modules/@testing-library/user-event'),
++      '@testing-library/react': path.join(projectRoot, 'node_modules', '@testing-library/react'),
++      '@testing-library/jest-dom': path.join(projectRoot, 'node_modules', '@testing-library/jest-dom'),
++      '@testing-library/user-event': path.join(projectRoot, 'node_modules', '@testing-library/user-event'),
+     },
+-    preserveSymlinks: false,
+-  },
+-  server: {
+-    fs: { allow: [projectRoot, __dirname] },
+   },
+   test: {
+     globals: true,
