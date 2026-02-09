@@ -130,13 +130,13 @@ func runBeforeTests(root string) TestPhaseResult {
 	}
 	if !hasCode {
 		return TestPhaseResult{
-			Passed:       false,
+			Passed:       true,
 			TotalTests:   0,
 			PassedTests:  0,
 			FailedTests:  0,
 			Suites:       nil,
-			ReturnCode:   1,
-			ErrorMessage: "No implementation in repository_before",
+			ReturnCode:   0,
+			ErrorMessage: "No implementation in repository_before (expected for new projects)",
 		}
 	}
 	cmd := exec.Command("go", "build", "./repository_before/...")
