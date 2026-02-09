@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// StatusBucket groups HTTP status codes into standard classes.
+
 type StatusBucket int
 
 const (
@@ -14,7 +14,7 @@ const (
 	Status3xx
 	Status4xx
 	Status5xx
-	statusBucketCount // sentinel – always last
+	statusBucketCount 
 )
 
 func BucketFromCode(code int) StatusBucket {
@@ -28,11 +28,11 @@ func BucketFromCode(code int) StatusBucket {
 	case code >= 500 && code < 600:
 		return Status5xx
 	default:
-		return Status5xx // treat unknown as server error
+		return Status5xx 
 	}
 }
 
-// BucketLabel returns a human-readable label for the bucket.
+
 func (b StatusBucket) Label() string {
 	switch b {
 	case Status2xx:
@@ -48,9 +48,7 @@ func (b StatusBucket) Label() string {
 	}
 }
 
-// -------------------------------------------------------------------
-// minuteCounter – fixed-size counter for a single 1-minute bucket
-// -------------------------------------------------------------------
+
 
 // minuteCounter stores aggregate counters for one calendar minute.
 type minuteCounter struct {
@@ -66,33 +64,24 @@ func (mc *minuteCounter) record(statusCode int, bytes int64) {
 	mc.totalBytes += bytes
 }
 
-// -------------------------------------------------------------------
-// customerWindow – circular buffer of 1-minute counters per customer
-// -------------------------------------------------------------------
 
 const (
-	WindowMinutes = 15                // queryable window size
-	BucketCount   = WindowMinutes + 1 // +1 to avoid aliasing at boundary
+	WindowMinutes = 15                
+	BucketCount   = WindowMinutes + 1 
 )
 
-// customerWindow is a ring of minute counters for a single customer_id.
-// It never allocates per-request; the ring has a fixed upper size of
-// BucketCount entries regardless of traffic volume.
 type customerWindow struct {
 	buckets  [BucketCount]minuteCounter
-	startMin int64 // minute-epoch of buckets[0]
+	startMin int64 
 }
 
-// minuteEpoch converts a time to a minute-granularity epoch.
+
 func minuteEpoch(t time.Time) int64 {
 	return t.Unix() / 60
 }
 
-// advance slides the window forward so that nowMin falls inside it,
-// zeroing any newly created buckets.
 func (cw *customerWindow) advance(nowMin int64) {
 	if cw.startMin == 0 {
-		// first touch – initialise
 		cw.startMin = nowMin - BucketCount + 1
 	}
 
@@ -118,23 +107,21 @@ func (cw *customerWindow) advance(nowMin int64) {
 	cw.startMin += int64(shift)
 }
 
-// record adds a request into the correct minute bucket.
+
 func (cw *customerWindow) record(t time.Time, statusCode int, bytes int64) {
 	m := minuteEpoch(t)
 	cw.advance(m)
 
 	idx := int(m-cw.startMin) % BucketCount
 	if idx < 0 {
-		return // event older than the window – drop silently
+		return 
 	}
 	cw.buckets[idx].record(statusCode, bytes)
 }
 
-// query returns aggregated counters for the most recent `minutes` minutes
-// from `now`. minutes must be ≤ WindowMinutes.
 func (cw *customerWindow) query(now time.Time, minutes int) QueryResult {
 	nowMin := minuteEpoch(now)
-	cw.advance(nowMin) // ensure ring is current
+	cw.advance(nowMin) 
 
 	var res QueryResult
 	for i := 0; i < minutes; i++ {
@@ -159,7 +146,7 @@ func (cw *customerWindow) query(now time.Time, minutes int) QueryResult {
 }
 
 
-// QueryResult is the public read-out from a window query.
+
 type QueryResult struct {
 	StatusCounts      [statusBucketCount]int64 `json:"-"`
 	Status2xx         int64                    `json:"status_2xx"`
@@ -212,14 +199,12 @@ func (a *SlidingWindowAggregator) Record(customerID string, t time.Time, statusC
 	}
 	cw.record(t, statusCode, bytes)
 
-	// Periodic eviction of stale customers (cheap amortised cost)
 	if time.Since(a.lastEvict) > 5*time.Minute {
 		a.evictStaleLocked(t)
 	}
 }
 
-// Query returns the aggregate for `customerID` over the last `minutes` min.
-// If minutes > WindowMinutes it is clamped.
+
 func (a *SlidingWindowAggregator) Query(customerID string, minutes int) QueryResult {
 	if minutes > WindowMinutes {
 		minutes = WindowMinutes
@@ -241,7 +226,7 @@ func (a *SlidingWindowAggregator) Query(customerID string, minutes int) QueryRes
 	return res
 }
 
-// QueryAll returns aggregates for every known customer.
+
 func (a *SlidingWindowAggregator) QueryAll(minutes int) map[string]QueryResult {
 	if minutes > WindowMinutes {
 		minutes = WindowMinutes
@@ -263,15 +248,13 @@ func (a *SlidingWindowAggregator) QueryAll(minutes int) map[string]QueryResult {
 	return results
 }
 
-// CustomerCount returns the number of tracked customers.
 func (a *SlidingWindowAggregator) CustomerCount() int {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return len(a.windows)
 }
 
-// evictStaleLocked removes customers whose entire ring is zeroed.
-// Must be called with a.mu held for writing.
+
 func (a *SlidingWindowAggregator) evictStaleLocked(now time.Time) {
 	a.lastEvict = now
 	nowMin := minuteEpoch(now)
@@ -294,7 +277,7 @@ func (a *SlidingWindowAggregator) evictStaleLocked(now time.Time) {
 	}
 }
 
-// GetMetrics returns aggregator-level metrics.
+
 func (a *SlidingWindowAggregator) GetMetrics() map[string]interface{} {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -302,6 +285,6 @@ func (a *SlidingWindowAggregator) GetMetrics() map[string]interface{} {
 		"tracked_customers":  len(a.windows),
 		"window_minutes":     WindowMinutes,
 		"bucket_count":       BucketCount,
-		"bytes_per_customer": BucketCount * 48, // approx struct size
+		"bytes_per_customer": BucketCount * 48,
 	}
 }

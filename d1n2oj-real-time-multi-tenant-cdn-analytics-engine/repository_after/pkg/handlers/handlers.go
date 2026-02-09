@@ -25,7 +25,7 @@ func New(svc *service.Service, logger *slog.Logger) *Handler {
 	}
 }
 
-// GetCustomerMetrics handles GET /api/v1/metrics/:customer_id
+
 func (h *Handler) GetCustomerMetrics(c *echo.Context) error {
 	customerID := (*c).Param("customer_id")
 	if customerID == "" {
@@ -35,7 +35,7 @@ func (h *Handler) GetCustomerMetrics(c *echo.Context) error {
 		})
 	}
 
-	// Optional query param: minutes (default 15)
+		// Optional query param: minutes (default 15)
 	minutesStr := (*c).QueryParam("minutes")
 	minutes := 15
 	if minutesStr != "" {
