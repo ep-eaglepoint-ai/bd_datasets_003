@@ -11,7 +11,7 @@ index 00000000..39ee0dfe
 Binary files /dev/null and b/repository_after/app/__pycache__/__init__.cpython-311.pyc differ
 diff --git a/repository_after/app/__pycache__/api.cpython-311.pyc b/repository_after/app/__pycache__/api.cpython-311.pyc
 new file mode 100644
-index 00000000..d858b251
+index 00000000..4c49c3d2
 Binary files /dev/null and b/repository_after/app/__pycache__/api.cpython-311.pyc differ
 diff --git a/repository_after/app/__pycache__/event_log.cpython-311.pyc b/repository_after/app/__pycache__/event_log.cpython-311.pyc
 new file mode 100644
@@ -39,10 +39,10 @@ index 00000000..7b947591
 Binary files /dev/null and b/repository_after/app/__pycache__/temporal_logic.cpython-311.pyc differ
 diff --git a/repository_after/app/api.py b/repository_after/app/api.py
 new file mode 100644
-index 00000000..ca04f985
+index 00000000..858d004e
 --- /dev/null
 +++ b/repository_after/app/api.py
-@@ -0,0 +1,290 @@
+@@ -0,0 +1,286 @@
 +from fastapi import FastAPI, HTTPException, Depends, Request
 +from fastapi.middleware.cors import CORSMiddleware
 +from fastapi.exceptions import RequestValidationError
@@ -54,24 +54,20 @@ index 00000000..ca04f985
 +from .scheduler import TemporalScheduler
 +from .event_log import EventLog
 +
-+# Create a singleton event log for the app lifecycle and ensure it starts empty.
-+# This prevents tests from seeing previously-seeded persistent data.
-+EVENT_LOG = EventLog()  # default path "data/event_log.json"
-+EVENT_LOG.clear_events()
-+
-+
-+def get_event_log() -> EventLog:
-+    """Dependency to get event log instance"""
-+    return EVENT_LOG
-+
-+
-+def get_scheduler(event_log: EventLog = Depends(get_event_log)) -> TemporalScheduler:
-+    """Dependency to get scheduler instance"""
-+    return TemporalScheduler(event_log)
-+
-+
 +def create_app() -> FastAPI:
 +    """Create and configure FastAPI application"""
++    # Create an event log per app instance and ensure it starts empty.
++    event_log_instance = EventLog()  # default path "data/event_log.json"
++    event_log_instance.clear_events()
++
++    def get_event_log() -> EventLog:
++        """Dependency to get event log instance"""
++        return event_log_instance
++
++    def get_scheduler(event_log: EventLog = Depends(get_event_log)) -> TemporalScheduler:
++        """Dependency to get scheduler instance"""
++        return TemporalScheduler(event_log)
++
 +    app = FastAPI(
 +        title="ChronoLabs Temporal Paradox Meeting Scheduler",
 +        description="API for scheduling meetings with complex temporal dependencies",
@@ -333,6 +329,14 @@ index 00000000..ca04f985
 +            return {"status": "cleared", "message": "All events cleared"}
 +
 +    return app
+\ No newline at end of file
+diff --git a/repository_after/app/data/event_log.json b/repository_after/app/data/event_log.json
+new file mode 100644
+index 00000000..ece1c3d6
+--- /dev/null
++++ b/repository_after/app/data/event_log.json
+@@ -0,0 +1 @@
++{"events": {"1": {"event_type": "previous_day_workload", "timestamp": "2026-02-08T12:32:20.627459", "metadata": {"source": "mock_seed", "workload": 75}, "calculated_value": 75.0}, "2": {"event_type": "last_cancellation", "timestamp": "2026-02-09T09:32:20.627459", "metadata": {"reason": "participant_unavailable"}, "calculated_value": null}, "3": {"event_type": "last_cancellation", "timestamp": "2026-02-08T10:32:20.627459", "metadata": {"reason": "emergency"}, "calculated_value": null}, "4": {"event_type": "last_deployment", "timestamp": "2026-02-07T08:32:20.627459", "metadata": {"version": "v2.1.0", "success": true}, "calculated_value": null}, "5": {"event_type": "last_deployment", "timestamp": "2026-02-06T12:32:20.627459", "metadata": {"version": "v2.0.0", "success": false}, "calculated_value": null}, "6": {"event_type": "critical_incident", "timestamp": "2026-02-08T18:32:20.627459", "metadata": {"severity": "high", "resolved": true}, "calculated_value": null}, "7": {"event_type": "previous_day_workload", "timestamp": "2026-02-09T12:32:20.673383", "metadata": {"source": "mock_api", "workload": 75.0}, "calculated_value": 75.0}}}
 \ No newline at end of file
 diff --git a/repository_after/app/event_log.py b/repository_after/app/event_log.py
 new file mode 100644

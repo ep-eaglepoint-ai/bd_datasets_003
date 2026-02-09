@@ -9,24 +9,20 @@ from .models import ScheduleRequest, ScheduleResponse, ErrorResponse, Historical
 from .scheduler import TemporalScheduler
 from .event_log import EventLog
 
-# Create a singleton event log for the app lifecycle and ensure it starts empty.
-# This prevents tests from seeing previously-seeded persistent data.
-EVENT_LOG = EventLog()  # default path "data/event_log.json"
-EVENT_LOG.clear_events()
-
-
-def get_event_log() -> EventLog:
-    """Dependency to get event log instance"""
-    return EVENT_LOG
-
-
-def get_scheduler(event_log: EventLog = Depends(get_event_log)) -> TemporalScheduler:
-    """Dependency to get scheduler instance"""
-    return TemporalScheduler(event_log)
-
-
 def create_app() -> FastAPI:
     """Create and configure FastAPI application"""
+    # Create an event log per app instance and ensure it starts empty.
+    event_log_instance = EventLog()  # default path "data/event_log.json"
+    event_log_instance.clear_events()
+
+    def get_event_log() -> EventLog:
+        """Dependency to get event log instance"""
+        return event_log_instance
+
+    def get_scheduler(event_log: EventLog = Depends(get_event_log)) -> TemporalScheduler:
+        """Dependency to get scheduler instance"""
+        return TemporalScheduler(event_log)
+
     app = FastAPI(
         title="ChronoLabs Temporal Paradox Meeting Scheduler",
         description="API for scheduling meetings with complex temporal dependencies",
