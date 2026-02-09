@@ -217,6 +217,58 @@ describe('Collaborative Playlist API - Full Requirement Validation', () => {
     });
 
 
+    // input Validation
+    describe('Input Validation', () => {
+        test('Playlist creation rejects empty name', async () => {
+            const res = await request(app)
+                .post('/api/playlists')
+                .send({ name: '' });
+            expect(res.status).toBe(400);
+        });
+
+        test('Song addition rejects empty title', async () => {
+            const res = await request(app)
+                .post(`/api/playlists/${playlistId}/songs`)
+                .send({ title: '', artist: 'Artist', duration: 180 });
+            expect(res.status).toBe(400);
+        });
+
+        test('Song addition rejects empty artist', async () => {
+            const res = await request(app)
+                .post(`/api/playlists/${playlistId}/songs`)
+                .send({ title: 'Title', artist: '', duration: 180 });
+            expect(res.status).toBe(400);
+        });
+
+        test('Vote rejects empty userId', async () => {
+            const res = await request(app)
+                .post(`/api/playlists/${playlistId}/songs/${songAId}/vote`)
+                .send({ userId: '', direction: 'up' });
+            expect(res.status).toBe(400);
+        });
+
+        test('Vote rejects too short userId', async () => {
+            const res = await request(app)
+                .post(`/api/playlists/${playlistId}/songs/${songAId}/vote`)
+                .send({ userId: '1234567', direction: 'up' });
+            expect(res.status).toBe(400);
+        });
+
+        test('Vote rejects too long userId', async () => {
+            const res = await request(app)
+                .post(`/api/playlists/${playlistId}/songs/${songAId}/vote`)
+                .send({ userId: '123456789', direction: 'up' });
+            expect(res.status).toBe(400);
+        });
+
+        test('Vote rejects non-alphanumeric userId', async () => {
+            const res = await request(app)
+                .post(`/api/playlists/${playlistId}/songs/${songAId}/vote`)
+                .send({ userId: 'USER-123', direction: 'up' });
+            expect(res.status).toBe(400);
+        });
+    });
+
     // empty playlist
     test('Empty playlist returns empty queue', async () => {
         const list = await request(app)
