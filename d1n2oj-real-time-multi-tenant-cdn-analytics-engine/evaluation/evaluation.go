@@ -278,8 +278,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Println(string(data))
-
 	if !report.Success {
 		os.Exit(1)
 	}

@@ -42,6 +42,8 @@ services:
       - WORKER_COUNT=4
       - BATCH_SIZE=5000
       - FLUSH_INTERVAL=10
+    volumes:
+      - ./evaluation/reports:/app/evaluation/reports
     depends_on:
       clickhouse:
         condition: service_healthy
