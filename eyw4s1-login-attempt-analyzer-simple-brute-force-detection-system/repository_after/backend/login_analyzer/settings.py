@@ -59,7 +59,7 @@ ROOT_URLCONF = 'login_analyzer.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / 'login_analyzer' / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -70,6 +70,12 @@ TEMPLATES = [
             ],
         },
     },
+]
+
+# Static files (CSS, JavaScript, Images)
+STATIC_URL = '/static/'
+STATICFILES_DIRS = [
+    BASE_DIR / 'login_analyzer' / 'static',
 ]
 
 WSGI_APPLICATION = 'login_analyzer.wsgi.application'
@@ -123,9 +129,7 @@ USE_TZ = True
 STATIC_URL = 'static/'
 
 # Serve frontend build files
-STATICFILES_DIRS = [
-    BASE_DIR / 'repository_after' / 'frontend' / 'dist',
-]
+STATICFILES_DIRS = []
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
