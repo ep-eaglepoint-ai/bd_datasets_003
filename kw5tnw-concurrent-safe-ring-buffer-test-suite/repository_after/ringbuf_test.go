@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	ringbuf "kw5tnw-concurrent-safe-ring-buffer-test-suite/repository_before"
+	ringbuf "kw5tnw-concurrent-safe-ring-buffer-test-suite/repository_after"
 )
 
 // Minimal interface so the integrity harness can be re-run against a buggy proxy.
