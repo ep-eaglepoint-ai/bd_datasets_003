@@ -28,11 +28,11 @@ func newTestLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-
 func setupIntegrationServer(t *testing.T) (*echo.Echo, *service.Service) {
 	t.Helper()
 	logger := newTestLogger()
 	cfg := &config.Config{
+		Environment:      "test",
 		WorkerCount:      2,
 		BatchSize:        100,
 		MaxProcs:         2,
@@ -49,6 +49,34 @@ func setupIntegrationServer(t *testing.T) (*echo.Echo, *service.Service) {
 	e := echo.New()
 	routes.Setup(e, h, tenantCache)
 	return e, svc
+}
+
+// waitForMetrics polls the metrics endpoint until the condition 
+func waitForMetrics(t *testing.T, e *echo.Echo, tenantID string, predicate func(clickhouse.CustomerMetricsSummary) bool) clickhouse.CustomerMetricsSummary {
+	t.Helper()
+
+	timeout := 2 * time.Second
+	deadline := time.Now().Add(timeout)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for time.Now().Before(deadline) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/metrics/"+tenantID, nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		if rec.Code == http.StatusOK {
+			var summary clickhouse.CustomerMetricsSummary
+			if err := json.NewDecoder(rec.Body).Decode(&summary); err == nil {
+				if predicate(summary) {
+					return summary
+				}
+			}
+		}
+		<-ticker.C
+	}
+	t.Fatalf("Timed out waiting for metrics condition for %s", tenantID)
+	return clickhouse.CustomerMetricsSummary{}
 }
 
 func makeLogBatch(n int, tenantID string) string {
@@ -69,16 +97,14 @@ func makeLogBatch(n int, tenantID string) string {
 	return string(b)
 }
 
-
 // Integration test: full pipeline ingestion → worker pool →
 //   GeoIP enrichment → aggregator → metrics endpoint
-
 
 func TestFullPipelineIngestToMetrics(t *testing.T) {
 	e, svc := setupIntegrationServer(t)
 
 	tenantID := "tenant-001"
-	body := makeLogBatch(50, tenantID) 
+	body := makeLogBatch(50, tenantID)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/logs", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -96,20 +122,10 @@ func TestFullPipelineIngestToMetrics(t *testing.T) {
 		t.Errorf("Expected 50 accepted, got %v", ingestResp["accepted"])
 	}
 
-
-	time.Sleep(500 * time.Millisecond)
-
-
-	req2 := httptest.NewRequest(http.MethodGet, "/api/v1/metrics/"+tenantID, nil)
-	rec2 := httptest.NewRecorder()
-	e.ServeHTTP(rec2, req2)
-
-	if rec2.Code != http.StatusOK {
-		t.Fatalf("Metrics query failed: status %d", rec2.Code)
-	}
-
-	var summary clickhouse.CustomerMetricsSummary
-	json.NewDecoder(rec2.Body).Decode(&summary)
+	// Use waitForMetrics to ensure async processing is complete
+	summary := waitForMetrics(t, e, tenantID, func(s clickhouse.CustomerMetricsSummary) bool {
+		return s.TotalRequests >= 50
+	})
 
 	t.Logf("Pipeline result: requests=%d, 2xx=%d, 4xx=%d, 5xx=%d, rps=%.2f",
 		summary.TotalRequests,
@@ -118,7 +134,6 @@ func TestFullPipelineIngestToMetrics(t *testing.T) {
 		summary.StatusBreakdown.Status5xx,
 		summary.RequestsPerSecond,
 	)
-
 
 	if summary.TotalRequests == 0 {
 		t.Error("Expected at least some requests to be reflected in metrics")
@@ -141,13 +156,10 @@ func TestFullPipelineIngestToMetrics(t *testing.T) {
 	}
 }
 
-
 // Integration: tenant isolation
-
 
 func TestTenantIsolation(t *testing.T) {
 	e, svc := setupIntegrationServer(t)
-
 
 	body1 := makeLogBatch(30, "tenant-001")
 	req1 := httptest.NewRequest(http.MethodPost, "/api/v1/logs", strings.NewReader(body1))
@@ -159,7 +171,6 @@ func TestTenantIsolation(t *testing.T) {
 		t.Fatalf("Tenant-001 ingestion failed: %d", rec1.Code)
 	}
 
-
 	body2 := makeLogBatch(10, "tenant-002")
 	req2 := httptest.NewRequest(http.MethodPost, "/api/v1/logs", strings.NewReader(body2))
 	req2.Header.Set("Content-Type", "application/json")
@@ -170,27 +181,16 @@ func TestTenantIsolation(t *testing.T) {
 		t.Fatalf("Tenant-002 ingestion failed: %d", rec2.Code)
 	}
 
-	time.Sleep(500 * time.Millisecond)
-
-	
-	reqM1 := httptest.NewRequest(http.MethodGet, "/api/v1/metrics/tenant-001", nil)
-	recM1 := httptest.NewRecorder()
-	e.ServeHTTP(recM1, reqM1)
-
-	var summary1 clickhouse.CustomerMetricsSummary
-	json.NewDecoder(recM1.Body).Decode(&summary1)
-
-
-	reqM2 := httptest.NewRequest(http.MethodGet, "/api/v1/metrics/tenant-002", nil)
-	recM2 := httptest.NewRecorder()
-	e.ServeHTTP(recM2, reqM2)
-
-	var summary2 clickhouse.CustomerMetricsSummary
-	json.NewDecoder(recM2.Body).Decode(&summary2)
+	// Replace sleep with polling
+	summary1 := waitForMetrics(t, e, "tenant-001", func(s clickhouse.CustomerMetricsSummary) bool {
+		return s.TotalRequests >= 30
+	})
+	summary2 := waitForMetrics(t, e, "tenant-002", func(s clickhouse.CustomerMetricsSummary) bool {
+		return s.TotalRequests >= 10
+	})
 
 	t.Logf("Tenant-001: %d requests", summary1.TotalRequests)
 	t.Logf("Tenant-002: %d requests", summary2.TotalRequests)
-
 
 	if summary1.TotalRequests > 0 && summary2.TotalRequests > 0 {
 		if summary1.TotalRequests <= summary2.TotalRequests {
@@ -202,9 +202,7 @@ func TestTenantIsolation(t *testing.T) {
 	svc.Shutdown(context.Background())
 }
 
-
 // Integration: health and readiness checks
-
 
 func TestHealthAndReadiness(t *testing.T) {
 	e, _ := setupIntegrationServer(t)
@@ -222,7 +220,6 @@ func TestHealthAndReadiness(t *testing.T) {
 		t.Errorf("Expected status=healthy, got %s", health["status"])
 	}
 
-
 	req2 := httptest.NewRequest(http.MethodGet, "/ready", nil)
 	rec2 := httptest.NewRecorder()
 	e.ServeHTTP(rec2, req2)
@@ -230,7 +227,6 @@ func TestHealthAndReadiness(t *testing.T) {
 		t.Errorf("Readiness check failed: %d", rec2.Code)
 	}
 }
-
 
 // Integration: missing/bad tenant headers return correct errors
 
@@ -299,9 +295,7 @@ func TestIngestionRejectsInactiveTenant(t *testing.T) {
 	}
 }
 
-
 // Integration: empty and oversized batches
-
 
 func TestIngestionRejectsEmptyBatch(t *testing.T) {
 	e, _ := setupIntegrationServer(t)
@@ -332,7 +326,6 @@ func TestIngestionRejectsOversizedBatch(t *testing.T) {
 		t.Errorf("Expected 400 for oversized batch, got %d", rec.Code)
 	}
 }
-
 
 // Integration: concurrent ingestion with backpressure
 
@@ -395,12 +388,10 @@ func TestConcurrentIngestionWithBackpressure(t *testing.T) {
 	svc.Shutdown(context.Background())
 }
 
-
 // Integration: admin metrics endpoint
 
 func TestAdminMetricsIntegration(t *testing.T) {
 	e, svc := setupIntegrationServer(t)
-
 
 	body := makeLogBatch(20, "tenant-001")
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/logs", strings.NewReader(body))
@@ -409,20 +400,25 @@ func TestAdminMetricsIntegration(t *testing.T) {
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
-	time.Sleep(200 * time.Millisecond)
-
-	
-	req2 := httptest.NewRequest(http.MethodGet, "/api/v1/admin/metrics", nil)
-	rec2 := httptest.NewRecorder()
-	e.ServeHTTP(rec2, req2)
-
-	if rec2.Code != http.StatusOK {
-		t.Fatalf("Admin metrics failed: %d", rec2.Code)
-	}
+	// Use simpler polling for admin metrics
+	deadline := time.Now().Add(2 * time.Second)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
 
 	var metrics map[string]interface{}
-	json.NewDecoder(rec2.Body).Decode(&metrics)
+	for time.Now().Before(deadline) {
+		req2 := httptest.NewRequest(http.MethodGet, "/api/v1/admin/metrics", nil)
+		rec2 := httptest.NewRecorder()
+		e.ServeHTTP(rec2, req2)
 
+		if rec2.Code == http.StatusOK {
+			json.NewDecoder(rec2.Body).Decode(&metrics)
+			if processed, ok := metrics["events_processed"].(float64); ok && processed > 0 {
+				break
+			}
+		}
+		<-ticker.C
+	}
 
 	essentialKeys := []string{
 		"events_queued",
@@ -449,7 +445,6 @@ func TestAdminMetricsIntegration(t *testing.T) {
 
 // Integration: X-Tenant-ID backward compatibility
 
-
 func TestXTenantIDBackwardCompatibility(t *testing.T) {
 	e, _ := setupIntegrationServer(t)
 
@@ -467,9 +462,7 @@ func TestXTenantIDBackwardCompatibility(t *testing.T) {
 	}
 }
 
-
 // Integration: graceful shutdown drains everything
-
 
 func TestGracefulShutdownDrains(t *testing.T) {
 	_, svc := setupIntegrationServer(t)
@@ -480,7 +473,6 @@ func TestGracefulShutdownDrains(t *testing.T) {
 		agg.Record("tenant-001", now, 200, 1024)
 	}
 
-
 	ctx := context.Background()
 	err := svc.Shutdown(ctx)
 	if err != nil {
@@ -488,12 +480,10 @@ func TestGracefulShutdownDrains(t *testing.T) {
 	}
 }
 
-
 // Integration: rate monitor reflects in admin metrics
 
 func TestRateMonitorReflectsInAdminMetrics(t *testing.T) {
 	e, svc := setupIntegrationServer(t)
-
 
 	rm := svc.GetRateMonitor()
 	rm.RecordEvents(5000)
@@ -515,7 +505,6 @@ func TestRateMonitorReflectsInAdminMetrics(t *testing.T) {
 
 	svc.Shutdown(context.Background())
 }
-
 
 // Integration: metrics endpoint returns valid JSON structure
 
