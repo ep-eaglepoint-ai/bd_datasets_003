@@ -13,6 +13,7 @@ const React = require(
     paths: [
       path.join(__dirname, "..", "..", repoPath, "node_modules"),
       path.join(__dirname, "..", "..", "node_modules"),
+      path.join(__dirname, "..", "node_modules"),
     ],
   }),
 );
@@ -21,6 +22,7 @@ const testingLibraryPath = require.resolve("@testing-library/react", {
   paths: [
     path.join(__dirname, "..", "..", repoPath, "node_modules"),
     path.join(__dirname, "..", "..", "node_modules"),
+    path.join(__dirname, "..", "node_modules"),
   ],
 });
 const { render, screen, fireEvent, waitFor } = require(testingLibraryPath);
@@ -30,6 +32,7 @@ require(
     paths: [
       path.join(__dirname, "..", "..", repoPath, "node_modules"),
       path.join(__dirname, "..", "..", "node_modules"),
+      path.join(__dirname, "..", "node_modules"),
     ],
   }),
 );
