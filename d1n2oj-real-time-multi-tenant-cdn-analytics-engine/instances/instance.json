@@ -1,0 +1,11 @@
+{
+            "instance_id": "D1N2OJ",
+            "problem_statement": "Develop a high-performance, multi-tenant backend engine in Go to process and aggregate global CDN traffic logs. The system must handle 8,000+ events per second on restricted hardware (2 CPUs, 4GB RAM), performing real-time Geo-IP enrichment and batching data into a ClickHouse database while maintaining strict tenant isolation.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/d1n2oj-real-time-multi-tenant-cdn-analytics-engine",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        

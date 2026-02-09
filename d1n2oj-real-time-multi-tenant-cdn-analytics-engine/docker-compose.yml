@@ -1,0 +1,111 @@
+services:
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3-alpine
+    container_name: cdn-clickhouse
+    ports:
+      - "8123:8123"   
+      - "9000:9000"   
+    environment:
+      CLICKHOUSE_DB: cdn_analytics
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ""
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./repository_after/migrations:/docker-entrypoint-initdb.d
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  before-test:
+    image: golang:1.25.0-alpine
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    command: >
+      sh -c "
+      if [ -d repository_before ] && [ -n \"\$(ls -A repository_before 2>/dev/null | grep -v .gitkeep)\" ]; then
+        echo 'Building repository_before...' &&
+        go build ./repository_before/... &&
+        echo 'repository_before build succeeded';
+      else
+        echo 'No code in repository_before (expected for new projects)' &&
+        exit 0;
+      fi
+      "
+
+  after-test:
+    image: golang:1.25.0-alpine
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    environment:
+      - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_PORT=9000
+      - CLICKHOUSE_DATABASE=cdn_analytics
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=
+    command: >
+      sh -c "
+      echo 'Building repository_after...' &&
+      go build ./repository_after/... &&
+      echo 'Running all test suites...' &&
+      go test ./tests/... -v -count=1 -short
+      "
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+
+  evaluation:
+    image: golang:1.25.0-alpine
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    environment:
+      - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_PORT=9000
+      - CLICKHOUSE_DATABASE=cdn_analytics
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=
+    command: >
+      sh -c "
+      echo 'Running evaluation...' &&
+      go run ./evaluation/evaluation.go
+      "
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cdn-analytics-engine
+    ports:
+      - "8080:8080"
+    environment:
+      - APP_ENV=production
+      - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_PORT=9000
+      - CLICKHOUSE_DATABASE=cdn_analytics
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=
+      - WORKER_COUNT=4
+      - BATCH_SIZE=5000
+      - FLUSH_INTERVAL=10
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  clickhouse_data:
