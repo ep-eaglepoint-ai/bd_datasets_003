@@ -2,16 +2,15 @@
 
 ## Before Test Docker Command
 ```bash
-docker compose run --rm --no-deps app sh -c "echo 'No implementation in repository_before' && exit 1"
+docker compose run --rm before-test
 ```
 
 ## After Test Docker Command
 ```bash
-
-docker compose run --rm --no-deps app sh -c "go test ./tests/... -v -count=1"
+docker compose run --rm after-test
 ```
 
 ## Evaluation Docker Command
 ```bash
-docker compose run --rm --no-deps app sh -c "go run ./evaluation/"
+docker compose run --rm evaluation
 ```

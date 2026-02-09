@@ -49,5 +49,68 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  before-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - APP_ENV=development
+      - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_PORT=9000
+      - CLICKHOUSE_DATABASE=cdn_analytics
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=
+      - WORKER_COUNT=4
+      - BATCH_SIZE=5000
+      - FLUSH_INTERVAL=10
+    volumes:
+      - ./evaluation/reports:/app/evaluation/reports
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    command: sh -c "echo 'No implementation in repository before' && exit 1"
+
+  after-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - APP_ENV=development
+      - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_PORT=9000
+      - CLICKHOUSE_DATABASE=cdn_analytics
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=
+      - WORKER_COUNT=4
+      - BATCH_SIZE=5000
+      - FLUSH_INTERVAL=10
+    volumes:
+      - ./evaluation/reports:/app/evaluation/reports
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    command: sh -c "go test ./tests/... -v -count=1"
+
+  evaluation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - APP_ENV=development
+      - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_PORT=9000
+      - CLICKHOUSE_DATABASE=cdn_analytics
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=
+      - WORKER_COUNT=4
+      - BATCH_SIZE=5000
+      - FLUSH_INTERVAL=10
+    volumes:
+      - ./evaluation/reports:/app/evaluation/reports
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    command: sh -c "go run ./evaluation/"
+
 volumes:
   clickhouse_data:
