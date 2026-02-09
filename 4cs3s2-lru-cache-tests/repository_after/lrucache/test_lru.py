@@ -14,7 +14,7 @@ import sys
 import pytest  # type: ignore
 from unittest.mock import patch
 
-from lrucache.lru import LRUCache
+from .lru import LRUCache
 
 MODULE_NAME = 'lrucache.lru'
 
