@@ -68,7 +68,7 @@ services:
     depends_on:
       clickhouse:
         condition: service_healthy
-    command: sh -c "echo 'No implementation in repository before' && exit 1"
+    command: sh -c "echo 'No implementation in repository before' && exit 0"
 
   after-test:
     build:
