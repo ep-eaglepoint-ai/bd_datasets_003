@@ -1,27 +1,31 @@
-# tests/test_purchase_concurrency.py
 import threading
 from decimal import Decimal
 from django.test import TransactionTestCase
-from django.db import transaction
 from inventory.models import Product, Wallet
 from inventory.views import PurchaseAPIView
 from rest_framework.test import APIRequestFactory
 
-
 class PurchaseConcurrencyTest(TransactionTestCase):
-    databases = {'default'}  
+    """
+    Requirement 4: Stress test to ensure that when stock is 1,
+    exactly one concurrent request succeeds and no overselling occurs.
+    """
+    databases = {'default'}
 
     def setUp(self):
+        # Requirement: Start with exactly 1 in stock
         self.product = Product.objects.create(
-            name="Ultra Limited Drop",
-            price=Decimal('129.00'),
-            stock=3,                   
+            name="Limited Edition Item",
+            price=Decimal('100.00'),
+            stock=1,
             active=True
         )
-        self.user_id = 1000001
+        self.user_id = 999
+        self.initial_balance = Decimal('500.00')
+        
         Wallet.objects.create(
             user_id=self.user_id,
-            balance=Decimal('1000.00')
+            balance=self.initial_balance
         )
 
         self.factory = APIRequestFactory()
@@ -29,39 +33,61 @@ class PurchaseConcurrencyTest(TransactionTestCase):
         self.lock = threading.Lock()
 
     def attempt_purchase(self):
+        """
+        Target function for threads to simulate a purchase request.
+        """
         request = self.factory.post('/api/purchase/', {
             'user_id': self.user_id,
             'product_id': self.product.id
         }, format='json')
 
+        
         view = PurchaseAPIView.as_view()
         response = view(request)
 
-        if response.status_code == 200:
+        
+        if response.status_code in [200, 201]:
             with self.lock:
                 self.successful_purchases += 1
 
-    def test_only_three_purchases_succeed_when_stock_is_three(self):
+    def test_exactly_one_purchase_succeeds_when_stock_is_one(self):
+        """
+        Spawns 20 threads to attempt to buy the same item simultaneously.
+        """
         threads = []
+        num_attempts = 20
 
-      
-        for _ in range(20):
+        
+        for _ in range(num_attempts):
             t = threading.Thread(target=self.attempt_purchase)
             threads.append(t)
             t.start()
 
+       
         for t in threads:
             t.join()
 
+        
         self.product.refresh_from_db()
+        user_wallet = Wallet.objects.get(user_id=self.user_id)
 
-        self.assertEqual(self.successful_purchases, 3)
-        self.assertEqual(self.product.stock, 0)
-        self.assertGreaterEqual(
-            Wallet.objects.get(user_id=self.user_id).balance,
-            Decimal('1000') - Decimal('129') * 3
+       
+
+        
+        self.assertEqual(
+            self.successful_purchases, 1, 
+            f"Expected exactly 1 success, but got {self.successful_purchases}"
         )
-        self.assertLess(
-            Wallet.objects.get(user_id=self.user_id).balance,
-            Decimal('1000') - Decimal('129') * 2  
+
+        
+        self.assertEqual(
+            self.product.stock, 0, 
+            f"Stock should be 0, but is {self.product.stock}"
+        )
+
+       
+        expected_balance = self.initial_balance - self.product.price
+        self.assertEqual(
+            user_wallet.balance, expected_balance,
+            f"Wallet balance expected to be {expected_balance}, but found {user_wallet.balance}"
         )
