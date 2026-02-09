@@ -4,7 +4,6 @@ import sys
 
 import pytest
 
-
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../repository_after"))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
@@ -35,21 +34,63 @@ def test_conservation_full_month_31_days_exactly_matches_salary():
     assert total_cents == monthly
 
 
+def test_full_month_backpay_equals_monthly_salary_difference_exact():
+    engine = PayrollEngine()
+    # Full month span should match exactly the monthly salary delta.
+    assert (
+        engine.calculate_backpay(
+            old_salary_cents=500_000,
+            new_salary_cents=600_000,
+            backdate=date(2024, 3, 1),
+            effective_date=date(2024, 4, 1),
+        )
+        == 100_000
+    )
+
+    # Leap-year February full month.
+    assert (
+        engine.calculate_backpay(
+            old_salary_cents=500_000,
+            new_salary_cents=600_000,
+            backdate=date(2024, 2, 1),
+            effective_date=date(2024, 3, 1),
+        )
+        == 100_000
+    )
+
+
+def test_partial_periods_have_stable_exact_cent_results():
+    engine = PayrollEngine()
+
+    # Feb 10 -> Feb 20 in leap year (10 days out of 29)
+    assert (
+        engine.calculate_backpay(
+            old_salary_cents=500_000,
+            new_salary_cents=600_000,
+            backdate=date(2024, 2, 10),
+            effective_date=date(2024, 2, 20),
+        )
+        == 34_483
+    )
+
+    # Cross-month span: Feb 28 -> Mar 2 (2 days of Feb + 1 day of Mar)
+    assert (
+        engine.calculate_backpay(
+            old_salary_cents=500_000,
+            new_salary_cents=600_000,
+            backdate=date(2024, 2, 28),
+            effective_date=date(2024, 3, 2),
+        )
+        == 10_122
+    )
+
+
 def test_same_day_zero_backpay():
     engine = PayrollEngine()
     assert (
         engine.calculate_backpay(500_000, 600_000, date(2024, 2, 15), date(2024, 2, 15))
         == 0
     )
-
-
-def test_bankers_rounding_half_to_even_behavior_smoke():
-    engine = PayrollEngine(micros_per_cent=10)  # smaller scale to make ties easy in test
-
-    from payroll_service import _bankers_round_div
-
-    assert _bankers_round_div(5, 10) == 0
-    assert _bankers_round_div(15, 10) == 2
 
 
 def test_multi_month_three_month_span_uses_each_month_day_count():

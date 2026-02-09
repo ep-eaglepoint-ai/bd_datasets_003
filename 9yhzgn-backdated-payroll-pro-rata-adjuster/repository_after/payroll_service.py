@@ -1,7 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
+
+
+def _first_day_of_next_month(d: date) -> date:
+    """Return the first day of the month following the one containing d."""
+    if d.month == 12:
+        return date(d.year + 1, 1, 1)
+    return date(d.year, d.month + 1, 1)
 
 
 def _bankers_round_div(numerator: int, denominator: int) -> int:
@@ -22,10 +29,7 @@ def _bankers_round_div(numerator: int, denominator: int) -> int:
 
 def _days_in_month(d: date) -> int:
     """Return number of days in the calendar month containing d."""
-    if d.month == 12:
-        next_month = date(d.year + 1, 1, 1)
-    else:
-        next_month = date(d.year, d.month + 1, 1)
+    next_month = _first_day_of_next_month(d)
     return (next_month - date(d.year, d.month, 1)).days
 
 
@@ -57,13 +61,22 @@ class PayrollEngine:
         if backdate == effective_date:
             return 0
 
+        # Cumulative, period-based pro-rata
         total_delta_micros = 0
-        day = backdate
-        one_day = timedelta(days=1)
-        while day < effective_date:
-            old_daily = self._daily_rate_micros(old_salary_cents, day)
-            new_daily = self._daily_rate_micros(new_salary_cents, day)
-            total_delta_micros += (new_daily - old_daily)
-            day += one_day
+        delta_monthly_micros = (new_salary_cents - old_salary_cents) * self.micros_per_cent
+
+        cursor = backdate
+        while cursor < effective_date:
+            month_end = _first_day_of_next_month(cursor)
+            segment_end = month_end if month_end < effective_date else effective_date
+
+            days_covered = (segment_end - cursor).days
+            dim = _days_in_month(cursor)
+
+            # Prorated delta for this month segment
+            segment_micros = _bankers_round_div(delta_monthly_micros * days_covered, dim)
+            total_delta_micros += segment_micros
+
+            cursor = segment_end
 
         return _bankers_round_div(total_delta_micros, self.micros_per_cent)
