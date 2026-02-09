@@ -1,0 +1,7 @@
+# Node
+repository_after/node_modules/
+repository_before/node_modules/
+
+# OS
+.DS_Store
+evaluation/reports/*.json

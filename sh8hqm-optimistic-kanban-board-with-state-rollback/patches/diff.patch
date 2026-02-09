@@ -1,0 +1,911 @@
+diff -r -u -N -x node_modules -x .git -x package-lock.json repository_before/backend/boardStore.ts repository_after/backend/boardStore.ts
+--- repository_before/backend/boardStore.ts	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/backend/boardStore.ts	2026-02-09 14:39:54.555082421 +0300
+@@ -0,0 +1,89 @@
++import { Board } from '../shared/types';
++
++let board: Board = {
++    columns: [
++        {
++            id: 'col-1',
++            title: 'To Do',
++            cards: [
++                { id: 'card-1', title: 'Task 1' },
++                { id: 'card-2', title: 'Task 2' },
++            ],
++        },
++        {
++            id: 'col-2',
++            title: 'In Progress',
++            cards: [
++                { id: 'card-3', title: 'Task 3' },
++            ],
++        },
++        {
++            id: 'col-3',
++            title: 'Done',
++            cards: [],
++        },
++    ],
++};
++
++export const getBoard = (): Board => board;
++
++export const resetBoard = (initialBoard?: Board) => {
++    if (initialBoard) {
++        board = JSON.parse(JSON.stringify(initialBoard));
++    } else {
++        board = {
++            columns: [
++                {
++                    id: 'col-1',
++                    title: 'To Do',
++                    cards: [
++                        { id: 'card-1', title: 'Task 1' },
++                        { id: 'card-2', title: 'Task 2' },
++                    ],
++                },
++                {
++                    id: 'col-2',
++                    title: 'In Progress',
++                    cards: [
++                        { id: 'card-3', title: 'Task 3' },
++                    ],
++                },
++                {
++                    id: 'col-3',
++                    title: 'Done',
++                    cards: [],
++                },
++            ],
++        };
++    }
++};
++
++export const moveCard = (
++    cardId: string,
++    sourceColumnId: string,
++    targetColumnId: string,
++    targetIndex: number
++) => {
++    const sourceColumn = board.columns.find((c) => c.id === sourceColumnId);
++    if (!sourceColumn) throw new Error('Source column not found');
++
++    const targetColumn = board.columns.find((c) => c.id === targetColumnId);
++    if (!targetColumn) throw new Error('Target column not found');
++
++    const cardIndex = sourceColumn.cards.findIndex((c) => c.id === cardId);
++    if (cardIndex === -1) throw new Error('Card not found in source column');
++
++    const isSameColumn = sourceColumnId === targetColumnId;
++
++    const maxValidIndex = isSameColumn ? targetColumn.cards.length - 1 : targetColumn.cards.length;
++
++    if (targetIndex < 0 || targetIndex > maxValidIndex) {
++        throw new Error('Invalid target index');
++    }
++
++    // Capture card, remove from source, and insert into target
++    const [movedCard] = sourceColumn.cards.splice(cardIndex, 1);
++    targetColumn.cards.splice(targetIndex, 0, movedCard);
++
++    return board;
++};
+diff -r -u -N -x node_modules -x .git -x package-lock.json repository_before/backend/routes/move.ts repository_after/backend/routes/move.ts
+--- repository_before/backend/routes/move.ts	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/backend/routes/move.ts	2026-02-09 14:39:54.555082421 +0300
+@@ -0,0 +1,22 @@
++import { Router, Request, Response } from 'express';
++import { moveCard } from '../boardStore';
++import { MoveRequest } from '../../shared/types';
++
++const router = Router();
++
++router.post('/', (req: Request<{}, {}, MoveRequest>, res: Response) => {
++    const { cardId, sourceColumnId, targetColumnId, targetIndex } = req.body;
++
++    if (!cardId || !sourceColumnId || !targetColumnId || targetIndex === undefined) {
++        return res.status(400).json({ error: 'Missing required fields' });
++    }
++
++    try {
++        const updatedBoard = moveCard(cardId, sourceColumnId, targetColumnId, targetIndex);
++        return res.status(200).json({ success: true, board: updatedBoard });
++    } catch (error: any) {
++        return res.status(400).json({ error: error.message || 'Error moving card' });
++    }
++});
++
++export default router;
+diff -r -u -N -x node_modules -x .git -x package-lock.json repository_before/backend/server.ts repository_after/backend/server.ts
+--- repository_before/backend/server.ts	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/backend/server.ts	2026-02-09 14:39:54.556082299 +0300
+@@ -0,0 +1,25 @@
++import express from 'express';
++import cors from 'cors';
++import moveRouter from './routes/move';
++import { getBoard } from './boardStore';
++
++const app = express();
++
++app.use(cors());
++app.use(express.json());
++
++app.get('/api/board', (req, res) => {
++    res.json(getBoard());
++});
++
++app.use('/api/move', moveRouter);
++
++const PORT = process.env.PORT || 3001;
++
++if (process.env.NODE_ENV !== 'test') {
++    app.listen(PORT, () => {
++        console.log(`Server running on http://localhost:${PORT}`);
++    });
++}
++
++export default app;
+diff -r -u -N -x node_modules -x .git -x package-lock.json repository_before/frontend/App.tsx repository_after/frontend/App.tsx
+--- repository_before/frontend/App.tsx	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/App.tsx	2026-02-09 14:39:54.556082299 +0300
+@@ -0,0 +1,22 @@
++import React from 'react';
++import { BoardProvider } from './board/BoardContext';
++import { KanbanBoard } from './board/KanbanBoard';
++import { ToastContainer } from './components/ToastContainer';
++
++export const App: React.FC = () => {
++    return (
++        <BoardProvider>
++            <div className="app">
++                <header style={{ padding: '20px', textAlign: 'center' }}>
++                    <h1>Optimistic Kanban</h1>
++                </header>
++                <main>
++                    <KanbanBoard />
++                </main>
++                <ToastContainer />
++            </div>
++        </BoardProvider>
++    );
++};
++
++export default App;
+diff -r -u -N -x node_modules -x .git -x package-lock.json repository_before/frontend/board/BoardContext.tsx repository_after/frontend/board/BoardContext.tsx
+--- repository_before/frontend/board/BoardContext.tsx	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/board/BoardContext.tsx	2026-02-09 14:39:54.556082299 +0300
+@@ -0,0 +1,43 @@
++import React, { createContext, useContext, useReducer, ReactNode, useEffect } from 'react';
++import { boardReducer, initialState, BoardState, BoardAction } from './boardReducer';
++import { fetchBoard } from '../services/client';
++
++interface BoardContextType {
++    state: BoardState;
++    dispatch: React.Dispatch<BoardAction>;
++}
++
++const BoardContext = createContext<BoardContextType | undefined>(undefined);
++
++export const BoardProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
++    const [state, dispatch] = useReducer(boardReducer, initialState);
++
++    useEffect(() => {
++        dispatch({ type: 'SET_BOARD_LOADING', loading: true });
++        fetchBoard()
++            .then(board => {
++                dispatch({ type: 'SET_BOARD', board });
++            })
++            .catch(err => {
++                const message = err instanceof Error ? err.message : 'Could not load board';
++                dispatch({
++                    type: 'SET_BOARD_ERROR',
++                    error: message + '. Make sure the backend is running: npm run backend (port 3001)',
++                });
++            });
++    }, []);
++
++    return (
++        <BoardContext.Provider value={{ state, dispatch }}>
++            {children}
++        </BoardContext.Provider>
++    );
++};
++
++export const useBoard = () => {
++    const context = useContext(BoardContext);
++    if (!context) {
++        throw new Error('useBoard must be used within a BoardProvider');
++    }
++    return context;
++};
+diff -r -u -N -x node_modules -x .git -x package-lock.json repository_before/frontend/board/boardReducer.ts repository_after/frontend/board/boardReducer.ts
+--- repository_before/frontend/board/boardReducer.ts	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/board/boardReducer.ts	2026-02-09 14:39:54.558082055 +0300
+@@ -0,0 +1,123 @@
++import { Board } from '../types';
++
++export interface PendingMove {
++    fromColumnId: string;
++    toColumnId: string;
++    fromIndex: number;
++    toIndex: number;
++    previousBoardSnapshot: Board;
++    clientMoveId: number;
++}
++
++export interface BoardState {
++    board: Board;
++    pendingMoves: Record<string, PendingMove>; // cardId -> PendingMove
++    latestClientMoveIdByCard: Record<string, number>; // cardId -> last move ID
++    toast: { message: string; visible: boolean } | null;
++    boardLoadError: string | null;
++    boardLoading: boolean;
++}
++
++export type BoardAction =
++    | { type: 'SET_BOARD'; board: Board }
++    | { type: 'SET_BOARD_LOADING'; loading: boolean }
++    | { type: 'SET_BOARD_ERROR'; error: string | null }
++    | { type: 'OPTIMISTIC_MOVE'; payload: { cardId: string; sourceColumnId: string; targetColumnId: string; fromIndex: number; toIndex: number; clientMoveId: number } }
++    | { type: 'MOVE_CONFIRMED'; payload: { cardId: string; clientMoveId: number } }
++    | { type: 'ROLLBACK_MOVE'; payload: { cardId: string; clientMoveId: number } }
++    | { type: 'SHOW_TOAST'; message: string }
++    | { type: 'HIDE_TOAST' };
++
++export const initialState: BoardState = {
++    board: { columns: [] },
++    pendingMoves: {},
++    latestClientMoveIdByCard: {},
++    toast: null,
++    boardLoadError: null,
++    boardLoading: true,
++};
++
++export function boardReducer(state: BoardState, action: BoardAction): BoardState {
++    switch (action.type) {
++        case 'SET_BOARD':
++            return { ...state, board: action.board, boardLoadError: null, boardLoading: false };
++        case 'SET_BOARD_LOADING':
++            return { ...state, boardLoading: action.loading };
++        case 'SET_BOARD_ERROR':
++            return { ...state, boardLoadError: action.error, boardLoading: false };
++
++        case 'OPTIMISTIC_MOVE': {
++            const { cardId, sourceColumnId, targetColumnId, fromIndex, toIndex, clientMoveId } = action.payload;
++            const newBoard = JSON.parse(JSON.stringify(state.board)) as Board;
++
++            const sourceColumn = newBoard.columns.find(c => c.id === sourceColumnId);
++            const targetColumn = newBoard.columns.find(c => c.id === targetColumnId);
++
++            if (!sourceColumn || !targetColumn) return state;
++
++            // Find the card to ensure it exists
++            const currentFromIndex = sourceColumn.cards.findIndex(c => c.id === cardId);
++            if (currentFromIndex === -1) return state;
++
++            const [movedCard] = sourceColumn.cards.splice(currentFromIndex, 1);
++            targetColumn.cards.splice(toIndex, 0, movedCard);
++
++            return {
++                ...state,
++                board: newBoard,
++                pendingMoves: {
++                    ...state.pendingMoves,
++                    [cardId]: {
++                        fromColumnId: sourceColumnId,
++                        toColumnId: targetColumnId,
++                        fromIndex: currentFromIndex,
++                        toIndex,
++                        previousBoardSnapshot: state.board,
++                        clientMoveId,
++                    },
++                },
++                latestClientMoveIdByCard: {
++                    ...state.latestClientMoveIdByCard,
++                    [cardId]: clientMoveId,
++                },
++            };
++        }
++
++        case 'MOVE_CONFIRMED': {
++            const { cardId, clientMoveId } = action.payload;
++            if (state.latestClientMoveIdByCard[cardId] === clientMoveId) {
++                const newPendingMoves = { ...state.pendingMoves };
++                delete newPendingMoves[cardId];
++                return { ...state, pendingMoves: newPendingMoves };
++            }
++            return state;
++        }
++
++        case 'ROLLBACK_MOVE': {
++            const { cardId, clientMoveId } = action.payload;
++            if (state.latestClientMoveIdByCard[cardId] === clientMoveId) {
++                const pendingMove = state.pendingMoves[cardId];
++                if (!pendingMove) return state;
++
++                const newPendingMoves = { ...state.pendingMoves };
++                delete newPendingMoves[cardId];
++
++                return {
++                    ...state,
++                    board: pendingMove.previousBoardSnapshot,
++                    pendingMoves: newPendingMoves,
++                };
++            }
++            return state;
++        }
++
++        case 'SHOW_TOAST':
++            return { ...state, toast: { message: action.message, visible: true } };
++
++        case 'HIDE_TOAST':
++            return { ...state, toast: null };
++
++        default:
++            return state;
++    }
++}
+diff -r -u -N -x node_modules -x .git -x package-lock.json repository_before/frontend/board/Card.tsx repository_after/frontend/board/Card.tsx
+--- repository_before/frontend/board/Card.tsx	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/board/Card.tsx	2026-02-09 14:39:54.557082177 +0300
+@@ -0,0 +1,36 @@
++import React from 'react';
++
++interface CardProps {
++    id: string;
++    title: string;
++    columnId: string;
++    index: number;
++}
++
++export const Card: React.FC<CardProps> = ({ id, title, columnId, index }) => {
++    const handleDragStart = (e: React.DragEvent) => {
++        e.dataTransfer.setData('cardId', id);
++        e.dataTransfer.setData('fromColumnId', columnId);
++        e.dataTransfer.setData('fromIndex', index.toString());
++        e.dataTransfer.effectAllowed = 'move';
++    };
++
++    return (
++        <div
++            id={`card-${id}`}
++            className="card"
++            draggable
++            onDragStart={handleDragStart}
++            style={{
++                padding: '10px',
++                margin: '5px',
++                backgroundColor: 'white',
++                border: '1px solid #ddd',
++                borderRadius: '4px',
++                cursor: 'move',
++            }}
++        >
++            {title}
++        </div>
++    );
++};
+diff -r -u -N -x node_modules -x .git -x package-lock.json repository_before/frontend/board/Column.tsx repository_after/frontend/board/Column.tsx
+--- repository_before/frontend/board/Column.tsx	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/board/Column.tsx	2026-02-09 14:39:54.557082177 +0300
+@@ -0,0 +1,82 @@
++import React from 'react';
++import { Card } from './Card';
++import { useMoveCard } from './useMoveCard';
++import { Column as ColumnType } from '../types';
++
++interface ColumnProps {
++    column: ColumnType;
++}
++
++export const Column: React.FC<ColumnProps> = ({ column }) => {
++    const { optimisticMove } = useMoveCard();
++
++    const handleDragOver = (e: React.DragEvent) => {
++        e.preventDefault();
++        e.dataTransfer.dropEffect = 'move';
++    };
++
++    const handleDrop = (e: React.DragEvent) => {
++        e.preventDefault();
++        const cardId = e.dataTransfer.getData('cardId');
++        const fromColumnId = e.dataTransfer.getData('fromColumnId');
++        const fromIndex = parseInt(e.dataTransfer.getData('fromIndex'), 10);
++
++        const container = e.currentTarget as HTMLElement;
++        const cardElements = Array.from(container.querySelectorAll('.card'));
++
++        let toIndex = cardElements.length;
++
++        for (let i = 0; i < cardElements.length; i++) {
++            const rect = cardElements[i].getBoundingClientRect();
++            const midpoint = rect.top + rect.height / 2;
++
++            if (e.clientY < midpoint) {
++                toIndex = i;
++                break;
++            }
++        }
++
++        // Adjust index if moving within the same column
++        let adjustedToIndex = toIndex;
++        if (fromColumnId === column.id && fromIndex < toIndex) {
++            adjustedToIndex = toIndex - 1;
++        }
++
++        optimisticMove({
++            cardId,
++            sourceColumnId: fromColumnId,
++            targetColumnId: column.id,
++            fromIndex,
++            toIndex: adjustedToIndex,
++        });
++    };
++
++    return (
++        <div
++            className="column"
++            onDragOver={handleDragOver}
++            onDrop={handleDrop}
++            style={{
++                width: '250px',
++                minHeight: '400px',
++                backgroundColor: '#f4f4f4',
++                margin: '10px',
++                borderRadius: '8px',
++                padding: '10px',
++            }}
++        >
++            <h3>{column.title}</h3>
++            <div className="card-list">
++                {column.cards.map((card, index) => (
++                    <Card
++                        key={card.id}
++                        id={card.id}
++                        title={card.title}
++                        columnId={column.id}
++                        index={index}
++                    />
++                ))}
++            </div>
++        </div>
++    );
++};
+diff -r -u -N -x node_modules -x .git -x package-lock.json repository_before/frontend/board/KanbanBoard.tsx repository_after/frontend/board/KanbanBoard.tsx
+--- repository_before/frontend/board/KanbanBoard.tsx	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/board/KanbanBoard.tsx	2026-02-09 14:39:54.557082177 +0300
+@@ -0,0 +1,47 @@
++import React from 'react';
++import { useBoard } from './BoardContext';
++import { Column } from './Column';
++
++export const KanbanBoard: React.FC = () => {
++    const { state } = useBoard();
++
++    if (state.boardLoading) {
++        return (
++            <div style={{ padding: '20px', textAlign: 'center' }}>
++                Loading board…
++            </div>
++        );
++    }
++
++    if (state.boardLoadError) {
++        return (
++            <div
++                style={{
++                    padding: '20px',
++                    margin: '20px',
++                    backgroundColor: '#fff3cd',
++                    border: '1px solid #ffc107',
++                    borderRadius: '8px',
++                }}
++            >
++                <strong>Board unavailable</strong>
++                <p style={{ margin: '8px 0 0' }}>{state.boardLoadError}</p>
++            </div>
++        );
++    }
++
++    return (
++        <div
++            style={{
++                display: 'flex',
++                flexDirection: 'row',
++                padding: '20px',
++                overflowX: 'auto',
++            }}
++        >
++            {state.board.columns.map(column => (
++                <Column key={column.id} column={column} />
++            ))}
++        </div>
++    );
++};
+diff -r -u -N -x node_modules -x .git -x package-lock.json repository_before/frontend/board/useMoveCard.ts repository_after/frontend/board/useMoveCard.ts
+--- repository_before/frontend/board/useMoveCard.ts	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/board/useMoveCard.ts	2026-02-09 14:39:54.558082055 +0300
+@@ -0,0 +1,71 @@
++import { useCallback } from 'react';
++import { useBoard } from './BoardContext';
++import { moveCardApi } from '../services/client';
++
++const timeouts: Record<string, any> = {};
++const moveCounters: Record<string, number> = {};
++
++export const useMoveCard = () => {
++    const { dispatch } = useBoard();
++
++    const optimisticMove = useCallback(
++        ({
++            cardId,
++            sourceColumnId,
++            targetColumnId,
++            fromIndex,
++            toIndex,
++        }: {
++            cardId: string;
++            sourceColumnId: string;
++            targetColumnId: string;
++            fromIndex: number;
++            toIndex: number;
++        }) => {
++            // Increment clientMoveId for this card
++            const clientMoveId = (moveCounters[cardId] || 0) + 1;
++            moveCounters[cardId] = clientMoveId;
++
++            // 1. Optimistic update
++            dispatch({
++                type: 'OPTIMISTIC_MOVE',
++                payload: { cardId, sourceColumnId, targetColumnId, fromIndex, toIndex, clientMoveId },
++            });
++
++            // 2. Debounce
++            if (timeouts[cardId]) {
++                clearTimeout(timeouts[cardId]);
++            }
++
++            timeouts[cardId] = setTimeout(async () => {
++                try {
++                    // We always send the latest target info with the latest clientMoveId
++                    await moveCardApi({
++                        cardId,
++                        sourceColumnId,
++                        targetColumnId,
++                        targetIndex: toIndex,
++                        clientMoveId,
++                    });
++
++                    dispatch({ type: 'MOVE_CONFIRMED', payload: { cardId, clientMoveId } });
++                } catch (error: any) {
++                    dispatch({ type: 'ROLLBACK_MOVE', payload: { cardId, clientMoveId } });
++
++                    if (moveCounters[cardId] === clientMoveId) {
++                        dispatch({ type: 'SHOW_TOAST', message: 'Failed to move card. Changes reverted.' });
++
++                        setTimeout(() => {
++                            if (moveCounters[cardId] === clientMoveId) {
++                                dispatch({ type: 'HIDE_TOAST' });
++                            }
++                        }, 3000);
++                    }
++                }
++            }, 500);
++        },
++        [dispatch]
++    );
++
++    return { optimisticMove };
++};
+diff -r -u -N -x node_modules -x .git -x package-lock.json repository_before/frontend/components/ToastContainer.tsx repository_after/frontend/components/ToastContainer.tsx
+--- repository_before/frontend/components/ToastContainer.tsx	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/components/ToastContainer.tsx	2026-02-09 14:39:54.559081933 +0300
+@@ -0,0 +1,27 @@
++import React from 'react';
++import { useBoard } from '../board/BoardContext';
++
++export const ToastContainer: React.FC = () => {
++    const { state } = useBoard();
++
++    if (!state.toast || !state.toast.visible) return null;
++
++    return (
++        <div
++            id="toast"
++            style={{
++                position: 'fixed',
++                bottom: '20px',
++                right: '20px',
++                backgroundColor: '#f44336',
++                color: 'white',
++                padding: '16px',
++                borderRadius: '4px',
++                boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
++                zIndex: 1000,
++            }}
++        >
++            {state.toast.message}
++        </div>
++    );
++};
+diff -r -u -N -x node_modules -x .git -x package-lock.json repository_before/frontend/index.html repository_after/frontend/index.html
+--- repository_before/frontend/index.html	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/index.html	2026-02-09 14:39:54.559081933 +0300
+@@ -0,0 +1,17 @@
++<!DOCTYPE html>
++<html lang="en">
++
++<head>
++    <meta charset="UTF-8" />
++    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
++    <title>Optimistic Kanban</title>
++</head>
++
++<body>
++    <div id="root">
++        <p style="padding: 20px;">Loading…</p>
++    </div>
++    <script type="module" src="./main.tsx"></script>
++</body>
++
++</html>
+\ No newline at end of file
+diff -r -u -N -x node_modules -x .git -x package-lock.json repository_before/frontend/main.tsx repository_after/frontend/main.tsx
+--- repository_before/frontend/main.tsx	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/main.tsx	2026-02-09 14:39:54.559081933 +0300
+@@ -0,0 +1,10 @@
++import React from 'react';
++import ReactDOM from 'react-dom/client';
++import App from './App';
++
++const root = ReactDOM.createRoot(document.getElementById('root') as HTMLElement);
++root.render(
++    <React.StrictMode>
++        <App />
++    </React.StrictMode>
++);
+diff -r -u -N -x node_modules -x .git -x package-lock.json repository_before/frontend/services/client.ts repository_after/frontend/services/client.ts
+--- repository_before/frontend/services/client.ts	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/services/client.ts	2026-02-09 14:39:54.560081811 +0300
+@@ -0,0 +1,40 @@
++import { Board, MoveRequest } from '../types';
++
++// Use relative URL so Vite dev server proxies /api to the backend (no CORS issues)
++const BASE_URL = '/api';
++const FETCH_TIMEOUT_MS = 8000;
++
++export const fetchBoard = async (): Promise<Board> => {
++    const controller = new AbortController();
++    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
++    try {
++        const response = await fetch(`${BASE_URL}/board`, { signal: controller.signal });
++        clearTimeout(timeoutId);
++        if (!response.ok) throw new Error(`Failed to fetch board (${response.status})`);
++        return response.json();
++    } catch (err: unknown) {
++        clearTimeout(timeoutId);
++        if (err instanceof Error) {
++            if (err.name === 'AbortError') throw new Error('Request timed out. Is the backend running on port 3001? (npm run backend)');
++            throw err;
++        }
++        throw new Error('Could not load board');
++    }
++};
++
++export const moveCardApi = async (moveRequest: MoveRequest): Promise<{ success: true; board: Board }> => {
++    const response = await fetch(`${BASE_URL}/move`, {
++        method: 'POST',
++        headers: {
++            'Content-Type': 'application/json',
++        },
++        body: JSON.stringify(moveRequest),
++    });
++
++    if (!response.ok) {
++        const errorData = await response.json();
++        throw new Error(errorData.error || 'Failed to move card');
++    }
++
++    return response.json();
++};
+diff -r -u -N -x node_modules -x .git -x package-lock.json repository_before/frontend/types.ts repository_after/frontend/types.ts
+--- repository_before/frontend/types.ts	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/frontend/types.ts	2026-02-09 14:39:54.560081811 +0300
+@@ -0,0 +1,22 @@
++export interface Card {
++    id: string;
++    title: string;
++}
++
++export interface Column {
++    id: string;
++    title: string;
++    cards: Card[];
++}
++
++export interface Board {
++    columns: Column[];
++}
++
++export interface MoveRequest {
++    cardId: string;
++    sourceColumnId: string;
++    targetColumnId: string;
++    targetIndex: number;
++    clientMoveId?: number;
++}
+diff -r -u -N -x node_modules -x .git -x package-lock.json repository_before/jest.config.cjs repository_after/jest.config.cjs
+--- repository_before/jest.config.cjs	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/jest.config.cjs	2026-02-09 14:39:54.560081811 +0300
+@@ -0,0 +1,44 @@
++const path = require('path');
++
++const projectRoot = path.resolve(__dirname, '..');
++
++module.exports = {
++    projects: [
++        {
++            displayName: 'frontend',
++            testEnvironment: 'jsdom',
++            rootDir: projectRoot,
++            testMatch: ['<rootDir>/tests/frontend/**/*.test.tsx'],
++            setupFilesAfterEnv: ['<rootDir>/tests/setupTests.ts'],
++            transform: {
++                '^.+\\.(ts|tsx)?$': [
++                    require.resolve('ts-jest'),
++                    { tsconfig: path.resolve(__dirname, 'tsconfig.json') },
++                ],
++            },
++            moduleNameMapper: {
++                '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
++            },
++            moduleDirectories: [
++                path.resolve(__dirname, 'node_modules'),
++                'node_modules'
++            ],
++        },
++        {
++            displayName: 'backend',
++            testEnvironment: 'node',
++            rootDir: projectRoot,
++            testMatch: ['<rootDir>/tests/backend/**/*.test.ts'],
++            transform: {
++                '^.+\\.ts$': [
++                    require.resolve('ts-jest'),
++                    { tsconfig: path.resolve(__dirname, 'tsconfig.json') },
++                ],
++            },
++            moduleDirectories: [
++                path.resolve(__dirname, 'node_modules'),
++                'node_modules'
++            ],
++        },
++    ],
++};
+diff -r -u -N -x node_modules -x .git -x package-lock.json repository_before/package.json repository_after/package.json
+--- repository_before/package.json	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/package.json	2026-02-09 14:39:54.563081444 +0300
+@@ -0,0 +1,43 @@
++{
++  "name": "optimistic-kanban",
++  "version": "1.0.0",
++  "type": "module",
++  "description": "Optimistic Kanban board with state rollback",
++  "main": "backend/server.ts",
++  "scripts": {
++    "test": "jest",
++    "backend": "tsx backend/server.ts",
++    "frontend": "vite --host",
++    "dev": "npm run backend & npm run frontend & wait"
++  },
++  "dependencies": {
++    "cors": "^2.8.5",
++    "express": "^4.18.2",
++    "react": "^18.2.0",
++    "react-dom": "^18.2.0"
++  },
++  "devDependencies": {
++    "@testing-library/jest-dom": "^6.1.4",
++    "@testing-library/react": "^14.0.0",
++    "@testing-library/user-event": "^14.5.1",
++    "@types/cors": "^2.8.15",
++    "@types/express": "^4.17.20",
++    "@types/jest": "^29.5.6",
++    "@types/node": "^20.8.6",
++    "@types/react": "^18.2.31",
++    "@types/react-dom": "^18.2.14",
++    "@types/supertest": "^2.0.15",
++    "@vitejs/plugin-react": "^4.1.0",
++    "jest": "^29.7.0",
++    "jest-environment-jsdom": "^29.7.0",
++    "supertest": "^7.2.2",
++    "ts-jest": "^29.1.1",
++    "ts-node": "^10.9.1",
++    "tsx": "^4.21.0",
++    "typescript": "^5.2.2",
++    "vite": "^4.5.0"
++  },
++  "overrides": {
++    "pretty-format": "^29.7.0"
++  }
++}
+\ No newline at end of file
+diff -r -u -N -x node_modules -x .git -x package-lock.json repository_before/shared/types.ts repository_after/shared/types.ts
+--- repository_before/shared/types.ts	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/shared/types.ts	2026-02-09 14:39:54.563081444 +0300
+@@ -0,0 +1,22 @@
++export interface Card {
++  id: string;
++  title: string;
++}
++
++export interface Column {
++  id: string;
++  title: string;
++  cards: Card[];
++}
++
++export interface Board {
++  columns: Column[];
++}
++
++export interface MoveRequest {
++  cardId: string;
++  sourceColumnId: string;
++  targetColumnId: string;
++  targetIndex: number;
++  clientMoveId: number;
++}
+diff -r -u -N -x node_modules -x .git -x package-lock.json repository_before/tsconfig.json repository_after/tsconfig.json
+--- repository_before/tsconfig.json	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/tsconfig.json	2026-02-09 14:39:54.564081322 +0300
+@@ -0,0 +1,22 @@
++{
++    "compilerOptions": {
++        "target": "ESNext",
++        "lib": ["DOM", "DOM.Iterable", "ESNext"],
++        "allowJs": true,
++        "skipLibCheck": true,
++        "esModuleInterop": true,
++        "allowSyntheticDefaultImports": true,
++        "strict": true,
++        "forceConsistentCasingInFileNames": true,
++        "noFallthroughCasesInSwitch": true,
++        "module": "ESNext",
++        "moduleResolution": "Node",
++        "resolveJsonModule": true,
++        "isolatedModules": true,
++        "noEmit": true,
++        "jsx": "react-jsx",
++        "baseUrl": ".",
++        "paths": { "@shared/*": ["shared/*"] }
++    },
++    "include": ["frontend", "backend", "shared", "../tests"]
++}
+diff -r -u -N -x node_modules -x .git -x package-lock.json repository_before/vite.config.ts repository_after/vite.config.ts
+--- repository_before/vite.config.ts	1970-01-01 03:00:00.000000000 +0300
++++ repository_after/vite.config.ts	2026-02-09 14:39:54.564081322 +0300
+@@ -0,0 +1,22 @@
++import path from 'path';
++import { fileURLToPath } from 'url';
++import { defineConfig } from 'vite';
++import react from '@vitejs/plugin-react';
++
++const __dirname = path.dirname(fileURLToPath(import.meta.url));
++
++export default defineConfig({
++    plugins: [react()],
++    root: 'frontend',
++    resolve: {
++        alias: {
++            '@shared': path.resolve(__dirname, 'shared'),
++        },
++    },
++    server: {
++        port: 3000,
++        proxy: {
++            '/api': 'http://localhost:3001',
++        },
++    },
++});

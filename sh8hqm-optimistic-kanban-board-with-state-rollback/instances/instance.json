@@ -1,0 +1,11 @@
+{
+            "instance_id": "SH8HQM",
+            "problem_statement": "Standard request-response architectures introduce perceptible latency during drag-and-drop interactions, significantly degrading the user experience on high-latency networks. To achieve a responsive, application-like feel, the system must adopt an Optimistic UI pattern where state transitions are reflected immediately in the client view before server confirmation occurs. This architectural shift creates a complex distributed state problem: the frontend must maintain a high-fidelity snapshot of the previous state to execute a precise rollback if the background API call fails. Additionally, the system must handle high-frequency user inputs ("rapid-fire" dragging) through debouncing or throttling to prevent race conditions that lead to permanent data desynchronization between the client and the backend.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/sh8hqm-optimistic-kanban-board-with-state-rollback",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
