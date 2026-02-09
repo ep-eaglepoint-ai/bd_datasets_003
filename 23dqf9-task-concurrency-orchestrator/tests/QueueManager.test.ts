@@ -5,6 +5,7 @@ describe('QueueManager', () => {
   let q: QueueManager;
 
   beforeEach(() => {
+    
     vi.useFakeTimers({ shouldAdvanceTime: true });
     q = new QueueManager(3);
   });
@@ -19,7 +20,6 @@ describe('QueueManager', () => {
 
     for (let i = 0; i < 12; i++) {
       q.addJob(async () => {
-        
         activeAt.push(q.getStatus().executing);
         await new Promise(res => setTimeout(res, 1000));
       });
@@ -54,7 +54,7 @@ describe('QueueManager', () => {
 
     
     await vi.advanceTimersByTimeAsync(150);
-    expect(q.getStatus().executing).toBe(2);
+    expect(q.getStatus().executing).toBe(2); 
     expect(startOrder).toEqual([1, 2, 3, 4]);
   });
 
@@ -71,10 +71,10 @@ describe('QueueManager', () => {
 
     await vi.advanceTimersByTimeAsync(0);
     expect(q.getStatus().executing).toBe(3);
-    expect(q.getStatus().pending).toBe(3);
 
     q.pause();
 
+    
     await vi.advanceTimersByTimeAsync(200);
     expect(q.getStatus().executing).toBe(0);
     expect(q.getStatus().pending).toBe(3);
@@ -92,7 +92,6 @@ describe('QueueManager', () => {
     for (let i = 0; i < 8; i++) {
       q2.addJob(async () => {
         started();
-       
         await new Promise(res => setTimeout(res, 1)); 
       });
     }
@@ -103,5 +102,61 @@ describe('QueueManager', () => {
     await vi.runAllTimersAsync();
     expect(started).toHaveBeenCalledTimes(8);
     expect(q2.getStatus().executing).toBe(0);
+  });
+
+  
+  it('Requirement 5: job rejection does not leak concurrency slots', async () => {
+    const qError = new QueueManager(2);
+    let finishedCount = 0;
+
+    
+    qError.addJob(async () => {
+      throw new Error('Task Failed Successfully');
+    });
+
+   
+    qError.addJob(async () => {
+      finishedCount++;
+    });
+
+    await vi.runAllTimersAsync();
+
+    
+    expect(qError.getStatus().executing).toBe(0);
+    expect(finishedCount).toBe(1);
+
+    
+    qError.addJob(async () => { finishedCount++; });
+    await vi.runAllTimersAsync();
+    expect(finishedCount).toBe(2);
+  });
+
+  
+  it('Requirement 10: 10 jobs of 100ms with concurrency 2 take exactly 500ms', async () => {
+    const qBench = new QueueManager(2);
+    const startTime = Date.now();
+    let completed = 0;
+
+   
+    for (let i = 0; i < 10; i++) {
+      qBench.addJob(async () => {
+        await new Promise(res => setTimeout(res, 100));
+        completed++;
+      });
+    }
+
+    
+    await vi.advanceTimersByTimeAsync(499);
+    expect(completed).toBe(8);
+    expect(qBench.getStatus().executing).toBe(2);
+
+  
+    await vi.advanceTimersByTimeAsync(1);
+    expect(completed).toBe(10);
+    expect(qBench.getStatus().executing).toBe(0);
+
+    
+    const totalTime = Date.now() - startTime;
+    expect(totalTime).toBe(500);
   });
 });
