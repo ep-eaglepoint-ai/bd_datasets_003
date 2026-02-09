@@ -268,7 +268,7 @@ func TestCacheRefreshTime(t *testing.T) {
 	}
 }
 
-// TestMain sets up test environment
+
 func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }

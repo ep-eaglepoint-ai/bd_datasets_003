@@ -1,5 +1,5 @@
 -- ClickHouse CDN Analytics Schema
--- Engine: ReplacingMergeTree  (deduplicates on final merge using event_version)
+-- Engine: ReplacingMergeTree (deduplicates on final merge using event_version)
 -- Partitioned by transaction date for fast analytical range queries
 -- Ordered by (customer_id, timestamp) for fast per-tenant scans
 
@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS cdn_analytics.cdn_logs
 ENGINE = ReplacingMergeTree(event_version)
 PARTITION BY toYYYYMMDD(timestamp)
 ORDER BY (customer_id, timestamp, event_id)
-TTL timestamp + INTERVAL 90 DAY
+TTL toDateTime(timestamp) + INTERVAL 90 DAY
 SETTINGS index_granularity = 8192;
 
 -- Materialized view: per-minute aggregates for dashboard queries

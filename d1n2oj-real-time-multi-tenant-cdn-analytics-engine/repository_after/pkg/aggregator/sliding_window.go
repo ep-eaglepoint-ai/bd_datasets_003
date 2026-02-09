@@ -98,19 +98,19 @@ func (cw *customerWindow) advance(nowMin int64) {
 
 	endMin := cw.startMin + BucketCount - 1
 	if nowMin <= endMin {
-		return // still inside the ring
+		return 	
 	}
 
-	// Number of slots we need to clear
+		
 	shift := int(nowMin - endMin)
 	if shift >= BucketCount {
-		// Entire ring is stale – reset everything
+			
 		cw.buckets = [BucketCount]minuteCounter{}
 		cw.startMin = nowMin - BucketCount + 1
 		return
 	}
 
-	// Zero only the buckets we're overwriting
+		
 	for i := 0; i < shift; i++ {
 		idx := int((endMin+1+int64(i))-cw.startMin) % BucketCount
 		cw.buckets[idx] = minuteCounter{}
@@ -158,9 +158,6 @@ func (cw *customerWindow) query(now time.Time, minutes int) QueryResult {
 	return res
 }
 
-// -------------------------------------------------------------------
-// QueryResult – returned to callers
-// -------------------------------------------------------------------
 
 // QueryResult is the public read-out from a window query.
 type QueryResult struct {
@@ -175,7 +172,6 @@ type QueryResult struct {
 	WindowMinutes     int                      `json:"window_minutes"`
 }
 
-// Finalize populates the exported fields from the internal array.
 func (r *QueryResult) Finalize() {
 	r.Status2xx = r.StatusCounts[Status2xx]
 	r.Status3xx = r.StatusCounts[Status3xx]
@@ -183,33 +179,28 @@ func (r *QueryResult) Finalize() {
 	r.Status5xx = r.StatusCounts[Status5xx]
 }
 
-// -------------------------------------------------------------------
-// SlidingWindowAggregator – the top-level, thread-safe aggregator
-// -------------------------------------------------------------------
 
-// SlidingWindowAggregator maintains per-customer sliding windows.
-// The memory footprint is O(customers × BucketCount), not O(requests).
 type SlidingWindowAggregator struct {
 	mu      sync.RWMutex
-	windows map[string]*customerWindow // keyed by customer_id
+	windows map[string]*customerWindow 
 	logger  *slog.Logger
 
-	// Eviction
+		
 	lastEvict time.Time
-	evictTTL  time.Duration // evict idle customers after this duration
+	evictTTL  time.Duration 
 }
 
-// NewSlidingWindowAggregator creates a new aggregator.
+
 func NewSlidingWindowAggregator(logger *slog.Logger) *SlidingWindowAggregator {
 	return &SlidingWindowAggregator{
 		windows:   make(map[string]*customerWindow),
 		logger:    logger,
-		evictTTL:  30 * time.Minute, // evict customers idle for 30 min
+		evictTTL:  30 * time.Minute, 
 		lastEvict: time.Now(),
 	}
 }
 
-// Record adds a single request observation. Thread-safe.
+
 func (a *SlidingWindowAggregator) Record(customerID string, t time.Time, statusCode int, bytes int64) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
