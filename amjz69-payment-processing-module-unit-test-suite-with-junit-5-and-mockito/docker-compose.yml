@@ -1,0 +1,14 @@
+# Docker Compose file for running tests. You should customize this as needed.
+
+services:
+  app:
+    build: .
+    volumes:
+      - .:/workspace
+      - maven-repo:/root/.m2
+    working_dir: /workspace
+    environment:
+      - REPO_PATH=${REPO_PATH:-repository_after}
+
+volumes:
+  maven-repo:
