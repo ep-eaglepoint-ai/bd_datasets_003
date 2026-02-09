@@ -4,4 +4,4 @@
 docker compose run --rm test
 
 ## Test and report command: 
-docker compose run --rm python evaluation/generate_report_json.py
+docker compose run --rm test python evaluation/generate_report_json.py
