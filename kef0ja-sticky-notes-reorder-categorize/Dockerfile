@@ -1,13 +1,11 @@
-FROM node:18-alpine
+FROM node:24-alpine
 WORKDIR /app
 
 COPY tests/package*.json ./tests/
+COPY repository_after/package*.json ./repository_after/
+
 RUN npm --prefix tests ci
+RUN npm --prefix repository_after ci
 
 COPY . .
-
-RUN sed -i 's/\r$//' /app/run \
-	&& printf '#!/bin/sh\nexec node /app/run "$@"\n' > /usr/local/bin/run \
-	&& chmod +x /usr/local/bin/run
-
 CMD ["node", "evaluation/evaluation.js"]
