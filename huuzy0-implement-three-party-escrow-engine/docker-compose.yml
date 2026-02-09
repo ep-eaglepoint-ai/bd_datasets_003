@@ -6,12 +6,3 @@ services:
     command: pytest -v tests
     volumes:
       - .:/app
-
-  test-report:
-    build: .
-    environment:
-      - PYTHONPATH=/app/repository_after
-    command: >-
-      sh -c "pytest -q tests --junitxml=/app/evaluation/report.xml; code=$?; python evaluation/generate_report_json.py $code; exit 0"
-    volumes:
-      - .:/app
