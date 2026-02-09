@@ -1,12 +1,11 @@
 diff --git a/repository_after/.gitkeep b/repository_after/.gitkeep
 new file mode 100644
-index 0000000..e69de29
-diff --git a/repository_after/__pycache__/switchablenorm.cpython-312.pyc b/repository_after/__pycache__/switchablenorm.cpython-312.pyc
-new file mode 100644
-index 0000000..46c9cf6
-Binary files /dev/null and b/repository_after/__pycache__/switchablenorm.cpython-312.pyc differ
+index 00000000..e69de29b
+diff --git a/repository_before/__pycache__/switchablenorm.cpython-312.pyc b/repository_after/__pycache__/switchablenorm.cpython-312.pyc
+index 0096c1e3..8667c653 100644
+Binary files a/repository_before/__pycache__/switchablenorm.cpython-312.pyc and b/repository_after/__pycache__/switchablenorm.cpython-312.pyc differ
 diff --git a/repository_before/switchablenorm.py b/repository_after/switchablenorm.py
-index e2f7efa..cbaa365 100644
+index e2f7efaa..cbaa3651 100644
 --- a/repository_before/switchablenorm.py
 +++ b/repository_after/switchablenorm.py
 @@ -1,109 +1,249 @@
