@@ -179,6 +179,22 @@ class TestLexicographicOrder:
         result_counts = Counter([x for x in result if x != 'idle'])
         assert task_counts == result_counts
 
+    def test_lexicographic_smallest_among_optimal(self):
+        """
+        Regression: choosing the smallest available task is NOT always compatible with optimal length,
+        and choosing the highest-frequency task is NOT always lexicographically smallest among optimal.
+
+        For tasks A(2), B(1), C(2) with n=1, an optimal-length schedule exists with prefix A,B...
+        and the lexicographically smallest optimal schedule is deterministic.
+        """
+        tasks = ['A', 'A', 'B', 'C', 'C']
+        n = 1
+        result = solve(tasks, n)
+
+        min_slots = calculate_minimum_slots(tasks, n)
+        assert len(result) == min_slots
+        assert result == ['A', 'B', 'C', 'A', 'C']
+
 
 class TestCooldownConstraint:
     """Test that cooldown constraint is satisfied"""
