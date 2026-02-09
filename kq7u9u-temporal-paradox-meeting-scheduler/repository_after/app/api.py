@@ -1,0 +1,286 @@
+from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from datetime import datetime, timedelta
+from typing import Dict, Any
+
+from .models import ScheduleRequest, ScheduleResponse, ErrorResponse, HistoricalEvent, TimeReference
+from .scheduler import TemporalScheduler
+from .event_log import EventLog
+
+def create_app() -> FastAPI:
+    """Create and configure FastAPI application"""
+    # Create an event log per app instance and ensure it starts empty.
+    event_log_instance = EventLog()  # default path "data/event_log.json"
+    event_log_instance.clear_events()
+
+    def get_event_log() -> EventLog:
+        """Dependency to get event log instance"""
+        return event_log_instance
+
+    def get_scheduler(event_log: EventLog = Depends(get_event_log)) -> TemporalScheduler:
+        """Dependency to get scheduler instance"""
+        return TemporalScheduler(event_log)
+
+    app = FastAPI(
+        title="ChronoLabs Temporal Paradox Meeting Scheduler",
+        description="API for scheduling meetings with complex temporal dependencies",
+        version="1.0.0"
+    )
+
+    # Add CORS middleware
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # In production, specify actual origins
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        raw_errors = exc.errors() if hasattr(exc, "errors") else []
+        errors = []
+        for err in raw_errors:
+            err = dict(err)
+            ctx = err.get("ctx")
+            if isinstance(ctx, dict) and "error" in ctx:
+                ctx = dict(ctx)
+                ctx["error"] = str(ctx["error"])
+                err["ctx"] = ctx
+            errors.append(err)
+        # Return 400 for explicit participant/duration validation errors; otherwise keep 422.
+        for err in errors:
+            loc = err.get("loc", [])
+            err_type = err.get("type")
+            if len(loc) >= 2 and loc[0] == "body" and loc[1] in {"participants", "duration_minutes"}:
+                if err_type != "missing":
+                    return JSONResponse(status_code=400, content={"detail": errors})
+        return JSONResponse(status_code=422, content={"detail": errors})
+
+    @app.get("/")
+    async def root() -> Dict[str, str]:
+        """Root endpoint"""
+        return {
+            "service": "ChronoLabs Temporal Paradox Meeting Scheduler",
+            "version": "1.0.0",
+            "status": "operational"
+        }
+
+    @app.get("/health")
+    async def health_check() -> Dict[str, str]:
+        """Health check endpoint"""
+        return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
+    @app.get("/events")
+    async def get_events(
+        event_type: str = None,
+        limit: int = 10,
+        event_log: EventLog = Depends(get_event_log)
+    ) -> Dict[str, Any]:
+        """Get historical events"""
+        from .models import TimeReference
+
+        if event_type:
+            try:
+                ref = TimeReference(event_type)
+                events = event_log.get_events_by_type(ref, limit=limit)
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid event type: {event_type}")
+        else:
+            # Get all events
+            events = []
+            for ref in TimeReference:
+                type_events = event_log.get_events_by_type(ref, limit=limit)
+                events.extend(type_events)
+
+        # Use model_dump() if available to serialize Pydantic models (v2)
+        serialized = []
+        for event in events:
+            if hasattr(event, "model_dump"):
+                serialized.append(event.model_dump())
+            else:
+                serialized.append(event.dict())
+
+        return {
+            "count": len(events),
+            "events": serialized
+        }
+
+    @app.post("/schedule", response_model=ScheduleResponse, responses={400: {"model": ErrorResponse}})
+    async def schedule_meeting(
+        request: ScheduleRequest,
+        scheduler: TemporalScheduler = Depends(get_scheduler)
+    ) -> ScheduleResponse:
+        """Schedule a meeting with complex temporal rules"""
+
+        # Validate request (guard in addition to Pydantic)
+        if request.duration_minutes <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Duration must be positive"
+            )
+
+        if len(request.participants) == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="At least one participant is required"
+            )
+
+        # Schedule the meeting
+        response, error = await scheduler.schedule_meeting(request)
+
+        if error:
+            # Use model_dump() for Pydantic v2 compatibility
+            detail = error.model_dump() if hasattr(error, "model_dump") else error.dict()
+            raise HTTPException(
+                status_code=400,
+                detail=detail
+            )
+
+        return response
+
+    @app.post("/schedule/validate")
+    async def validate_rule(
+        rule: str,
+        scheduler: TemporalScheduler = Depends(get_scheduler)
+    ) -> Dict[str, Any]:
+        """Validate a temporal rule without scheduling"""
+        from .parser import TemporalParser
+        from .paradox_detector import TemporalParadoxDetector
+        from .parser import RuleValidator
+
+        def _serialize_expression(expr):
+            """Return a human-friendly dict for validation output."""
+            ref = expr.reference
+            if hasattr(ref, "value"):
+                ref = ref.value
+            if isinstance(ref, str):
+                ref_text = ref.replace("_", " ").lower()
+            else:
+                ref_text = None
+
+            payload = {
+                "operator": expr.operator.value if expr.operator else None,
+                "value": expr.value,
+                "reference": ref_text,
+                "conditions": []
+            }
+
+            for cond in expr.conditions:
+                payload["conditions"].append(_serialize_expression(cond))
+
+            if isinstance(expr.value, list):
+                nested = []
+                for v in expr.value:
+                    if hasattr(v, "operator"):
+                        nested.append(_serialize_expression(v))
+                    else:
+                        nested.append(v)
+                payload["value"] = nested
+
+            return payload
+
+        parser = TemporalParser()
+        paradox_detector = TemporalParadoxDetector(scheduler.event_log)
+
+        try:
+            expression = parser.parse(rule)
+
+            # Check for circular dependencies
+            circular_ok = RuleValidator.validate_no_circular_references(expression)
+
+            # Detect paradoxes
+            paradoxes = paradox_detector.detect_paradoxes(expression)
+
+            return {
+                "valid": True,
+                "expression": str(_serialize_expression(expression)),
+                "circular_dependency_check": circular_ok,
+                "paradox_count": len(paradoxes),
+                "paradoxes": [p["description"] for p in paradoxes],
+                "is_schedulable": len(paradoxes) == 0 and circular_ok
+            }
+        except Exception as e:
+            return {
+                "valid": False,
+                "error": str(e),
+                "expression": None,
+                "circular_dependency_check": False,
+                "paradox_count": 0,
+                "paradoxes": [],
+                "is_schedulable": False
+            }
+
+    @app.post("/events/seed")
+    async def seed_events(event_log: EventLog = Depends(get_event_log)) -> Dict[str, Any]:
+        """Seed the event log with mock data"""
+        # Clear first to ensure fresh data
+        event_log.clear_events()
+        
+        now = datetime.now()
+        
+        # Add a workload event for yesterday (critical for lunch calculations)
+        workload_event = HistoricalEvent(
+            event_type=TimeReference.PREVIOUS_DAY_WORKLOAD,
+            timestamp=now - timedelta(days=1),
+            metadata={"source": "mock_seed", "workload": 75},
+            calculated_value=75.0
+        )
+        event_log.add_event(workload_event)
+        
+        # Add other mock events including a successful deployment
+        mock_events = [
+            HistoricalEvent(
+                event_type=TimeReference.LAST_CANCELLATION,
+                timestamp=now - timedelta(hours=3),
+                metadata={"reason": "participant_unavailable"}
+            ),
+            HistoricalEvent(
+                event_type=TimeReference.LAST_CANCELLATION,
+                timestamp=now - timedelta(days=1, hours=2),
+                metadata={"reason": "emergency"}
+            ),
+            HistoricalEvent(
+                event_type=TimeReference.LAST_DEPLOYMENT,
+                timestamp=now - timedelta(days=2, hours=4),
+                metadata={"version": "v2.1.0", "success": True}
+            ),
+            HistoricalEvent(
+                event_type=TimeReference.LAST_DEPLOYMENT,
+                timestamp=now - timedelta(days=3),
+                metadata={"version": "v2.0.0", "success": False}
+            ),
+            HistoricalEvent(
+                event_type=TimeReference.CRITICAL_INCIDENT,
+                timestamp=now - timedelta(hours=18),
+                metadata={"severity": "high", "resolved": True}
+            ),
+        ]
+        
+        for event in mock_events:
+            event_log.add_event(event)
+        
+        return {"status": "seeded", "message": f"Added {len(mock_events) + 1} mock events"}
+
+    @app.delete("/events")
+    async def clear_events(
+        event_type: str = None,
+        event_log: EventLog = Depends(get_event_log)
+    ) -> Dict[str, str]:
+        """Clear events from the event log"""
+        from .models import TimeReference
+
+        if event_type:
+            try:
+                ref = TimeReference(event_type)
+                event_log.clear_events(ref)
+                return {"status": "cleared", "event_type": event_type}
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid event type: {event_type}")
+        else:
+            event_log.clear_events()
+            return {"status": "cleared", "message": "All events cleared"}
+
+    return app
