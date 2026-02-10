@@ -4,7 +4,10 @@
     No command for before
 
     ## After Test Docker Command
-    docker compose run --rm app python manage.py test tests --noinput --keepdb
+    
+    docker compose run --rm app python manage.py test tests --noinput --keepdb ; \
+    docker compose run --rm frontend sh -c 'cd /app/repository_after/frontend && npm install @testing-library/jest-dom && npm run test'
+
 
 
     ## Evaluation Docker Command

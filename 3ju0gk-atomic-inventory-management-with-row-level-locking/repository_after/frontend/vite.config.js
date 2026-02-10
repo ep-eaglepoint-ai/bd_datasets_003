@@ -1,10 +1,3 @@
-// import { defineConfig } from 'vite'
-// import react from '@vitejs/plugin-react'
-
-// export default defineConfig({
-//   plugins: [react()],
-  
-// })
 
 
 /// <reference types="vitest" />
@@ -13,11 +6,11 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 
 export default defineConfig({
-  // root: '/app',
+
   plugins: [react()],
   resolve: {
     alias: {
-      // Direct links to ensure Vitest finds these regardless of where the test file sits
+     
       'axios': path.resolve(__dirname, 'node_modules/axios'),
       'react': path.resolve(__dirname, 'node_modules/react'),
       'react-dom': path.resolve(__dirname, 'node_modules/react-dom'),
@@ -32,7 +25,7 @@ export default defineConfig({
     include: ['../../tests/**/*.test.tsx'],
     server: {
       deps: {
-        // This fixes the "Vitest cannot be imported in a CommonJS module" error
+       
         inline: [/@testing-library\/jest-dom/],
       },
     },
