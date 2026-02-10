@@ -1,0 +1,8 @@
+# Docker Compose file for running tests using unittest
+
+services:
+  app:
+    build: .
+    command: python -m unittest discover -s tests -p test_*.py -v
+    volumes:
+      - .:/app
