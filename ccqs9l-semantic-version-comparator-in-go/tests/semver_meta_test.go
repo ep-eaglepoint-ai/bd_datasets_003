@@ -7,27 +7,43 @@ import (
 	"testing"
 )
 
-func loadImpl(t *testing.T, name string) string {
-	t.Helper()
-
-	path := filepath.Join("tests/resources", name)
-	b, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("failed to read impl %s: %v", name, err)
-	}
-	return string(b)
-}
-
 func runSuite(t *testing.T, filename string) error {
 	t.Helper()
 
-	implPath := filepath.Join("tests", "resources", filename)
-	cmd := exec.Command("go", "test", "-v", "../repository_after")
-	cmd.Env = append(os.Environ(),
-		"REPO_PATH="+implPath,
-		"GO111MODULE=off",
-	)
+	repo_path := os.Getenv("REPO_PATH")
+	if repo_path == "" {
+		t.Fatal("REPO_PATH environment variable not set")
+	}
 
+	source := filepath.Join("resources", filename)
+	target := filepath.Join("..", repo_path, "semver.go")
+	var originalData []byte
+	if data, err := os.ReadFile(target); err == nil {
+		originalData = data
+	}
+
+	data, err := os.ReadFile(source)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(target, data, 0644); err != nil {
+		return err
+	}
+
+	defer func() {
+		if originalData != nil {
+			_ = os.WriteFile(target, originalData, 0644)
+		} else {
+			_ = os.Remove(target)
+		}
+	}()
+
+	testFile := filepath.Join("..", repo_path, "semver_test.go")
+	if _, err := os.Stat(testFile); os.IsNotExist(err) {
+		t.Fatalf("Test file semver_test.go does not exist in repo %s", repo_path)
+	}
+	cmd := exec.Command("go", "test", "-v", "../"+repo_path)
+	cmd.Env = append(os.Environ(), "GO111MODULE=off")
 	out, err := cmd.CombinedOutput()
 	t.Log(string(out))
 	return err

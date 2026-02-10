@@ -40,7 +40,7 @@ func getEnvironmentInfo() map[string]interface{} {
 }
 
 // runGoTests executes `go test -v` on the given repo path and returns TestResult
-func runGoTests(repoPath string, implPath string, testFile string) TestResult {
+func runGoTests(repoPath string, testFile string) TestResult {
 	testPath := filepath.Join(repoPath, testFile)
 	if _, err := os.Stat(testPath); os.IsNotExist(err) {
 		return TestResult{
@@ -51,7 +51,7 @@ func runGoTests(repoPath string, implPath string, testFile string) TestResult {
 	}
 	cmd := exec.Command("go", "test", "-v", "./...")
 	cmd.Dir = repoPath
-	cmd.Env = append(os.Environ(), "REPO_PATH="+implPath, "GO111MODULE=on")
+	cmd.Env = append(os.Environ(), "REPO_PATH="+repoPath, "GO111MODULE=on")
 
 	var stdoutBuf, stderrBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf
@@ -92,14 +92,13 @@ func main() {
 
 	beforeRepo := "repository_before"
 	afterRepo := "repository_after"
-	implPath := "repository_before/semver.go"
 	testFile := "semver_test.go"
 
 	fmt.Println("Running tests on 'before' repo...")
-	beforeResult := runGoTests(beforeRepo, implPath, testFile)
+	beforeResult := runGoTests(beforeRepo, testFile)
 
 	fmt.Println("Running tests on 'after' repo...")
-	afterResult := runGoTests(afterRepo, implPath, testFile)
+	afterResult := runGoTests(afterRepo, testFile)
 
 	duration := time.Since(start).Seconds()
 

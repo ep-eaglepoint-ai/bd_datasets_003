@@ -1,97 +1,8 @@
 package main
 
 import (
-	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"plugin"
 	"testing"
 )
-
-var (
-	Compare      func(a, b string) int
-	pluginTmpDir string
-)
-
-func copyToTempDir(srcPath string) (string, string, error) {
-	tmpDir, err := os.MkdirTemp("", "semver-plugin-*")
-	if err != nil {
-		return "", "", err
-	}
-
-	tmpFile := filepath.Join(tmpDir, filepath.Base(srcPath))
-
-	srcBytes, err := os.ReadFile(srcPath)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to read source file: %w", err)
-	}
-
-	if err := os.WriteFile(tmpFile, srcBytes, 0644); err != nil {
-		return "", "", fmt.Errorf("failed to write temp file: %w", err)
-	}
-
-	return tmpDir, tmpFile, nil
-}
-
-func buildPluginFromFile(srcFile string) (string, string, error) {
-	tmpDir, tmpFile, err := copyToTempDir(srcFile)
-	if err != nil {
-		return "", "", err
-	}
-
-	pluginPath := filepath.Join(tmpDir, "semver.so")
-
-	cmd := exec.Command("go", "build", "-buildmode=plugin", "-o", pluginPath, tmpFile)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Run(); err != nil {
-		return "", "", fmt.Errorf("failed to build plugin: %w", err)
-	}
-
-	return pluginPath, tmpDir, nil
-}
-
-func TestMain(m *testing.M) {
-	repoPath := os.Getenv("REPO_PATH")
-	if repoPath == "" {
-		panic("REPO_PATH environment variable not set")
-	}
-	repoPath = filepath.Join("..", repoPath)
-	absPath, err := filepath.Abs(repoPath)
-	if err != nil {
-		panic("failed to get absolute path of REPO_PATH: " + err.Error())
-	}
-
-	pluginPath, tmpDir, err := buildPluginFromFile(absPath)
-	if err != nil {
-		panic("failed to build plugin: " + err.Error())
-	}
-	pluginTmpDir = tmpDir
-
-	p, err := plugin.Open(pluginPath)
-	if err != nil {
-		panic("failed to open plugin: " + err.Error())
-	}
-
-	sym, err := p.Lookup("Compare")
-	if err != nil {
-		panic("failed to find Compare symbol: " + err.Error())
-	}
-
-	var ok bool
-	Compare, ok = sym.(func(string, string) int)
-	if !ok {
-		panic("Compare has wrong type signature")
-	}
-
-	// run tests
-	code := m.Run()
-
-	_ = os.RemoveAll(pluginTmpDir)
-	os.Exit(code)
-}
 
 func TestCompare_Equality(t *testing.T) {
 	tests := []struct {
@@ -156,6 +67,11 @@ func TestCompare_LessThan(t *testing.T) {
 			name: "major version less than",
 			a:    "1.9.9",
 			b:    "2.0.0",
+		},
+		{
+			name: "minor version less than with double digits",
+			a:    "1.2.0",
+			b:    "1.10.0",
 		},
 	}
 
