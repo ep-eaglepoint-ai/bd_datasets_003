@@ -9,5 +9,5 @@
 
 
     ## Evaluation Docker Command
-    docekr compose run --rm app
+    docker compose run --rm app
     
