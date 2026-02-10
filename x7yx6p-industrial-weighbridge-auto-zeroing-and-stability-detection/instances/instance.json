@@ -1,0 +1,11 @@
+{
+            "instance_id": "X7YX6P",
+            "problem_statement": "Raw load cell data is noisy and prone to thermal drift. A naive implementation simply calculates (CurrentRaw - InitialRaw) * CalibrationFactor. This fails in the real world because the "InitialRaw" (Zero) changes throughout the day as rain falls or debris accumulates on the scale. The engineering solution requires Auto-Zero Tracking: a background process that slowly nudges the zero-point when the scale is "Empty and Stable." Crucially, determining "Stable" requires calculating the statistical variance of the signal stream",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/x7yx6p-industrial-weighbridge-auto-zeroing-and-stability-detection",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        

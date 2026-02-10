@@ -1,0 +1,21 @@
+# Docker Compose file for running tests. You should customize this as needed.
+
+services:
+  app:
+    build: .
+    volumes:
+      - .:/app
+    working_dir: /app
+    tty: true
+    stdin_open: true
+    command: ["bash", "-lc", "sleep infinity"]
+
+  # Alias service to match environments that expect `docker compose exec web bash`
+  web:
+    build: .
+    volumes:
+      - .:/app
+    working_dir: /app
+    tty: true
+    stdin_open: true
+    command: ["bash", "-lc", "sleep infinity"]

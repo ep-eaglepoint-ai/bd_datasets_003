@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.env
+
+# Node
+node_modules/
+
+# OS
+.DS_Store
+
+# Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+go.work.sum
+
+# Go test binaries
+tests/*.test
+tests/*.exe
+
+# Evaluation reports (generated)
+evaluation/reports/*.json
+evaluation/*.json
+
+# Docker
+# Note: .dockerignore should be committed, not ignored
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
