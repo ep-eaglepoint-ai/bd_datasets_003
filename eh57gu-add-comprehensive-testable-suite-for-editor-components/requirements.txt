@@ -1,0 +1,2 @@
+# Node.js dependencies are managed through package.json
+# No Python dependencies required for this project
