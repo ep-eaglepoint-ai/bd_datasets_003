@@ -228,26 +228,33 @@ func (wb *Weighbridge) Update(raw int64) {
 		}
 		
 	case IN_MOTION:
-		// We're here because variance is low (checked above)
-		// Start tracking lock time when stable
-		if wb.lockStart.IsZero() {
-			wb.lockStart = now
-		}
-		
-		// Check if enough time has passed for locking
-		if now.Sub(wb.lockStart) >= wb.lockTime {
-			wb.status = LOCKED
-			// Emit WeightLocked event
-			currentNetWeight := currentNetRaw * wb.calibrationFactor
-			select {
-			case wb.weightLockedEvents <- WeightLockedEvent{
-				Weight: currentNetWeight,
-				Time:   now,
-			}:
-			default:
-				// Channel full, skip event (non-blocking)
+		// We're here because variance is low (checked above).
+		// Only lock if we're stably ABOVE the zero band (i.e., actually loaded).
+		// This prevents false "locked" events when returning to zero after motion.
+		if currentNetRaw > wb.zeroBand {
+			// Start tracking lock time when stable and loaded
+			if wb.lockStart.IsZero() {
+				wb.lockStart = now
 			}
-			wb.lockStart = time.Time{} // Reset
+
+			// Check if enough time has passed for locking
+			if now.Sub(wb.lockStart) >= wb.lockTime {
+				wb.status = LOCKED
+				// Emit WeightLocked event
+				currentNetWeight := currentNetRaw * wb.calibrationFactor
+				select {
+				case wb.weightLockedEvents <- WeightLockedEvent{
+					Weight: currentNetWeight,
+					Time:   now,
+				}:
+				default:
+					// Channel full, skip event (non-blocking)
+				}
+				wb.lockStart = time.Time{} // Reset
+			}
+		} else {
+			// Not sufficiently above zero; don't accumulate lock time.
+			wb.lockStart = time.Time{}
 		}
 		
 		// Check if weight dropped back to zero
