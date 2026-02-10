@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.env
+
+# Node
+node_modules/
+
+# OS
+.DS_Store
+
+# Evaluation reports (ignore all report files)
+evaluation/reports/
+evaluation/reports/*.json
+evaluation/*.json
+**/report.json
+
+# Documentation files
+SETUP.md
+QUICKSTART.md
+README.md
