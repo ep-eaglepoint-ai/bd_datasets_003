@@ -4,6 +4,7 @@ import importlib.util
 from pathlib import Path
 from scapy.layers.inet import IP, TCP
 from scapy.packet import Raw
+from scapy.layers.l2 import Ether
 
 
 REPO_PATH = os.environ.get("REPO_PATH")
@@ -24,14 +25,18 @@ StreamGapError = tcp_reassembler.StreamGapError
 
 def make_pkt(seq: int, payload: bytes | None = None):
     """
-    Helper to build a minimal TCP packet with optional payload.
+    Helper to build a TCP packet starting at Layer 2 (Ethernet), with optional payload.
     """
-    pkt = IP(src="1.1.1.1", dst="2.2.2.2") / TCP(
-        sport=1234,
-        dport=80,
-        seq=seq,
-        ack=0,
-        flags="PA",
+    pkt = (
+        Ether(src="aa:bb:cc:dd:ee:ff", dst="11:22:33:44:55:66")
+        / IP(src="1.1.1.1", dst="2.2.2.2")
+        / TCP(
+            sport=1234,
+            dport=80,
+            seq=seq,
+            ack=0,
+            flags="PA",
+        )
     )
     if payload is not None:
         pkt = pkt / Raw(load=payload)
@@ -52,14 +57,14 @@ def test_simple_in_order_reassembly():
 
 def test_out_of_order_delivery():
     packets = [
-        make_pkt(6, b"World"),
-        make_pkt(0, b"Hello "),
+        make_pkt(10, b"Expertise"),
+        make_pkt(0, b"Knowledge "),
     ]
 
     r = TCPReassembler(packets)
     data = r.reassemble()
 
-    assert data == b"Hello World"
+    assert data == b"Knowledge Expertise"
 
 
 def test_duplicate_retransmission_discarded():
@@ -121,8 +126,8 @@ def test_overlap_superset_retransmission():
 
 def test_gap_detection_raises():
     packets = [
-        make_pkt(0, b"AAAA"),
-        make_pkt(10, b"BBBB"),
+        make_pkt(0, b"A"*10),
+        make_pkt(20, b"b"*10),
     ]
 
     r = TCPReassembler(packets)
