@@ -1,0 +1,11 @@
+{
+            "instance_id": "EYW4S1",
+            "problem_statement": "Many web applications are vulnerable to brute-force login attacks, where an attacker repeatedly attempts to guess user credentials. Without monitoring and analysis, these attacks can go unnoticed and lead to account compromise. The goal of this task is to build a simple system that records login attempts and detects suspicious behavior, helping administrators quickly identify and respond to potential brute-force attacks.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/eyw4s1-login-attempt-analyzer-simple-brute-force-detection-system",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
