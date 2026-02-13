@@ -13,7 +13,7 @@ index 00000000..5920d0ea
 +
 diff --git a/repository_after/limiter.go b/repository_after/limiter.go
 new file mode 100644
-index 00000000..4545db5f
+index 00000000..39909991
 --- /dev/null
 +++ b/repository_after/limiter.go
 @@ -0,0 +1,208 @@
@@ -130,12 +130,12 @@ index 00000000..4545db5f
 +// Allow checks if the request should be permitted.
 +// Returns true if allowed, false if rate limited.
 +func (g *SpamGuard) Allow(clientID string) bool {
++	g.mu.Lock()
++	defer g.mu.Unlock()
++
 +	now := g.clock.Now()
 +	nowN := now.UnixNano()
 +	cutoff := now.Add(-g.windowSize).UnixNano()
-+
-+	g.mu.Lock()
-+	defer g.mu.Unlock()
 +
 +	g.calls++
 +	if g.sweepEvery > 0 && (g.calls%g.sweepEvery) == 0 {
