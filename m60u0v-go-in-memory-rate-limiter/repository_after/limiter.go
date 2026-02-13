@@ -111,12 +111,12 @@ func NewSpamGuard(maxReqs int, windowSize time.Duration) *SpamGuard {
 // Allow checks if the request should be permitted.
 // Returns true if allowed, false if rate limited.
 func (g *SpamGuard) Allow(clientID string) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
 	now := g.clock.Now()
 	nowN := now.UnixNano()
 	cutoff := now.Add(-g.windowSize).UnixNano()
-
-	g.mu.Lock()
-	defer g.mu.Unlock()
 
 	g.calls++
 	if g.sweepEvery > 0 && (g.calls%g.sweepEvery) == 0 {
