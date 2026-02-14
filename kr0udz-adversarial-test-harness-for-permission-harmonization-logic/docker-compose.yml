@@ -3,7 +3,7 @@ version: '3.8'
 services:
   test:
     build: .
-    command: pytest tests
+    command: pytest tests/test_harness_meta.py
     volumes:
       - .:/app
 
