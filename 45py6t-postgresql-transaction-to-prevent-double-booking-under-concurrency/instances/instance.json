@@ -1,0 +1,11 @@
+{
+            "instance_id": "45PY6T",
+            "problem_statement": "Design a PostgreSQL-only SQL transaction that prevents two clients from booking the same resource_id at the same time. Under real concurrency, exactly one booking attempt must succeed, and all competing attempts must either block or fail safely without corrupting state. The solution must be correct under PostgreSQL MVCC and real locking behavior, not based on myths like gap locks or phantom blocking. It must work using only SQL statements inside a single transaction and without adding constraints, tables, or app-side locking.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/45py6t-postgresql-transaction-to-prevent-double-booking-under-concurrency",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
