@@ -1,0 +1,15 @@
+{
+  "instance_id": "JPHXON",
+  "problem_statement": "In high-throughput systems, standard rate-limiting approaches fail due to two primary factors: lock contention and memory leaks. A naive implementation using a standard Go map protected by a single Mutex creates a bottleneck where every request serializes behind the lock, effectively reducing a multi-core server to single-threaded performance for that critical path. Furthermore, in a scenario with infinite unique user IDs (like a public promotion), a map that never deletes old keys will eventually trigger an Out-Of-Memory (OOM) crash. The engineering requirement is to manually implement a partitioned state store that distributes locking pressure across multiple memory segments and autonomously cleans up stale data without relying on a heavy background garbage collection thread that could introduce unpredictable latency jitter.",
+  "base_commit": "repository_before/",
+  "test_patch": "tests/",
+  "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/jphxon-sharded-leaky-bucket-rate-limiter-with-lazy-eviction",
+  "environment_setup": "Dockerfile",
+  "FAIL_TO_PASS": [
+    "TestShardDistribution",
+    "TestLeakyBucketMath",
+    "TestLazyEviction",
+    "TestConcurrency"
+  ],
+  "PASS_TO_PASS": []
+}

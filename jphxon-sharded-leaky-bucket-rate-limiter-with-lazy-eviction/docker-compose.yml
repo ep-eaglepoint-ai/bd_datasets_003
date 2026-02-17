@@ -1,0 +1,14 @@
+services:
+  test:
+    build: .
+    image: flowguard-app
+    command: /bin/sh -c "go mod tidy && go test -v ./tests/..."
+    volumes:
+      - .:/app
+
+  evaluation:
+    build: .
+    image: flowguard-app
+    command: python3 evaluation/evaluation.py
+    volumes:
+      - .:/app
