@@ -1,0 +1,12 @@
+services:
+  test-after:
+    build: .
+    volumes:
+      - .:/app
+    command: pytest -q tests/after_test.py
+
+  evaluation:
+    build: .
+    volumes:
+      - .:/app
+    command: python3 evaluation/Evaluation.py

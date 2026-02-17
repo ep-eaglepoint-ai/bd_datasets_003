@@ -1,0 +1,7 @@
+[
+    {"filename": "f1.exe", "sha256": "a" * 64, "payload_delivery_url": "http://site.com/1"},
+    {"filename": "f2.exe", "sha256": "b" * 64, "payload_delivery_url": "http://site.com/2"},
+    {"filename": "f3.exe", "sha256": "c" * 64, "payload_delivery_url": "http://site.com/3"},
+    {"filename": "f4.exe", "sha256": "d" * 64, "payload_delivery_url": "http://site.com/4"},
+    {"filename": "f5.exe", "sha256": "e" * 64, "payload_delivery_url": "http://site.com/5"}
+]
