@@ -1,0 +1,12 @@
+{
+            "instance_id": "Y37PRW",
+            "problem_statement": "Noticed significant performance issues when testing the image gallery feature of a photography portfolio application. The gallery displays user-uploaded photos with infinite scroll pagination, and the slowdown occurs in the utils/gallery.py module where images are fetched, sorted by upload date, and filtered by album membership. The endpoint becomes unresponsive when users have more than 500 photos in their collection.
+The system needs to return paginated results quickly regardless of total collection size, maintain correct chronological ordering across pages, and handle album filtering without scanning the entire dataset. Performance profiling showed that fetching page 20 of results takes 4.2 seconds compared to 80 milliseconds for page 1, the sorting operation runs on the full dataset before slicing for pagination, and memory usage spikes to 2GB when processing large galleries due to loading all image metadata at once.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/y37prw-gallery-optimzation",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
