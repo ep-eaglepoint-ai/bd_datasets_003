@@ -1,0 +1,15 @@
+{
+  "name": "mfqtgd-trustpay-p2p-settlement-engine",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "test": "cd repository_after/backend && npm test && cd ../frontend && npm test",
+    "evaluation": "node evaluation/evaluation.js",
+    "dev:backend": "npm --prefix repository_after/backend run dev",
+    "dev:frontend": "npm --prefix repository_after/frontend run dev"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4"
+  }
+}
+

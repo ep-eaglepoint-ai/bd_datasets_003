@@ -1,0 +1,42 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  active       Boolean  @default(true)
+  balanceCents Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  settlementsPaid Settlement[] @relation("SettlementsPaid")
+  settlementItems SettlementItem[]
+}
+
+model Settlement {
+  id         String   @id @default(uuid())
+  payerId    String
+  payer      User     @relation("SettlementsPaid", fields: [payerId], references: [id])
+  totalCents Int
+  createdAt  DateTime @default(now())
+
+  items SettlementItem[]
+}
+
+model SettlementItem {
+  id            String     @id @default(uuid())
+  settlementId  String
+  settlement    Settlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+  participantId String
+  participant   User       @relation(fields: [participantId], references: [id])
+  amountCents   Int
+
+  @@index([participantId])
+  @@index([settlementId])
+}
+
