@@ -1,0 +1,13 @@
+{
+            "instance_id": "T55NZ3",
+            "problem_statement": "You are building a production notification event processor used for push, email, and SMS delivery tracking. The system is closely monitored by SRE and data teams, so correctness is critical. Notification events coming from different services are unreliable: they can be duplicated, arrive out of order, be malformed, or be retried later with corrected data.
+
+Your task is to process these events safely and consistently so that notification state, acknowledgement counts, and activity timestamps are always accurate. Duplicate events must not apply effects more than once, rejected events must not corrupt state, and valid retries must always be allowed to succeed. The system must also produce a clear processing report that explains exactly what happened to every event.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/t55nz3-reliable-notification-event-processing-with-safe-retries-and-accurate-reporting",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
