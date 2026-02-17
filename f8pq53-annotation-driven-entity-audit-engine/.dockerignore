@@ -1,0 +1,9 @@
+.git
+.gitignore
+logs/
+evaluation/reports/
+repository_before/
+repository_after/target/
+**/target/
+**/*.log
+**/.DS_Store
