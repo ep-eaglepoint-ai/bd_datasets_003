@@ -1,0 +1,13 @@
+{
+            "instance_id": "96IA0C",
+            "problem_statement": "Noticed a performance degradation when testing the product search and listing flow in a Python-based e-commerce system. The issue appeared while working on the product listing and search endpoints in the routes/products.py and routes/search.py modules, where the goal is to retrieve products with their categories, brands, images, and tags while supporting filtering, sorting, and pagination. 
+
+The system needs to load product relationships efficiently without excessive queries, implement text search that uses database indexes properly, and ensure pagination works correctly for large result sets — all while maintaining fast response times under load. QA reported that the product listing endpoint for 20 products generates 47 separate SQL queries in the logs, text search for "wireless headphones" takes over 3 seconds with sequential scan warnings, and navigating to page 50 of results causes the API to timeout.",
+            "base_commit": "repository_before/",
+            "test_patch": "tests/",
+            "github_url": "https://github.com/ep-eaglepoint-ai/bd_datasets_003/tree/main/96ia0c-python-e-commerce-product-search-api-performance-optimization",
+            "environment_setup": "Dockerfile",
+            "FAIL_TO_PASS": [],
+            "PASS_TO_PASS": []
+        }
+        
