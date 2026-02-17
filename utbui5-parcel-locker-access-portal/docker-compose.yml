@@ -1,0 +1,18 @@
+services:
+  test-after:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=test
+    command: npm test
+
+  evaluation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=test
+    command: npm run evaluation
+    volumes:
+      - ./evaluation/reports:/app/evaluation/reports
