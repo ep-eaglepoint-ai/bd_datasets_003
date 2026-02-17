@@ -1,0 +1,22 @@
+# Docker Compose - Three Commands (ByteDance Standard)
+services:
+  before:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sn-tests:latest
+    command: sh -c "pytest -v --tb=short repository_before/ || true"
+
+  after:
+    image: sn-tests:latest
+    command: pytest -v --tb=short repository_after/
+    depends_on:
+      - before
+
+  evaluation:
+    image: sn-tests:latest
+    command: python evaluation/evaluation.py
+    volumes:
+      - ./evaluation/reports:/app/evaluation/reports
+    depends_on:
+      - before

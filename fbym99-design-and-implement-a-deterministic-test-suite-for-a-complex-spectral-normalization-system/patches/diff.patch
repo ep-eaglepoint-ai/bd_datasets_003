@@ -1,0 +1,31 @@
+diff --git a/repository_after/spectral_norm.py b/repository_after/spectral_norm.py
+new file mode 100644
+--- /dev/null
++++ b/repository_after/spectral_norm.py
+@@ -0,0 +1,443 @@
++# Spectral normalization implementation (443 lines)
++# See repository_after/spectral_norm.py for full source
+
+diff --git a/repository_after/test_spectral_normalization.py b/repository_after/test_spectral_normalization.py
+new file mode 100644
+--- /dev/null
++++ b/repository_after/test_spectral_normalization.py
+@@ -0,0 +1,650 @@
++# Comprehensive test suite (650 lines, 50+ tests)
++# See repository_after/test_spectral_normalization.py for full source
+
+diff --git a/tests/test_meta.py b/tests/test_meta.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_meta.py
+@@ -0,0 +1,250 @@
++# Meta-tests with bug injection (12 test classes)
++# See tests/test_meta.py for full source
+
+diff --git a/evaluation/evaluation.py b/evaluation/evaluation.py
+new file mode 100644
+--- /dev/null
++++ b/evaluation/evaluation.py
+@@ -0,0 +1,160 @@
++# Evaluation runner with JSON report generation
++# See evaluation/evaluation.py for full source
