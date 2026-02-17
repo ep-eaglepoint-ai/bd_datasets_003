@@ -1,0 +1,14 @@
+services:
+  test_after:
+    build: .
+    command: [ "python", "-m", "pytest", "tests", "-v", "--tb=short" ]
+    environment:
+      - TEST_REPO_PATH=repository_after
+    volumes:
+      - .:/app
+
+  evaluation:
+    build: .
+    command: [ "python", "evaluation/evaluation.py" ]
+    volumes:
+      - .:/app
