@@ -1,0 +1,1334 @@
+diff --git a/repository_before/.gitkeep b/repository_before/.gitkeep
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/repository_after/__init__.py b/repository_after/__init__.py
+new file mode 100644
+index 0000000..e11a854
+--- /dev/null
++++ b/repository_after/__init__.py
+@@ -0,0 +1,2 @@
++"""Repository after package."""
++
+diff --git a/repository_after/backend/__init__.py b/repository_after/backend/__init__.py
+new file mode 100644
+index 0000000..77f759c
+--- /dev/null
++++ b/repository_after/backend/__init__.py
+@@ -0,0 +1,2 @@
++"""Backend package for ephemeral secret sharing service."""
++
+diff --git a/repository_after/backend/config.py b/repository_after/backend/config.py
+new file mode 100644
+index 0000000..55692d0
+--- /dev/null
++++ b/repository_after/backend/config.py
+@@ -0,0 +1,48 @@
++"""Configuration management for the application."""
++import os
++import secrets
++from typing import Optional
++
++
++class Config:
++    """Application configuration."""
++    
++    # Redis configuration
++    REDIS_HOST: str = os.getenv("REDIS_HOST", "localhost")
++    REDIS_PORT: int = int(os.getenv("REDIS_PORT", "6379"))
++    REDIS_DB: int = int(os.getenv("REDIS_DB", "0"))
++    REDIS_PASSWORD: Optional[str] = os.getenv("REDIS_PASSWORD", None)
++    
++    # Encryption key
++    AES_KEY: Optional[bytes] = None
++    
++    # CORS settings
++    CORS_ORIGINS: list[str] = os.getenv(
++        "CORS_ORIGINS", 
++        "http://localhost:3000,http://localhost:5173"
++    ).split(",")
++    
++    # API settings
++    API_PREFIX: str = "/api"
++    
++    @classmethod
++    def get_encryption_key(cls) -> bytes:
++        """Get or generate AES encryption key."""
++        if cls.AES_KEY is None:
++            key_env = os.getenv("AES_KEY")
++            if key_env:
++                # Key should be 32 bytes (256 bits) for AES-256
++                key_bytes = key_env.encode() if isinstance(key_env, str) else key_env
++                if len(key_bytes) == 32:
++                    cls.AES_KEY = key_bytes
++                else:
++                    raise ValueError(
++                        f"AES_KEY must be exactly 32 bytes, got {len(key_bytes)} bytes"
++                    )
++            else:
++                # Generate a random 32-byte key
++                cls.AES_KEY = secrets.token_bytes(32)
++                print(f"WARNING: Generated AES key (not from env). Key: {cls.AES_KEY.hex()}")
++                print("Set AES_KEY environment variable for production use.")
++        return cls.AES_KEY
++
+diff --git a/repository_after/backend/encryption.py b/repository_after/backend/encryption.py
+new file mode 100644
+index 0000000..f38efe3
+--- /dev/null
++++ b/repository_after/backend/encryption.py
+@@ -0,0 +1,62 @@
++"""AES-256-GCM encryption service."""
++import secrets
++from typing import Optional
++from cryptography.hazmat.primitives.ciphers.aead import AESGCM
++from .config import Config
++
++
++class EncryptionService:
++    """Service for encrypting and decrypting secrets using AES-256-GCM."""
++    
++    def __init__(self, key: Optional[bytes] = None):
++        """Initialize encryption service with a key.
++        
++        Args:
++            key: Optional encryption key. If not provided, uses Config.get_encryption_key()
++        """
++        self.key = key or Config.get_encryption_key()
++        if len(self.key) != 32:
++            raise ValueError("Encryption key must be exactly 32 bytes (256 bits)")
++        self.cipher = AESGCM(self.key)
++    
++    def encrypt(self, secret: str) -> tuple[bytes, bytes]:
++        """Encrypt a secret string.
++        
++        Args:
++            secret: The plaintext secret to encrypt
++            
++        Returns:
++            Tuple of (ciphertext, nonce) as bytes
++        """
++        # Generate a random 12-byte nonce for GCM
++        nonce = secrets.token_bytes(12)
++        
++        # Encrypt the secret
++        secret_bytes = secret.encode('utf-8')
++        ciphertext = self.cipher.encrypt(nonce, secret_bytes, None)
++        
++        return ciphertext, nonce
++    
++    def decrypt(self, ciphertext: bytes, nonce: bytes) -> str:
++        """Decrypt a secret.
++        
++        Args:
++            ciphertext: The encrypted secret
++            nonce: The nonce used for encryption
++            
++        Returns:
++            The decrypted plaintext string
++            
++        Raises:
++            ValueError: If decryption fails (invalid ciphertext or nonce)
++        """
++        try:
++            plaintext = self.cipher.decrypt(nonce, ciphertext, None)
++            return plaintext.decode('utf-8')
++        except Exception as e:
++            raise ValueError(f"Decryption failed: {str(e)}")
++
++
++# Global encryption service instance
++encryption_service = EncryptionService()
++
+diff --git a/repository_after/backend/main.py b/repository_after/backend/main.py
+new file mode 100644
+index 0000000..e9c6f85
+--- /dev/null
++++ b/repository_after/backend/main.py
+@@ -0,0 +1,127 @@
++"""FastAPI application for ephemeral secret sharing."""
++import uuid
++from fastapi import FastAPI, HTTPException, status
++from fastapi.middleware.cors import CORSMiddleware
++from .config import Config
++from .models import SecretCreate, SecretResponse, SecretView
++from .encryption import encryption_service
++from .redis_client import redis_client
++
++app = FastAPI(
++    title="Ephemeral Secret Sharing Service",
++    description="Secure secret sharing with burn-on-read functionality",
++    version="1.0.0"
++)
++
++# Configure CORS
++app.add_middleware(
++    CORSMiddleware,
++    allow_origins=Config.CORS_ORIGINS,
++    allow_credentials=True,
++    allow_methods=["*"],
++    allow_headers=["*"],
++)
++
++
++@app.on_event("startup")
++async def startup_event():
++    """Check Redis connection on startup."""
++    if not redis_client.ping():
++        raise RuntimeError("Failed to connect to Redis. Please check your Redis configuration.")
++
++
++@app.get("/health")
++async def health_check():
++    """Health check endpoint."""
++    redis_healthy = redis_client.ping()
++    return {
++        "status": "healthy" if redis_healthy else "unhealthy",
++        "redis": "connected" if redis_healthy else "disconnected"
++    }
++
++
++@app.post(f"{Config.API_PREFIX}/secrets", response_model=SecretResponse, status_code=status.HTTP_201_CREATED)
++async def create_secret(secret_data: SecretCreate):
++    """Create a new ephemeral secret.
++    
++    Args:
++        secret_data: Secret content and TTL
++        
++    Returns:
++        SecretResponse with URL and UUID
++    """
++    try:
++        # Generate unique UUID
++        secret_uuid = str(uuid.uuid4())
++        
++        # Encrypt the secret
++        ciphertext, nonce = encryption_service.encrypt(secret_data.secret)
++        
++        # Calculate TTL in seconds
++        ttl_seconds = int(secret_data.ttl_hours * 3600)
++        
++        # Store in Redis with expiration
++        redis_client.store_secret(secret_uuid, ciphertext, nonce, ttl_seconds)
++        
++        # Generate URL (frontend will handle the base URL)
++        url = f"/secret/{secret_uuid}"
++        
++        return SecretResponse(url=url, uuid=secret_uuid)
++    
++    except Exception as e:
++        raise HTTPException(
++            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
++            detail=f"Failed to create secret: {str(e)}"
++        )
++
++
++@app.get(f"{Config.API_PREFIX}/secrets/{{uuid}}", response_model=SecretView)
++async def get_secret(uuid: str):
++    """Retrieve and delete a secret (burn-on-read).
++    
++    Args:
++        uuid: The UUID of the secret to retrieve
++        
++    Returns:
++        SecretView with decrypted secret
++        
++    Raises:
++        HTTPException: If secret not found or expired
++    """
++    try:
++        # Atomically get and delete from Redis
++        encrypted_data = redis_client.get_and_delete_secret(uuid)
++        
++        if encrypted_data is None:
++            raise HTTPException(
++                status_code=status.HTTP_404_NOT_FOUND,
++                detail="Secret not found or has already been read"
++            )
++        
++        # Decrypt the secret
++        try:
++            decrypted_secret = encryption_service.decrypt(
++                encrypted_data["ciphertext"],
++                encrypted_data["nonce"]
++            )
++        except ValueError as e:
++            raise HTTPException(
++                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
++                detail=f"Failed to decrypt secret: {str(e)}"
++            )
++        
++        return SecretView(secret=decrypted_secret)
++    
++    except HTTPException:
++        raise
++    except Exception as e:
++        raise HTTPException(
++            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
++            detail=f"Failed to retrieve secret: {str(e)}"
++        )
++
++
++if __name__ == "__main__":
++    import uvicorn
++    uvicorn.run(app, host="0.0.0.0", port=8000)
++
+diff --git a/repository_after/backend/models.py b/repository_after/backend/models.py
+new file mode 100644
+index 0000000..c24fbb3
+--- /dev/null
++++ b/repository_after/backend/models.py
+@@ -0,0 +1,35 @@
++"""Pydantic models for request/response validation."""
++
++from pydantic import BaseModel, Field, field_validator
++
++
++class SecretCreate(BaseModel):
++    """Request model for creating a secret."""
++
++    secret: str = Field(
++        ..., min_length=1, description="The secret to encrypt and store"
++    )
++    ttl_hours: float = Field(
++        ..., ge=0.001, le=168, description="Time to live in hours (0.001 to 168)"
++    )
++
++    @field_validator("secret")
++    @classmethod
++    def validate_secret_not_empty(cls, v: str) -> str:
++        """Ensure secret is not empty."""
++        if not v or not v.strip():
++            raise ValueError("Secret cannot be empty")
++        return v.strip()
++
++
++class SecretResponse(BaseModel):
++    """Response model after creating a secret."""
++
++    url: str = Field(..., description="Unique URL to access the secret")
++    uuid: str = Field(..., description="UUID of the secret")
++
++
++class SecretView(BaseModel):
++    """Response model for viewing a secret."""
++
++    secret: str = Field(..., description="The decrypted secret")
+diff --git a/repository_after/backend/redis_client.py b/repository_after/backend/redis_client.py
+new file mode 100644
+index 0000000..47146a6
+--- /dev/null
++++ b/repository_after/backend/redis_client.py
+@@ -0,0 +1,96 @@
++"""Redis client with atomic operations for burn-on-read."""
++import json
++import redis
++from typing import Optional
++from .config import Config
++
++
++class RedisClient:
++    """Redis client wrapper with atomic burn-on-read operations."""
++    
++    # Lua script for atomic GET + DEL operation
++    BURN_ON_READ_SCRIPT = """
++    local value = redis.call('GET', KEYS[1])
++    if value then
++        redis.call('DEL', KEYS[1])
++    end
++    return value
++    """
++    
++    def __init__(self):
++        """Initialize Redis connection."""
++        self.redis_client = redis.Redis(
++            host=Config.REDIS_HOST,
++            port=Config.REDIS_PORT,
++            db=Config.REDIS_DB,
++            password=Config.REDIS_PASSWORD,
++            decode_responses=False  # We need bytes for encrypted data
++        )
++        # Pre-load the Lua script for better performance
++        self.burn_script = self.redis_client.register_script(self.BURN_ON_READ_SCRIPT)
++    
++    def store_secret(self, key: str, ciphertext: bytes, nonce: bytes, ttl_seconds: int) -> None:
++        """Store encrypted secret in Redis with TTL.
++        
++        Args:
++            key: Redis key (UUID)
++            ciphertext: Encrypted secret bytes
++            nonce: Encryption nonce bytes
++            ttl_seconds: Time to live in seconds
++        """
++        # Store as JSON: {"ciphertext": base64, "nonce": base64}
++        import base64
++        data = {
++            "ciphertext": base64.b64encode(ciphertext).decode('utf-8'),
++            "nonce": base64.b64encode(nonce).decode('utf-8')
++        }
++        value = json.dumps(data).encode('utf-8')
++        
++        # Store with expiration
++        self.redis_client.setex(key, ttl_seconds, value)
++    
++    def get_and_delete_secret(self, key: str) -> Optional[dict]:
++        """Atomically get and delete a secret from Redis.
++        
++        This operation is atomic and prevents race conditions where
++        multiple requests could read the same secret.
++        
++        Args:
++            key: Redis key (UUID)
++            
++        Returns:
++            Dictionary with 'ciphertext' and 'nonce' keys, or None if not found
++        """
++        # Execute atomic GET + DEL using Lua script
++        result = self.burn_script(keys=[key])
++        
++        if result is None:
++            return None
++        
++        # Parse JSON response
++        try:
++            import base64
++            data = json.loads(result.decode('utf-8'))
++            return {
++                "ciphertext": base64.b64decode(data["ciphertext"]),
++                "nonce": base64.b64decode(data["nonce"])
++            }
++        except (json.JSONDecodeError, KeyError, ValueError) as e:
++            # If parsing fails, the data is corrupted
++            return None
++    
++    def ping(self) -> bool:
++        """Check Redis connection.
++        
++        Returns:
++            True if connected, False otherwise
++        """
++        try:
++            return self.redis_client.ping()
++        except Exception:
++            return False
++
++
++# Global Redis client instance
++redis_client = RedisClient()
++
+diff --git a/repository_after/frontend/index.html b/repository_after/frontend/index.html
+new file mode 100644
+index 0000000..03bd9fe
+--- /dev/null
++++ b/repository_after/frontend/index.html
+@@ -0,0 +1,14 @@
++<!DOCTYPE html>
++<html lang="en">
++  <head>
++    <meta charset="UTF-8" />
++    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
++    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
++    <title>Ephemeral Secret Sharing</title>
++  </head>
++  <body>
++    <div id="root"></div>
++    <script type="module" src="/src/main.jsx"></script>
++  </body>
++</html>
++
+diff --git a/repository_after/frontend/src/App.jsx b/repository_after/frontend/src/App.jsx
+new file mode 100644
+index 0000000..eaf22dc
+--- /dev/null
++++ b/repository_after/frontend/src/App.jsx
+@@ -0,0 +1,17 @@
++import { BrowserRouter, Routes, Route } from 'react-router-dom';
++import SecretForm from './components/SecretForm';
++import SecretViewer from './components/SecretViewer';
++
++function App() {
++  return (
++    <BrowserRouter>
++      <Routes>
++        <Route path="/" element={<SecretForm />} />
++        <Route path="/secret/:uuid" element={<SecretViewer />} />
++      </Routes>
++    </BrowserRouter>
++  );
++}
++
++export default App;
++
+diff --git a/repository_after/frontend/src/api.js b/repository_after/frontend/src/api.js
+new file mode 100644
+index 0000000..94682cc
+--- /dev/null
++++ b/repository_after/frontend/src/api.js
+@@ -0,0 +1,24 @@
++import axios from 'axios';
++
++const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
++
++const api = axios.create({
++  baseURL: API_BASE_URL,
++  headers: {
++    'Content-Type': 'application/json',
++  },
++});
++
++export const createSecret = async (secret, ttlHours) => {
++  const response = await api.post('/api/secrets', {
++    secret,
++    ttl_hours: ttlHours,
++  });
++  return response.data;
++};
++
++export const getSecret = async (uuid) => {
++  const response = await api.get(`/api/secrets/${uuid}`);
++  return response.data;
++};
++
+diff --git a/repository_after/frontend/src/components/SecretForm.css b/repository_after/frontend/src/components/SecretForm.css
+new file mode 100644
+index 0000000..53a6f13
+--- /dev/null
++++ b/repository_after/frontend/src/components/SecretForm.css
+@@ -0,0 +1,282 @@
++.secret-form-container {
++  background: white;
++  border-radius: 12px;
++  padding: 40px;
++  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
++}
++
++h1 {
++  color: #333;
++  margin-bottom: 10px;
++  font-size: 2rem;
++  text-align: center;
++}
++
++.subtitle {
++  color: #666;
++  text-align: center;
++  margin-bottom: 30px;
++  font-size: 0.95rem;
++}
++
++.secret-form {
++  display: flex;
++  flex-direction: column;
++  gap: 20px;
++}
++
++.form-group {
++  display: flex;
++  flex-direction: column;
++  gap: 8px;
++}
++
++.form-group label {
++  font-weight: 600;
++  color: #333;
++  font-size: 0.9rem;
++}
++
++.form-group textarea,
++.form-group select {
++  padding: 12px;
++  border: 2px solid #e0e0e0;
++  border-radius: 8px;
++  font-size: 1rem;
++  font-family: inherit;
++  transition: border-color 0.2s;
++}
++
++.form-group textarea:focus,
++.form-group select:focus {
++  outline: none;
++  border-color: #667eea;
++}
++
++.form-group textarea {
++  resize: vertical;
++  min-height: 120px;
++}
++
++button {
++  padding: 14px 24px;
++  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
++  color: white;
++  border: none;
++  border-radius: 8px;
++  font-size: 1rem;
++  font-weight: 600;
++  cursor: pointer;
++  transition: transform 0.2s, box-shadow 0.2s;
++}
++
++button:hover:not(:disabled) {
++  transform: translateY(-2px);
++  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
++}
++
++button:disabled {
++  opacity: 0.6;
++  cursor: not-allowed;
++}
++
++.error-message {
++  background: #fee;
++  color: #c33;
++  padding: 12px;
++  border-radius: 8px;
++  border: 1px solid #fcc;
++  font-size: 0.9rem;
++}
++
++.result-container {
++  text-align: center;
++}
++
++.result-container h2 {
++  color: #333;
++  margin-bottom: 20px;
++}
++
++.warning-text {
++  background: #fff3cd;
++  color: #856404;
++  padding: 12px;
++  border-radius: 8px;
++  margin-bottom: 20px;
++  font-weight: 500;
++}
++
++.url-display {
++  display: flex;
++  gap: 10px;
++  margin-bottom: 20px;
++}
++
++.url-input {
++  flex: 1;
++  padding: 12px;
++  border: 2px solid #e0e0e0;
++  border-radius: 8px;
++  font-size: 0.9rem;
++  font-family: monospace;
++  background: #f8f9fa;
++}
++
++.copy-button {
++  padding: 12px 24px;
++  white-space: nowrap;
++}
++
++.create-another-button {
++  background: #6c757d;
++  width: 100%;
++}
++
++/* TTL Selector Styles */
++.ttl-selector {
++  display: flex;
++  flex-direction: column;
++  gap: 15px;
++}
++
++.ttl-mode-toggle {
++  display: flex;
++  gap: 8px;
++  background: #f8f9fa;
++  padding: 4px;
++  border-radius: 8px;
++}
++
++.mode-button {
++  flex: 1;
++  padding: 10px 16px;
++  background: transparent;
++  border: none;
++  border-radius: 6px;
++  font-size: 0.9rem;
++  font-weight: 500;
++  color: #666;
++  cursor: pointer;
++  transition: all 0.2s;
++}
++
++.mode-button:hover {
++  background: rgba(102, 126, 234, 0.1);
++  color: #667eea;
++}
++
++.mode-button.active {
++  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
++  color: white;
++  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
++}
++
++.preset-options {
++  display: grid;
++  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
++  gap: 10px;
++}
++
++.preset-button {
++  padding: 12px 16px;
++  background: white;
++  border: 2px solid #e0e0e0;
++  border-radius: 8px;
++  font-size: 0.9rem;
++  font-weight: 500;
++  color: #333;
++  cursor: pointer;
++  transition: all 0.2s;
++}
++
++.preset-button:hover {
++  border-color: #667eea;
++  background: rgba(102, 126, 234, 0.05);
++  transform: translateY(-1px);
++}
++
++.preset-button.selected {
++  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
++  color: white;
++  border-color: transparent;
++  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
++}
++
++.custom-time-inputs {
++  display: flex;
++  gap: 15px;
++  align-items: flex-end;
++}
++
++.time-input-group {
++  flex: 1;
++  display: flex;
++  flex-direction: column;
++  gap: 6px;
++}
++
++.time-input-group label {
++  font-size: 0.85rem;
++  color: #666;
++  font-weight: 500;
++}
++
++.time-input {
++  padding: 12px;
++  border: 2px solid #e0e0e0;
++  border-radius: 8px;
++  font-size: 1rem;
++  font-family: inherit;
++  transition: border-color 0.2s;
++  width: 100%;
++}
++
++.time-input:focus {
++  outline: none;
++  border-color: #667eea;
++}
++
++.ttl-preview {
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  gap: 8px;
++  padding: 12px;
++  background: #f8f9fa;
++  border-radius: 8px;
++  border: 2px solid #e0e0e0;
++  transition: all 0.2s;
++}
++
++.ttl-preview.invalid {
++  background: #fff5f5;
++  border-color: #fcc;
++}
++
++.preview-label {
++  font-size: 0.9rem;
++  color: #666;
++  font-weight: 500;
++}
++
++.preview-value {
++  font-size: 1rem;
++  color: #667eea;
++  font-weight: 600;
++}
++
++.ttl-preview.invalid .preview-value {
++  color: #c33;
++}
++
++.ttl-error {
++  background: #fee;
++  color: #c33;
++  padding: 10px;
++  border-radius: 8px;
++  border: 1px solid #fcc;
++  font-size: 0.85rem;
++  text-align: center;
++}
++
+diff --git a/repository_after/frontend/src/components/SecretForm.jsx b/repository_after/frontend/src/components/SecretForm.jsx
+new file mode 100644
+index 0000000..c684d62
+--- /dev/null
++++ b/repository_after/frontend/src/components/SecretForm.jsx
+@@ -0,0 +1,224 @@
++import { useState } from 'react';
++import { createSecret } from '../api';
++import './SecretForm.css';
++
++// Preset TTL options in hours
++const TTL_PRESETS = [
++  { value: 0.25, label: '15 minutes', hours: 0, minutes: 15 },
++  { value: 1, label: '1 hour', hours: 1, minutes: 0 },
++  { value: 6, label: '6 hours', hours: 6, minutes: 0 },
++  { value: 24, label: '24 hours', hours: 24, minutes: 0 },
++  { value: 168, label: '7 days', hours: 168, minutes: 0 },
++];
++
++// Helper function to format hours as human-readable time
++const formatTime = (hours) => {
++  if (hours < 1) {
++    const minutes = Math.round(hours * 60);
++    return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
++  } else if (hours < 24) {
++    const h = Math.floor(hours);
++    const m = Math.round((hours - h) * 60);
++    if (m === 0) {
++      return `${h} hour${h !== 1 ? 's' : ''}`;
++    }
++    return `${h} hour${h !== 1 ? 's' : ''} ${m} minute${m !== 1 ? 's' : ''}`;
++  } else {
++    const days = Math.floor(hours / 24);
++    const remainingHours = Math.floor(hours % 24);
++    if (remainingHours === 0) {
++      return `${days} day${days !== 1 ? 's' : ''}`;
++    }
++    return `${days} day${days !== 1 ? 's' : ''} ${remainingHours} hour${remainingHours !== 1 ? 's' : ''}`;
++  }
++};
++
++export default function SecretForm() {
++  const [secret, setSecret] = useState('');
++  const [ttlMode, setTtlMode] = useState('preset'); // 'preset' or 'custom'
++  const [ttlPreset, setTtlPreset] = useState(24); // hours
++  const [ttlCustomHours, setTtlCustomHours] = useState(24);
++  const [ttlCustomMinutes, setTtlCustomMinutes] = useState(0);
++  const [loading, setLoading] = useState(false);
++  const [error, setError] = useState('');
++  const [result, setResult] = useState(null);
++
++  // Calculate total hours from current TTL settings
++  const getTtlHours = () => {
++    if (ttlMode === 'preset') {
++      return ttlPreset;
++    } else {
++      const totalHours = ttlCustomHours + (ttlCustomMinutes / 60);
++      // Ensure minimum of 0.1 hours (6 minutes) as per backend validation
++      return Math.max(0.1, totalHours);
++    }
++  };
++
++  const ttlHours = getTtlHours();
++  const isValidTtl = ttlHours >= 0.1 && ttlHours <= 168;
++
++  const handleSubmit = async (e) => {
++    e.preventDefault();
++    setError('');
++    setLoading(true);
++
++    try {
++      const response = await createSecret(secret, ttlHours);
++      const fullUrl = `${window.location.origin}${response.url}`;
++      setResult({ ...response, fullUrl });
++      setSecret(''); // Clear form
++    } catch (err) {
++      setError(
++        err.response?.data?.detail || 
++        err.message || 
++        'Failed to create secret. Please try again.'
++      );
++    } finally {
++      setLoading(false);
++    }
++  };
++
++  const copyToClipboard = () => {
++    navigator.clipboard.writeText(result.fullUrl);
++    alert('URL copied to clipboard!');
++  };
++
++  return (
++    <div className="secret-form-container">
++      <h1>Ephemeral Secret Sharing</h1>
++      <p className="subtitle">Share sensitive credentials securely. Secrets self-destruct after one read.</p>
++      
++      {!result ? (
++        <form onSubmit={handleSubmit} className="secret-form">
++          <div className="form-group">
++            <label htmlFor="secret">Secret</label>
++            <textarea
++              id="secret"
++              value={secret}
++              onChange={(e) => setSecret(e.target.value)}
++              placeholder="Enter your secret (API key, password, etc.)"
++              required
++              rows={6}
++            />
++          </div>
++
++          <div className="form-group">
++            <label htmlFor="ttl">Expiration Time</label>
++            <div className="ttl-selector">
++              <div className="ttl-mode-toggle">
++                <button
++                  type="button"
++                  className={`mode-button ${ttlMode === 'preset' ? 'active' : ''}`}
++                  onClick={() => setTtlMode('preset')}
++                >
++                  Quick Select
++                </button>
++                <button
++                  type="button"
++                  className={`mode-button ${ttlMode === 'custom' ? 'active' : ''}`}
++                  onClick={() => setTtlMode('custom')}
++                >
++                  Custom Time
++                </button>
++              </div>
++
++              {ttlMode === 'preset' ? (
++                <div className="preset-options">
++                  {TTL_PRESETS.map((preset) => (
++                    <button
++                      key={preset.value}
++                      type="button"
++                      className={`preset-button ${ttlPreset === preset.value ? 'selected' : ''}`}
++                      onClick={() => setTtlPreset(preset.value)}
++                    >
++                      {preset.label}
++                    </button>
++                  ))}
++                </div>
++              ) : (
++                <div className="custom-time-inputs">
++                  <div className="time-input-group">
++                    <label htmlFor="custom-hours">Hours</label>
++                    <input
++                      id="custom-hours"
++                      type="number"
++                      min="0"
++                      max="168"
++                      value={ttlCustomHours}
++                      onChange={(e) => {
++                        const val = Math.max(0, Math.min(168, parseInt(e.target.value) || 0));
++                        setTtlCustomHours(val);
++                      }}
++                      className="time-input"
++                    />
++                  </div>
++                  <div className="time-input-group">
++                    <label htmlFor="custom-minutes">Minutes</label>
++                    <input
++                      id="custom-minutes"
++                      type="number"
++                      min="0"
++                      max="59"
++                      value={ttlCustomMinutes}
++                      onChange={(e) => {
++                        const val = Math.max(0, Math.min(59, parseInt(e.target.value) || 0));
++                        setTtlCustomMinutes(val);
++                      }}
++                      className="time-input"
++                    />
++                  </div>
++                </div>
++              )}
++
++              <div className={`ttl-preview ${!isValidTtl ? 'invalid' : ''}`}>
++                <span className="preview-label">Expires in:</span>
++                <span className="preview-value">
++                  {isValidTtl ? formatTime(ttlHours) : 'Invalid time (min: 6 min, max: 7 days)'}
++                </span>
++              </div>
++              {!isValidTtl && (
++                <div className="ttl-error">
++                  Please enter a valid expiration time between 6 minutes and 7 days.
++                </div>
++              )}
++            </div>
++          </div>
++
++          {error && <div className="error-message">{error}</div>}
++
++          <button type="submit" disabled={loading || !secret.trim() || !isValidTtl}>
++            {loading ? 'Creating...' : 'Create Secret Link'}
++          </button>
++        </form>
++      ) : (
++        <div className="result-container">
++          <h2>Secret Link Created</h2>
++          <p className="warning-text">
++            ⚠️ This link can only be accessed once. Share it securely.
++          </p>
++          <div className="url-display">
++            <input
++              type="text"
++              value={result.fullUrl}
++              readOnly
++              className="url-input"
++            />
++            <button onClick={copyToClipboard} className="copy-button">
++              Copy
++            </button>
++          </div>
++          <button
++            onClick={() => {
++              setResult(null);
++              setError('');
++            }}
++            className="create-another-button"
++          >
++            Create Another Secret
++          </button>
++        </div>
++      )}
++    </div>
++  );
++}
++
+diff --git a/repository_after/frontend/src/components/SecretViewer.css b/repository_after/frontend/src/components/SecretViewer.css
+new file mode 100644
+index 0000000..babed88
+--- /dev/null
++++ b/repository_after/frontend/src/components/SecretViewer.css
+@@ -0,0 +1,131 @@
++.secret-viewer-container {
++  background: white;
++  border-radius: 12px;
++  padding: 40px;
++  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
++}
++
++.secret-viewer-container h1 {
++  color: #333;
++  margin-bottom: 20px;
++  text-align: center;
++  font-size: 2rem;
++}
++
++.warning-box {
++  background: #fff3cd;
++  border: 2px solid #ffc107;
++  color: #856404;
++  padding: 16px;
++  border-radius: 8px;
++  margin-bottom: 30px;
++  font-size: 0.95rem;
++  line-height: 1.6;
++}
++
++.warning-box strong {
++  display: block;
++  margin-bottom: 8px;
++  font-size: 1.05rem;
++}
++
++.loading {
++  text-align: center;
++  color: #666;
++  font-size: 1.1rem;
++  padding: 40px;
++}
++
++.error-container {
++  text-align: center;
++}
++
++.error-container h2 {
++  color: #c33;
++  margin-bottom: 20px;
++}
++
++.error-message {
++  background: #fee;
++  color: #c33;
++  padding: 16px;
++  border-radius: 8px;
++  margin-bottom: 20px;
++  font-size: 1rem;
++  font-weight: 500;
++}
++
++.error-detail {
++  color: #666;
++  text-align: left;
++  margin: 20px 0;
++  line-height: 1.8;
++}
++
++.error-detail ul {
++  margin: 10px 0 0 20px;
++}
++
++.home-link {
++  display: inline-block;
++  margin-top: 20px;
++  padding: 12px 24px;
++  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
++  color: white;
++  text-decoration: none;
++  border-radius: 8px;
++  font-weight: 600;
++  transition: transform 0.2s;
++}
++
++.home-link:hover {
++  transform: translateY(-2px);
++}
++
++.reveal-section {
++  text-align: center;
++}
++
++.reveal-prompt {
++  color: #666;
++  margin-bottom: 20px;
++  font-size: 1rem;
++}
++
++.reveal-button {
++  padding: 16px 32px;
++  font-size: 1.1rem;
++  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
++}
++
++.secret-display {
++  text-align: center;
++}
++
++.secret-content {
++  background: #f8f9fa;
++  border: 2px solid #e0e0e0;
++  border-radius: 8px;
++  padding: 20px;
++  margin-bottom: 20px;
++  word-break: break-all;
++}
++
++.secret-content pre {
++  margin: 0;
++  font-family: 'Courier New', monospace;
++  font-size: 0.95rem;
++  white-space: pre-wrap;
++  color: #333;
++}
++
++.copy-secret-button {
++  margin-bottom: 15px;
++}
++
++.reminder-text {
++  color: #666;
++  font-size: 0.9rem;
++  font-style: italic;
++}
++
+diff --git a/repository_after/frontend/src/components/SecretViewer.jsx b/repository_after/frontend/src/components/SecretViewer.jsx
+new file mode 100644
+index 0000000..aaef799
+--- /dev/null
++++ b/repository_after/frontend/src/components/SecretViewer.jsx
+@@ -0,0 +1,104 @@
++import { useState, useEffect } from 'react';
++import { useParams } from 'react-router-dom';
++import { getSecret } from '../api';
++import './SecretViewer.css';
++
++export default function SecretViewer() {
++  const { uuid } = useParams();
++  const [secret, setSecret] = useState(null);
++  const [revealed, setRevealed] = useState(false);
++  const [loading, setLoading] = useState(true);
++  const [error, setError] = useState('');
++  const [copied, setCopied] = useState(false);
++
++  useEffect(() => {
++    const fetchSecret = async () => {
++      try {
++        const response = await getSecret(uuid);
++        setSecret(response.secret);
++      } catch (err) {
++        setError(
++          err.response?.data?.detail || 
++          err.message || 
++          'Secret not found or has already been read'
++        );
++      } finally {
++        setLoading(false);
++      }
++    };
++
++    fetchSecret();
++  }, [uuid]);
++
++  const handleReveal = () => {
++    setRevealed(true);
++  };
++
++  const copyToClipboard = () => {
++    if (secret) {
++      navigator.clipboard.writeText(secret);
++      setCopied(true);
++      setTimeout(() => setCopied(false), 2000);
++    }
++  };
++
++  if (loading) {
++    return (
++      <div className="secret-viewer-container">
++        <div className="loading">Loading secret...</div>
++      </div>
++    );
++  }
++
++  if (error) {
++    return (
++      <div className="secret-viewer-container">
++        <div className="error-container">
++          <h2>Secret Unavailable</h2>
++          <p className="error-message">{error}</p>
++          <p className="error-detail">
++            This secret may have been:
++            <ul>
++              <li>Already read (secrets can only be viewed once)</li>
++              <li>Expired (past its time-to-live)</li>
++              <li>Never existed</li>
++            </ul>
++          </p>
++          <a href="/" className="home-link">Create a new secret</a>
++        </div>
++      </div>
++    );
++  }
++
++  return (
++    <div className="secret-viewer-container">
++      <h1>Secret Retrieved</h1>
++      <div className="warning-box">
++        <strong>⚠️ Important:</strong> This secret has been permanently deleted from our servers.
++        It cannot be accessed again. Close this page or refresh to ensure it's not visible to others.
++      </div>
++
++      {!revealed ? (
++        <div className="reveal-section">
++          <p className="reveal-prompt">Click the button below to reveal the secret:</p>
++          <button onClick={handleReveal} className="reveal-button">
++            Reveal Secret
++          </button>
++        </div>
++      ) : (
++        <div className="secret-display">
++          <div className="secret-content">
++            <pre>{secret}</pre>
++          </div>
++          <button onClick={copyToClipboard} className="copy-secret-button">
++            {copied ? '✓ Copied!' : 'Copy Secret'}
++          </button>
++          <p className="reminder-text">
++            Remember: This secret has been deleted and cannot be retrieved again.
++          </p>
++        </div>
++      )}
++    </div>
++  );
++}
++
+diff --git a/repository_after/frontend/src/index.css b/repository_after/frontend/src/index.css
+new file mode 100644
+index 0000000..8d12206
+--- /dev/null
++++ b/repository_after/frontend/src/index.css
+@@ -0,0 +1,25 @@
++* {
++  margin: 0;
++  padding: 0;
++  box-sizing: border-box;
++}
++
++body {
++  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
++    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
++    sans-serif;
++  -webkit-font-smoothing: antialiased;
++  -moz-osx-font-smoothing: grayscale;
++  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
++  min-height: 100vh;
++  display: flex;
++  justify-content: center;
++  align-items: center;
++  padding: 20px;
++}
++
++#root {
++  width: 100%;
++  max-width: 600px;
++}
++
+diff --git a/repository_after/frontend/src/main.jsx b/repository_after/frontend/src/main.jsx
+new file mode 100644
+index 0000000..299bc52
+--- /dev/null
++++ b/repository_after/frontend/src/main.jsx
+@@ -0,0 +1,11 @@
++import React from 'react'
++import ReactDOM from 'react-dom/client'
++import App from './App.jsx'
++import './index.css'
++
++ReactDOM.createRoot(document.getElementById('root')).render(
++  <React.StrictMode>
++    <App />
++  </React.StrictMode>,
++)
++
+diff --git a/repository_after/frontend/src/test/setup.js b/repository_after/frontend/src/test/setup.js
+new file mode 100644
+index 0000000..2f5440a
+--- /dev/null
++++ b/repository_after/frontend/src/test/setup.js
+@@ -0,0 +1,25 @@
++import '@testing-library/jest-dom';
++import { vi } from 'vitest';
++
++// Mock window.matchMedia
++Object.defineProperty(window, 'matchMedia', {
++  writable: true,
++  value: vi.fn().mockImplementation(query => ({
++    matches: false,
++    media: query,
++    onchange: null,
++    addListener: vi.fn(),
++    removeListener: vi.fn(),
++    addEventListener: vi.fn(),
++    removeEventListener: vi.fn(),
++    dispatchEvent: vi.fn(),
++  })),
++});
++
++// Mock navigator.clipboard
++Object.assign(navigator, {
++  clipboard: {
++    writeText: vi.fn().mockResolvedValue(undefined),
++  },
++});
++
