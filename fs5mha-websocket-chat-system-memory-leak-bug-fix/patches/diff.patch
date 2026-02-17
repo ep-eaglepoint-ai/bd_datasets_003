@@ -1,0 +1,657 @@
+diff --git a/repository_before/client.go b/repository_after/client.go
+index 41ee6c4..0a480e8 100644
+--- a/repository_before/client.go
++++ b/repository_after/client.go
+@@ -9,6 +9,20 @@ import (
+ 	"github.com/gorilla/websocket"
+ )
+ 
++const (
++	// Time allowed to write a message to the peer.
++	writeWait = 10 * time.Second
++
++	// Time allowed to read the next pong message from the peer.
++	pongWait = 60 * time.Second
++
++	// Send pings to peer with this period. Must be less than pongWait.
++	pingPeriod = (pongWait * 9) / 10
++
++	// Maximum message size allowed from peer.
++	maxMessageSize = 512
++)
++
+ var upgrader = websocket.Upgrader{
+ 	ReadBufferSize:  1024,
+ 	WriteBufferSize: 1024,
+@@ -40,23 +54,40 @@ func ServeWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
+ 	client := &Client{
+ 		hub:  hub,
+ 		conn: conn,
+-		send: make(chan *Message),
++		send: make(chan *Message, 256),
+ 		room: room,
+ 		user: user,
+ 	}
+ 
+-	hub.register <- client
++	client.hub.register <- client
+ 
++	// Start pumps
+ 	go client.writePump()
+ 	go client.readPump()
+ }
+ 
+ func (c *Client) readPump() {
++	defer func() {
++		c.conn.Close()
++		select {
++		case c.hub.unregister <- c:
++		default:
++		}
++	}()
++
++	c.conn.SetReadLimit(maxMessageSize)
++	c.conn.SetReadDeadline(time.Now().Add(pongWait))
++	c.conn.SetPongHandler(func(string) error {
++		c.conn.SetReadDeadline(time.Now().Add(pongWait))
++		return nil
++	})
++
+ 	for {
+ 		_, data, err := c.conn.ReadMessage()
+ 		if err != nil {
+-			log.Println("read error:", err)
+-			c.hub.unregister <- c
++			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
++				log.Printf("error: %v", err)
++			}
+ 			break
+ 		}
+ 
+@@ -66,29 +97,95 @@ func (c *Client) readPump() {
+ 			continue
+ 		}
+ 
++		// Enforce user and room from connection
+ 		msg.User = c.user
+ 		msg.Room = c.room
+ 
+-		c.hub.broadcast <- &msg
+-		publishToRedis(&msg)
++		// Attempt to enqueue broadcast without blocking indefinitely.
++		select {
++		case c.hub.broadcast <- &msg:
++			// Async publish to Redis with error notification
++			go func(m *Message) {
++				if err := publishToRedis(m); err != nil {
++					// Notify sender of Redis publish failure
++					errMsg := &Message{
++						Type:    MessageTypeChat,
++						Room:    c.room,
++						User:    "system",
++						Content: "message delivered locally, but cross-instance delivery failed",
++					}
++					select {
++					case c.send <- errMsg:
++					default:
++						// Channel full, skip notification
++					}
++				}
++			}(&msg)
++		default:
++			// Hub is overloaded; return an error to the sender where possible.
++			errMsg := &Message{
++				Type:    MessageTypeChat,
++				Room:    c.room,
++				User:    "system",
++				Content: "server overloaded, message dropped",
++			}
++
++			select {
++			case c.send <- errMsg:
++			default:
++				// If even the error cannot be delivered, close the connection
++				// and let the pumps clean up.
++				c.conn.Close()
++				return
++			}
++		}
+ 	}
+ }
+ 
+ func (c *Client) writePump() {
+-	ticker := time.NewTicker(30 * time.Second)
++	ticker := time.NewTicker(pingPeriod)
++	defer func() {
++		ticker.Stop()
++		c.conn.Close()
++	}()
+ 
+ 	for {
+ 		select {
+ 		case message, ok := <-c.send:
++			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+ 			if !ok {
++				// The hub closed the channel.
+ 				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+ 				return
+ 			}
+-			data, _ := json.Marshal(message)
+-			c.conn.WriteMessage(websocket.TextMessage, data)
++
++			// Write single message directly for simplicity and compatibility
++			data, err := json.Marshal(message)
++			if err != nil {
++				return
++			}
++			if err := c.conn.WriteMessage(websocket.TextMessage, data); err != nil {
++				return
++			}
++
++			// Efficiently batch remaining queued messages
++			n := len(c.send)
++			for i := 0; i < n; i++ {
++				msg := <-c.send
++				data, err := json.Marshal(msg)
++				if err != nil {
++					continue
++				}
++				if err := c.conn.WriteMessage(websocket.TextMessage, data); err != nil {
++					return
++				}
++			}
+ 
+ 		case <-ticker.C:
+-			c.conn.WriteMessage(websocket.PingMessage, nil)
++			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
++			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
++				return
++			}
+ 		}
+ 	}
+ }
+diff --git a/repository_before/hub.go b/repository_after/hub.go
+index b63ceaf..e8aa887 100644
+--- a/repository_before/hub.go
++++ b/repository_after/hub.go
+@@ -4,24 +4,53 @@ import (
+ 	"encoding/json"
+ 	"net/http"
+ 	"sync"
++	"sync/atomic"
++	"time"
+ )
+ 
+ type Hub struct {
+-	clients    map[*Client]bool
+-	rooms      map[string]map[*Client]bool
+-	broadcast  chan *Message
+-	register   chan *Client
++	// Registered clients.
++	clients map[*Client]bool
++
++	// Rooms map: roomName -> set of clients
++	rooms map[string]map[*Client]bool
++
++	// Inbound messages from the clients or Redis.
++	broadcast chan *Message
++
++	// Register requests from the clients.
++	register chan *Client
++
++	// Unregister requests from clients.
+ 	unregister chan *Client
+-	mu         sync.Mutex
++
++	// Mutex to protect clients and rooms maps
++	mu sync.RWMutex
++
++	// Redis subscription stop channels: roomName -> stop channel
++	stopSubs map[string]chan struct{}
++
++	// Shutdown signal
++	Quit chan struct{}
++
++	// Atomic counters for lock-free metrics reads
++	clientCount int64
++	roomCount   int64
++
++	// Track clients pending unregistration to avoid duplicate cleanup
++	pendingUnregister map[*Client]bool
+ }
+ 
+ func NewHub() *Hub {
+ 	return &Hub{
+-		clients:    make(map[*Client]bool),
+-		rooms:      make(map[string]map[*Client]bool),
+-		broadcast:  make(chan *Message),
+-		register:   make(chan *Client),
+-		unregister: make(chan *Client),
++		clients:           make(map[*Client]bool),
++		rooms:             make(map[string]map[*Client]bool),
++		broadcast:         make(chan *Message, 256),
++		register:          make(chan *Client),
++		unregister:        make(chan *Client, 256),
++		stopSubs:          make(map[string]chan struct{}),
++		Quit:              make(chan struct{}),
++		pendingUnregister: make(map[*Client]bool),
+ 	}
+ }
+ 
+@@ -29,52 +58,165 @@ func (h *Hub) Run() {
+ 	for {
+ 		select {
+ 		case client := <-h.register:
++			h.mu.Lock()
+ 			h.clients[client] = true
++			atomic.AddInt64(&h.clientCount, 1)
+ 			if h.rooms[client.room] == nil {
+ 				h.rooms[client.room] = make(map[*Client]bool)
++				atomic.AddInt64(&h.roomCount, 1)
++				stop := make(chan struct{})
++				h.stopSubs[client.room] = stop
++				go subscribeToRoom(h, client.room, stop)
+ 			}
+ 			h.rooms[client.room][client] = true
+-			h.broadcastPresence(client.room)
++			roomName := client.room
++			h.mu.Unlock()
++			h.broadcastPresence(roomName)
+ 
+ 		case client := <-h.unregister:
+-			if _, ok := h.clients[client]; ok {
+-				delete(h.clients, client)
+-				delete(h.rooms[client.room], client)
+-				close(client.send)
+-				h.broadcastPresence(client.room)
+-			}
++			h.unregisterClient(client)
+ 
+ 		case message := <-h.broadcast:
++			h.mu.RLock()
+ 			clients := h.rooms[message.Room]
++			var slowClients []*Client
+ 			for client := range clients {
+-				client.send <- message
++				select {
++				case client.send <- message:
++				default:
++					// Collect slow clients for synchronous unregistration
++					slowClients = append(slowClients, client)
++				}
++			}
++			h.mu.RUnlock()
++
++			// Synchronously unregister slow clients to prevent race conditions
++			for _, client := range slowClients {
++				client.conn.Close()
++				// Send to unregister channel (non-blocking to avoid deadlock)
++				select {
++				case h.unregister <- client:
++				default:
++					// If channel is full, the client will be cleaned up by readPump
++				}
+ 			}
++
++		case <-h.Quit:
++			h.shutdown()
++			return
+ 		}
+ 	}
+ }
+ 
++func (h *Hub) shutdown() {
++	h.mu.Lock()
++	clients := make([]*Client, 0, len(h.clients))
++	for client := range h.clients {
++		clients = append(clients, client)
++	}
++
++	// Stop all Redis subscriptions
++	for room, stop := range h.stopSubs {
++		close(stop)
++		delete(h.stopSubs, room)
++	}
++	h.mu.Unlock()
++
++	// Close all client connections
++	for _, client := range clients {
++		client.conn.Close()
++	}
++
++	// Drain remaining messages from channels with timeout
++	drainTimeout := time.After(5 * time.Second)
++	for {
++		select {
++		case client := <-h.unregister:
++			h.unregisterClient(client)
++		case <-h.broadcast:
++			// Discard remaining broadcast messages during shutdown
++		case <-drainTimeout:
++			return
++		default:
++			// Channels are empty
++			return
++		}
++	}
++}
++
++func (h *Hub) unregisterClient(client *Client) {
++	h.mu.Lock()
++	// Check if already pending unregistration to prevent double-close
++	if h.pendingUnregister[client] {
++		h.mu.Unlock()
++		return
++	}
++
++	if _, ok := h.clients[client]; ok {
++		h.pendingUnregister[client] = true
++		delete(h.clients, client)
++		atomic.AddInt64(&h.clientCount, -1)
++		roomName := client.room
++		if roomClients, exists := h.rooms[roomName]; exists {
++			delete(roomClients, client)
++			if len(roomClients) == 0 {
++				delete(h.rooms, roomName)
++				atomic.AddInt64(&h.roomCount, -1)
++				if stop, ok := h.stopSubs[roomName]; ok {
++					close(stop)
++					delete(h.stopSubs, roomName)
++				}
++			}
++		}
++		close(client.send)
++		delete(h.pendingUnregister, client)
++		h.mu.Unlock()
++		// Broadcast presence update after unlocking to avoid deadlock
++		go h.broadcastPresence(roomName)
++	} else {
++		h.mu.Unlock()
++	}
++}
++
+ func (h *Hub) broadcastPresence(room string) {
+-	clients := h.rooms[room]
+-	users := make([]string, 0)
++	h.mu.RLock()
++	clients, ok := h.rooms[room]
++	if !ok {
++		h.mu.RUnlock()
++		return
++	}
++	users := make([]string, 0, len(clients))
+ 	for client := range clients {
+ 		users = append(users, client.user)
+ 	}
++	h.mu.RUnlock()
++
+ 	msg := &Message{
+ 		Type:  MessageTypePresence,
+ 		Room:  room,
+ 		Users: users,
+ 	}
++
++	h.mu.RLock()
++	// Re-fetch clients to be safe
++	clients = h.rooms[room]
+ 	for client := range clients {
+-		client.send <- msg
++		select {
++		case client.send <- msg:
++		default:
++			// Skip slow clients - they will be cleaned up by broadcast loop
++		}
+ 	}
++	h.mu.RUnlock()
+ }
+ 
++// ServeMetrics returns metrics using atomic counters for fast, lock-free reads
+ func (h *Hub) ServeMetrics(w http.ResponseWriter, r *http.Request) {
+-	h.mu.Lock()
++	// Use atomic reads for lock-free performance under load
+ 	metrics := map[string]interface{}{
+-		"total_clients": len(h.clients),
+-		"total_rooms":   len(h.rooms),
++		"total_clients": atomic.LoadInt64(&h.clientCount),
++		"total_rooms":   atomic.LoadInt64(&h.roomCount),
+ 	}
+-	h.mu.Unlock()
++	w.Header().Set("Content-Type", "application/json")
+ 	json.NewEncoder(w).Encode(metrics)
+ }
+diff --git a/repository_before/main.go b/repository_after/main.go
+index ebe14b8..eb1f4f2 100644
+--- a/repository_before/main.go
++++ b/repository_after/main.go
+@@ -1,22 +1,65 @@
+ package main
+ 
+ import (
++	"context"
+ 	"log"
+ 	"net/http"
++	"os"
++	"os/signal"
++	"syscall"
++	"time"
+ )
+ 
+ func main() {
+ 	hub := NewHub()
+ 	go hub.Run()
+ 
+-	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
++	mux := http.NewServeMux()
++	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+ 		ServeWs(hub, w, r)
+ 	})
+ 
+-	http.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
++	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
+ 		hub.ServeMetrics(w, r)
+ 	})
+ 
+-	log.Println("Server starting on :8080")
+-	log.Fatal(http.ListenAndServe(":8080", nil))
++	server := &http.Server{
++		Addr:    ":8080",
++		Handler: mux,
++	}
++
++	done := make(chan os.Signal, 1)
++	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
++
++	go func() {
++		log.Println("Server starting on :8080")
++		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
++			log.Fatalf("listen error: %s\n", err)
++		}
++	}()
++
++	// Wait for termination signal
++	<-done
++	log.Println("Server stopping...")
++
++	// Create a context with timeout for shutdown
++	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
++	defer cancel()
++
++	// 1. Signal hub to stop (which will close all client connections)
++	close(hub.Quit)
++
++	// 2. Shutdown the HTTP server
++	if err := server.Shutdown(ctx); err != nil {
++		log.Fatalf("Server Shutdown Failed: %+v", err)
++	}
++
++	// 3. Close Redis client to free external resources
++	if redisClient != nil {
++		if err := redisClient.Close(); err != nil {
++			log.Printf("Error closing redis client: %v", err)
++		}
++	}
++
++	log.Println("Server exited properly")
+ }
+diff --git a/repository_before/redis.go b/repository_after/redis.go
+index 0472df7..2f5b05a 100644
+--- a/repository_before/redis.go
++++ b/repository_after/redis.go
+@@ -4,6 +4,8 @@ import (
+ 	"context"
+ 	"encoding/json"
+ 	"log"
++	"os"
++	"time"
+ 
+ 	"github.com/redis/go-redis/v9"
+ )
+@@ -12,42 +14,65 @@ var redisClient *redis.Client
+ var ctx = context.Background()
+ 
+ func init() {
++	addr := os.Getenv("REDIS_ADDR")
++	if addr == "" {
++		addr = "localhost:6379"
++	}
++
++	// Tune the Redis client for high concurrency and to avoid exhausting the pool
++	// under peak load. These defaults are conservative and can be overridden
++	// via environment if needed.
+ 	redisClient = redis.NewClient(&redis.Options{
+-		Addr: "localhost:6379",
++		Addr:         addr,
++		PoolSize:     100, // reasonable default for many cores
++		MinIdleConns: 10,  // keep a few connections warm
++		ReadTimeout:  500 * time.Millisecond,
++		WriteTimeout: 500 * time.Millisecond,
++		DialTimeout:  500 * time.Millisecond,
+ 	})
+ }
+ 
+-func publishToRedis(msg *Message) {
+-	data, _ := json.Marshal(msg)
+-	redisClient.Publish(ctx, "chat:"+msg.Room, data)
++func publishToRedis(msg *Message) error {
++	data, err := json.Marshal(msg)
++	if err != nil {
++		log.Println("Redis message marshal error:", err)
++		return err
++	}
++	if err := redisClient.Publish(ctx, "chat:"+msg.Room, data).Err(); err != nil {
++		log.Println("Redis publish error:", err)
++		return err
++	}
++	return nil
+ }
+ 
+-func subscribeToRoom(hub *Hub, room string) {
++func subscribeToRoom(hub *Hub, room string, stop chan struct{}) {
+ 	pubsub := redisClient.Subscribe(ctx, "chat:"+room)
++	defer pubsub.Close()
+ 
+-	go func() {
+-		ch := pubsub.Channel()
+-		for msg := range ch {
+-			var message Message
+-			json.Unmarshal([]byte(msg.Payload), &message)
+-			hub.broadcast <- &message
+-		}
+-	}()
+-}
+-
+-func subscribeClient(client *Client) {
+-	pubsub := redisClient.Subscribe(ctx, "chat:"+client.room)
+-
+-	go func() {
+-		for {
+-			msg, err := pubsub.ReceiveMessage(ctx)
+-			if err != nil {
+-				log.Println("redis receive error:", err)
++	ch := pubsub.Channel()
++	for {
++		select {
++		case msg, ok := <-ch:
++			if !ok {
+ 				return
+ 			}
+ 			var message Message
+-			json.Unmarshal([]byte(msg.Payload), &message)
+-			client.send <- &message
++			if err := json.Unmarshal([]byte(msg.Payload), &message); err != nil {
++				log.Println("Redis message unmarshal error:", err)
++				continue
++			}
++
++			// Pass message to hub for broadcasting to local clients without
++			// blocking this subscription goroutine indefinitely.
++			select {
++			case hub.broadcast <- &message:
++			default:
++				log.Println("Hub broadcast channel full, dropping Redis message for room:", room)
++			}
++
++		case <-stop:
++			// Cleanup based on room lifecycle
++			return
+ 		}
+-	}()
++	}
+ }
+diff --git a/repository_before/room.go b/repository_before/room.go
+deleted file mode 100644
+index 9c431e9..0000000
+--- a/repository_before/room.go
++++ /dev/null
+@@ -1,51 +0,0 @@
+-package main
+-
+-import (
+-	"sync"
+-)
+-
+-type Room struct {
+-	name    string
+-	clients map[*Client]bool
+-	mu      sync.Mutex
+-}
+-
+-var rooms = make(map[string]*Room)
+-var roomsMu sync.Mutex
+-
+-func GetOrCreateRoom(name string) *Room {
+-	roomsMu.Lock()
+-	if rooms[name] == nil {
+-		rooms[name] = &Room{
+-			name:    name,
+-			clients: make(map[*Client]bool),
+-		}
+-	}
+-	room := rooms[name]
+-	roomsMu.Unlock()
+-	return room
+-}
+-
+-func (r *Room) AddClient(client *Client) {
+-	r.clients[client] = true
+-}
+-
+-func (r *Room) RemoveClient(client *Client) {
+-	delete(r.clients, client)
+-}
+-
+-func (r *Room) Broadcast(msg *Message) {
+-	for client := range r.clients {
+-		go func(c *Client) {
+-			c.send <- msg
+-		}(client)
+-	}
+-}
+-
+-func (r *Room) GetUsers() []string {
+-	users := []string{}
+-	for client := range r.clients {
+-		users = append(users, client.user)
+-	}
+-	return users
+-}

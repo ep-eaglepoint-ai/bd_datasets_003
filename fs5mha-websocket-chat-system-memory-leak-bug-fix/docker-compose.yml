@@ -1,0 +1,45 @@
+services:
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+
+  tests-before:
+    build: .
+    depends_on:
+      - redis
+    environment:
+      - REDIS_ADDR=redis:6379
+    command: >
+      sh -c "go mod tidy &&
+             cp tests/websocket_chat_test.go repository_before/ &&
+             cd repository_before && 
+             (go test -v -race . || true) &&
+             cd .. &&
+             rm -f repository_before/websocket_chat_test.go"
+    volumes:
+      - .:/app
+
+  tests-after:
+    build: .
+    depends_on:
+      - redis
+    environment:
+      - REDIS_ADDR=redis:6379
+    command: >
+      sh -c "go mod tidy &&
+             cp tests/websocket_chat_test.go repository_after/ &&
+             cd repository_after && 
+             go test -v -race . &&
+             cd .. &&
+             rm -f repository_after/websocket_chat_test.go"
+    volumes:
+      - .:/app
+
+  evaluation:
+    build: .
+    depends_on:
+      - tests-after
+    command: go run evaluation/evaluation.go
+    volumes:
+      - .:/app
