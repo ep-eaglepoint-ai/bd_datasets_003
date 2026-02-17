@@ -1,0 +1,29 @@
+services:
+  test-suite:
+    build: .
+    volumes:
+      - ./repository_after:/app
+      - /app/node_modules
+    command: npm test -- --watchAll=false
+    working_dir: /app
+
+  tests:
+    build: .
+    volumes:
+      - ./repository_after:/app
+      - /app/node_modules
+      - ./tests:/app/src/tests_mount
+      - ./repository_before:/app/repository_before_mount
+    command: npm test -- src/tests_mount/meta.test.js --watchAll=false
+    working_dir: /app
+
+  evaluation:
+    build: .
+    volumes:
+      - ./evaluation:/app/evaluation
+      - ./repository_before:/app/repository_before
+      - ./repository_after:/app/repository_after
+      - ./tests:/app/src/tests_mount
+      - /app/node_modules
+    command: node evaluation/evaluation.js
+    working_dir: /app
